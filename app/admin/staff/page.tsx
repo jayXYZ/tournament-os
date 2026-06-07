@@ -5,10 +5,10 @@ import { useAuth } from "@workos-inc/authkit-nextjs/components";
 import { Authenticated, AuthLoading, Unauthenticated } from "convex/react";
 import { ArrowLeft, LogIn, Swords } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
 import { OrganizerWorkspace } from "@/app/components/organizer-workspace";
+import { Button } from "@/components/ui/button";
 
-export default function AdminPage() {
+export default function AdminStaffPage() {
   return (
     <main className="min-h-svh bg-stone-100 text-stone-950">
       <AuthLoading>
@@ -20,7 +20,7 @@ export default function AdminPage() {
         <SignedOutAdmin />
       </Unauthenticated>
       <Authenticated>
-        <OrganizerWorkspace view="tournaments" />
+        <OrganizerWorkspace view="staff" />
       </Authenticated>
     </main>
   );
@@ -41,7 +41,12 @@ function SignedOutAdmin() {
             <p className="mt-1 text-xs text-stone-400">Organization controls</p>
           </div>
         </div>
-        <Button asChild type="button" variant="outline" className="border-white/20 text-stone-50 hover:bg-white/10">
+        <Button
+          asChild
+          type="button"
+          variant="outline"
+          className="border-white/20 text-stone-50 hover:bg-white/10"
+        >
           <Link href="/">
             <ArrowLeft className="size-4" />
             Player view
@@ -57,8 +62,8 @@ function SignedOutAdmin() {
           Sign in to manage your organization.
         </h1>
         <p className="mt-5 text-base leading-7 text-stone-300">
-          Organization creation, staff invites, and tournament operations live in
-          the admin workspace.
+          Staff membership, invitations, and tournament operations live in the
+          admin workspace.
         </p>
         <div className="mt-8">
           <Button

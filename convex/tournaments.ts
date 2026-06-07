@@ -73,6 +73,32 @@ export const listUpcomingPublic = query({
   },
 });
 
+export const listUpcomingForOrganization = query({
+  args: { organizationId: v.id("organizations") },
+  handler: async (ctx, args) => {
+    await requireOrganizationMembership(ctx, args.organizationId);
+
+    const now = Date.now();
+    const rows = [];
+    for (const status of ["private", "public", "in_progress"] as const) {
+      const tournaments = await ctx.db
+        .query("tournaments")
+        .withIndex("by_organizationId_and_status_and_startDate", (q) =>
+          q
+            .eq("organizationId", args.organizationId)
+            .eq("status", status)
+            .gte("startDate", now),
+        )
+        .order("asc")
+        .take(100);
+      rows.push(...tournaments);
+    }
+
+    rows.sort((left, right) => left.startDate - right.startDate);
+    return rows.slice(0, 100);
+  },
+});
+
 export const getTournamentSetup = query({
   args: { tournamentId: v.id("tournaments") },
   handler: async (ctx, args) => {

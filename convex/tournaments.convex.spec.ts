@@ -85,6 +85,98 @@ test("listUpcomingPublic returns future public tournaments in start date order",
   ]);
 });
 
+test("listUpcomingForOrganization returns active future tournaments for one organization", async () => {
+  const t = convexTest(schema, modules);
+  const now = Date.now();
+  const { organizationId, userId } = await seedOrganizer(t);
+  const otherOrganizationId = await t.run(async (ctx) => {
+    return await ctx.db.insert("organizations", {
+      workosOrganizationId: "org_other",
+      name: "Other Org",
+      slug: "other-org",
+      createdBy: userId,
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+    });
+  });
+
+  const rows = await t.run(async (ctx) => {
+    const base = {
+      organizationId,
+      createdBy: userId,
+      playerCapacity: 32,
+      format: "swiss",
+      isTestEvent: false,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await ctx.db.insert("tournaments", {
+      ...base,
+      name: "Past Private",
+      status: "private",
+      startDate: now - 60_000,
+    });
+    await ctx.db.insert("tournaments", {
+      ...base,
+      name: "Future Cancelled",
+      status: "cancelled",
+      startDate: now + 45_000,
+    });
+    await ctx.db.insert("tournaments", {
+      ...base,
+      name: "Future Completed",
+      status: "completed",
+      startDate: now + 50_000,
+    });
+    await ctx.db.insert("tournaments", {
+      ...base,
+      organizationId: otherOrganizationId,
+      name: "Other Organization Public",
+      status: "public",
+      startDate: now + 75_000,
+    });
+    const publicTournament = await ctx.db.insert("tournaments", {
+      ...base,
+      name: "Public Event",
+      status: "public",
+      startDate: now + 90_000,
+    });
+    const privateTournament = await ctx.db.insert("tournaments", {
+      ...base,
+      name: "Private Setup",
+      status: "private",
+      startDate: now + 120_000,
+    });
+    const inProgressTournament = await ctx.db.insert("tournaments", {
+      ...base,
+      name: "In Progress Event",
+      status: "in_progress",
+      startDate: now + 150_000,
+    });
+
+    return { publicTournament, privateTournament, inProgressTournament };
+  });
+
+  const tournaments = await t
+    .withIdentity(organizerIdentity)
+    .query(api.tournaments.listUpcomingForOrganization, {
+      organizationId,
+    });
+
+  expect(tournaments.map((tournament) => tournament._id)).toEqual([
+    rows.publicTournament,
+    rows.privateTournament,
+    rows.inProgressTournament,
+  ]);
+  expect(tournaments.map((tournament) => tournament.name)).toEqual([
+    "Public Event",
+    "Private Setup",
+    "In Progress Event",
+  ]);
+});
+
 test("test tournaments seed players, generate Swiss rounds, and complete", async () => {
   const t = convexTest(schema, modules);
   const { organizationId } = await t.run(async (ctx) => {

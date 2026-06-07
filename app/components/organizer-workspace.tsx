@@ -7,26 +7,40 @@ import { useAction, useMutation, useQuery } from "convex/react";
 import {
   ArrowLeft,
   Building2,
+  CalendarDays,
   CheckCircle2,
   Mail,
   ShieldCheck,
   Swords,
+  Trophy,
   UserRound,
   Users,
 } from "lucide-react";
 
 import { api } from "@/convex/_generated/api";
-import type { Id } from "@/convex/_generated/dataModel";
+import type { Doc, Id } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
 import {
   canInviteMembers,
   type InvitationStatus,
+  type OrganizerRole,
   type OrganizerInviteRole,
 } from "@/lib/organizer-utils";
 
+type AdminView = "tournaments" | "staff";
 type Role = OrganizerInviteRole;
+type MemberRole = OrganizerRole;
+type Tournament = Doc<"tournaments">;
 
-export function OrganizerWorkspace() {
+const dateFormatter = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+});
+
+export function OrganizerWorkspace({ view }: { view: AdminView }) {
   const { user, signOut } = useAuth();
   const upsertMe = useMutation(api.users.upsertMe);
   const organizations = useQuery(api.organizations.listMine);
@@ -62,13 +76,21 @@ export function OrganizerWorkspace() {
     api.organizations.getById,
     selectedOrganizationId ? { organizationId: selectedOrganizationId } : "skip",
   );
+  const tournaments = useQuery(
+    api.tournaments.listUpcomingForOrganization,
+    selectedOrganizationId ? { organizationId: selectedOrganizationId } : "skip",
+  );
   const members = useQuery(
     api.organizations.listMembers,
-    selectedOrganizationId ? { organizationId: selectedOrganizationId } : "skip",
+    view === "staff" && selectedOrganizationId
+      ? { organizationId: selectedOrganizationId }
+      : "skip",
   );
   const invitations = useQuery(
     api.organizations.listInvitations,
-    selectedOrganizationId ? { organizationId: selectedOrganizationId } : "skip",
+    view === "staff" && selectedOrganizationId
+      ? { organizationId: selectedOrganizationId }
+      : "skip",
   );
 
   const activeMembership = details?.membership ?? selected?.membership ?? null;
@@ -151,7 +173,7 @@ export function OrganizerWorkspace() {
         </div>
       </header>
 
-      <div className="grid min-h-[calc(100svh-4rem)] lg:grid-cols-[260px_1fr]">
+      <div className="grid min-h-[calc(100svh-4rem)] lg:grid-cols-[280px_1fr]">
         <aside className="border-b border-stone-200 bg-stone-950 p-4 text-stone-50 lg:border-b-0 lg:border-r">
           <div className="flex items-center gap-3 border-b border-white/10 pb-4">
             <UserRound className="size-4 text-emerald-200" />
@@ -162,6 +184,17 @@ export function OrganizerWorkspace() {
               <p className="text-xs text-stone-400">Global player profile</p>
             </div>
           </div>
+
+          <nav className="mt-4 grid gap-1 border-b border-white/10 pb-4">
+            <AdminNavLink active={view === "tournaments"} href="/admin">
+              <Trophy className="size-4" />
+              Tournaments
+            </AdminNavLink>
+            <AdminNavLink active={view === "staff"} href="/admin/staff">
+              <Users className="size-4" />
+              Staff
+            </AdminNavLink>
+          </nav>
 
           <div className="mt-5">
             <p className="mb-2 text-xs font-medium uppercase tracking-[0.14em] text-stone-400">
@@ -191,17 +224,40 @@ export function OrganizerWorkspace() {
               ))}
             </div>
           </div>
+
+          <form onSubmit={handleCreateOrganization} className="mt-6 grid gap-3">
+            <label className="grid gap-2 text-sm font-medium text-stone-100">
+              New organization
+              <input
+                value={organizationName}
+                onChange={(event) => setOrganizationName(event.target.value)}
+                className="h-10 rounded-md border border-white/10 bg-white/10 px-3 text-sm text-stone-50 outline-none transition placeholder:text-stone-500 focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20"
+                placeholder="Main Street Games"
+                required
+              />
+            </label>
+            <Button
+              type="submit"
+              className="h-10 bg-emerald-300 text-stone-950 hover:bg-emerald-200"
+              disabled={busy === "org"}
+            >
+              <Building2 className="size-4" />
+              Create
+            </Button>
+          </form>
         </aside>
 
         <div className="p-4 sm:p-6 lg:p-8">
-          <div className="mx-auto grid max-w-6xl gap-6 xl:grid-cols-[1fr_360px]">
+          <div className="mx-auto grid max-w-6xl gap-6">
             <section className="space-y-6">
               <div className="border-b border-stone-200 pb-6">
                 <p className="text-xs font-medium uppercase tracking-[0.16em] text-emerald-700">
-                  Organizer setup
+                  {details?.organization.name ?? "Admin workspace"}
                 </p>
                 <h1 className="mt-2 text-3xl font-semibold tracking-normal sm:text-4xl">
-                  Create a workspace, invite staff, and keep players separate.
+                  {view === "staff"
+                    ? "Manage organization staff."
+                    : "Upcoming organization tournaments."}
                 </h1>
               </div>
 
@@ -212,160 +268,334 @@ export function OrganizerWorkspace() {
                 </div>
               )}
 
-              <form
-                onSubmit={handleCreateOrganization}
-                className="grid gap-3 border-b border-stone-200 pb-6 sm:grid-cols-[1fr_auto]"
-              >
-                <label className="grid gap-2 text-sm font-medium">
-                  New organizer organization
-                  <input
-                    value={organizationName}
-                    onChange={(event) => setOrganizationName(event.target.value)}
-                    className="h-11 rounded-md border border-stone-300 bg-white px-3 text-sm outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-700/20"
-                    placeholder="Example: Main Street Games"
-                    required
-                  />
-                </label>
-                <Button
-                  type="submit"
-                  className="mt-auto h-11 bg-stone-950 px-4 text-stone-50 hover:bg-stone-800"
-                  disabled={busy === "org"}
-                >
-                  <Building2 className="size-4" />
-                  Create
-                </Button>
-              </form>
-
-              <div className="grid gap-4 md:grid-cols-3">
-                <Metric
-                  label="Organizations"
-                  value={organizations?.length ?? 0}
-                  icon={Building2}
+              {view === "staff" ? (
+                <StaffView
+                  activeMembership={activeMembership}
+                  busy={busy}
+                  inviteEmail={inviteEmail}
+                  invitations={invitations}
+                  inviteRole={inviteRole}
+                  mayInvite={mayInvite}
+                  members={members}
+                  onInvite={handleInvite}
+                  onInviteEmailChange={setInviteEmail}
+                  onInviteRoleChange={setInviteRole}
                 />
-                <Metric label="Members" value={members?.length ?? 0} icon={Users} />
-                <Metric
-                  label="Pending invites"
-                  value={pendingInviteCount(invitations)}
-                  icon={Mail}
+              ) : (
+                <TournamentAdminView
+                  organizationCount={organizations?.length ?? 0}
+                  selectedOrganizationName={details?.organization.name}
+                  tournaments={tournaments}
                 />
-              </div>
-
-              <section className="grid gap-4">
-                <div className="flex items-center gap-2">
-                  <Users className="size-4 text-emerald-700" />
-                  <h2 className="text-lg font-semibold">Members</h2>
-                </div>
-                <div className="overflow-hidden rounded-md border border-stone-200 bg-white">
-                  {(members ?? []).map((member) => (
-                    <div
-                      key={member._id}
-                      className="grid gap-2 border-b border-stone-100 px-4 py-3 last:border-b-0 sm:grid-cols-[1fr_auto_auto]"
-                    >
-                      <span className="text-sm font-medium">
-                        {member.email ?? member.workosUserId ?? "Pending user"}
-                      </span>
-                      <span className="text-xs capitalize text-stone-500">
-                        {member.role}
-                      </span>
-                      <span className="text-xs capitalize text-stone-500">
-                        {member.status}
-                      </span>
-                    </div>
-                  ))}
-                  {members?.length === 0 && (
-                    <p className="px-4 py-6 text-sm text-stone-500">
-                      No members mirrored yet.
-                    </p>
-                  )}
-                </div>
-              </section>
+              )}
             </section>
-
-            <aside className="space-y-6">
-              <section className="rounded-md border border-stone-200 bg-white p-4">
-                <div className="flex items-center gap-2">
-                  <ShieldCheck className="size-4 text-emerald-700" />
-                  <h2 className="text-sm font-semibold">Current access</h2>
-                </div>
-                <p className="mt-3 text-2xl font-semibold capitalize">
-                  {activeMembership?.role ?? "No org"}
-                </p>
-                <p className="mt-1 text-sm text-stone-500">
-                  {details?.organization.name ??
-                    "Create or select an organizer workspace."}
-                </p>
-              </section>
-
-              <form
-                onSubmit={handleInvite}
-                className="rounded-md border border-stone-200 bg-white p-4"
-              >
-                <div className="flex items-center gap-2">
-                  <Mail className="size-4 text-emerald-700" />
-                  <h2 className="text-sm font-semibold">Invite staff</h2>
-                </div>
-                <div className="mt-4 grid gap-3">
-                  <input
-                    value={inviteEmail}
-                    onChange={(event) => setInviteEmail(event.target.value)}
-                    className="h-10 rounded-md border border-stone-300 px-3 text-sm outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-700/20"
-                    placeholder="judge@example.com"
-                    type="email"
-                    disabled={!mayInvite}
-                    required
-                  />
-                  <select
-                    value={inviteRole}
-                    onChange={(event) =>
-                      setInviteRole(event.target.value as Role)
-                    }
-                    className="h-10 rounded-md border border-stone-300 bg-white px-3 text-sm outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-700/20"
-                    disabled={!mayInvite}
-                  >
-                    <option value="staff">Staff</option>
-                    <option value="admin">Admin</option>
-                  </select>
-                  <Button
-                    type="submit"
-                    disabled={!mayInvite || busy === "invite"}
-                    className="h-10 bg-emerald-700 text-white hover:bg-emerald-800"
-                  >
-                    Send invitation
-                  </Button>
-                </div>
-                {!mayInvite && (
-                  <p className="mt-3 text-xs leading-5 text-stone-500">
-                    Only owners and admins can invite organizer staff.
-                  </p>
-                )}
-              </form>
-
-              <section className="rounded-md border border-stone-200 bg-white p-4">
-                <h2 className="text-sm font-semibold">Invitations</h2>
-                <div className="mt-3 space-y-3">
-                  {(invitations ?? []).map((invitation) => (
-                    <div
-                      key={invitation._id}
-                      className="border-t border-stone-100 pt-3"
-                    >
-                      <p className="truncate text-sm font-medium">
-                        {invitation.email}
-                      </p>
-                      <p className="mt-1 text-xs capitalize text-stone-500">
-                        {invitation.role} · {invitation.status}
-                      </p>
-                    </div>
-                  ))}
-                  {invitations?.length === 0 && (
-                    <p className="text-sm text-stone-500">No invitations sent.</p>
-                  )}
-                </div>
-              </section>
-            </aside>
           </div>
         </div>
       </div>
     </section>
+  );
+}
+
+function AdminNavLink({
+  active,
+  children,
+  href,
+}: {
+  active: boolean;
+  children: React.ReactNode;
+  href: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm transition ${
+        active
+          ? "bg-white text-stone-950"
+          : "text-stone-200 hover:bg-white/10"
+      }`}
+    >
+      {children}
+    </Link>
+  );
+}
+
+function TournamentAdminView({
+  organizationCount,
+  selectedOrganizationName,
+  tournaments,
+}: {
+  organizationCount: number;
+  selectedOrganizationName?: string;
+  tournaments: Tournament[] | undefined;
+}) {
+  return (
+    <div className="grid gap-6">
+      <div className="grid gap-4 md:grid-cols-3">
+        <Metric label="Organizations" value={organizationCount} icon={Building2} />
+        <Metric
+          label="Upcoming events"
+          value={tournaments?.length ?? 0}
+          icon={CalendarDays}
+        />
+        <Metric
+          label="Current org"
+          value={selectedOrganizationName ? 1 : 0}
+          icon={ShieldCheck}
+        />
+      </div>
+
+      <section className="grid gap-4">
+        <div className="flex items-center gap-2">
+          <Trophy className="size-4 text-emerald-700" />
+          <h2 className="text-lg font-semibold">Tournaments</h2>
+        </div>
+        <TournamentTable tournaments={tournaments} />
+      </section>
+    </div>
+  );
+}
+
+function StaffView({
+  activeMembership,
+  busy,
+  inviteEmail,
+  invitations,
+  inviteRole,
+  mayInvite,
+  members,
+  onInvite,
+  onInviteEmailChange,
+  onInviteRoleChange,
+}: {
+  activeMembership: Doc<"organizationMemberships"> | null;
+  busy: "org" | "invite" | null;
+  inviteEmail: string;
+  invitations:
+    | Array<{
+        _id: Id<"organizationInvitations">;
+        email: string;
+        role: MemberRole;
+        status: InvitationStatus;
+      }>
+    | undefined;
+  inviteRole: Role;
+  mayInvite: boolean;
+  members:
+    | Array<{
+        _id: Id<"organizationMemberships">;
+        email?: string;
+        workosUserId?: string;
+        role: MemberRole;
+        status: string;
+      }>
+    | undefined;
+  onInvite: (event: FormEvent<HTMLFormElement>) => void;
+  onInviteEmailChange: (email: string) => void;
+  onInviteRoleChange: (role: Role) => void;
+}) {
+  return (
+    <div className="grid gap-6 xl:grid-cols-[1fr_360px]">
+      <section className="grid gap-4">
+        <div className="flex items-center gap-2">
+          <Users className="size-4 text-emerald-700" />
+          <h2 className="text-lg font-semibold">Members</h2>
+        </div>
+        <div className="overflow-hidden rounded-md border border-stone-200 bg-white">
+          {(members ?? []).map((member) => (
+            <div
+              key={member._id}
+              className="grid gap-2 border-b border-stone-100 px-4 py-3 last:border-b-0 sm:grid-cols-[1fr_auto_auto]"
+            >
+              <span className="text-sm font-medium">
+                {member.email ?? member.workosUserId ?? "Pending user"}
+              </span>
+              <span className="text-xs capitalize text-stone-500">
+                {member.role}
+              </span>
+              <span className="text-xs capitalize text-stone-500">
+                {member.status}
+              </span>
+            </div>
+          ))}
+          {members?.length === 0 && (
+            <p className="px-4 py-6 text-sm text-stone-500">
+              No members mirrored yet.
+            </p>
+          )}
+          {members === undefined && (
+            <p className="px-4 py-6 text-sm text-stone-500">Loading members...</p>
+          )}
+        </div>
+      </section>
+
+      <aside className="space-y-6">
+        <section className="rounded-md border border-stone-200 bg-white p-4">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="size-4 text-emerald-700" />
+            <h2 className="text-sm font-semibold">Current access</h2>
+          </div>
+          <p className="mt-3 text-2xl font-semibold capitalize">
+            {activeMembership?.role ?? "No org"}
+          </p>
+        </section>
+
+        <form
+          onSubmit={onInvite}
+          className="rounded-md border border-stone-200 bg-white p-4"
+        >
+          <div className="flex items-center gap-2">
+            <Mail className="size-4 text-emerald-700" />
+            <h2 className="text-sm font-semibold">Invite staff</h2>
+          </div>
+          <div className="mt-4 grid gap-3">
+            <input
+              value={inviteEmail}
+              onChange={(event) => onInviteEmailChange(event.target.value)}
+              className="h-10 rounded-md border border-stone-300 px-3 text-sm outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-700/20"
+              placeholder="judge@example.com"
+              type="email"
+              disabled={!mayInvite}
+              required
+            />
+            <select
+              value={inviteRole}
+              onChange={(event) => onInviteRoleChange(event.target.value as Role)}
+              className="h-10 rounded-md border border-stone-300 bg-white px-3 text-sm outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-700/20"
+              disabled={!mayInvite}
+            >
+              <option value="staff">Staff</option>
+              <option value="admin">Admin</option>
+            </select>
+            <Button
+              type="submit"
+              disabled={!mayInvite || busy === "invite"}
+              className="h-10 bg-emerald-700 text-white hover:bg-emerald-800"
+            >
+              Send invitation
+            </Button>
+          </div>
+          {!mayInvite && (
+            <p className="mt-3 text-xs leading-5 text-stone-500">
+              Only owners and admins can invite organizer staff.
+            </p>
+          )}
+        </form>
+
+        <section className="rounded-md border border-stone-200 bg-white p-4">
+          <h2 className="text-sm font-semibold">Invitations</h2>
+          <div className="mt-3 space-y-3">
+            {(invitations ?? []).map((invitation) => (
+              <div
+                key={invitation._id}
+                className="border-t border-stone-100 pt-3"
+              >
+                <p className="truncate text-sm font-medium">
+                  {invitation.email}
+                </p>
+                <p className="mt-1 text-xs capitalize text-stone-500">
+                  {invitation.role} · {invitation.status}
+                </p>
+              </div>
+            ))}
+            {invitations?.length === 0 && (
+              <p className="text-sm text-stone-500">No invitations sent.</p>
+            )}
+            {invitations === undefined && (
+              <p className="text-sm text-stone-500">Loading invitations...</p>
+            )}
+          </div>
+        </section>
+      </aside>
+    </div>
+  );
+}
+
+function TournamentTable({
+  tournaments,
+}: {
+  tournaments: Tournament[] | undefined;
+}) {
+  if (tournaments === undefined) {
+    return (
+      <div className="overflow-hidden rounded-md border border-stone-200 bg-white">
+        <div className="grid gap-3 p-4">
+          {[0, 1, 2].map((row) => (
+            <div
+              key={row}
+              className="h-12 animate-pulse rounded-md bg-stone-100"
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (tournaments.length === 0) {
+    return (
+      <section className="grid min-h-64 place-items-center rounded-md border border-dashed border-stone-300 bg-white px-6 py-12 text-center">
+        <div className="max-w-md">
+          <CalendarDays className="mx-auto size-8 text-emerald-700" />
+          <h2 className="mt-4 text-xl font-semibold">No upcoming tournaments</h2>
+          <p className="mt-2 text-sm leading-6 text-stone-500">
+            Future tournaments for this organization will appear here.
+          </p>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <div className="overflow-hidden rounded-md border border-stone-200 bg-white">
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[760px] border-collapse text-left text-sm">
+          <thead className="bg-stone-50 text-xs uppercase tracking-[0.12em] text-stone-500">
+            <tr>
+              <th className="px-4 py-3 font-medium">Tournament</th>
+              <th className="px-4 py-3 font-medium">Format</th>
+              <th className="px-4 py-3 font-medium">Start date</th>
+              <th className="px-4 py-3 font-medium">Capacity</th>
+              <th className="px-4 py-3 font-medium">Status</th>
+              <th className="px-4 py-3 text-right font-medium">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {tournaments.map((tournament) => (
+              <TournamentRow key={tournament._id} tournament={tournament} />
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function TournamentRow({ tournament }: { tournament: Tournament }) {
+  return (
+    <tr className="border-t border-stone-100">
+      <td className="px-4 py-4">
+        <p className="font-medium text-stone-950">{tournament.name}</p>
+        <p className="mt-1 text-xs text-stone-500">
+          {tournament.isTestEvent ? "Test event" : "Organization event"}
+        </p>
+      </td>
+      <td className="px-4 py-4 capitalize text-stone-700">
+        {tournament.format}
+      </td>
+      <td className="px-4 py-4 text-stone-700">
+        {dateFormatter.format(new Date(tournament.startDate))}
+      </td>
+      <td className="px-4 py-4 text-stone-700">{tournament.playerCapacity}</td>
+      <td className="px-4 py-4">
+        <span className="inline-flex rounded-md bg-stone-100 px-2 py-1 text-xs font-medium capitalize text-stone-700">
+          {tournament.status}
+        </span>
+      </td>
+      <td className="px-4 py-4 text-right">
+        <Button type="button" variant="outline" disabled>
+          Manage soon
+        </Button>
+      </td>
+    </tr>
   );
 }
 
@@ -386,18 +616,5 @@ function Metric({
       </div>
       <p className="mt-3 text-3xl font-semibold">{value}</p>
     </div>
-  );
-}
-
-function pendingInviteCount(
-  invitations:
-    | Array<{
-        status: InvitationStatus;
-      }>
-    | undefined,
-) {
-  return (
-    invitations?.filter((invitation) => invitation.status === "pending")
-      .length ?? 0
   );
 }
