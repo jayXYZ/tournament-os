@@ -43,3 +43,41 @@ export const organizerInviteRoleValidator = v.union(
   v.literal(organizerInviteRoles[0]),
   v.literal(organizerInviteRoles[1]),
 );
+
+export const tournamentStatusValidator = v.union(
+  v.literal("private"),
+  v.literal("public"),
+  v.literal("in_progress"),
+  v.literal("completed"),
+  v.literal("cancelled"),
+);
+
+export const tournamentRegistrationStatusValidator = v.union(
+  v.literal("pending"),
+  v.literal("active"),
+  v.literal("eliminated"),
+  v.literal("dropped"),
+  v.literal("disqualified"),
+);
+
+export const tournamentPhaseStatusValidator = v.union(
+  v.literal("upcoming"),
+  v.literal("in_progress"),
+  v.literal("completed"),
+  v.literal("cancelled"),
+);
+
+export const tournamentRoundStatusValidator = v.union(
+  v.literal("upcoming"),
+  v.literal("in_progress"),
+  v.literal("completed"),
+  v.literal("cancelled"),
+);
+
+export const tournamentMatchStatusValidator = v.union(
+  v.literal("upcoming"),
+  v.literal("in_progress"),
+  v.literal("completed"),
+  v.literal("confirmed"),
+  v.literal("cancelled"),
+);
