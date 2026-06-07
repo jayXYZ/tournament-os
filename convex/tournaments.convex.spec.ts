@@ -177,6 +177,107 @@ test("listUpcomingForOrganization returns active future tournaments for one orga
   ]);
 });
 
+test("createTournamentWithPhases creates a private tournament with one dynamic Swiss phase", async () => {
+  const t = convexTest(schema, modules);
+  const now = Date.now();
+  const { organizationId } = await seedOrganizer(t);
+
+  const tournamentId = await t
+    .withIdentity(organizerIdentity)
+    .mutation(api.tournaments.createTournamentWithPhases, {
+      organizationId,
+      name: "Store Championship",
+      startDate: now + 86_400_000,
+      playerCapacity: 32,
+      phases: [{ phaseOrder: 1, phaseRoundMode: "dynamic" }],
+    });
+
+  const setup = await t
+    .withIdentity(organizerIdentity)
+    .query(api.tournaments.getTournamentSetup, { tournamentId });
+
+  expect(setup.tournament.name).toBe("Store Championship");
+  expect(setup.tournament.status).toBe("private");
+  expect(setup.phases).toHaveLength(1);
+  expect(setup.phases[0].phaseType).toBe("swiss");
+  expect(setup.phases[0].phaseOrder).toBe(1);
+  expect(setup.phases[0].phaseRoundMode).toBe("dynamic");
+  expect(setup.phases[0].phaseTotalRounds).toBeNull();
+});
+
+test("createTournamentWithPhases stores multiple Swiss phases in order", async () => {
+  const t = convexTest(schema, modules);
+  const now = Date.now();
+  const { organizationId } = await seedOrganizer(t);
+
+  const tournamentId = await t
+    .withIdentity(organizerIdentity)
+    .mutation(api.tournaments.createTournamentWithPhases, {
+      organizationId,
+      name: "Regional Trial",
+      startDate: now + 86_400_000,
+      playerCapacity: 64,
+      phases: [
+        { phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 6 },
+        { phaseOrder: 2, phaseRoundMode: "dynamic" },
+      ],
+    });
+
+  const setup = await t
+    .withIdentity(organizerIdentity)
+    .query(api.tournaments.getTournamentSetup, { tournamentId });
+
+  expect(setup.phases.map((phase) => phase.phaseOrder)).toEqual([1, 2]);
+  expect(setup.phases.map((phase) => phase.phaseRoundMode)).toEqual([
+    "fixed",
+    "dynamic",
+  ]);
+  expect(setup.phases.map((phase) => phase.phaseTotalRounds)).toEqual([6, null]);
+});
+
+test("createTournamentWithPhases rejects an empty phase list", async () => {
+  const t = convexTest(schema, modules);
+  const { organizationId } = await seedOrganizer(t);
+
+  await expect(
+    t.withIdentity(organizerIdentity).mutation(
+      api.tournaments.createTournamentWithPhases,
+      {
+        organizationId,
+        name: "No Phase Event",
+        startDate: Date.now() + 86_400_000,
+        playerCapacity: 16,
+        phases: [],
+      },
+    ),
+  ).rejects.toThrow("At least one Swiss phase is required");
+});
+
+test("startTournament resolves dynamic Swiss rounds from active player count", async () => {
+  const t = convexTest(schema, modules);
+  const { organizationId } = await seedOrganizer(t);
+  const authed = t.withIdentity(organizerIdentity);
+  const tournamentId = await authed.mutation(
+    api.tournaments.createTournamentWithPhases,
+    {
+      organizationId,
+      name: "Dynamic Round Event",
+      startDate: Date.now(),
+      playerCapacity: 16,
+      phases: [{ phaseOrder: 1, phaseRoundMode: "dynamic" }],
+    },
+  );
+  await seedActiveRegistrations(t, tournamentId, 5);
+
+  await authed.mutation(api.tournaments.startTournament, { tournamentId });
+  const setup = await authed.query(api.tournaments.getTournamentSetup, {
+    tournamentId,
+  });
+
+  expect(setup.phases[0].phaseRoundMode).toBe("dynamic");
+  expect(setup.phases[0].phaseTotalRounds).toBe(3);
+});
+
 test("test tournaments seed players, generate Swiss rounds, and complete", async () => {
   const t = convexTest(schema, modules);
   const { organizationId } = await t.run(async (ctx) => {
@@ -333,5 +434,32 @@ async function seedOrganizer(t: ReturnType<typeof convexTest>) {
     });
 
     return { organizationId, userId };
+  });
+}
+
+async function seedActiveRegistrations(
+  t: ReturnType<typeof convexTest>,
+  tournamentId: Id<"tournaments">,
+  count: number,
+) {
+  await t.run(async (ctx) => {
+    const now = Date.now();
+    for (let playerNumber = 1; playerNumber <= count; playerNumber += 1) {
+      const userId = await ctx.db.insert("users", {
+        tokenIdentifier: `player:${playerNumber}`,
+        workosUserId: `player:${playerNumber}`,
+        email: `player${playerNumber}@example.test`,
+        name: `Player ${playerNumber}`,
+        createdAt: now,
+        updatedAt: now,
+      });
+      await ctx.db.insert("tournamentRegistrations", {
+        tournamentId,
+        userId,
+        status: "active",
+        createdAt: now + playerNumber,
+        updatedAt: now,
+      });
+    }
   });
 }

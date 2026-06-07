@@ -9,6 +9,7 @@ import {
   tournamentStatusValidator,
   tournamentRegistrationStatusValidator,
   tournamentPhaseStatusValidator,
+  tournamentPhaseRoundModeValidator,
   tournamentRoundStatusValidator,
   tournamentMatchStatusValidator,
 } from "./validators";
@@ -128,7 +129,8 @@ export default defineSchema({
     phaseType: v.string(),
     phaseOrder: v.number(),
     phaseStatus: tournamentPhaseStatusValidator,
-    phaseTotalRounds: v.number(),
+    phaseRoundMode: tournamentPhaseRoundModeValidator,
+    phaseTotalRounds: v.union(v.number(), v.null()),
     phaseCurrentRound: v.optional(v.id("tournamentRounds")),
     phaseCutoff: v.union(
       v.literal("top_X_players"),

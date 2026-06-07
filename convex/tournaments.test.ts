@@ -33,6 +33,11 @@ test("tournament schema includes operational indexes and test config tables", ()
     schemaSource,
     /\.index\("by_tournamentRoundId_and_tableNumber", \[\s*"tournamentRoundId",\s*"tableNumber",\s*\]\)/,
   );
+  assert.match(schemaSource, /phaseRoundMode: tournamentPhaseRoundModeValidator/);
+  assert.match(
+    schemaSource,
+    /phaseTotalRounds: v\.union\(v\.number\(\), v\.null\(\)\)/,
+  );
   assert.match(
     schemaSource,
     /\.index\("by_playerId", \["playerId"\]\)/,
@@ -74,6 +79,7 @@ test("tournament functions expose setup registration operation and test APIs", (
     "listForOrganization",
     "getTournamentSetup",
     "createTournament",
+    "createTournamentWithPhases",
     "updateTournamentSetup",
     "configureSwissPhase",
     "publishTournament",

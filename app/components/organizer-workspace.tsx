@@ -10,8 +10,11 @@ import {
   CalendarDays,
   CheckCircle2,
   Mail,
+  Plus,
   ShieldCheck,
+  Sparkles,
   Swords,
+  Trash2,
   Trophy,
   UserRound,
   Users,
@@ -26,8 +29,17 @@ import {
   type OrganizerRole,
   type OrganizerInviteRole,
 } from "@/lib/organizer-utils";
+import {
+  addTournamentCreationPhase,
+  createDefaultTournamentCreationPhase,
+  removeTournamentCreationPhase,
+  toTournamentCreationPhasePayload,
+  type TournamentCreationPhaseForm,
+  type TournamentCreationPhaseRoundMode,
+} from "@/lib/tournament-creation-utils";
 
 type AdminView = "tournaments" | "staff";
+type BusyState = "org" | "invite" | "tournament" | null;
 type Role = OrganizerInviteRole;
 type MemberRole = OrganizerRole;
 type Tournament = Doc<"tournaments">;
@@ -48,14 +60,21 @@ export function OrganizerWorkspace({ view }: { view: AdminView }) {
     api.organizations.createOrganizerOrganization,
   );
   const inviteMember = useAction(api.organizations.inviteMember);
+  const createTournament = useMutation(api.tournaments.createTournamentWithPhases);
 
   const [explicitOrganizationId, setExplicitOrganizationId] =
     useState<Id<"organizations"> | null>(null);
   const [organizationName, setOrganizationName] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<Role>("staff");
+  const [tournamentName, setTournamentName] = useState("");
+  const [tournamentStartDateTime, setTournamentStartDateTime] = useState("");
+  const [tournamentPlayerCapacity, setTournamentPlayerCapacity] = useState("32");
+  const [tournamentPhases, setTournamentPhases] = useState<
+    TournamentCreationPhaseForm[]
+  >([createDefaultTournamentCreationPhase("phase-1")]);
   const [notice, setNotice] = useState<string | null>(null);
-  const [busy, setBusy] = useState<"org" | "invite" | null>(null);
+  const [busy, setBusy] = useState<BusyState>(null);
 
   useEffect(() => {
     void upsertMe();
@@ -143,6 +162,50 @@ export function OrganizerWorkspace({ view }: { view: AdminView }) {
     } finally {
       setBusy(null);
     }
+  }
+
+  async function handleCreateTournament(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedOrganizationId) {
+      return;
+    }
+
+    setBusy("tournament");
+    setNotice(null);
+    try {
+      await createTournament({
+        organizationId: selectedOrganizationId,
+        name: tournamentName,
+        startDate: new Date(tournamentStartDateTime).getTime(),
+        playerCapacity: Number.parseInt(tournamentPlayerCapacity, 10),
+        phases: toTournamentCreationPhasePayload(tournamentPhases),
+      });
+      setTournamentName("");
+      setTournamentStartDateTime("");
+      setTournamentPlayerCapacity("32");
+      setTournamentPhases([createDefaultTournamentCreationPhase("phase-1")]);
+      setNotice("Tournament created.");
+    } catch (error) {
+      setNotice(
+        error instanceof Error
+          ? error.message
+          : "Could not create tournament.",
+      );
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function handleAddTournamentPhase() {
+    setTournamentPhases((current) =>
+      addTournamentCreationPhase(current, `phase-${Date.now()}`),
+    );
+  }
+
+  function handleRemoveTournamentPhase(id: string) {
+    setTournamentPhases((current) =>
+      removeTournamentCreationPhase(current, id),
+    );
   }
 
   return (
@@ -283,8 +346,21 @@ export function OrganizerWorkspace({ view }: { view: AdminView }) {
                 />
               ) : (
                 <TournamentAdminView
+                  busy={busy}
+                  onAddTournamentPhase={handleAddTournamentPhase}
+                  onCreateTournament={handleCreateTournament}
+                  onRemoveTournamentPhase={handleRemoveTournamentPhase}
+                  onTournamentNameChange={setTournamentName}
+                  onTournamentPhasesChange={setTournamentPhases}
+                  onTournamentPlayerCapacityChange={setTournamentPlayerCapacity}
+                  onTournamentStartDateTimeChange={setTournamentStartDateTime}
                   organizationCount={organizations?.length ?? 0}
+                  selectedOrganizationId={selectedOrganizationId}
                   selectedOrganizationName={details?.organization.name}
+                  tournamentName={tournamentName}
+                  tournamentPhases={tournamentPhases}
+                  tournamentPlayerCapacity={tournamentPlayerCapacity}
+                  tournamentStartDateTime={tournamentStartDateTime}
                   tournaments={tournaments}
                 />
               )}
@@ -320,12 +396,38 @@ function AdminNavLink({
 }
 
 function TournamentAdminView({
+  busy,
+  onAddTournamentPhase,
+  onCreateTournament,
+  onRemoveTournamentPhase,
+  onTournamentNameChange,
+  onTournamentPhasesChange,
+  onTournamentPlayerCapacityChange,
+  onTournamentStartDateTimeChange,
   organizationCount,
+  selectedOrganizationId,
   selectedOrganizationName,
+  tournamentName,
+  tournamentPhases,
+  tournamentPlayerCapacity,
+  tournamentStartDateTime,
   tournaments,
 }: {
+  busy: BusyState;
+  onAddTournamentPhase: () => void;
+  onCreateTournament: (event: FormEvent<HTMLFormElement>) => void;
+  onRemoveTournamentPhase: (id: string) => void;
+  onTournamentNameChange: (value: string) => void;
+  onTournamentPhasesChange: (phases: TournamentCreationPhaseForm[]) => void;
+  onTournamentPlayerCapacityChange: (value: string) => void;
+  onTournamentStartDateTimeChange: (value: string) => void;
   organizationCount: number;
+  selectedOrganizationId: Id<"organizations"> | null;
   selectedOrganizationName?: string;
+  tournamentName: string;
+  tournamentPhases: TournamentCreationPhaseForm[];
+  tournamentPlayerCapacity: string;
+  tournamentStartDateTime: string;
   tournaments: Tournament[] | undefined;
 }) {
   return (
@@ -344,6 +446,22 @@ function TournamentAdminView({
         />
       </div>
 
+      <CreateTournamentForm
+        busy={busy}
+        onAddTournamentPhase={onAddTournamentPhase}
+        onCreateTournament={onCreateTournament}
+        onRemoveTournamentPhase={onRemoveTournamentPhase}
+        onTournamentNameChange={onTournamentNameChange}
+        onTournamentPhasesChange={onTournamentPhasesChange}
+        onTournamentPlayerCapacityChange={onTournamentPlayerCapacityChange}
+        onTournamentStartDateTimeChange={onTournamentStartDateTimeChange}
+        selectedOrganizationId={selectedOrganizationId}
+        tournamentName={tournamentName}
+        tournamentPhases={tournamentPhases}
+        tournamentPlayerCapacity={tournamentPlayerCapacity}
+        tournamentStartDateTime={tournamentStartDateTime}
+      />
+
       <section className="grid gap-4">
         <div className="flex items-center gap-2">
           <Trophy className="size-4 text-emerald-700" />
@@ -352,6 +470,173 @@ function TournamentAdminView({
         <TournamentTable tournaments={tournaments} />
       </section>
     </div>
+  );
+}
+
+function CreateTournamentForm({
+  busy,
+  onAddTournamentPhase,
+  onCreateTournament,
+  onRemoveTournamentPhase,
+  onTournamentNameChange,
+  onTournamentPhasesChange,
+  onTournamentPlayerCapacityChange,
+  onTournamentStartDateTimeChange,
+  selectedOrganizationId,
+  tournamentName,
+  tournamentPhases,
+  tournamentPlayerCapacity,
+  tournamentStartDateTime,
+}: {
+  busy: BusyState;
+  onAddTournamentPhase: () => void;
+  onCreateTournament: (event: FormEvent<HTMLFormElement>) => void;
+  onRemoveTournamentPhase: (id: string) => void;
+  onTournamentNameChange: (value: string) => void;
+  onTournamentPhasesChange: (phases: TournamentCreationPhaseForm[]) => void;
+  onTournamentPlayerCapacityChange: (value: string) => void;
+  onTournamentStartDateTimeChange: (value: string) => void;
+  selectedOrganizationId: Id<"organizations"> | null;
+  tournamentName: string;
+  tournamentPhases: TournamentCreationPhaseForm[];
+  tournamentPlayerCapacity: string;
+  tournamentStartDateTime: string;
+}) {
+  const disabled = !selectedOrganizationId || busy === "tournament";
+
+  return (
+    <form
+      onSubmit={onCreateTournament}
+      className="rounded-md border border-stone-200 bg-white p-4"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Sparkles className="size-4 text-emerald-700" />
+          <h2 className="text-sm font-semibold">Create tournament</h2>
+        </div>
+        <Button
+          type="submit"
+          disabled={disabled}
+          className="h-9 bg-emerald-700 text-white hover:bg-emerald-800"
+        >
+          Create
+        </Button>
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-[1.2fr_1fr_140px]">
+        <input
+          value={tournamentName}
+          onChange={(event) => onTournamentNameChange(event.target.value)}
+          className="h-10 rounded-md border border-stone-300 px-3 text-sm outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-700/20"
+          placeholder="Store Championship"
+          disabled={disabled}
+          required
+        />
+        <input
+          value={tournamentStartDateTime}
+          onChange={(event) =>
+            onTournamentStartDateTimeChange(event.target.value)
+          }
+          className="h-10 rounded-md border border-stone-300 px-3 text-sm outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-700/20"
+          type="datetime-local"
+          disabled={disabled}
+          required
+        />
+        <input
+          value={tournamentPlayerCapacity}
+          onChange={(event) =>
+            onTournamentPlayerCapacityChange(event.target.value)
+          }
+          className="h-10 rounded-md border border-stone-300 px-3 text-sm outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-700/20"
+          type="number"
+          min={2}
+          max={512}
+          disabled={disabled}
+          required
+        />
+      </div>
+
+      <div className="mt-4 grid gap-2">
+        {tournamentPhases.map((phase, index) => (
+          <div
+            key={phase.id}
+            className="grid gap-2 rounded-md border border-stone-200 bg-stone-50 p-3 md:grid-cols-[90px_80px_1fr_120px_40px]"
+          >
+            <span className="flex h-10 items-center text-sm font-medium">
+              Phase {index + 1}
+            </span>
+            <span className="flex h-10 items-center text-xs font-medium uppercase tracking-[0.12em] text-stone-500">
+              Swiss
+            </span>
+            <select
+              value={phase.phaseRoundMode}
+              onChange={(event) =>
+                onTournamentPhasesChange(
+                  tournamentPhases.map((current) =>
+                    current.id === phase.id
+                      ? {
+                          ...current,
+                          phaseRoundMode: event.target
+                            .value as TournamentCreationPhaseRoundMode,
+                        }
+                      : current,
+                  ),
+                )
+              }
+              className="h-10 rounded-md border border-stone-300 bg-white px-3 text-sm outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-700/20"
+              disabled={disabled}
+            >
+              <option value="dynamic">Dynamic rounds</option>
+              <option value="fixed">Fixed rounds</option>
+            </select>
+            <input
+              value={phase.phaseTotalRounds}
+              onChange={(event) =>
+                onTournamentPhasesChange(
+                  tournamentPhases.map((current) =>
+                    current.id === phase.id
+                      ? { ...current, phaseTotalRounds: event.target.value }
+                      : current,
+                  ),
+                )
+              }
+              className="h-10 rounded-md border border-stone-300 px-3 text-sm outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-700/20 disabled:bg-stone-100 disabled:text-stone-400"
+              type="number"
+              min={1}
+              max={16}
+              disabled={disabled || phase.phaseRoundMode === "dynamic"}
+              required={phase.phaseRoundMode === "fixed"}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              className="h-10 px-0"
+              onClick={() => onRemoveTournamentPhase(phase.id)}
+              disabled={disabled || tournamentPhases.length === 1}
+              aria-label={`Remove phase ${index + 1}`}
+            >
+              <Trash2 className="size-4" />
+            </Button>
+          </div>
+        ))}
+      </div>
+
+      <Button
+        type="button"
+        variant="outline"
+        onClick={onAddTournamentPhase}
+        disabled={disabled}
+        className="mt-3 h-9"
+      >
+        <Plus className="size-4" />
+        Add Swiss phase
+      </Button>
+      {!selectedOrganizationId && (
+        <p className="mt-3 text-xs leading-5 text-stone-500">
+          Create or select an organization before creating tournaments.
+        </p>
+      )}
+    </form>
   );
 }
 
@@ -368,7 +653,7 @@ function StaffView({
   onInviteRoleChange,
 }: {
   activeMembership: Doc<"organizationMemberships"> | null;
-  busy: "org" | "invite" | null;
+  busy: BusyState;
   inviteEmail: string;
   invitations:
     | Array<{

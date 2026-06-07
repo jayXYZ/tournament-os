@@ -13,12 +13,19 @@ import {
   matchPointsForResult,
   simulatedMatchResult,
 } from "./tournamentUtils";
+import { tournamentPhaseRoundModeValidator } from "./validators";
 
 type TournamentCtx = QueryCtx | MutationCtx;
+type PhaseRoundMode = "dynamic" | "fixed";
 type TournamentAccess = {
   tournament: Doc<"tournaments">;
   user: Doc<"users">;
   membership: Doc<"organizationMemberships">;
+};
+type TournamentPhaseInput = {
+  phaseOrder: number;
+  phaseRoundMode: PhaseRoundMode;
+  phaseTotalRounds?: number;
 };
 type RankedRegistration = {
   registration: Doc<"tournamentRegistrations">;
@@ -128,22 +135,41 @@ export const createTournament = mutation({
     playerCapacity: v.number(),
   },
   handler: async (ctx, args): Promise<Id<"tournaments">> => {
-    const { user } = await requireOrganizationMembership(ctx, args.organizationId);
-    const name = cleanName(args.name, "Tournament name");
-    const playerCapacity = validCapacity(args.playerCapacity);
-    const now = Date.now();
-
-    return await ctx.db.insert("tournaments", {
-      name,
+    return await createTournamentInternal(ctx, {
       organizationId: args.organizationId,
-      createdBy: user._id,
-      status: "private",
+      name: args.name,
       startDate: args.startDate,
-      playerCapacity,
-      format: SWISS_FORMAT,
       isTestEvent: false,
-      createdAt: now,
-      updatedAt: now,
+      playerCapacity: args.playerCapacity,
+      phases: validPhaseInputs([
+        { phaseOrder: 1, phaseRoundMode: "dynamic" },
+      ]),
+    });
+  },
+});
+
+export const createTournamentWithPhases = mutation({
+  args: {
+    organizationId: v.id("organizations"),
+    name: v.string(),
+    startDate: v.number(),
+    playerCapacity: v.number(),
+    phases: v.array(
+      v.object({
+        phaseOrder: v.number(),
+        phaseRoundMode: tournamentPhaseRoundModeValidator,
+        phaseTotalRounds: v.optional(v.number()),
+      }),
+    ),
+  },
+  handler: async (ctx, args): Promise<Id<"tournaments">> => {
+    return await createTournamentInternal(ctx, {
+      organizationId: args.organizationId,
+      name: args.name,
+      startDate: args.startDate,
+      playerCapacity: args.playerCapacity,
+      isTestEvent: false,
+      phases: validPhaseInputs(args.phases),
     });
   },
 });
@@ -198,6 +224,7 @@ export const configureSwissPhase = mutation({
       await ctx.db.patch(existing._id, {
         phaseType: SWISS_FORMAT,
         phaseStatus: "upcoming",
+        phaseRoundMode: "fixed",
         phaseTotalRounds,
         phaseCutoff: null,
         updatedAt: now,
@@ -210,6 +237,7 @@ export const configureSwissPhase = mutation({
       phaseType: SWISS_FORMAT,
       phaseOrder: 1,
       phaseStatus: "upcoming",
+      phaseRoundMode: "fixed",
       phaseTotalRounds,
       phaseCutoff: null,
       createdAt: now,
@@ -374,16 +402,22 @@ export const startTournament = mutation({
     if (registrations.length < 2) {
       throw new Error("At least two active players are required");
     }
+    const phaseTotalRounds = await resolvePhaseTotalRounds(
+      ctx,
+      phase,
+      registrations.length,
+    );
+    const playablePhase = { ...phase, phaseTotalRounds };
 
     const roundId = await createRoundWithPairings(ctx, {
       tournament,
-      phase,
+      phase: playablePhase,
       roundNumber: 1,
       registrations,
     });
     const now = Date.now();
     await ctx.db.patch(tournament._id, { status: "in_progress", updatedAt: now });
-    await ctx.db.patch(phase._id, {
+    await ctx.db.patch(playablePhase._id, {
       phaseStatus: "in_progress",
       phaseCurrentRound: roundId,
       updatedAt: now,
@@ -409,7 +443,8 @@ export const generateNextRound = mutation({
     if (currentRound.roundStatus !== "completed") {
       throw new Error("Current round must be completed first");
     }
-    if (currentRound.roundNumber >= phase.phaseTotalRounds) {
+    const phaseTotalRounds = requireResolvedPhaseTotalRounds(phase);
+    if (currentRound.roundNumber >= phaseTotalRounds) {
       throw new Error("All configured rounds have been generated");
     }
 
@@ -498,7 +533,8 @@ export const completeRound = mutation({
       roundStatus: "completed",
       updatedAt: now,
     });
-    if (round.roundNumber >= phase.phaseTotalRounds) {
+    const phaseTotalRounds = requireResolvedPhaseTotalRounds(phase);
+    if (round.roundNumber >= phaseTotalRounds) {
       await ctx.db.patch(phase._id, {
         phaseStatus: "completed",
         updatedAt: now,
@@ -601,6 +637,7 @@ export const createTestTournament = mutation({
       phaseType: SWISS_FORMAT,
       phaseOrder: 1,
       phaseStatus: "upcoming",
+      phaseRoundMode: "fixed",
       phaseTotalRounds: roundsToGenerate,
       phaseCutoff: null,
       createdAt: now,
@@ -689,7 +726,10 @@ export const advanceTestRound = mutation({
     });
 
     const config = await requireTestConfig(ctx, args.tournamentId);
-    const finalRound = Math.min(config.roundsToGenerate, phase.phaseTotalRounds);
+    const finalRound = Math.min(
+      config.roundsToGenerate,
+      requireResolvedPhaseTotalRounds(phase),
+    );
     if (round.roundNumber >= finalRound) {
       await completeTournamentInternal(ctx, args.tournamentId);
       return { tournamentId: args.tournamentId, roundId: round._id };
@@ -728,6 +768,7 @@ export const resetTestTournament = mutation({
       phaseType: SWISS_FORMAT,
       phaseOrder: 1,
       phaseStatus: "upcoming",
+      phaseRoundMode: "fixed",
       phaseTotalRounds: config.roundsToGenerate,
       phaseCutoff: null,
       createdAt: now,
@@ -745,6 +786,36 @@ export const resetTestTournament = mutation({
     return args.tournamentId;
   },
 });
+
+async function createTournamentInternal(
+  ctx: MutationCtx,
+  args: {
+    organizationId: Id<"organizations">;
+    name: string;
+    startDate: number;
+    playerCapacity: number;
+    isTestEvent: boolean;
+    phases: ReturnType<typeof validPhaseInputs>;
+  },
+) {
+  const { user } = await requireOrganizationMembership(ctx, args.organizationId);
+  const now = Date.now();
+  const tournamentId = await ctx.db.insert("tournaments", {
+    name: cleanName(args.name, "Tournament name"),
+    organizationId: args.organizationId,
+    createdBy: user._id,
+    status: "private",
+    startDate: args.startDate,
+    playerCapacity: validCapacity(args.playerCapacity),
+    format: SWISS_FORMAT,
+    isTestEvent: args.isTestEvent,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  await createSwissPhases(ctx, tournamentId, args.phases, now);
+  return tournamentId;
+}
 
 async function currentUserOrNull(ctx: TournamentCtx) {
   const identity = await ctx.auth.getUserIdentity();
@@ -1563,4 +1634,85 @@ function validRoundCount(value: number) {
     throw new Error("Swiss rounds must be between 1 and 16");
   }
   return rounds;
+}
+
+function validPhaseInputs(phases: TournamentPhaseInput[]) {
+  if (phases.length < 1) {
+    throw new Error("At least one Swiss phase is required");
+  }
+  if (phases.length > 16) {
+    throw new Error("A tournament can have at most 16 phases");
+  }
+
+  return phases.map((phase, index) => {
+    const expectedOrder = index + 1;
+    if (Math.trunc(phase.phaseOrder) !== expectedOrder) {
+      throw new Error("Swiss phases must be ordered starting at 1");
+    }
+    if (phase.phaseRoundMode === "dynamic") {
+      return {
+        phaseOrder: expectedOrder,
+        phaseRoundMode: "dynamic" as const,
+        phaseTotalRounds: null,
+      };
+    }
+
+    return {
+      phaseOrder: expectedOrder,
+      phaseRoundMode: "fixed" as const,
+      phaseTotalRounds: validRoundCount(phase.phaseTotalRounds ?? 0),
+    };
+  });
+}
+
+async function createSwissPhases(
+  ctx: MutationCtx,
+  tournamentId: Id<"tournaments">,
+  phases: ReturnType<typeof validPhaseInputs>,
+  now: number,
+) {
+  for (const phase of phases) {
+    await ctx.db.insert("tournamentPhases", {
+      tournamentId,
+      phaseType: SWISS_FORMAT,
+      phaseOrder: phase.phaseOrder,
+      phaseStatus: "upcoming",
+      phaseRoundMode: phase.phaseRoundMode,
+      phaseTotalRounds: phase.phaseTotalRounds,
+      phaseCutoff: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
+}
+
+async function resolvePhaseTotalRounds(
+  ctx: MutationCtx,
+  phase: Doc<"tournamentPhases">,
+  activePlayerCount: number,
+) {
+  if (phase.phaseRoundMode === "fixed") {
+    if (phase.phaseTotalRounds === null) {
+      throw new Error("Fixed Swiss phase is missing a round count");
+    }
+    return phase.phaseTotalRounds;
+  }
+
+  const phaseTotalRounds = validRoundCount(
+    defaultSwissRoundCount(activePlayerCount),
+  );
+  if (phase.phaseTotalRounds !== phaseTotalRounds) {
+    await ctx.db.patch(phase._id, {
+      phaseTotalRounds,
+      updatedAt: Date.now(),
+    });
+  }
+  return phaseTotalRounds;
+}
+
+function requireResolvedPhaseTotalRounds(phase: Doc<"tournamentPhases">) {
+  if (phase.phaseTotalRounds === null) {
+    throw new Error("Swiss phase round count is not resolved");
+  }
+  return phase.phaseTotalRounds;
 }
