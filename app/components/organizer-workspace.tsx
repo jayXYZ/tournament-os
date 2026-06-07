@@ -8,12 +8,11 @@ import {
   ArrowLeft,
   Building2,
   CalendarDays,
+  Check,
   CheckCircle2,
-  Mail,
+  ChevronDown,
+  LogOut,
   Plus,
-  ShieldCheck,
-  Sparkles,
-  Swords,
   Trash2,
   Trophy,
   UserRound,
@@ -24,10 +23,88 @@ import { api } from "@/convex/_generated/api";
 import type { Doc, Id } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
 import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
+import {
+  Field,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+  FieldLegend,
+  FieldSet,
+} from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarMenuSkeleton,
+  SidebarProvider,
+  SidebarRail,
+  SidebarSeparator,
+  SidebarTrigger,
+} from "@/components/ui/sidebar";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import {
   canInviteMembers,
   type InvitationStatus,
-  type OrganizerRole,
   type OrganizerInviteRole,
+  type OrganizerRole,
 } from "@/lib/organizer-utils";
 import {
   addTournamentCreationPhase,
@@ -43,6 +120,10 @@ type BusyState = "org" | "invite" | "tournament" | null;
 type Role = OrganizerInviteRole;
 type MemberRole = OrganizerRole;
 type Tournament = Doc<"tournaments">;
+type OrganizationRow = {
+  organization: Doc<"organizations">;
+  membership: Doc<"organizationMemberships">;
+};
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
   month: "short",
@@ -73,6 +154,7 @@ export function OrganizerWorkspace({ view }: { view: AdminView }) {
   const [tournamentPhases, setTournamentPhases] = useState<
     TournamentCreationPhaseForm[]
   >([createDefaultTournamentCreationPhase("phase-1")]);
+  const [createTournamentOpen, setCreateTournamentOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState<BusyState>(null);
 
@@ -184,6 +266,7 @@ export function OrganizerWorkspace({ view }: { view: AdminView }) {
       setTournamentStartDateTime("");
       setTournamentPlayerCapacity("32");
       setTournamentPhases([createDefaultTournamentCreationPhase("phase-1")]);
+      setCreateTournamentOpen(false);
       setNotice("Tournament created.");
     } catch (error) {
       setNotice(
@@ -209,124 +292,36 @@ export function OrganizerWorkspace({ view }: { view: AdminView }) {
   }
 
   return (
-    <section className="min-h-svh bg-stone-100 text-stone-950">
-      <header className="flex min-h-16 items-center justify-between border-b border-stone-200 bg-white px-4 sm:px-6">
-        <div className="flex items-center gap-3">
-          <div className="flex size-9 items-center justify-center rounded-md bg-stone-950 text-emerald-200">
-            <Swords className="size-5" />
-          </div>
-          <div>
-            <p className="text-sm font-semibold leading-none">Tournament OS</p>
-            <p className="mt-1 text-xs text-stone-500">Organization controls</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 sm:gap-3">
-          <Button asChild type="button" variant="outline">
-            <Link href="/">
-              <ArrowLeft className="size-4" />
-              Player view
-            </Link>
-          </Button>
-          <span className="hidden text-sm text-stone-600 md:inline">
-            {user?.email}
-          </span>
-          <Button type="button" variant="outline" onClick={() => void signOut()}>
-            Sign out
-          </Button>
-        </div>
-      </header>
-
-      <div className="grid min-h-[calc(100svh-4rem)] lg:grid-cols-[280px_1fr]">
-        <aside className="border-b border-stone-200 bg-stone-950 p-4 text-stone-50 lg:border-b-0 lg:border-r">
-          <div className="flex items-center gap-3 border-b border-white/10 pb-4">
-            <UserRound className="size-4 text-emerald-200" />
-            <div>
-              <p className="text-sm font-medium">
-                {user?.firstName ?? "Player account"}
-              </p>
-              <p className="text-xs text-stone-400">Global player profile</p>
+    <TooltipProvider>
+      <SidebarProvider>
+        <AdminSidebar
+          busy={busy}
+          organizationName={organizationName}
+          organizations={organizations}
+          selectedOrganizationId={selectedOrganizationId}
+          selectedOrganizationName={details?.organization.name}
+          onCreateOrganization={handleCreateOrganization}
+          onOrganizationNameChange={setOrganizationName}
+          onSelectOrganization={setExplicitOrganizationId}
+          view={view}
+        />
+        <SidebarInset>
+          <header className="flex min-h-14 items-center justify-between gap-3 border-b border-border px-4 sm:px-6">
+            <div className="flex items-center gap-2">
+              <SidebarTrigger />
             </div>
-          </div>
+            <UserMenu
+              email={user?.email ?? undefined}
+              name={user?.firstName ?? undefined}
+              onSignOut={() => void signOut()}
+            />
+          </header>
 
-          <nav className="mt-4 grid gap-1 border-b border-white/10 pb-4">
-            <AdminNavLink active={view === "tournaments"} href="/admin">
-              <Trophy className="size-4" />
-              Tournaments
-            </AdminNavLink>
-            <AdminNavLink active={view === "staff"} href="/admin/staff">
-              <Users className="size-4" />
-              Staff
-            </AdminNavLink>
-          </nav>
-
-          <div className="mt-5">
-            <p className="mb-2 text-xs font-medium uppercase tracking-[0.14em] text-stone-400">
-              Organizer workspaces
-            </p>
-            <div className="space-y-1">
-              {!organizations && <p className="text-sm text-stone-400">Loading...</p>}
-              {organizations?.length === 0 && (
-                <p className="text-sm leading-6 text-stone-400">
-                  No organizer workspaces yet.
-                </p>
-              )}
-              {organizations?.map(({ organization, membership }) => (
-                <button
-                  key={organization._id}
-                  type="button"
-                  onClick={() => setExplicitOrganizationId(organization._id)}
-                  className={`flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm transition ${
-                    selectedOrganizationId === organization._id
-                      ? "bg-emerald-300 text-stone-950"
-                      : "text-stone-200 hover:bg-white/10"
-                  }`}
-                >
-                  <span className="truncate">{organization.name}</span>
-                  <span className="text-xs capitalize">{membership.role}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <form onSubmit={handleCreateOrganization} className="mt-6 grid gap-3">
-            <label className="grid gap-2 text-sm font-medium text-stone-100">
-              New organization
-              <input
-                value={organizationName}
-                onChange={(event) => setOrganizationName(event.target.value)}
-                className="h-10 rounded-md border border-white/10 bg-white/10 px-3 text-sm text-stone-50 outline-none transition placeholder:text-stone-500 focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20"
-                placeholder="Main Street Games"
-                required
-              />
-            </label>
-            <Button
-              type="submit"
-              className="h-10 bg-emerald-300 text-stone-950 hover:bg-emerald-200"
-              disabled={busy === "org"}
-            >
-              <Building2 className="size-4" />
-              Create
-            </Button>
-          </form>
-        </aside>
-
-        <div className="p-4 sm:p-6 lg:p-8">
-          <div className="mx-auto grid max-w-6xl gap-6">
-            <section className="space-y-6">
-              <div className="border-b border-stone-200 pb-6">
-                <p className="text-xs font-medium uppercase tracking-[0.16em] text-emerald-700">
-                  {details?.organization.name ?? "Admin workspace"}
-                </p>
-                <h1 className="mt-2 text-3xl font-semibold tracking-normal sm:text-4xl">
-                  {view === "staff"
-                    ? "Manage organization staff."
-                    : "Upcoming organization tournaments."}
-                </h1>
-              </div>
-
+          <div className="p-4 sm:p-6 lg:p-8">
+            <div className="mx-auto grid max-w-6xl gap-6">
               {notice && (
-                <div className="flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-                  <CheckCircle2 className="size-4" />
+                <div className="flex items-center gap-2 rounded-md border border-border bg-muted px-3 py-2 text-sm text-foreground">
+                  <CheckCircle2 className="size-4 text-muted-foreground" />
                   {notice}
                 </div>
               )}
@@ -347,14 +342,15 @@ export function OrganizerWorkspace({ view }: { view: AdminView }) {
               ) : (
                 <TournamentAdminView
                   busy={busy}
+                  createTournamentOpen={createTournamentOpen}
                   onAddTournamentPhase={handleAddTournamentPhase}
                   onCreateTournament={handleCreateTournament}
+                  onCreateTournamentOpenChange={setCreateTournamentOpen}
                   onRemoveTournamentPhase={handleRemoveTournamentPhase}
                   onTournamentNameChange={setTournamentName}
                   onTournamentPhasesChange={setTournamentPhases}
                   onTournamentPlayerCapacityChange={setTournamentPlayerCapacity}
                   onTournamentStartDateTimeChange={setTournamentStartDateTime}
-                  organizationCount={organizations?.length ?? 0}
                   selectedOrganizationId={selectedOrganizationId}
                   selectedOrganizationName={details?.organization.name}
                   tournamentName={tournamentName}
@@ -364,47 +360,228 @@ export function OrganizerWorkspace({ view }: { view: AdminView }) {
                   tournaments={tournaments}
                 />
               )}
-            </section>
+            </div>
           </div>
-        </div>
-      </div>
-    </section>
+        </SidebarInset>
+      </SidebarProvider>
+    </TooltipProvider>
   );
 }
 
-function AdminNavLink({
-  active,
-  children,
-  href,
+function AdminSidebar({
+  busy,
+  organizationName,
+  organizations,
+  selectedOrganizationId,
+  selectedOrganizationName,
+  onCreateOrganization,
+  onOrganizationNameChange,
+  onSelectOrganization,
+  view,
 }: {
-  active: boolean;
-  children: React.ReactNode;
-  href: string;
+  busy: BusyState;
+  organizationName: string;
+  organizations: OrganizationRow[] | undefined;
+  selectedOrganizationId: Id<"organizations"> | null;
+  selectedOrganizationName?: string;
+  onCreateOrganization: (event: FormEvent<HTMLFormElement>) => void;
+  onOrganizationNameChange: (value: string) => void;
+  onSelectOrganization: (id: Id<"organizations">) => void;
+  view: AdminView;
 }) {
   return (
-    <Link
-      href={href}
-      className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm transition ${
-        active
-          ? "bg-white text-stone-950"
-          : "text-stone-200 hover:bg-white/10"
-      }`}
-    >
-      {children}
-    </Link>
+    <Sidebar>
+      <SidebarHeader>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <OrganizationSwitcher
+              organizations={organizations}
+              selectedOrganizationId={selectedOrganizationId}
+              selectedOrganizationName={selectedOrganizationName}
+              onSelectOrganization={onSelectOrganization}
+            />
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarHeader>
+
+      <SidebarContent>
+        <SidebarGroup>
+          <SidebarGroupLabel>Admin</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  isActive={view === "tournaments"}
+                  tooltip="Tournaments"
+                >
+                  <Link href="/admin">
+                    <Trophy />
+                    <span>Tournaments</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  isActive={view === "staff"}
+                  tooltip="Staff"
+                >
+                  <Link href="/admin/staff">
+                    <Users />
+                    <span>Staff</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarSeparator />
+
+        <SidebarGroup>
+          <SidebarGroupLabel>New organization</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <form
+              onSubmit={onCreateOrganization}
+              className="flex flex-col gap-2 group-data-[collapsible=icon]:hidden"
+            >
+              <FieldGroup>
+                <Field>
+                  <FieldLabel htmlFor="organization-name" className="sr-only">
+                    Organization name
+                  </FieldLabel>
+                  <Input
+                    id="organization-name"
+                    value={organizationName}
+                    onChange={(event) =>
+                      onOrganizationNameChange(event.target.value)
+                    }
+                    placeholder="Main Street Games"
+                    required
+                  />
+                </Field>
+              </FieldGroup>
+              <Button type="submit" disabled={busy === "org"}>
+                {busy === "org" ? <Spinner data-icon="inline-start" /> : null}
+                Create
+              </Button>
+            </form>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      </SidebarContent>
+
+      <SidebarFooter>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild tooltip="Player view">
+              <Link href="/">
+                <ArrowLeft />
+                <span>Player view</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
+      <SidebarRail />
+    </Sidebar>
+  );
+}
+
+function OrganizationSwitcher({
+  organizations,
+  selectedOrganizationId,
+  selectedOrganizationName,
+  onSelectOrganization,
+}: {
+  organizations: OrganizationRow[] | undefined;
+  selectedOrganizationId: Id<"organizations"> | null;
+  selectedOrganizationName?: string;
+  onSelectOrganization: (id: Id<"organizations">) => void;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <SidebarMenuButton size="lg">
+          <Building2 />
+          <span>{selectedOrganizationName ?? "Select organization"}</span>
+          <ChevronDown className="ml-auto" />
+        </SidebarMenuButton>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent className="w-[--radix-dropdown-menu-trigger-width]">
+        <DropdownMenuLabel>Organizer workspaces</DropdownMenuLabel>
+        <DropdownMenuGroup>
+          {!organizations && (
+            <DropdownMenuItem disabled>
+              <SidebarMenuSkeleton showIcon />
+              <span>Loading</span>
+            </DropdownMenuItem>
+          )}
+          {organizations?.length === 0 && (
+            <DropdownMenuItem disabled>No organizer workspaces</DropdownMenuItem>
+          )}
+          {organizations?.map(({ organization, membership }) => (
+            <DropdownMenuItem
+              key={organization._id}
+              onSelect={() => onSelectOrganization(organization._id)}
+            >
+              <Building2 />
+              <span className="truncate">{organization.name}</span>
+              <span className="ml-auto text-muted-foreground capitalize">
+                {membership.role}
+              </span>
+              {selectedOrganizationId === organization._id && <Check />}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function UserMenu({
+  email,
+  name,
+  onSignOut,
+}: {
+  email?: string;
+  name?: string;
+  onSignOut: () => void;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button type="button" variant="outline" size="icon">
+          <UserRound />
+          <span className="sr-only">Open user menu</span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuLabel>
+          <span className="block text-foreground">{name ?? "Player account"}</span>
+          {email && <span className="block truncate">{email}</span>}
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={onSignOut}>
+          <LogOut />
+          Sign out
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
 function TournamentAdminView({
   busy,
+  createTournamentOpen,
   onAddTournamentPhase,
   onCreateTournament,
+  onCreateTournamentOpenChange,
   onRemoveTournamentPhase,
   onTournamentNameChange,
   onTournamentPhasesChange,
   onTournamentPlayerCapacityChange,
   onTournamentStartDateTimeChange,
-  organizationCount,
   selectedOrganizationId,
   selectedOrganizationName,
   tournamentName,
@@ -414,14 +591,15 @@ function TournamentAdminView({
   tournaments,
 }: {
   busy: BusyState;
+  createTournamentOpen: boolean;
   onAddTournamentPhase: () => void;
   onCreateTournament: (event: FormEvent<HTMLFormElement>) => void;
+  onCreateTournamentOpenChange: (open: boolean) => void;
   onRemoveTournamentPhase: (id: string) => void;
   onTournamentNameChange: (value: string) => void;
   onTournamentPhasesChange: (phases: TournamentCreationPhaseForm[]) => void;
   onTournamentPlayerCapacityChange: (value: string) => void;
   onTournamentStartDateTimeChange: (value: string) => void;
-  organizationCount: number;
   selectedOrganizationId: Id<"organizations"> | null;
   selectedOrganizationName?: string;
   tournamentName: string;
@@ -431,57 +609,51 @@ function TournamentAdminView({
   tournaments: Tournament[] | undefined;
 }) {
   return (
-    <div className="grid gap-6">
-      <div className="grid gap-4 md:grid-cols-3">
-        <Metric label="Organizations" value={organizationCount} icon={Building2} />
-        <Metric
-          label="Upcoming events"
-          value={tournaments?.length ?? 0}
-          icon={CalendarDays}
-        />
-        <Metric
-          label="Current org"
-          value={selectedOrganizationName ? 1 : 0}
-          icon={ShieldCheck}
+    <section className="flex flex-col gap-4">
+      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+        <div>
+          <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
+            {selectedOrganizationName ?? "Admin workspace"}
+          </p>
+          <h1 className="mt-2 text-3xl font-semibold tracking-normal">
+            Tournaments
+          </h1>
+        </div>
+        <CreateTournamentDialog
+          busy={busy}
+          onAddTournamentPhase={onAddTournamentPhase}
+          onCreateTournament={onCreateTournament}
+          onOpenChange={onCreateTournamentOpenChange}
+          onRemoveTournamentPhase={onRemoveTournamentPhase}
+          onTournamentNameChange={onTournamentNameChange}
+          onTournamentPhasesChange={onTournamentPhasesChange}
+          onTournamentPlayerCapacityChange={onTournamentPlayerCapacityChange}
+          onTournamentStartDateTimeChange={onTournamentStartDateTimeChange}
+          open={createTournamentOpen}
+          selectedOrganizationId={selectedOrganizationId}
+          tournamentName={tournamentName}
+          tournamentPhases={tournamentPhases}
+          tournamentPlayerCapacity={tournamentPlayerCapacity}
+          tournamentStartDateTime={tournamentStartDateTime}
         />
       </div>
 
-      <CreateTournamentForm
-        busy={busy}
-        onAddTournamentPhase={onAddTournamentPhase}
-        onCreateTournament={onCreateTournament}
-        onRemoveTournamentPhase={onRemoveTournamentPhase}
-        onTournamentNameChange={onTournamentNameChange}
-        onTournamentPhasesChange={onTournamentPhasesChange}
-        onTournamentPlayerCapacityChange={onTournamentPlayerCapacityChange}
-        onTournamentStartDateTimeChange={onTournamentStartDateTimeChange}
-        selectedOrganizationId={selectedOrganizationId}
-        tournamentName={tournamentName}
-        tournamentPhases={tournamentPhases}
-        tournamentPlayerCapacity={tournamentPlayerCapacity}
-        tournamentStartDateTime={tournamentStartDateTime}
-      />
-
-      <section className="grid gap-4">
-        <div className="flex items-center gap-2">
-          <Trophy className="size-4 text-emerald-700" />
-          <h2 className="text-lg font-semibold">Tournaments</h2>
-        </div>
-        <TournamentTable tournaments={tournaments} />
-      </section>
-    </div>
+      <TournamentTable tournaments={tournaments} />
+    </section>
   );
 }
 
-function CreateTournamentForm({
+function CreateTournamentDialog({
   busy,
   onAddTournamentPhase,
   onCreateTournament,
+  onOpenChange,
   onRemoveTournamentPhase,
   onTournamentNameChange,
   onTournamentPhasesChange,
   onTournamentPlayerCapacityChange,
   onTournamentStartDateTimeChange,
+  open,
   selectedOrganizationId,
   tournamentName,
   tournamentPhases,
@@ -491,11 +663,13 @@ function CreateTournamentForm({
   busy: BusyState;
   onAddTournamentPhase: () => void;
   onCreateTournament: (event: FormEvent<HTMLFormElement>) => void;
+  onOpenChange: (open: boolean) => void;
   onRemoveTournamentPhase: (id: string) => void;
   onTournamentNameChange: (value: string) => void;
   onTournamentPhasesChange: (phases: TournamentCreationPhaseForm[]) => void;
   onTournamentPlayerCapacityChange: (value: string) => void;
   onTournamentStartDateTimeChange: (value: string) => void;
+  open: boolean;
   selectedOrganizationId: Id<"organizations"> | null;
   tournamentName: string;
   tournamentPhases: TournamentCreationPhaseForm[];
@@ -505,138 +679,201 @@ function CreateTournamentForm({
   const disabled = !selectedOrganizationId || busy === "tournament";
 
   return (
-    <form
-      onSubmit={onCreateTournament}
-      className="rounded-md border border-stone-200 bg-white p-4"
-    >
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Sparkles className="size-4 text-emerald-700" />
-          <h2 className="text-sm font-semibold">Create tournament</h2>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogTrigger asChild>
+        <Button type="button" disabled={!selectedOrganizationId}>
+          <Plus data-icon="inline-start" />
+          Create new tournament
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-h-[calc(100svh-2rem)] overflow-y-auto sm:max-w-2xl">
+        <form onSubmit={onCreateTournament} className="flex flex-col gap-4">
+          <DialogHeader>
+            <DialogTitle>Create tournament</DialogTitle>
+            <DialogDescription>
+              Add the tournament details and Swiss phases.
+            </DialogDescription>
+          </DialogHeader>
+
+          <FieldGroup>
+            <div className="grid gap-4 md:grid-cols-[1.2fr_1fr_120px]">
+              <Field>
+                <FieldLabel htmlFor="tournament-name">Name</FieldLabel>
+                <Input
+                  id="tournament-name"
+                  value={tournamentName}
+                  onChange={(event) =>
+                    onTournamentNameChange(event.target.value)
+                  }
+                  placeholder="Store Championship"
+                  disabled={disabled}
+                  required
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="tournament-start">Start date</FieldLabel>
+                <Input
+                  id="tournament-start"
+                  value={tournamentStartDateTime}
+                  onChange={(event) =>
+                    onTournamentStartDateTimeChange(event.target.value)
+                  }
+                  type="datetime-local"
+                  disabled={disabled}
+                  required
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="tournament-capacity">Capacity</FieldLabel>
+                <Input
+                  id="tournament-capacity"
+                  value={tournamentPlayerCapacity}
+                  onChange={(event) =>
+                    onTournamentPlayerCapacityChange(event.target.value)
+                  }
+                  type="number"
+                  min={2}
+                  max={512}
+                  disabled={disabled}
+                  required
+                />
+              </Field>
+            </div>
+
+            <FieldSet>
+              <FieldLegend>Swiss phases</FieldLegend>
+              <FieldGroup>
+                {tournamentPhases.map((phase, index) => (
+                  <TournamentPhaseField
+                    key={phase.id}
+                    disabled={disabled}
+                    index={index}
+                    onRemoveTournamentPhase={onRemoveTournamentPhase}
+                    onTournamentPhasesChange={onTournamentPhasesChange}
+                    phase={phase}
+                    tournamentPhases={tournamentPhases}
+                  />
+                ))}
+              </FieldGroup>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onAddTournamentPhase}
+                disabled={disabled}
+              >
+                <Plus data-icon="inline-start" />
+                Add Swiss phase
+              </Button>
+            </FieldSet>
+
+            {!selectedOrganizationId && (
+              <FieldDescription>
+                Create or select an organization before creating tournaments.
+              </FieldDescription>
+            )}
+          </FieldGroup>
+
+          <DialogFooter>
+            <Button type="submit" disabled={disabled}>
+              {busy === "tournament" ? (
+                <Spinner data-icon="inline-start" />
+              ) : null}
+              Create
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function TournamentPhaseField({
+  disabled,
+  index,
+  onRemoveTournamentPhase,
+  onTournamentPhasesChange,
+  phase,
+  tournamentPhases,
+}: {
+  disabled: boolean;
+  index: number;
+  onRemoveTournamentPhase: (id: string) => void;
+  onTournamentPhasesChange: (phases: TournamentCreationPhaseForm[]) => void;
+  phase: TournamentCreationPhaseForm;
+  tournamentPhases: TournamentCreationPhaseForm[];
+}) {
+  return (
+    <Field className="rounded-md border border-border p-3">
+      <div className="grid gap-3 md:grid-cols-[90px_1fr_120px_32px] md:items-end">
+        <div className="flex flex-col gap-1">
+          <FieldLabel>Phase {index + 1}</FieldLabel>
+          <FieldDescription>Swiss</FieldDescription>
         </div>
+        <Field>
+          <FieldLabel>Rounds</FieldLabel>
+          <Select
+            value={phase.phaseRoundMode}
+            onValueChange={(value) =>
+              onTournamentPhasesChange(
+                tournamentPhases.map((current) =>
+                  current.id === phase.id
+                    ? {
+                        ...current,
+                        phaseRoundMode:
+                          value as TournamentCreationPhaseRoundMode,
+                      }
+                    : current,
+                ),
+              )
+            }
+            disabled={disabled}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                <SelectItem value="dynamic">Dynamic rounds</SelectItem>
+                <SelectItem value="fixed">Fixed rounds</SelectItem>
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field>
+          <FieldLabel htmlFor={`${phase.id}-total-rounds`}>
+            Total rounds
+          </FieldLabel>
+          <Input
+            id={`${phase.id}-total-rounds`}
+            value={phase.phaseTotalRounds}
+            onChange={(event) =>
+              onTournamentPhasesChange(
+                tournamentPhases.map((current) =>
+                  current.id === phase.id
+                    ? { ...current, phaseTotalRounds: event.target.value }
+                    : current,
+                ),
+              )
+            }
+            type="number"
+            min={1}
+            max={16}
+            disabled={disabled || phase.phaseRoundMode === "dynamic"}
+            required={phase.phaseRoundMode === "fixed"}
+          />
+        </Field>
         <Button
-          type="submit"
-          disabled={disabled}
-          className="h-9 bg-emerald-700 text-white hover:bg-emerald-800"
+          type="button"
+          variant="outline"
+          size="icon"
+          onClick={() => onRemoveTournamentPhase(phase.id)}
+          disabled={disabled || tournamentPhases.length === 1}
+          aria-label={`Remove phase ${index + 1}`}
         >
-          Create
+          <Trash2 />
         </Button>
       </div>
-
-      <div className="mt-4 grid gap-3 md:grid-cols-[1.2fr_1fr_140px]">
-        <input
-          value={tournamentName}
-          onChange={(event) => onTournamentNameChange(event.target.value)}
-          className="h-10 rounded-md border border-stone-300 px-3 text-sm outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-700/20"
-          placeholder="Store Championship"
-          disabled={disabled}
-          required
-        />
-        <input
-          value={tournamentStartDateTime}
-          onChange={(event) =>
-            onTournamentStartDateTimeChange(event.target.value)
-          }
-          className="h-10 rounded-md border border-stone-300 px-3 text-sm outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-700/20"
-          type="datetime-local"
-          disabled={disabled}
-          required
-        />
-        <input
-          value={tournamentPlayerCapacity}
-          onChange={(event) =>
-            onTournamentPlayerCapacityChange(event.target.value)
-          }
-          className="h-10 rounded-md border border-stone-300 px-3 text-sm outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-700/20"
-          type="number"
-          min={2}
-          max={512}
-          disabled={disabled}
-          required
-        />
-      </div>
-
-      <div className="mt-4 grid gap-2">
-        {tournamentPhases.map((phase, index) => (
-          <div
-            key={phase.id}
-            className="grid gap-2 rounded-md border border-stone-200 bg-stone-50 p-3 md:grid-cols-[90px_80px_1fr_120px_40px]"
-          >
-            <span className="flex h-10 items-center text-sm font-medium">
-              Phase {index + 1}
-            </span>
-            <span className="flex h-10 items-center text-xs font-medium uppercase tracking-[0.12em] text-stone-500">
-              Swiss
-            </span>
-            <select
-              value={phase.phaseRoundMode}
-              onChange={(event) =>
-                onTournamentPhasesChange(
-                  tournamentPhases.map((current) =>
-                    current.id === phase.id
-                      ? {
-                          ...current,
-                          phaseRoundMode: event.target
-                            .value as TournamentCreationPhaseRoundMode,
-                        }
-                      : current,
-                  ),
-                )
-              }
-              className="h-10 rounded-md border border-stone-300 bg-white px-3 text-sm outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-700/20"
-              disabled={disabled}
-            >
-              <option value="dynamic">Dynamic rounds</option>
-              <option value="fixed">Fixed rounds</option>
-            </select>
-            <input
-              value={phase.phaseTotalRounds}
-              onChange={(event) =>
-                onTournamentPhasesChange(
-                  tournamentPhases.map((current) =>
-                    current.id === phase.id
-                      ? { ...current, phaseTotalRounds: event.target.value }
-                      : current,
-                  ),
-                )
-              }
-              className="h-10 rounded-md border border-stone-300 px-3 text-sm outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-700/20 disabled:bg-stone-100 disabled:text-stone-400"
-              type="number"
-              min={1}
-              max={16}
-              disabled={disabled || phase.phaseRoundMode === "dynamic"}
-              required={phase.phaseRoundMode === "fixed"}
-            />
-            <Button
-              type="button"
-              variant="outline"
-              className="h-10 px-0"
-              onClick={() => onRemoveTournamentPhase(phase.id)}
-              disabled={disabled || tournamentPhases.length === 1}
-              aria-label={`Remove phase ${index + 1}`}
-            >
-              <Trash2 className="size-4" />
-            </Button>
-          </div>
-        ))}
-      </div>
-
-      <Button
-        type="button"
-        variant="outline"
-        onClick={onAddTournamentPhase}
-        disabled={disabled}
-        className="mt-3 h-9"
-      >
-        <Plus className="size-4" />
-        Add Swiss phase
-      </Button>
-      {!selectedOrganizationId && (
-        <p className="mt-3 text-xs leading-5 text-stone-500">
-          Create or select an organization before creating tournaments.
-        </p>
-      )}
-    </form>
+    </Field>
   );
 }
 
@@ -682,114 +919,135 @@ function StaffView({
     <div className="grid gap-6 xl:grid-cols-[1fr_360px]">
       <section className="grid gap-4">
         <div className="flex items-center gap-2">
-          <Users className="size-4 text-emerald-700" />
-          <h2 className="text-lg font-semibold">Members</h2>
+          <Users className="size-4 text-muted-foreground" />
+          <h1 className="text-3xl font-semibold tracking-normal">Staff</h1>
         </div>
-        <div className="overflow-hidden rounded-md border border-stone-200 bg-white">
-          {(members ?? []).map((member) => (
-            <div
-              key={member._id}
-              className="grid gap-2 border-b border-stone-100 px-4 py-3 last:border-b-0 sm:grid-cols-[1fr_auto_auto]"
-            >
-              <span className="text-sm font-medium">
-                {member.email ?? member.workosUserId ?? "Pending user"}
-              </span>
-              <span className="text-xs capitalize text-stone-500">
-                {member.role}
-              </span>
-              <span className="text-xs capitalize text-stone-500">
-                {member.status}
-              </span>
-            </div>
-          ))}
-          {members?.length === 0 && (
-            <p className="px-4 py-6 text-sm text-stone-500">
-              No members mirrored yet.
-            </p>
-          )}
-          {members === undefined && (
-            <p className="px-4 py-6 text-sm text-stone-500">Loading members...</p>
-          )}
-        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Members</CardTitle>
+            <CardDescription>
+              Mirrored organization memberships for the selected workspace.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-1">
+            {(members ?? []).map((member) => (
+              <div
+                key={member._id}
+                className="grid gap-2 border-b border-border py-3 last:border-b-0 sm:grid-cols-[1fr_auto_auto]"
+              >
+                <span className="text-sm font-medium">
+                  {member.email ?? member.workosUserId ?? "Pending user"}
+                </span>
+                <span className="text-xs capitalize text-muted-foreground">
+                  {member.role}
+                </span>
+                <span className="text-xs capitalize text-muted-foreground">
+                  {member.status}
+                </span>
+              </div>
+            ))}
+            {members?.length === 0 && (
+              <Empty>
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <Users />
+                  </EmptyMedia>
+                  <EmptyTitle>No members mirrored yet</EmptyTitle>
+                </EmptyHeader>
+              </Empty>
+            )}
+            {members === undefined && <Skeleton className="h-20" />}
+          </CardContent>
+        </Card>
       </section>
 
-      <aside className="space-y-6">
-        <section className="rounded-md border border-stone-200 bg-white p-4">
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="size-4 text-emerald-700" />
-            <h2 className="text-sm font-semibold">Current access</h2>
-          </div>
-          <p className="mt-3 text-2xl font-semibold capitalize">
-            {activeMembership?.role ?? "No org"}
-          </p>
-        </section>
+      <aside className="flex flex-col gap-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>Current access</CardTitle>
+            <CardDescription className="capitalize">
+              {activeMembership?.role ?? "No org"}
+            </CardDescription>
+          </CardHeader>
+        </Card>
 
-        <form
-          onSubmit={onInvite}
-          className="rounded-md border border-stone-200 bg-white p-4"
-        >
-          <div className="flex items-center gap-2">
-            <Mail className="size-4 text-emerald-700" />
-            <h2 className="text-sm font-semibold">Invite staff</h2>
-          </div>
-          <div className="mt-4 grid gap-3">
-            <input
-              value={inviteEmail}
-              onChange={(event) => onInviteEmailChange(event.target.value)}
-              className="h-10 rounded-md border border-stone-300 px-3 text-sm outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-700/20"
-              placeholder="judge@example.com"
-              type="email"
-              disabled={!mayInvite}
-              required
-            />
-            <select
-              value={inviteRole}
-              onChange={(event) => onInviteRoleChange(event.target.value as Role)}
-              className="h-10 rounded-md border border-stone-300 bg-white px-3 text-sm outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-700/20"
-              disabled={!mayInvite}
-            >
-              <option value="staff">Staff</option>
-              <option value="admin">Admin</option>
-            </select>
-            <Button
-              type="submit"
-              disabled={!mayInvite || busy === "invite"}
-              className="h-10 bg-emerald-700 text-white hover:bg-emerald-800"
-            >
-              Send invitation
-            </Button>
-          </div>
-          {!mayInvite && (
-            <p className="mt-3 text-xs leading-5 text-stone-500">
-              Only owners and admins can invite organizer staff.
-            </p>
-          )}
-        </form>
+        <Card>
+          <CardHeader>
+            <CardTitle>Invite staff</CardTitle>
+            <CardDescription>
+              Owners and admins can invite staff to this workspace.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={onInvite}>
+              <FieldGroup>
+                <Field>
+                  <FieldLabel htmlFor="invite-email">Email</FieldLabel>
+                  <Input
+                    id="invite-email"
+                    value={inviteEmail}
+                    onChange={(event) => onInviteEmailChange(event.target.value)}
+                    placeholder="judge@example.com"
+                    type="email"
+                    disabled={!mayInvite}
+                    required
+                  />
+                </Field>
+                <Field>
+                  <FieldLabel>Role</FieldLabel>
+                  <Select
+                    value={inviteRole}
+                    onValueChange={(value) => onInviteRoleChange(value as Role)}
+                    disabled={!mayInvite}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        <SelectItem value="staff">Staff</SelectItem>
+                        <SelectItem value="admin">Admin</SelectItem>
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Button type="submit" disabled={!mayInvite || busy === "invite"}>
+                  {busy === "invite" ? <Spinner data-icon="inline-start" /> : null}
+                  Send invitation
+                </Button>
+                {!mayInvite && (
+                  <FieldDescription>
+                    Only owners and admins can invite organizer staff.
+                  </FieldDescription>
+                )}
+              </FieldGroup>
+            </form>
+          </CardContent>
+        </Card>
 
-        <section className="rounded-md border border-stone-200 bg-white p-4">
-          <h2 className="text-sm font-semibold">Invitations</h2>
-          <div className="mt-3 space-y-3">
+        <Card>
+          <CardHeader>
+            <CardTitle>Invitations</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-3">
             {(invitations ?? []).map((invitation) => (
-              <div
-                key={invitation._id}
-                className="border-t border-stone-100 pt-3"
-              >
+              <div key={invitation._id} className="border-b border-border pb-3">
                 <p className="truncate text-sm font-medium">
                   {invitation.email}
                 </p>
-                <p className="mt-1 text-xs capitalize text-stone-500">
+                <p className="mt-1 text-xs capitalize text-muted-foreground">
                   {invitation.role} · {invitation.status}
                 </p>
               </div>
             ))}
             {invitations?.length === 0 && (
-              <p className="text-sm text-stone-500">No invitations sent.</p>
+              <p className="text-sm text-muted-foreground">
+                No invitations sent.
+              </p>
             )}
-            {invitations === undefined && (
-              <p className="text-sm text-stone-500">Loading invitations...</p>
-            )}
-          </div>
-        </section>
+            {invitations === undefined && <Skeleton className="h-16" />}
+          </CardContent>
+        </Card>
       </aside>
     </div>
   );
@@ -802,104 +1060,93 @@ function TournamentTable({
 }) {
   if (tournaments === undefined) {
     return (
-      <div className="overflow-hidden rounded-md border border-stone-200 bg-white">
-        <div className="grid gap-3 p-4">
-          {[0, 1, 2].map((row) => (
-            <div
-              key={row}
-              className="h-12 animate-pulse rounded-md bg-stone-100"
-            />
-          ))}
-        </div>
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Loading tournaments</CardTitle>
+          <CardDescription>
+            Fetching events for the selected organization.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-3">
+            {[0, 1, 2].map((row) => (
+              <Skeleton key={row} className="h-12" />
+            ))}
+          </div>
+        </CardContent>
+      </Card>
     );
   }
 
   if (tournaments.length === 0) {
     return (
-      <section className="grid min-h-64 place-items-center rounded-md border border-dashed border-stone-300 bg-white px-6 py-12 text-center">
-        <div className="max-w-md">
-          <CalendarDays className="mx-auto size-8 text-emerald-700" />
-          <h2 className="mt-4 text-xl font-semibold">No upcoming tournaments</h2>
-          <p className="mt-2 text-sm leading-6 text-stone-500">
-            Future tournaments for this organization will appear here.
-          </p>
-        </div>
-      </section>
+      <Card>
+        <CardContent>
+          <Empty className="min-h-64">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <CalendarDays />
+              </EmptyMedia>
+              <EmptyTitle>No upcoming tournaments</EmptyTitle>
+              <EmptyDescription>
+                Future tournaments for this organization will appear here.
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        </CardContent>
+      </Card>
     );
   }
 
   return (
-    <div className="overflow-hidden rounded-md border border-stone-200 bg-white">
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[760px] border-collapse text-left text-sm">
-          <thead className="bg-stone-50 text-xs uppercase tracking-[0.12em] text-stone-500">
-            <tr>
-              <th className="px-4 py-3 font-medium">Tournament</th>
-              <th className="px-4 py-3 font-medium">Format</th>
-              <th className="px-4 py-3 font-medium">Start date</th>
-              <th className="px-4 py-3 font-medium">Capacity</th>
-              <th className="px-4 py-3 font-medium">Status</th>
-              <th className="px-4 py-3 text-right font-medium">Action</th>
-            </tr>
-          </thead>
-          <tbody>
+    <Card>
+      <CardHeader>
+        <CardTitle>Tournament schedule</CardTitle>
+        <CardDescription>Upcoming organization tournaments.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Table className="min-w-[760px]">
+          <TableHeader>
+            <TableRow>
+              <TableHead>Tournament</TableHead>
+              <TableHead>Format</TableHead>
+              <TableHead>Start date</TableHead>
+              <TableHead>Capacity</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className="text-right">Action</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {tournaments.map((tournament) => (
               <TournamentRow key={tournament._id} tournament={tournament} />
             ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
   );
 }
 
 function TournamentRow({ tournament }: { tournament: Tournament }) {
   return (
-    <tr className="border-t border-stone-100">
-      <td className="px-4 py-4">
-        <p className="font-medium text-stone-950">{tournament.name}</p>
-        <p className="mt-1 text-xs text-stone-500">
+    <TableRow>
+      <TableCell>
+        <p className="font-medium text-foreground">{tournament.name}</p>
+        <p className="mt-1 text-xs text-muted-foreground">
           {tournament.isTestEvent ? "Test event" : "Organization event"}
         </p>
-      </td>
-      <td className="px-4 py-4 capitalize text-stone-700">
-        {tournament.format}
-      </td>
-      <td className="px-4 py-4 text-stone-700">
+      </TableCell>
+      <TableCell className="capitalize">{tournament.format}</TableCell>
+      <TableCell>
         {dateFormatter.format(new Date(tournament.startDate))}
-      </td>
-      <td className="px-4 py-4 text-stone-700">{tournament.playerCapacity}</td>
-      <td className="px-4 py-4">
-        <span className="inline-flex rounded-md bg-stone-100 px-2 py-1 text-xs font-medium capitalize text-stone-700">
-          {tournament.status}
-        </span>
-      </td>
-      <td className="px-4 py-4 text-right">
+      </TableCell>
+      <TableCell>{tournament.playerCapacity}</TableCell>
+      <TableCell className="capitalize">{tournament.status}</TableCell>
+      <TableCell className="text-right">
         <Button type="button" variant="outline" disabled>
           Manage soon
         </Button>
-      </td>
-    </tr>
-  );
-}
-
-function Metric({
-  label,
-  value,
-  icon: Icon,
-}: {
-  label: string;
-  value: number;
-  icon: typeof Building2;
-}) {
-  return (
-    <div className="rounded-md border border-stone-200 bg-white p-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-stone-500">{label}</p>
-        <Icon className="size-4 text-emerald-700" />
-      </div>
-      <p className="mt-3 text-3xl font-semibold">{value}</p>
-    </div>
+      </TableCell>
+    </TableRow>
   );
 }

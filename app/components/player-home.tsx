@@ -7,13 +7,37 @@ import {
   CalendarDays,
   LogIn,
   ShieldCheck,
-  Sparkles,
   Swords,
   UserRound,
   Users,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
+import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { api } from "@/convex/_generated/api";
 import type { Doc } from "@/convex/_generated/dataModel";
 
@@ -32,23 +56,27 @@ export function PlayerHome() {
   const tournaments = useQuery(api.tournaments.listUpcomingPublic);
 
   return (
-    <main className="min-h-svh bg-stone-100 text-stone-950">
-      <header className="border-b border-stone-200 bg-white">
+    <main className="min-h-svh bg-background text-foreground">
+      <header className="border-b border-border bg-background">
         <div className="mx-auto flex min-h-16 max-w-7xl items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-3">
-            <div className="flex size-9 items-center justify-center rounded-md bg-stone-950 text-emerald-200">
-              <Swords className="size-5" />
+            <div className="flex size-9 items-center justify-center rounded-md bg-primary text-primary-foreground">
+              <Swords className="size-5" aria-hidden="true" />
             </div>
             <div>
-              <p className="text-sm font-semibold leading-none">Tournament OS</p>
-              <p className="mt-1 text-xs text-stone-500">Player tournament finder</p>
+              <p className="text-sm font-semibold leading-none">
+                Tournament OS
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Player tournament finder
+              </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
             <Button asChild type="button" variant="outline">
               <Link href="/admin">
-                <ShieldCheck className="size-4" />
+                <ShieldCheck data-icon="inline-start" />
                 Admin
               </Link>
             </Button>
@@ -63,20 +91,25 @@ export function PlayerHome() {
       </header>
 
       <section className="mx-auto grid max-w-7xl gap-8 px-4 py-8 sm:px-6 lg:px-8">
-        <div className="flex flex-col justify-between gap-5 border-b border-stone-200 pb-6 md:flex-row md:items-end">
+        <div className="flex flex-col justify-between gap-5 md:flex-row md:items-end">
           <div>
-            <p className="text-xs font-medium uppercase tracking-[0.16em] text-emerald-700">
+            <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
               Player view
             </p>
             <h1 className="mt-2 text-3xl font-semibold tracking-normal sm:text-4xl">
               Upcoming tournaments
             </h1>
           </div>
-          <div className="grid gap-2 text-sm text-stone-600 sm:grid-cols-2 md:min-w-80">
-            <StatusLine icon={CalendarDays} label="Showing public future events" />
+          <div className="grid gap-2 text-sm text-muted-foreground sm:grid-cols-2 md:min-w-80">
+            <StatusLine
+              icon={CalendarDays}
+              label="Showing public future events"
+            />
             <StatusLine icon={Users} label="Registration actions coming next" />
           </div>
         </div>
+
+        <Separator />
 
         <TournamentTable tournaments={tournaments} />
       </section>
@@ -97,16 +130,17 @@ function AuthControls({
 }) {
   if (loading) {
     return (
-      <span className="flex size-8 items-center justify-center rounded-md border border-stone-200">
-        <span className="size-4 animate-spin rounded-full border-2 border-stone-500 border-t-transparent" />
-      </span>
+      <Button type="button" variant="outline" size="icon" disabled>
+        <Spinner />
+        <span className="sr-only">Loading authentication</span>
+      </Button>
     );
   }
 
   if (email) {
     return (
       <div className="flex items-center gap-2">
-        <span className="hidden max-w-48 truncate text-sm text-stone-600 lg:inline">
+        <span className="hidden max-w-48 truncate text-sm text-muted-foreground lg:inline">
           {email}
         </span>
         <Button type="button" variant="outline" onClick={onSignOut}>
@@ -119,14 +153,8 @@ function AuthControls({
   return (
     <div className="flex items-center gap-2">
       <Button type="button" variant="outline" onClick={onSignIn}>
-        <LogIn className="size-4" />
+        <LogIn data-icon="inline-start" />
         Sign in
-      </Button>
-      <Button asChild type="button" className="hidden bg-stone-950 text-stone-50 hover:bg-stone-800 sm:inline-flex">
-        <Link href="/sign-up">
-          <Sparkles className="size-4" />
-          Create account
-        </Link>
       </Button>
     </div>
   );
@@ -141,7 +169,7 @@ function StatusLine({
 }) {
   return (
     <div className="flex items-center gap-2">
-      <Icon className="size-4 text-emerald-700" />
+      <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
       <span>{label}</span>
     </div>
   );
@@ -154,83 +182,92 @@ function TournamentTable({
 }) {
   if (tournaments === undefined) {
     return (
-      <div className="overflow-hidden rounded-md border border-stone-200 bg-white">
-        <div className="grid gap-3 p-4">
-          {[0, 1, 2].map((row) => (
-            <div
-              key={row}
-              className="h-12 animate-pulse rounded-md bg-stone-100"
-            />
-          ))}
-        </div>
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Loading tournaments</CardTitle>
+          <CardDescription>
+            Fetching public events available to players.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-3">
+            {[0, 1, 2].map((row) => (
+              <Skeleton key={row} className="h-12" />
+            ))}
+          </div>
+        </CardContent>
+      </Card>
     );
   }
 
   if (tournaments.length === 0) {
     return (
-      <section className="grid min-h-80 place-items-center rounded-md border border-dashed border-stone-300 bg-white px-6 py-12 text-center">
-        <div className="max-w-md">
-          <UserRound className="mx-auto size-8 text-emerald-700" />
-          <h2 className="mt-4 text-xl font-semibold">No upcoming tournaments</h2>
-          <p className="mt-2 text-sm leading-6 text-stone-500">
+      <Empty className="min-h-80 border bg-card">
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <UserRound aria-hidden="true" />
+          </EmptyMedia>
+          <EmptyTitle>No upcoming tournaments</EmptyTitle>
+          <EmptyDescription>
             Public tournaments will appear here once an organizer publishes
             future events.
-          </p>
-        </div>
-      </section>
+          </EmptyDescription>
+        </EmptyHeader>
+      </Empty>
     );
   }
 
   return (
-    <div className="overflow-hidden rounded-md border border-stone-200 bg-white">
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[760px] border-collapse text-left text-sm">
-          <thead className="bg-stone-50 text-xs uppercase tracking-[0.12em] text-stone-500">
-            <tr>
-              <th className="px-4 py-3 font-medium">Tournament</th>
-              <th className="px-4 py-3 font-medium">Format</th>
-              <th className="px-4 py-3 font-medium">Start date</th>
-              <th className="px-4 py-3 font-medium">Capacity</th>
-              <th className="px-4 py-3 font-medium">Status</th>
-              <th className="px-4 py-3 text-right font-medium">Action</th>
-            </tr>
-          </thead>
-          <tbody>
+    <Card>
+      <CardHeader>
+        <CardTitle>Public tournament schedule</CardTitle>
+        <CardDescription>
+          Upcoming events published by tournament organizers.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Table className="min-w-[760px]">
+          <TableHeader>
+            <TableRow>
+              <TableHead>Tournament</TableHead>
+              <TableHead>Format</TableHead>
+              <TableHead>Start date</TableHead>
+              <TableHead>Capacity</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className="text-right">Action</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {tournaments.map((tournament) => (
               <TournamentRow key={tournament._id} tournament={tournament} />
             ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
   );
 }
 
 function TournamentRow({ tournament }: { tournament: Tournament }) {
   return (
-    <tr className="border-t border-stone-100">
-      <td className="px-4 py-4">
-        <p className="font-medium text-stone-950">{tournament.name}</p>
-        <p className="mt-1 text-xs text-stone-500">
+    <TableRow>
+      <TableCell>
+        <p className="font-medium text-foreground">{tournament.name}</p>
+        <p className="mt-1 text-xs text-muted-foreground">
           {tournament.isTestEvent ? "Test event" : "Public event"}
         </p>
-      </td>
-      <td className="px-4 py-4 capitalize text-stone-700">{tournament.format}</td>
-      <td className="px-4 py-4 text-stone-700">
+      </TableCell>
+      <TableCell className="capitalize">{tournament.format}</TableCell>
+      <TableCell>
         {dateFormatter.format(new Date(tournament.startDate))}
-      </td>
-      <td className="px-4 py-4 text-stone-700">{tournament.playerCapacity}</td>
-      <td className="px-4 py-4">
-        <span className="inline-flex rounded-md bg-emerald-50 px-2 py-1 text-xs font-medium capitalize text-emerald-800">
-          {tournament.status}
-        </span>
-      </td>
-      <td className="px-4 py-4 text-right">
+      </TableCell>
+      <TableCell>{tournament.playerCapacity}</TableCell>
+      <TableCell className="capitalize">{tournament.status}</TableCell>
+      <TableCell className="text-right">
         <Button type="button" variant="outline" disabled>
           Registration soon
         </Button>
-      </td>
-    </tr>
+      </TableCell>
+    </TableRow>
   );
 }
