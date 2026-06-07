@@ -102,7 +102,9 @@ export default defineSchema({
     isTestEvent: v.boolean(),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }).index("by_organizationId", ["organizationId"]),
+  })
+    .index("by_organizationId", ["organizationId"])
+    .index("by_status_and_startDate", ["status", "startDate"]),
 
   tournamentRegistrations: defineTable({
     tournamentId: v.id("tournaments"),

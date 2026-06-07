@@ -60,6 +60,19 @@ export const listForOrganization = query({
   },
 });
 
+export const listUpcomingPublic = query({
+  args: {},
+  handler: async (ctx) => {
+    return await ctx.db
+      .query("tournaments")
+      .withIndex("by_status_and_startDate", (q) =>
+        q.eq("status", "public").gte("startDate", Date.now()),
+      )
+      .order("asc")
+      .take(100);
+  },
+});
+
 export const getTournamentSetup = query({
   args: { tournamentId: v.id("tournaments") },
   handler: async (ctx, args) => {

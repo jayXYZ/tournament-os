@@ -17,6 +17,74 @@ const organizerIdentity = {
   name: "Organizer",
 };
 
+test("listUpcomingPublic returns future public tournaments in start date order", async () => {
+  const t = convexTest(schema, modules);
+  const now = Date.now();
+  const { organizationId, userId } = await seedOrganizer(t);
+
+  const rows = await t.run(async (ctx) => {
+    const base = {
+      organizationId,
+      createdBy: userId,
+      playerCapacity: 32,
+      format: "swiss",
+      isTestEvent: false,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await ctx.db.insert("tournaments", {
+      ...base,
+      name: "Past Public",
+      status: "public",
+      startDate: now - 60_000,
+    });
+    await ctx.db.insert("tournaments", {
+      ...base,
+      name: "Future Private",
+      status: "private",
+      startDate: now + 30_000,
+    });
+    await ctx.db.insert("tournaments", {
+      ...base,
+      name: "Future Cancelled",
+      status: "cancelled",
+      startDate: now + 45_000,
+    });
+    await ctx.db.insert("tournaments", {
+      ...base,
+      name: "Future In Progress",
+      status: "in_progress",
+      startDate: now + 50_000,
+    });
+    const later = await ctx.db.insert("tournaments", {
+      ...base,
+      name: "Later Public",
+      status: "public",
+      startDate: now + 120_000,
+    });
+    const earlier = await ctx.db.insert("tournaments", {
+      ...base,
+      name: "Earlier Public",
+      status: "public",
+      startDate: now + 90_000,
+    });
+
+    return { earlier, later };
+  });
+
+  const tournaments = await t.query(api.tournaments.listUpcomingPublic);
+
+  expect(tournaments.map((tournament) => tournament._id)).toEqual([
+    rows.earlier,
+    rows.later,
+  ]);
+  expect(tournaments.map((tournament) => tournament.name)).toEqual([
+    "Earlier Public",
+    "Later Public",
+  ]);
+});
+
 test("test tournaments seed players, generate Swiss rounds, and complete", async () => {
   const t = convexTest(schema, modules);
   const { organizationId } = await t.run(async (ctx) => {
@@ -172,6 +240,6 @@ async function seedOrganizer(t: ReturnType<typeof convexTest>) {
       updatedAt: now,
     });
 
-    return { organizationId };
+    return { organizationId, userId };
   });
 }
