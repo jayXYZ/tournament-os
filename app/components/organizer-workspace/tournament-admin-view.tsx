@@ -13,6 +13,7 @@ export function TournamentAdminView({
   onCreateTournament,
   onCreateTournamentOpenChange,
   onRemoveTournamentPhase,
+  onTournamentIsTestEventChange,
   onTournamentNameChange,
   onTournamentPhasesChange,
   onTournamentPlayerCapacityChange,
@@ -20,6 +21,7 @@ export function TournamentAdminView({
   selectedOrganizationId,
   selectedOrganizationName,
   tournamentName,
+  tournamentIsTestEvent,
   tournamentPhases,
   tournamentPlayerCapacity,
   tournamentStartDateTime,
@@ -31,6 +33,7 @@ export function TournamentAdminView({
   onCreateTournament: (event: FormEvent<HTMLFormElement>) => void;
   onCreateTournamentOpenChange: (open: boolean) => void;
   onRemoveTournamentPhase: (id: string) => void;
+  onTournamentIsTestEventChange: (value: boolean) => void;
   onTournamentNameChange: (value: string) => void;
   onTournamentPhasesChange: (phases: TournamentCreationPhaseForm[]) => void;
   onTournamentPlayerCapacityChange: (value: string) => void;
@@ -38,6 +41,7 @@ export function TournamentAdminView({
   selectedOrganizationId: Id<"organizations"> | null;
   selectedOrganizationName?: string;
   tournamentName: string;
+  tournamentIsTestEvent: boolean;
   tournamentPhases: TournamentCreationPhaseForm[];
   tournamentPlayerCapacity: string;
   tournamentStartDateTime: string;
@@ -60,6 +64,7 @@ export function TournamentAdminView({
           onCreateTournament={onCreateTournament}
           onOpenChange={onCreateTournamentOpenChange}
           onRemoveTournamentPhase={onRemoveTournamentPhase}
+          onTournamentIsTestEventChange={onTournamentIsTestEventChange}
           onTournamentNameChange={onTournamentNameChange}
           onTournamentPhasesChange={onTournamentPhasesChange}
           onTournamentPlayerCapacityChange={onTournamentPlayerCapacityChange}
@@ -67,6 +72,7 @@ export function TournamentAdminView({
           open={createTournamentOpen}
           selectedOrganizationId={selectedOrganizationId}
           tournamentName={tournamentName}
+          tournamentIsTestEvent={tournamentIsTestEvent}
           tournamentPhases={tournamentPhases}
           tournamentPlayerCapacity={tournamentPlayerCapacity}
           tournamentStartDateTime={tournamentStartDateTime}

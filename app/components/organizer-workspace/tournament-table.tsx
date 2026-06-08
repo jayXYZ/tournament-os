@@ -1,5 +1,6 @@
 import { CalendarDays } from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -112,7 +113,12 @@ function TournamentRow({ tournament }: { tournament: Tournament }) {
   return (
     <TableRow>
       <TableCell>
-        <p className="font-medium text-foreground">{tournament.name}</p>
+        <div className="flex min-w-0 items-center gap-2">
+          <p className="font-medium text-foreground">{tournament.name}</p>
+          {tournament.isTestEvent ? (
+            <Badge variant="secondary">Test</Badge>
+          ) : null}
+        </div>
         <p className="mt-1 text-xs text-muted-foreground">
           {tournament.isTestEvent ? "Test event" : "Organization event"}
         </p>

@@ -75,20 +75,25 @@ test("Organizer workspace feature modules own their UI primitives", () => {
   assert.match(tournamentSource, /<TournamentTable[\s>]/);
 
   assert.match(createTournamentDialogSource, /from "@\/components\/ui\/dialog"/);
+  assert.match(createTournamentDialogSource, /from "@\/components\/ui\/checkbox"/);
   assert.match(createTournamentDialogSource, /from "@\/components\/ui\/field"/);
   assert.match(createTournamentDialogSource, /from "@\/components\/ui\/input"/);
   assert.match(createTournamentDialogSource, /from "@\/components\/ui\/select"/);
   assert.match(createTournamentDialogSource, /<Dialog[\s>]/);
   assert.match(createTournamentDialogSource, /<DialogTrigger asChild>/);
   assert.match(createTournamentDialogSource, /Create new tournament/);
+  assert.match(createTournamentDialogSource, /<Checkbox[\s>]/);
+  assert.match(createTournamentDialogSource, /Mark as test event/);
   assert.match(createTournamentDialogSource, /<FieldGroup[\s>]/);
   assert.match(createTournamentDialogSource, /<Input[\s>]/);
   assert.match(createTournamentDialogSource, /<Select[\s>]/);
 
   assert.match(tournamentTableSource, /from "@\/components\/ui\/table"/);
+  assert.match(tournamentTableSource, /from "@\/components\/ui\/badge"/);
   assert.match(tournamentTableSource, /from "@\/components\/ui\/empty"/);
   assert.match(tournamentTableSource, /from "@\/components\/ui\/skeleton"/);
   assert.match(tournamentTableSource, /<Table[\s>]/);
+  assert.match(tournamentTableSource, /<Badge[\s\S]*Test/);
   assert.match(tournamentTableSource, /<Empty[\s>]/);
   assert.match(tournamentTableSource, /<Skeleton[\s/>]/);
 

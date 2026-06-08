@@ -154,6 +154,7 @@ export const createTournamentWithPhases = mutation({
     name: v.string(),
     startDate: v.number(),
     playerCapacity: v.number(),
+    isTestEvent: v.optional(v.boolean()),
     phases: v.array(
       v.object({
         phaseOrder: v.number(),
@@ -168,7 +169,7 @@ export const createTournamentWithPhases = mutation({
       name: args.name,
       startDate: args.startDate,
       playerCapacity: args.playerCapacity,
-      isTestEvent: false,
+      isTestEvent: args.isTestEvent ?? false,
       phases: validPhaseInputs(args.phases),
     });
   },

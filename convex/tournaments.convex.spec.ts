@@ -205,6 +205,29 @@ test("createTournamentWithPhases creates a private tournament with one dynamic S
   expect(setup.phases[0].phaseTotalRounds).toBeNull();
 });
 
+test("createTournamentWithPhases can mark a tournament as a test event", async () => {
+  const t = convexTest(schema, modules);
+  const now = Date.now();
+  const { organizationId } = await seedOrganizer(t);
+
+  const tournamentId = await t
+    .withIdentity(organizerIdentity)
+    .mutation(api.tournaments.createTournamentWithPhases, {
+      organizationId,
+      name: "Practice Event",
+      startDate: now + 86_400_000,
+      playerCapacity: 16,
+      isTestEvent: true,
+      phases: [{ phaseOrder: 1, phaseRoundMode: "dynamic" }],
+    });
+
+  const setup = await t
+    .withIdentity(organizerIdentity)
+    .query(api.tournaments.getTournamentSetup, { tournamentId });
+
+  expect(setup.tournament.isTestEvent).toBe(true);
+});
+
 test("createTournamentWithPhases stores multiple Swiss phases in order", async () => {
   const t = convexTest(schema, modules);
   const now = Date.now();

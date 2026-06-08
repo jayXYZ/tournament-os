@@ -3,6 +3,7 @@ import { Plus, Trash2 } from "lucide-react";
 
 import type { Id } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -14,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   Field,
+  FieldContent,
   FieldDescription,
   FieldGroup,
   FieldLabel,
@@ -42,6 +44,7 @@ export function CreateTournamentDialog({
   onCreateTournament,
   onOpenChange,
   onRemoveTournamentPhase,
+  onTournamentIsTestEventChange,
   onTournamentNameChange,
   onTournamentPhasesChange,
   onTournamentPlayerCapacityChange,
@@ -49,6 +52,7 @@ export function CreateTournamentDialog({
   open,
   selectedOrganizationId,
   tournamentName,
+  tournamentIsTestEvent,
   tournamentPhases,
   tournamentPlayerCapacity,
   tournamentStartDateTime,
@@ -58,6 +62,7 @@ export function CreateTournamentDialog({
   onCreateTournament: (event: FormEvent<HTMLFormElement>) => void;
   onOpenChange: (open: boolean) => void;
   onRemoveTournamentPhase: (id: string) => void;
+  onTournamentIsTestEventChange: (value: boolean) => void;
   onTournamentNameChange: (value: string) => void;
   onTournamentPhasesChange: (phases: TournamentCreationPhaseForm[]) => void;
   onTournamentPlayerCapacityChange: (value: string) => void;
@@ -65,6 +70,7 @@ export function CreateTournamentDialog({
   open: boolean;
   selectedOrganizationId: Id<"organizations"> | null;
   tournamentName: string;
+  tournamentIsTestEvent: boolean;
   tournamentPhases: TournamentCreationPhaseForm[];
   tournamentPlayerCapacity: string;
   tournamentStartDateTime: string;
@@ -132,6 +138,25 @@ export function CreateTournamentDialog({
                 />
               </Field>
             </div>
+
+            <Field orientation="horizontal" data-disabled={disabled}>
+              <Checkbox
+                id="tournament-test-event"
+                checked={tournamentIsTestEvent}
+                onCheckedChange={(checked) =>
+                  onTournamentIsTestEventChange(checked === true)
+                }
+                disabled={disabled}
+              />
+              <FieldContent>
+                <FieldLabel htmlFor="tournament-test-event">
+                  Mark as test event
+                </FieldLabel>
+                <FieldDescription>
+                  Use this for practice or setup testing.
+                </FieldDescription>
+              </FieldContent>
+            </Field>
 
             <FieldSet>
               <FieldLegend>Swiss phases</FieldLegend>

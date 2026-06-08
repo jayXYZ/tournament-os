@@ -53,6 +53,7 @@ export function OrganizerWorkspace({ view }: { view: AdminView }) {
   const [tournamentName, setTournamentName] = useState("");
   const [tournamentStartDateTime, setTournamentStartDateTime] = useState("");
   const [tournamentPlayerCapacity, setTournamentPlayerCapacity] = useState("32");
+  const [tournamentIsTestEvent, setTournamentIsTestEvent] = useState(false);
   const [tournamentPhases, setTournamentPhases] = useState<
     TournamentCreationPhaseForm[]
   >([createDefaultTournamentCreationPhase("phase-1")]);
@@ -179,11 +180,13 @@ export function OrganizerWorkspace({ view }: { view: AdminView }) {
         name: tournamentName,
         startDate: new Date(tournamentStartDateTime).getTime(),
         playerCapacity: Number.parseInt(tournamentPlayerCapacity, 10),
+        isTestEvent: tournamentIsTestEvent,
         phases: toTournamentCreationPhasePayload(tournamentPhases),
       });
       setTournamentName("");
       setTournamentStartDateTime("");
       setTournamentPlayerCapacity("32");
+      setTournamentIsTestEvent(false);
       setTournamentPhases([createDefaultTournamentCreationPhase("phase-1")]);
       setCreateTournamentOpen(false);
       setNotice("Tournament created.");
@@ -262,12 +265,14 @@ export function OrganizerWorkspace({ view }: { view: AdminView }) {
                   onCreateTournamentOpenChange={setCreateTournamentOpen}
                   onRemoveTournamentPhase={handleRemoveTournamentPhase}
                   onTournamentNameChange={setTournamentName}
+                  onTournamentIsTestEventChange={setTournamentIsTestEvent}
                   onTournamentPhasesChange={setTournamentPhases}
                   onTournamentPlayerCapacityChange={setTournamentPlayerCapacity}
                   onTournamentStartDateTimeChange={setTournamentStartDateTime}
                   selectedOrganizationId={selectedOrganizationId}
                   selectedOrganizationName={details?.organization.name}
                   tournamentName={tournamentName}
+                  tournamentIsTestEvent={tournamentIsTestEvent}
                   tournamentPhases={tournamentPhases}
                   tournamentPlayerCapacity={tournamentPlayerCapacity}
                   tournamentStartDateTime={tournamentStartDateTime}
