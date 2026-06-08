@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@workos-inc/authkit-nextjs/components";
 import { useAction, useMutation, useQuery } from "convex/react";
@@ -125,6 +125,9 @@ type OrganizationRow = {
   membership: Doc<"organizationMemberships">;
 };
 
+const SELECTED_ORGANIZATION_STORAGE_KEY =
+  "tournament-os:selected-organization";
+
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
   month: "short",
   day: "numeric",
@@ -162,8 +165,34 @@ export function OrganizerWorkspace({ view }: { view: AdminView }) {
     void upsertMe();
   }, [upsertMe]);
 
-  const selectedOrganizationId =
-    explicitOrganizationId ?? organizations?.[0]?.organization._id ?? null;
+  useEffect(() => {
+    const stored = window.localStorage.getItem(
+      SELECTED_ORGANIZATION_STORAGE_KEY,
+    );
+    if (stored) {
+      setExplicitOrganizationId(stored as Id<"organizations">);
+    }
+  }, []);
+
+  const selectOrganization = useCallback((id: Id<"organizations">) => {
+    setExplicitOrganizationId(id);
+    window.localStorage.setItem(SELECTED_ORGANIZATION_STORAGE_KEY, id);
+  }, []);
+
+  const selectedOrganizationId = useMemo(() => {
+    if (!explicitOrganizationId) {
+      return organizations?.[0]?.organization._id ?? null;
+    }
+    if (
+      organizations &&
+      !organizations.some(
+        (row) => row.organization._id === explicitOrganizationId,
+      )
+    ) {
+      return organizations[0]?.organization._id ?? null;
+    }
+    return explicitOrganizationId;
+  }, [explicitOrganizationId, organizations]);
 
   const selected = useMemo(
     () =>
@@ -206,7 +235,7 @@ export function OrganizerWorkspace({ view }: { view: AdminView }) {
 
     try {
       const result = await createOrganization({ name: organizationName });
-      setExplicitOrganizationId(result.organizationId);
+      selectOrganization(result.organizationId);
       setOrganizationName("");
       setNotice("Organizer workspace created.");
     } catch (error) {
@@ -302,7 +331,7 @@ export function OrganizerWorkspace({ view }: { view: AdminView }) {
           selectedOrganizationName={details?.organization.name}
           onCreateOrganization={handleCreateOrganization}
           onOrganizationNameChange={setOrganizationName}
-          onSelectOrganization={setExplicitOrganizationId}
+          onSelectOrganization={selectOrganization}
           view={view}
         />
         <SidebarInset>
@@ -508,7 +537,11 @@ function OrganizationSwitcher({
           <ChevronDown className="ml-auto" />
         </SidebarMenuButton>
       </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-[--radix-dropdown-menu-trigger-width]">
+      <DropdownMenuContent
+        align="start"
+        sideOffset={4}
+        className="min-w-[calc(var(--radix-dropdown-menu-trigger-width)+2rem)] border-sidebar-border bg-sidebar-accent text-sidebar-accent-foreground"
+      >
         <DropdownMenuLabel>Organizer workspaces</DropdownMenuLabel>
         <DropdownMenuGroup>
           {!organizations && (
