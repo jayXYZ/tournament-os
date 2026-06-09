@@ -30,6 +30,14 @@ const typesSource = readFileSync(
   new URL("./organizer-workspace/types.ts", import.meta.url),
   "utf8",
 );
+const organizationContextSource = readFileSync(
+  new URL("./organizer-workspace/organization-context.tsx", import.meta.url),
+  "utf8",
+);
+const noticeContextSource = readFileSync(
+  new URL("./organizer-workspace/notice-context.tsx", import.meta.url),
+  "utf8",
+);
 const organizationProfilePageSource = readFileSync(
   new URL("../admin/organization/page.tsx", import.meta.url),
   "utf8",
@@ -39,17 +47,20 @@ const organizationProfileSource = readFileSync(
   "utf8",
 );
 
-test("OrganizerWorkspace keeps a narrow client orchestration boundary", () => {
+test("OrganizerWorkspace is a thin layout shell over feature modules", () => {
   assert.match(workspaceSource, /^"use client";/);
-  assert.doesNotMatch(sidebarSource, /^"use client";/);
-  assert.doesNotMatch(tournamentSource, /^"use client";/);
-  assert.doesNotMatch(createTournamentDialogSource, /^"use client";/);
-  assert.doesNotMatch(tournamentTableSource, /^"use client";/);
-  assert.doesNotMatch(staffSource, /^"use client";/);
 
   assert.match(workspaceSource, /from "@\/components\/ui\/sidebar"/);
   assert.match(workspaceSource, /from "@\/components\/ui\/tooltip"/);
   assert.match(workspaceSource, /from "\.\/organizer-workspace\/admin-sidebar"/);
+  assert.match(
+    workspaceSource,
+    /from "\.\/organizer-workspace\/organization-context"/,
+  );
+  assert.match(
+    workspaceSource,
+    /from "\.\/organizer-workspace\/notice-context"/,
+  );
   assert.match(workspaceSource, /from "\.\/organizer-workspace\/staff-view"/);
   assert.match(
     workspaceSource,
@@ -58,24 +69,105 @@ test("OrganizerWorkspace keeps a narrow client orchestration boundary", () => {
   assert.match(workspaceSource, /from "\.\/organizer-workspace\/types"/);
 
   assert.match(workspaceSource, /<TooltipProvider[\s>]/);
+  assert.match(workspaceSource, /<OrganizationProvider[\s>]/);
+  assert.match(workspaceSource, /<NoticeProvider[\s>]/);
   assert.match(workspaceSource, /<SidebarProvider[\s>]/);
   assert.match(workspaceSource, /<SidebarInset[\s>]/);
   assert.match(workspaceSource, /<AdminSidebar[\s>]/);
-  assert.match(workspaceSource, /const \[createOrganizationOpen, setCreateOrganizationOpen\]/);
-  assert.match(workspaceSource, /setCreateOrganizationOpen\(false\)/);
-  assert.match(workspaceSource, /createOrganizationOpen={createOrganizationOpen}/);
-  assert.match(
-    workspaceSource,
-    /onCreateOrganizationOpenChange={setCreateOrganizationOpen}/,
-  );
-  assert.match(workspaceSource, /<AdminHeader[\s>]/);
-  assert.match(workspaceSource, /<StaffView[\s>]/);
-  assert.match(workspaceSource, /<TournamentAdminView[\s>]/);
+  assert.match(workspaceSource, /<AdminHeader[\s>/]/);
+  assert.match(workspaceSource, /<WorkspaceNotice[\s>/]/);
+  assert.match(workspaceSource, /<StaffView[\s>/]/);
+  assert.match(workspaceSource, /<TournamentAdminView[\s>/]/);
+  assert.match(workspaceSource, /<OrganizationProfileView[\s>/]/);
+});
 
+test("OrganizerWorkspace no longer drills state or owns feature data", () => {
   assert.doesNotMatch(workspaceSource, /<Dialog[\s>]/);
   assert.doesNotMatch(workspaceSource, /<Table[\s>]/);
   assert.doesNotMatch(workspaceSource, /function TournamentRow/);
   assert.doesNotMatch(workspaceSource, /function StaffView/);
+
+  // No colocated form state, no domain queries/mutations threaded from the top.
+  assert.doesNotMatch(workspaceSource, /useState/);
+  assert.doesNotMatch(workspaceSource, /api\.organizations\./);
+  assert.doesNotMatch(workspaceSource, /api\.tournaments\./);
+  assert.doesNotMatch(workspaceSource, /onCreateTournament=/);
+  assert.doesNotMatch(workspaceSource, /onInvite=/);
+});
+
+test("Feature modules are self-contained client components", () => {
+  assert.match(sidebarSource, /^"use client";/);
+  assert.match(tournamentSource, /^"use client";/);
+  assert.match(createTournamentDialogSource, /^"use client";/);
+  assert.match(staffSource, /^"use client";/);
+  assert.match(organizationProfileSource, /^"use client";/);
+
+  // The tournament table stays a pure presentational component.
+  assert.doesNotMatch(tournamentTableSource, /^"use client";/);
+  assert.doesNotMatch(tournamentTableSource, /useQuery/);
+});
+
+test("Organization selection lives in a shared context", () => {
+  assert.match(organizationContextSource, /^"use client";/);
+  assert.match(organizationContextSource, /createContext/);
+  assert.match(
+    organizationContextSource,
+    /useQuery\(\s*api\.organizations\.listMine/,
+  );
+  assert.match(
+    organizationContextSource,
+    /export function OrganizationProvider/,
+  );
+  assert.match(organizationContextSource, /export function useOrganization/);
+  assert.match(
+    organizationContextSource,
+    /tournament-os:selected-organization/,
+  );
+
+  assert.match(sidebarSource, /useOrganization\(\)/);
+  assert.match(tournamentSource, /useOrganization\(\)/);
+  assert.match(staffSource, /useOrganization\(\)/);
+  assert.match(organizationProfileSource, /useOrganization\(\)/);
+});
+
+test("Notice messaging flows through a shared context", () => {
+  assert.match(noticeContextSource, /^"use client";/);
+  assert.match(noticeContextSource, /export function NoticeProvider/);
+  assert.match(noticeContextSource, /export function useSetNotice/);
+  assert.match(noticeContextSource, /export function WorkspaceNotice/);
+  assert.match(noticeContextSource, /from "lucide-react"/);
+
+  assert.match(createTournamentDialogSource, /useSetNotice\(\)/);
+  assert.match(staffSource, /useSetNotice\(\)/);
+  assert.match(organizationProfileSource, /useSetNotice\(\)/);
+  assert.match(sidebarSource, /useSetNotice\(\)/);
+});
+
+test("Each feature module owns its Convex data and mutations", () => {
+  assert.match(sidebarSource, /api\.organizations\.createOrganizerOrganization/);
+
+  assert.match(
+    tournamentSource,
+    /useQuery\(\s*api\.tournaments\.listUpcomingForOrganization/,
+  );
+  assert.match(
+    createTournamentDialogSource,
+    /api\.tournaments\.createTournamentWithPhases/,
+  );
+  assert.match(createTournamentDialogSource, /useMutation/);
+
+  assert.match(staffSource, /api\.organizations\.listMembers/);
+  assert.match(staffSource, /api\.organizations\.listInvitations/);
+  assert.match(staffSource, /api\.organizations\.inviteMember/);
+
+  assert.match(
+    organizationProfileSource,
+    /api\.organizations\.generateProfileImageUploadUrl/,
+  );
+  assert.match(organizationProfileSource, /api\.organizations\.updateProfileImage/);
+  assert.match(organizationProfileSource, /api\.organizations\.updateProfile/);
+  assert.match(organizationProfileSource, /api\.organizations\.archiveOrganization/);
+  assert.match(organizationProfileSource, /validateOrganizationProfileImageDetails/);
 });
 
 test("Organizer workspace feature modules own their UI primitives", () => {
@@ -86,11 +178,10 @@ test("Organizer workspace feature modules own their UI primitives", () => {
   assert.match(sidebarSource, /<Sidebar\s+collapsible="icon"[\s>]/);
   assert.match(sidebarSource, /<DropdownMenu[\s>]/);
   assert.match(sidebarSource, /<Dialog[\s>]/);
-  assert.doesNotMatch(sidebarSource, /<SidebarGroupLabel>New organization/);
 
   assert.match(tournamentSource, /from "\.\/create-tournament-dialog"/);
   assert.match(tournamentSource, /from "\.\/tournament-table"/);
-  assert.match(tournamentSource, /<CreateTournamentDialog[\s>]/);
+  assert.match(tournamentSource, /<CreateTournamentDialog[\s>/]/);
   assert.match(tournamentSource, /<TournamentTable[\s>]/);
 
   assert.match(createTournamentDialogSource, /from "@\/components\/ui\/dialog"/);
@@ -154,15 +245,15 @@ test("Organization switcher owns create organization dialog", () => {
 
   assert.match(switcherMatch[0], /<DropdownMenuSeparator \/>/);
   assert.match(switcherMatch[0], /<DropdownMenuItem[\s\S]*Create organization/);
-  assert.match(switcherMatch[0], /onCreateOrganizationOpenChange\(true\)/);
+  assert.match(switcherMatch[0], /setOpen\(true\)/);
   assert.match(switcherMatch[0], /<DialogContent/);
   assert.match(
     switcherMatch[0],
     /<DialogTitle>Create organization<\/DialogTitle>/,
   );
-  assert.match(switcherMatch[0], /<form onSubmit={onCreateOrganization}/);
+  assert.match(switcherMatch[0], /<form\s+onSubmit={handleCreateOrganization}/);
   assert.match(switcherMatch[0], /id="organization-name"/);
-  assert.match(switcherMatch[0], /disabled={busy === "org"}/);
+  assert.match(switcherMatch[0], /disabled={busy}/);
 });
 
 test("Organizer workspace exposes an organization profile route", () => {
@@ -181,7 +272,7 @@ test("Organizer workspace exposes an organization profile route", () => {
     workspaceSource,
     /from "\.\/organizer-workspace\/organization-profile-view"/,
   );
-  assert.match(workspaceSource, /<OrganizationProfileView[\s>]/);
+  assert.match(workspaceSource, /<OrganizationProfileView[\s>/]/);
 });
 
 test("Organization profile view owns profile forms and archive confirmation", () => {
@@ -193,14 +284,6 @@ test("Organization profile view owns profile forms and archive confirmation", ()
   assert.match(organizationProfileSource, /Profile picture/);
   assert.match(organizationProfileSource, /Archive organization/);
   assert.match(organizationProfileSource, /Only owners and admins/);
-  assert.match(
-    workspaceSource,
-    /api\.organizations\.generateProfileImageUploadUrl/,
-  );
-  assert.match(workspaceSource, /api\.organizations\.updateProfileImage/);
-  assert.match(workspaceSource, /api\.organizations\.updateProfile/);
-  assert.match(workspaceSource, /api\.organizations\.archiveOrganization/);
-  assert.match(workspaceSource, /validateOrganizationProfileImageDetails/);
 });
 
 test("Organizer workspace avoids legacy raw controls and stale copy", () => {
@@ -212,6 +295,8 @@ test("Organizer workspace avoids legacy raw controls and stale copy", () => {
     tournamentTableSource,
     staffSource,
     typesSource,
+    organizationContextSource,
+    noticeContextSource,
     organizationProfileSource,
   ].join("\n");
 

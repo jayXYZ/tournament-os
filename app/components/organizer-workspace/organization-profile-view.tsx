@@ -1,6 +1,16 @@
-import type { FormEvent } from "react";
+"use client";
+
+import { useState, type FormEvent } from "react";
+import { useAction, useMutation } from "convex/react";
 import { Archive, Building2 } from "lucide-react";
 
+import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
+import {
+  validateOrganizationProfileImageDetails,
+  type OrganizationProfileImageDetails,
+} from "@/lib/organization-profile-image";
+import { canManageOrganizationProfile } from "@/lib/organizer-utils";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -18,37 +28,140 @@ import {
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
-import type {
-  BusyState,
-  MemberRole,
-  OrganizationWithProfileImage,
-} from "./types";
+import { useOrganization } from "./organization-context";
+import { useSetNotice } from "./notice-context";
 
-export function OrganizationProfileView({
-  archiveConfirmationName,
-  busy,
-  mayManageProfile,
-  membershipRole,
-  onArchiveConfirmationNameChange,
-  onArchiveOrganization,
-  onProfileImageChange,
-  onProfileNameChange,
-  onUpdateProfile,
-  organization,
-  profileName,
-}: {
-  archiveConfirmationName: string;
-  busy: BusyState;
-  mayManageProfile: boolean;
-  membershipRole: MemberRole | null;
-  onArchiveConfirmationNameChange: (value: string) => void;
-  onArchiveOrganization: (event: FormEvent<HTMLFormElement>) => void;
-  onProfileImageChange: (file: File) => void;
-  onProfileNameChange: (value: string) => void;
-  onUpdateProfile: (event: FormEvent<HTMLFormElement>) => void;
-  organization: OrganizationWithProfileImage | null;
-  profileName: string;
-}) {
+type ProfileBusy = "profile" | "profileImage" | "archive" | null;
+
+export function OrganizationProfileView() {
+  const { selectedOrganization, clearSelectedOrganization } = useOrganization();
+  const setNotice = useSetNotice();
+
+  const generateProfileImageUploadUrl = useMutation(
+    api.organizations.generateProfileImageUploadUrl,
+  );
+  const updateProfileImage = useMutation(api.organizations.updateProfileImage);
+  const updateProfile = useAction(api.organizations.updateProfile);
+  const archiveOrganization = useMutation(
+    api.organizations.archiveOrganization,
+  );
+
+  const organization = selectedOrganization?.organization ?? null;
+  const membershipRole = selectedOrganization?.membership.role ?? null;
+  const mayManageProfile = membershipRole
+    ? canManageOrganizationProfile(membershipRole)
+    : false;
+  const organizationId = organization?._id ?? null;
+
+  const [busy, setBusy] = useState<ProfileBusy>(null);
+  const [profileName, setProfileName] = useState(organization?.name ?? "");
+  const [archiveConfirmationName, setArchiveConfirmationName] = useState("");
+
+  // Reset the draft when the selected organization changes, using React's
+  // "adjust state during render" pattern instead of an effect.
+  const [draftOrganizationId, setDraftOrganizationId] = useState(organizationId);
+  if (organizationId !== draftOrganizationId) {
+    setDraftOrganizationId(organizationId);
+    setProfileName(organization?.name ?? "");
+    setArchiveConfirmationName("");
+  }
+
+  async function handleUpdateProfile(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!organizationId) {
+      return;
+    }
+
+    setBusy("profile");
+    setNotice(null);
+    try {
+      await updateProfile({ organizationId, name: profileName });
+      setNotice("Organization profile updated.");
+    } catch (error) {
+      setNotice(
+        error instanceof Error
+          ? error.message
+          : "Could not update organization profile.",
+      );
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleUpdateProfileImage(file: File) {
+    if (!organizationId) {
+      return;
+    }
+
+    setBusy("profileImage");
+    setNotice(null);
+    try {
+      const dimensions = await readImageDimensions(file);
+      const validationMessage = validateOrganizationProfileImageDetails({
+        type: file.type,
+        size: file.size,
+        ...dimensions,
+      });
+      if (validationMessage) {
+        throw new Error(validationMessage);
+      }
+
+      const uploadUrl = await generateProfileImageUploadUrl({ organizationId });
+      const response = await fetch(uploadUrl, {
+        method: "POST",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      if (!response.ok) {
+        throw new Error("Could not upload profile picture.");
+      }
+
+      const { storageId } = (await response.json()) as {
+        storageId: Id<"_storage">;
+      };
+      await updateProfileImage({
+        organizationId,
+        profileImageStorageId: storageId,
+      });
+      setNotice("Organization profile picture updated.");
+    } catch (error) {
+      setNotice(
+        error instanceof Error
+          ? error.message
+          : "Could not update organization profile picture.",
+      );
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleArchiveOrganization(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!organizationId) {
+      return;
+    }
+
+    setBusy("archive");
+    setNotice(null);
+    try {
+      await archiveOrganization({
+        organizationId,
+        confirmationName: archiveConfirmationName,
+      });
+      clearSelectedOrganization();
+      setArchiveConfirmationName("");
+      setNotice("Organization archived.");
+    } catch (error) {
+      setNotice(
+        error instanceof Error
+          ? error.message
+          : "Could not archive organization.",
+      );
+    } finally {
+      setBusy(null);
+    }
+  }
+
   if (!organization) {
     return <Skeleton className="h-72" />;
   }
@@ -75,7 +188,7 @@ export function OrganizationProfileView({
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={onUpdateProfile}>
+            <form onSubmit={handleUpdateProfile}>
               <FieldGroup>
                 <Field>
                   <FieldLabel htmlFor="profile-organization-name">
@@ -84,7 +197,7 @@ export function OrganizationProfileView({
                   <Input
                     id="profile-organization-name"
                     value={profileName}
-                    onChange={(event) => onProfileNameChange(event.target.value)}
+                    onChange={(event) => setProfileName(event.target.value)}
                     disabled={!mayManageProfile || busy === "profile"}
                     required
                   />
@@ -138,7 +251,7 @@ export function OrganizationProfileView({
                     onChange={(event) => {
                       const file = event.target.files?.[0];
                       if (file) {
-                        onProfileImageChange(file);
+                        void handleUpdateProfileImage(file);
                       }
                       event.target.value = "";
                     }}
@@ -165,7 +278,7 @@ export function OrganizationProfileView({
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <form onSubmit={onArchiveOrganization}>
+              <form onSubmit={handleArchiveOrganization}>
                 <FieldGroup>
                   <Field>
                     <FieldLabel htmlFor="archive-confirmation">
@@ -175,7 +288,7 @@ export function OrganizationProfileView({
                       id="archive-confirmation"
                       value={archiveConfirmationName}
                       onChange={(event) =>
-                        onArchiveConfirmationNameChange(event.target.value)
+                        setArchiveConfirmationName(event.target.value)
                       }
                       disabled={!mayManageProfile || busy === "archive"}
                     />
@@ -199,5 +312,24 @@ export function OrganizationProfileView({
         </aside>
       </div>
     </section>
+  );
+}
+
+function readImageDimensions(file: File) {
+  return new Promise<Pick<OrganizationProfileImageDetails, "width" | "height">>(
+    (resolve, reject) => {
+      const image = new Image();
+      const objectUrl = URL.createObjectURL(file);
+
+      image.onload = () => {
+        URL.revokeObjectURL(objectUrl);
+        resolve({ width: image.naturalWidth, height: image.naturalHeight });
+      };
+      image.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        reject(new Error("Could not read profile picture dimensions."));
+      };
+      image.src = objectUrl;
+    },
   );
 }

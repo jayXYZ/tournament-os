@@ -6,14 +6,6 @@ import type {
 } from "@/lib/organizer-utils";
 
 export type AdminView = "tournaments" | "staff" | "organization";
-export type BusyState =
-  | "org"
-  | "invite"
-  | "tournament"
-  | "profile"
-  | "profileImage"
-  | "archive"
-  | null;
 export type Role = OrganizerInviteRole;
 export type MemberRole = OrganizerRole;
 export type Tournament = Doc<"tournaments">;

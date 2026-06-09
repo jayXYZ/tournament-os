@@ -1,7 +1,10 @@
-import type { FormEvent } from "react";
+"use client";
+
+import { useState, type FormEvent } from "react";
+import { useMutation } from "convex/react";
 import { Plus, Trash2 } from "lucide-react";
 
-import type { Id } from "@/convex/_generated/dataModel";
+import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -32,53 +35,87 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
-import type {
-  TournamentCreationPhaseForm,
-  TournamentCreationPhaseRoundMode,
+import {
+  addTournamentCreationPhase,
+  createDefaultTournamentCreationPhase,
+  removeTournamentCreationPhase,
+  toTournamentCreationPhasePayload,
+  type TournamentCreationPhaseForm,
+  type TournamentCreationPhaseRoundMode,
 } from "@/lib/tournament-creation-utils";
-import type { BusyState } from "./types";
+import { useOrganization } from "./organization-context";
+import { useSetNotice } from "./notice-context";
 
-export function CreateTournamentDialog({
-  busy,
-  onAddTournamentPhase,
-  onCreateTournament,
-  onOpenChange,
-  onRemoveTournamentPhase,
-  onTournamentIsTestEventChange,
-  onTournamentNameChange,
-  onTournamentPhasesChange,
-  onTournamentPlayerCapacityChange,
-  onTournamentStartDateTimeChange,
-  open,
-  selectedOrganizationId,
-  tournamentName,
-  tournamentIsTestEvent,
-  tournamentPhases,
-  tournamentPlayerCapacity,
-  tournamentStartDateTime,
-}: {
-  busy: BusyState;
-  onAddTournamentPhase: () => void;
-  onCreateTournament: (event: FormEvent<HTMLFormElement>) => void;
-  onOpenChange: (open: boolean) => void;
-  onRemoveTournamentPhase: (id: string) => void;
-  onTournamentIsTestEventChange: (value: boolean) => void;
-  onTournamentNameChange: (value: string) => void;
-  onTournamentPhasesChange: (phases: TournamentCreationPhaseForm[]) => void;
-  onTournamentPlayerCapacityChange: (value: string) => void;
-  onTournamentStartDateTimeChange: (value: string) => void;
-  open: boolean;
-  selectedOrganizationId: Id<"organizations"> | null;
-  tournamentName: string;
-  tournamentIsTestEvent: boolean;
-  tournamentPhases: TournamentCreationPhaseForm[];
-  tournamentPlayerCapacity: string;
-  tournamentStartDateTime: string;
-}) {
-  const disabled = !selectedOrganizationId || busy === "tournament";
+export function CreateTournamentDialog() {
+  const { selectedOrganizationId } = useOrganization();
+  const setNotice = useSetNotice();
+  const createTournament = useMutation(
+    api.tournaments.createTournamentWithPhases,
+  );
+
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [name, setName] = useState("");
+  const [startDateTime, setStartDateTime] = useState("");
+  const [playerCapacity, setPlayerCapacity] = useState("32");
+  const [isTestEvent, setIsTestEvent] = useState(false);
+  const [phases, setPhases] = useState<TournamentCreationPhaseForm[]>([
+    createDefaultTournamentCreationPhase("phase-1"),
+  ]);
+
+  const disabled = !selectedOrganizationId || busy;
+
+  function resetForm() {
+    setName("");
+    setStartDateTime("");
+    setPlayerCapacity("32");
+    setIsTestEvent(false);
+    setPhases([createDefaultTournamentCreationPhase("phase-1")]);
+  }
+
+  function handleAddPhase() {
+    setPhases((current) =>
+      addTournamentCreationPhase(current, `phase-${Date.now()}`),
+    );
+  }
+
+  function handleRemovePhase(id: string) {
+    setPhases((current) => removeTournamentCreationPhase(current, id));
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedOrganizationId) {
+      return;
+    }
+
+    setBusy(true);
+    setNotice(null);
+    try {
+      await createTournament({
+        organizationId: selectedOrganizationId,
+        name,
+        startDate: new Date(startDateTime).getTime(),
+        playerCapacity: Number.parseInt(playerCapacity, 10),
+        isTestEvent,
+        phases: toTournamentCreationPhasePayload(phases),
+      });
+      resetForm();
+      setOpen(false);
+      setNotice("Tournament created.");
+    } catch (error) {
+      setNotice(
+        error instanceof Error
+          ? error.message
+          : "Could not create tournament.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button type="button" disabled={!selectedOrganizationId}>
           <Plus data-icon="inline-start" />
@@ -86,7 +123,7 @@ export function CreateTournamentDialog({
         </Button>
       </DialogTrigger>
       <DialogContent className="max-h-[calc(100svh-2rem)] overflow-y-auto sm:max-w-2xl">
-        <form onSubmit={onCreateTournament} className="flex flex-col gap-4">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <DialogHeader>
             <DialogTitle>Create tournament</DialogTitle>
             <DialogDescription>
@@ -100,10 +137,8 @@ export function CreateTournamentDialog({
                 <FieldLabel htmlFor="tournament-name">Name</FieldLabel>
                 <Input
                   id="tournament-name"
-                  value={tournamentName}
-                  onChange={(event) =>
-                    onTournamentNameChange(event.target.value)
-                  }
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
                   placeholder="Store Championship"
                   disabled={disabled}
                   required
@@ -113,10 +148,8 @@ export function CreateTournamentDialog({
                 <FieldLabel htmlFor="tournament-start">Start date</FieldLabel>
                 <Input
                   id="tournament-start"
-                  value={tournamentStartDateTime}
-                  onChange={(event) =>
-                    onTournamentStartDateTimeChange(event.target.value)
-                  }
+                  value={startDateTime}
+                  onChange={(event) => setStartDateTime(event.target.value)}
                   type="datetime-local"
                   disabled={disabled}
                   required
@@ -126,10 +159,8 @@ export function CreateTournamentDialog({
                 <FieldLabel htmlFor="tournament-capacity">Capacity</FieldLabel>
                 <Input
                   id="tournament-capacity"
-                  value={tournamentPlayerCapacity}
-                  onChange={(event) =>
-                    onTournamentPlayerCapacityChange(event.target.value)
-                  }
+                  value={playerCapacity}
+                  onChange={(event) => setPlayerCapacity(event.target.value)}
                   type="number"
                   min={2}
                   max={512}
@@ -142,10 +173,8 @@ export function CreateTournamentDialog({
             <Field orientation="horizontal" data-disabled={disabled}>
               <Checkbox
                 id="tournament-test-event"
-                checked={tournamentIsTestEvent}
-                onCheckedChange={(checked) =>
-                  onTournamentIsTestEventChange(checked === true)
-                }
+                checked={isTestEvent}
+                onCheckedChange={(checked) => setIsTestEvent(checked === true)}
                 disabled={disabled}
               />
               <FieldContent>
@@ -161,22 +190,22 @@ export function CreateTournamentDialog({
             <FieldSet>
               <FieldLegend>Swiss phases</FieldLegend>
               <FieldGroup>
-                {tournamentPhases.map((phase, index) => (
+                {phases.map((phase, index) => (
                   <TournamentPhaseField
                     key={phase.id}
                     disabled={disabled}
                     index={index}
-                    onRemoveTournamentPhase={onRemoveTournamentPhase}
-                    onTournamentPhasesChange={onTournamentPhasesChange}
+                    onRemovePhase={handleRemovePhase}
+                    onPhasesChange={setPhases}
                     phase={phase}
-                    tournamentPhases={tournamentPhases}
+                    phases={phases}
                   />
                 ))}
               </FieldGroup>
               <Button
                 type="button"
                 variant="outline"
-                onClick={onAddTournamentPhase}
+                onClick={handleAddPhase}
                 disabled={disabled}
               >
                 <Plus data-icon="inline-start" />
@@ -193,9 +222,7 @@ export function CreateTournamentDialog({
 
           <DialogFooter>
             <Button type="submit" disabled={disabled}>
-              {busy === "tournament" ? (
-                <Spinner data-icon="inline-start" />
-              ) : null}
+              {busy ? <Spinner data-icon="inline-start" /> : null}
               Create
             </Button>
           </DialogFooter>
@@ -208,17 +235,17 @@ export function CreateTournamentDialog({
 function TournamentPhaseField({
   disabled,
   index,
-  onRemoveTournamentPhase,
-  onTournamentPhasesChange,
+  onRemovePhase,
+  onPhasesChange,
   phase,
-  tournamentPhases,
+  phases,
 }: {
   disabled: boolean;
   index: number;
-  onRemoveTournamentPhase: (id: string) => void;
-  onTournamentPhasesChange: (phases: TournamentCreationPhaseForm[]) => void;
+  onRemovePhase: (id: string) => void;
+  onPhasesChange: (phases: TournamentCreationPhaseForm[]) => void;
   phase: TournamentCreationPhaseForm;
-  tournamentPhases: TournamentCreationPhaseForm[];
+  phases: TournamentCreationPhaseForm[];
 }) {
   return (
     <Field className="rounded-md border border-border p-3">
@@ -232,8 +259,8 @@ function TournamentPhaseField({
           <Select
             value={phase.phaseRoundMode}
             onValueChange={(value) =>
-              onTournamentPhasesChange(
-                tournamentPhases.map((current) =>
+              onPhasesChange(
+                phases.map((current) =>
                   current.id === phase.id
                     ? {
                         ...current,
@@ -265,8 +292,8 @@ function TournamentPhaseField({
             id={`${phase.id}-total-rounds`}
             value={phase.phaseTotalRounds}
             onChange={(event) =>
-              onTournamentPhasesChange(
-                tournamentPhases.map((current) =>
+              onPhasesChange(
+                phases.map((current) =>
                   current.id === phase.id
                     ? { ...current, phaseTotalRounds: event.target.value }
                     : current,
@@ -284,8 +311,8 @@ function TournamentPhaseField({
           type="button"
           variant="outline"
           size="icon"
-          onClick={() => onRemoveTournamentPhase(phase.id)}
-          disabled={disabled || tournamentPhases.length === 1}
+          onClick={() => onRemovePhase(phase.id)}
+          disabled={disabled || phases.length === 1}
           aria-label={`Remove phase ${index + 1}`}
         >
           <Trash2 />

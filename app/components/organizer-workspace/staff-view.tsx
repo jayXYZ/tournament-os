@@ -1,7 +1,11 @@
-import type { FormEvent } from "react";
+"use client";
+
+import { useState, type FormEvent } from "react";
+import { useAction, useQuery } from "convex/react";
 import { Users } from "lucide-react";
 
-import type { Doc } from "@/convex/_generated/dataModel";
+import { api } from "@/convex/_generated/api";
+import { canInviteMembers } from "@/lib/organizer-utils";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -33,31 +37,59 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
-import type { BusyState, InvitationRow, MemberRow, Role } from "./types";
+import { useOrganization } from "./organization-context";
+import { useSetNotice } from "./notice-context";
+import type { Role } from "./types";
 
-export function StaffView({
-  activeMembership,
-  busy,
-  inviteEmail,
-  invitations,
-  inviteRole,
-  mayInvite,
-  members,
-  onInvite,
-  onInviteEmailChange,
-  onInviteRoleChange,
-}: {
-  activeMembership: Doc<"organizationMemberships"> | null;
-  busy: BusyState;
-  inviteEmail: string;
-  invitations: InvitationRow[] | undefined;
-  inviteRole: Role;
-  mayInvite: boolean;
-  members: MemberRow[] | undefined;
-  onInvite: (event: FormEvent<HTMLFormElement>) => void;
-  onInviteEmailChange: (email: string) => void;
-  onInviteRoleChange: (role: Role) => void;
-}) {
+export function StaffView() {
+  const { selectedOrganizationId, selectedOrganization } = useOrganization();
+  const setNotice = useSetNotice();
+  const inviteMember = useAction(api.organizations.inviteMember);
+
+  const members = useQuery(
+    api.organizations.listMembers,
+    selectedOrganizationId ? { organizationId: selectedOrganizationId } : "skip",
+  );
+  const invitations = useQuery(
+    api.organizations.listInvitations,
+    selectedOrganizationId ? { organizationId: selectedOrganizationId } : "skip",
+  );
+
+  const activeMembership = selectedOrganization?.membership ?? null;
+  const mayInvite = activeMembership
+    ? canInviteMembers(activeMembership.role)
+    : false;
+
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState<Role>("staff");
+  const [busy, setBusy] = useState(false);
+
+  async function handleInvite(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedOrganizationId) {
+      return;
+    }
+
+    setBusy(true);
+    setNotice(null);
+    try {
+      await inviteMember({
+        organizationId: selectedOrganizationId,
+        email: inviteEmail,
+        role: inviteRole,
+      });
+      setInviteEmail("");
+      setInviteRole("staff");
+      setNotice("Invitation sent.");
+    } catch (error) {
+      setNotice(
+        error instanceof Error ? error.message : "Could not send invitation.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="grid gap-6 xl:grid-cols-[1fr_360px]">
       <section className="grid gap-4">
@@ -122,14 +154,14 @@ export function StaffView({
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={onInvite}>
+            <form onSubmit={handleInvite}>
               <FieldGroup>
                 <Field>
                   <FieldLabel htmlFor="invite-email">Email</FieldLabel>
                   <Input
                     id="invite-email"
                     value={inviteEmail}
-                    onChange={(event) => onInviteEmailChange(event.target.value)}
+                    onChange={(event) => setInviteEmail(event.target.value)}
                     placeholder="judge@example.com"
                     type="email"
                     disabled={!mayInvite}
@@ -140,7 +172,7 @@ export function StaffView({
                   <FieldLabel>Role</FieldLabel>
                   <Select
                     value={inviteRole}
-                    onValueChange={(value) => onInviteRoleChange(value as Role)}
+                    onValueChange={(value) => setInviteRole(value as Role)}
                     disabled={!mayInvite}
                   >
                     <SelectTrigger className="w-full">
@@ -154,8 +186,8 @@ export function StaffView({
                     </SelectContent>
                   </Select>
                 </Field>
-                <Button type="submit" disabled={!mayInvite || busy === "invite"}>
-                  {busy === "invite" ? <Spinner data-icon="inline-start" /> : null}
+                <Button type="submit" disabled={!mayInvite || busy}>
+                  {busy ? <Spinner data-icon="inline-start" /> : null}
                   Send invitation
                 </Button>
                 {!mayInvite && (

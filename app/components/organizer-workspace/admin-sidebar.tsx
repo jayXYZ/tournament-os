@@ -1,5 +1,9 @@
-import type { FormEvent } from "react";
+"use client";
+
+import { useState, type FormEvent } from "react";
 import Link from "next/link";
+import { useAuth } from "@workos-inc/authkit-nextjs/components";
+import { useAction } from "convex/react";
 import {
   ArrowLeft,
   Building2,
@@ -12,7 +16,7 @@ import {
   Users,
 } from "lucide-react";
 
-import type { Id } from "@/convex/_generated/dataModel";
+import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -53,50 +57,17 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
-import type { AdminView, BusyState, OrganizationRow } from "./types";
+import { useOrganization } from "./organization-context";
+import { useSetNotice } from "./notice-context";
+import type { AdminView } from "./types";
 
-export function AdminSidebar({
-  busy,
-  createOrganizationOpen,
-  organizationName,
-  organizations,
-  selectedOrganizationId,
-  selectedOrganizationName,
-  onCreateOrganization,
-  onCreateOrganizationOpenChange,
-  onOrganizationNameChange,
-  onSelectOrganization,
-  view,
-}: {
-  busy: BusyState;
-  createOrganizationOpen: boolean;
-  organizationName: string;
-  organizations: OrganizationRow[] | undefined;
-  selectedOrganizationId: Id<"organizations"> | null;
-  selectedOrganizationName?: string;
-  onCreateOrganization: (event: FormEvent<HTMLFormElement>) => void;
-  onCreateOrganizationOpenChange: (open: boolean) => void;
-  onOrganizationNameChange: (value: string) => void;
-  onSelectOrganization: (id: Id<"organizations">) => void;
-  view: AdminView;
-}) {
+export function AdminSidebar({ view }: { view: AdminView }) {
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
-            <OrganizationSwitcher
-              busy={busy}
-              createOrganizationOpen={createOrganizationOpen}
-              organizationName={organizationName}
-              organizations={organizations}
-              selectedOrganizationId={selectedOrganizationId}
-              selectedOrganizationName={selectedOrganizationName}
-              onCreateOrganization={onCreateOrganization}
-              onCreateOrganizationOpenChange={onCreateOrganizationOpenChange}
-              onOrganizationNameChange={onOrganizationNameChange}
-              onSelectOrganization={onSelectOrganization}
-            />
+            <OrganizationSwitcher />
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
@@ -164,53 +135,62 @@ export function AdminSidebar({
   );
 }
 
-export function AdminHeader({
-  email,
-  name,
-  onSignOut,
-}: {
-  email?: string;
-  name?: string;
-  onSignOut: () => void;
-}) {
+export function AdminHeader() {
+  const { user, signOut } = useAuth();
+
   return (
     <header className="flex min-h-14 items-center justify-between gap-3 border-b border-border px-4 sm:px-6">
       <div className="flex items-center gap-2">
         <SidebarTrigger />
       </div>
-      <UserMenu email={email} name={name} onSignOut={onSignOut} />
+      <UserMenu
+        email={user?.email ?? undefined}
+        name={user?.firstName ?? undefined}
+        onSignOut={() => void signOut()}
+      />
     </header>
   );
 }
 
-function OrganizationSwitcher({
-  busy,
-  createOrganizationOpen,
-  organizationName,
-  organizations,
-  selectedOrganizationId,
-  selectedOrganizationName,
-  onCreateOrganization,
-  onCreateOrganizationOpenChange,
-  onOrganizationNameChange,
-  onSelectOrganization,
-}: {
-  busy: BusyState;
-  createOrganizationOpen: boolean;
-  organizationName: string;
-  organizations: OrganizationRow[] | undefined;
-  selectedOrganizationId: Id<"organizations"> | null;
-  selectedOrganizationName?: string;
-  onCreateOrganization: (event: FormEvent<HTMLFormElement>) => void;
-  onCreateOrganizationOpenChange: (open: boolean) => void;
-  onOrganizationNameChange: (value: string) => void;
-  onSelectOrganization: (id: Id<"organizations">) => void;
-}) {
+function OrganizationSwitcher() {
+  const {
+    organizations,
+    selectedOrganizationId,
+    selectedOrganization,
+    selectOrganization,
+  } = useOrganization();
+  const setNotice = useSetNotice();
+  const createOrganization = useAction(
+    api.organizations.createOrganizerOrganization,
+  );
+
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [organizationName, setOrganizationName] = useState("");
+
+  async function handleCreateOrganization(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true);
+    setNotice(null);
+    try {
+      const result = await createOrganization({ name: organizationName });
+      selectOrganization(result.organizationId);
+      setOrganizationName("");
+      setOpen(false);
+      setNotice("Organizer workspace created.");
+    } catch (error) {
+      setNotice(
+        error instanceof Error
+          ? error.message
+          : "Could not create organization.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
-    <Dialog
-      open={createOrganizationOpen}
-      onOpenChange={onCreateOrganizationOpenChange}
-    >
+    <Dialog open={open} onOpenChange={setOpen}>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <SidebarMenuButton
@@ -219,7 +199,7 @@ function OrganizationSwitcher({
           >
             <Building2 />
             <span className="group-data-[collapsible=icon]:hidden">
-              {selectedOrganizationName ?? "Select organization"}
+              {selectedOrganization?.organization.name ?? "Select organization"}
             </span>
             <ChevronDown className="ml-auto group-data-[collapsible=icon]:hidden" />
           </SidebarMenuButton>
@@ -245,7 +225,7 @@ function OrganizationSwitcher({
             {organizations?.map(({ organization, membership }) => (
               <DropdownMenuItem
                 key={organization._id}
-                onSelect={() => onSelectOrganization(organization._id)}
+                onSelect={() => selectOrganization(organization._id)}
               >
                 <Building2 />
                 <span className="truncate">{organization.name}</span>
@@ -258,9 +238,7 @@ function OrganizationSwitcher({
           </DropdownMenuGroup>
           <DropdownMenuSeparator />
           <DropdownMenuGroup>
-            <DropdownMenuItem
-              onSelect={() => onCreateOrganizationOpenChange(true)}
-            >
+            <DropdownMenuItem onSelect={() => setOpen(true)}>
               <Plus />
               Create organization
             </DropdownMenuItem>
@@ -269,7 +247,10 @@ function OrganizationSwitcher({
       </DropdownMenu>
 
       <DialogContent>
-        <form onSubmit={onCreateOrganization} className="flex flex-col gap-4">
+        <form
+          onSubmit={handleCreateOrganization}
+          className="flex flex-col gap-4"
+        >
           <DialogHeader>
             <DialogTitle>Create organization</DialogTitle>
             <DialogDescription>
@@ -284,19 +265,17 @@ function OrganizationSwitcher({
               <Input
                 id="organization-name"
                 value={organizationName}
-                onChange={(event) =>
-                  onOrganizationNameChange(event.target.value)
-                }
+                onChange={(event) => setOrganizationName(event.target.value)}
                 placeholder="Main Street Games"
-                disabled={busy === "org"}
+                disabled={busy}
                 required
               />
             </Field>
           </FieldGroup>
 
           <DialogFooter>
-            <Button type="submit" disabled={busy === "org"}>
-              {busy === "org" ? <Spinner data-icon="inline-start" /> : null}
+            <Button type="submit" disabled={busy}>
+              {busy ? <Spinner data-icon="inline-start" /> : null}
               Create
             </Button>
           </DialogFooter>
@@ -325,7 +304,9 @@ function UserMenu({
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuLabel>
-          <span className="block text-foreground">{name ?? "Player account"}</span>
+          <span className="block text-foreground">
+            {name ?? "Player account"}
+          </span>
           {email && <span className="block truncate">{email}</span>}
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
