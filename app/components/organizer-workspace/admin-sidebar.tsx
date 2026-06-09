@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 
 import { api } from "@/convex/_generated/api";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -55,6 +56,7 @@ import {
   SidebarMenuSkeleton,
   SidebarRail,
   SidebarTrigger,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
 import { useOrganization } from "./organization-context";
@@ -160,6 +162,7 @@ function OrganizationSwitcher() {
     selectOrganization,
   } = useOrganization();
   const setNotice = useSetNotice();
+  const { state, isMobile } = useSidebar();
   const createOrganization = useAction(
     api.organizations.createOrganizerOrganization,
   );
@@ -197,7 +200,13 @@ function OrganizationSwitcher() {
             size="lg"
             className="group-data-[collapsible=icon]:justify-center"
           >
-            <Building2 />
+            <OrganizationAvatar
+              name={selectedOrganization?.organization.name ?? "Organization"}
+              profileImageUrl={
+                selectedOrganization?.organization.profileImageUrl ?? null
+              }
+              className="size-8 rounded-md"
+            />
             <span className="group-data-[collapsible=icon]:hidden">
               {selectedOrganization?.organization.name ?? "Select organization"}
             </span>
@@ -206,8 +215,9 @@ function OrganizationSwitcher() {
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align="start"
+          side={!isMobile && state === "collapsed" ? "right" : "bottom"}
           sideOffset={4}
-          className="min-w-[calc(var(--radix-dropdown-menu-trigger-width)+2rem)] border-sidebar-border bg-sidebar-accent text-sidebar-accent-foreground"
+          className="min-w-56 border-sidebar-border bg-sidebar-accent text-sidebar-accent-foreground"
         >
           <DropdownMenuLabel>Organizer workspaces</DropdownMenuLabel>
           <DropdownMenuGroup>
@@ -227,7 +237,10 @@ function OrganizationSwitcher() {
                 key={organization._id}
                 onSelect={() => selectOrganization(organization._id)}
               >
-                <Building2 />
+                <OrganizationAvatar
+                  name={organization.name}
+                  profileImageUrl={organization.profileImageUrl}
+                />
                 <span className="truncate">{organization.name}</span>
                 <span className="ml-auto text-muted-foreground capitalize">
                   {membership.role}
@@ -283,6 +296,32 @@ function OrganizationSwitcher() {
       </DialogContent>
     </Dialog>
   );
+}
+
+function OrganizationAvatar({
+  name,
+  profileImageUrl,
+  className,
+}: {
+  name: string;
+  profileImageUrl: string | null;
+  className?: string;
+}) {
+  if (profileImageUrl) {
+    return (
+      <span
+        role="img"
+        aria-label={name}
+        className={cn(
+          "size-4 shrink-0 overflow-hidden rounded-sm bg-muted bg-cover bg-center",
+          className,
+        )}
+        style={{ backgroundImage: `url(${profileImageUrl})` }}
+      />
+    );
+  }
+
+  return <Building2 className={className} />;
 }
 
 function UserMenu({
