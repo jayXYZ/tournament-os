@@ -130,6 +130,18 @@ export function AdminSidebar({
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  isActive={view === "organization"}
+                  tooltip="Organization"
+                >
+                  <Link href="/admin/organization">
+                    <Building2 />
+                    <span>Organization</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

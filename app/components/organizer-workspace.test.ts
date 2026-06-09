@@ -30,6 +30,14 @@ const typesSource = readFileSync(
   new URL("./organizer-workspace/types.ts", import.meta.url),
   "utf8",
 );
+const organizationProfilePageSource = readFileSync(
+  new URL("../admin/organization/page.tsx", import.meta.url),
+  "utf8",
+);
+const organizationProfileSource = readFileSync(
+  new URL("./organizer-workspace/organization-profile-view.tsx", import.meta.url),
+  "utf8",
+);
 
 test("OrganizerWorkspace keeps a narrow client orchestration boundary", () => {
   assert.match(workspaceSource, /^"use client";/);
@@ -157,6 +165,25 @@ test("Organization switcher owns create organization dialog", () => {
   assert.match(switcherMatch[0], /disabled={busy === "org"}/);
 });
 
+test("Organizer workspace exposes an organization profile route", () => {
+  assert.match(
+    typesSource,
+    /export type AdminView = "tournaments" \| "staff" \| "organization"/,
+  );
+  assert.match(sidebarSource, /href="\/admin\/organization"/);
+  assert.match(sidebarSource, /isActive={view === "organization"}/);
+  assert.match(sidebarSource, /<Building2 \/>/);
+  assert.match(
+    organizationProfilePageSource,
+    /<OrganizerWorkspace view="organization" \/>/,
+  );
+  assert.match(
+    workspaceSource,
+    /from "\.\/organizer-workspace\/organization-profile-view"/,
+  );
+  assert.match(workspaceSource, /<OrganizationProfileView[\s>]/);
+});
+
 test("Organizer workspace avoids legacy raw controls and stale copy", () => {
   const combinedSource = [
     workspaceSource,
@@ -166,6 +193,7 @@ test("Organizer workspace avoids legacy raw controls and stale copy", () => {
     tournamentTableSource,
     staffSource,
     typesSource,
+    organizationProfileSource,
   ].join("\n");
 
   const headerMatch = sidebarSource.match(/<header[\s\S]*?<\/header>/);

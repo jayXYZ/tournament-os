@@ -18,6 +18,7 @@ import {
   type TournamentCreationPhaseForm,
 } from "@/lib/tournament-creation-utils";
 import { AdminHeader, AdminSidebar } from "./organizer-workspace/admin-sidebar";
+import { OrganizationProfileView } from "./organizer-workspace/organization-profile-view";
 import { StaffView } from "./organizer-workspace/staff-view";
 import { TournamentAdminView } from "./organizer-workspace/tournament-admin-view";
 import type { AdminView, BusyState, Role } from "./organizer-workspace/types";
@@ -260,6 +261,8 @@ export function OrganizerWorkspace({ view }: { view: AdminView }) {
                   onInviteEmailChange={setInviteEmail}
                   onInviteRoleChange={setInviteRole}
                 />
+              ) : view === "organization" ? (
+                <OrganizationProfileView />
               ) : (
                 <TournamentAdminView
                   busy={busy}

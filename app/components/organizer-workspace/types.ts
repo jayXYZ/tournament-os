@@ -5,14 +5,24 @@ import type {
   OrganizerRole,
 } from "@/lib/organizer-utils";
 
-export type AdminView = "tournaments" | "staff";
-export type BusyState = "org" | "invite" | "tournament" | null;
+export type AdminView = "tournaments" | "staff" | "organization";
+export type BusyState =
+  | "org"
+  | "invite"
+  | "tournament"
+  | "profile"
+  | "profileImage"
+  | "archive"
+  | null;
 export type Role = OrganizerInviteRole;
 export type MemberRole = OrganizerRole;
 export type Tournament = Doc<"tournaments">;
+export type OrganizationWithProfileImage = Doc<"organizations"> & {
+  profileImageUrl: string | null;
+};
 
 export type OrganizationRow = {
-  organization: Doc<"organizations">;
+  organization: OrganizationWithProfileImage;
   membership: Doc<"organizationMemberships">;
 };
 
