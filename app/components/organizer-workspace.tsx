@@ -57,6 +57,7 @@ export function OrganizerWorkspace({ view }: { view: AdminView }) {
   const [tournamentPhases, setTournamentPhases] = useState<
     TournamentCreationPhaseForm[]
   >([createDefaultTournamentCreationPhase("phase-1")]);
+  const [createOrganizationOpen, setCreateOrganizationOpen] = useState(false);
   const [createTournamentOpen, setCreateTournamentOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState<BusyState>(null);
@@ -128,6 +129,7 @@ export function OrganizerWorkspace({ view }: { view: AdminView }) {
       const result = await createOrganization({ name: organizationName });
       selectOrganization(result.organizationId);
       setOrganizationName("");
+      setCreateOrganizationOpen(false);
       setNotice("Organizer workspace created.");
     } catch (error) {
       setNotice(
@@ -218,11 +220,13 @@ export function OrganizerWorkspace({ view }: { view: AdminView }) {
       <SidebarProvider>
         <AdminSidebar
           busy={busy}
+          createOrganizationOpen={createOrganizationOpen}
           organizationName={organizationName}
           organizations={organizations}
           selectedOrganizationId={selectedOrganizationId}
           selectedOrganizationName={details?.organization.name}
           onCreateOrganization={handleCreateOrganization}
+          onCreateOrganizationOpenChange={setCreateOrganizationOpen}
           onOrganizationNameChange={setOrganizationName}
           onSelectOrganization={selectOrganization}
           view={view}

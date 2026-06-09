@@ -6,6 +6,7 @@ import {
   Check,
   ChevronDown,
   LogOut,
+  Plus,
   Trophy,
   UserRound,
   Users,
@@ -22,6 +23,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Field,
   FieldGroup,
@@ -41,7 +50,6 @@ import {
   SidebarMenuItem,
   SidebarMenuSkeleton,
   SidebarRail,
-  SidebarSeparator,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
@@ -49,34 +57,44 @@ import type { AdminView, BusyState, OrganizationRow } from "./types";
 
 export function AdminSidebar({
   busy,
+  createOrganizationOpen,
   organizationName,
   organizations,
   selectedOrganizationId,
   selectedOrganizationName,
   onCreateOrganization,
+  onCreateOrganizationOpenChange,
   onOrganizationNameChange,
   onSelectOrganization,
   view,
 }: {
   busy: BusyState;
+  createOrganizationOpen: boolean;
   organizationName: string;
   organizations: OrganizationRow[] | undefined;
   selectedOrganizationId: Id<"organizations"> | null;
   selectedOrganizationName?: string;
   onCreateOrganization: (event: FormEvent<HTMLFormElement>) => void;
+  onCreateOrganizationOpenChange: (open: boolean) => void;
   onOrganizationNameChange: (value: string) => void;
   onSelectOrganization: (id: Id<"organizations">) => void;
   view: AdminView;
 }) {
   return (
-    <Sidebar>
+    <Sidebar collapsible="icon">
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
             <OrganizationSwitcher
+              busy={busy}
+              createOrganizationOpen={createOrganizationOpen}
+              organizationName={organizationName}
               organizations={organizations}
               selectedOrganizationId={selectedOrganizationId}
               selectedOrganizationName={selectedOrganizationName}
+              onCreateOrganization={onCreateOrganization}
+              onCreateOrganizationOpenChange={onCreateOrganizationOpenChange}
+              onOrganizationNameChange={onOrganizationNameChange}
               onSelectOrganization={onSelectOrganization}
             />
           </SidebarMenuItem>
@@ -113,39 +131,6 @@ export function AdminSidebar({
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-
-        <SidebarSeparator />
-
-        <SidebarGroup>
-          <SidebarGroupLabel>New organization</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <form
-              onSubmit={onCreateOrganization}
-              className="flex flex-col gap-2 group-data-[collapsible=icon]:hidden"
-            >
-              <FieldGroup>
-                <Field>
-                  <FieldLabel htmlFor="organization-name" className="sr-only">
-                    Organization name
-                  </FieldLabel>
-                  <Input
-                    id="organization-name"
-                    value={organizationName}
-                    onChange={(event) =>
-                      onOrganizationNameChange(event.target.value)
-                    }
-                    placeholder="Main Street Games"
-                    required
-                  />
-                </Field>
-              </FieldGroup>
-              <Button type="submit" disabled={busy === "org"}>
-                {busy === "org" ? <Spinner data-icon="inline-start" /> : null}
-                Create
-              </Button>
-            </form>
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
@@ -187,57 +172,125 @@ export function AdminHeader({
 }
 
 function OrganizationSwitcher({
+  busy,
+  createOrganizationOpen,
+  organizationName,
   organizations,
   selectedOrganizationId,
   selectedOrganizationName,
+  onCreateOrganization,
+  onCreateOrganizationOpenChange,
+  onOrganizationNameChange,
   onSelectOrganization,
 }: {
+  busy: BusyState;
+  createOrganizationOpen: boolean;
+  organizationName: string;
   organizations: OrganizationRow[] | undefined;
   selectedOrganizationId: Id<"organizations"> | null;
   selectedOrganizationName?: string;
+  onCreateOrganization: (event: FormEvent<HTMLFormElement>) => void;
+  onCreateOrganizationOpenChange: (open: boolean) => void;
+  onOrganizationNameChange: (value: string) => void;
   onSelectOrganization: (id: Id<"organizations">) => void;
 }) {
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <SidebarMenuButton size="lg">
-          <Building2 />
-          <span>{selectedOrganizationName ?? "Select organization"}</span>
-          <ChevronDown className="ml-auto" />
-        </SidebarMenuButton>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent
-        align="start"
-        sideOffset={4}
-        className="min-w-[calc(var(--radix-dropdown-menu-trigger-width)+2rem)] border-sidebar-border bg-sidebar-accent text-sidebar-accent-foreground"
-      >
-        <DropdownMenuLabel>Organizer workspaces</DropdownMenuLabel>
-        <DropdownMenuGroup>
-          {!organizations && (
-            <DropdownMenuItem disabled>
-              <SidebarMenuSkeleton showIcon />
-              <span>Loading</span>
-            </DropdownMenuItem>
-          )}
-          {organizations?.length === 0 && (
-            <DropdownMenuItem disabled>No organizer workspaces</DropdownMenuItem>
-          )}
-          {organizations?.map(({ organization, membership }) => (
+    <Dialog
+      open={createOrganizationOpen}
+      onOpenChange={onCreateOrganizationOpenChange}
+    >
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <SidebarMenuButton
+            size="lg"
+            className="group-data-[collapsible=icon]:justify-center"
+          >
+            <Building2 />
+            <span className="group-data-[collapsible=icon]:hidden">
+              {selectedOrganizationName ?? "Select organization"}
+            </span>
+            <ChevronDown className="ml-auto group-data-[collapsible=icon]:hidden" />
+          </SidebarMenuButton>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align="start"
+          sideOffset={4}
+          className="min-w-[calc(var(--radix-dropdown-menu-trigger-width)+2rem)] border-sidebar-border bg-sidebar-accent text-sidebar-accent-foreground"
+        >
+          <DropdownMenuLabel>Organizer workspaces</DropdownMenuLabel>
+          <DropdownMenuGroup>
+            {!organizations && (
+              <DropdownMenuItem disabled>
+                <SidebarMenuSkeleton showIcon />
+                <span>Loading</span>
+              </DropdownMenuItem>
+            )}
+            {organizations?.length === 0 && (
+              <DropdownMenuItem disabled>
+                No organizer workspaces
+              </DropdownMenuItem>
+            )}
+            {organizations?.map(({ organization, membership }) => (
+              <DropdownMenuItem
+                key={organization._id}
+                onSelect={() => onSelectOrganization(organization._id)}
+              >
+                <Building2 />
+                <span className="truncate">{organization.name}</span>
+                <span className="ml-auto text-muted-foreground capitalize">
+                  {membership.role}
+                </span>
+                {selectedOrganizationId === organization._id && <Check />}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuGroup>
+          <DropdownMenuSeparator />
+          <DropdownMenuGroup>
             <DropdownMenuItem
-              key={organization._id}
-              onSelect={() => onSelectOrganization(organization._id)}
+              onSelect={() => onCreateOrganizationOpenChange(true)}
             >
-              <Building2 />
-              <span className="truncate">{organization.name}</span>
-              <span className="ml-auto text-muted-foreground capitalize">
-                {membership.role}
-              </span>
-              {selectedOrganizationId === organization._id && <Check />}
+              <Plus />
+              Create organization
             </DropdownMenuItem>
-          ))}
-        </DropdownMenuGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
+          </DropdownMenuGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <DialogContent>
+        <form onSubmit={onCreateOrganization} className="flex flex-col gap-4">
+          <DialogHeader>
+            <DialogTitle>Create organization</DialogTitle>
+            <DialogDescription>
+              Name the organizer workspace you want to use for tournaments and
+              staff.
+            </DialogDescription>
+          </DialogHeader>
+
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="organization-name">Name</FieldLabel>
+              <Input
+                id="organization-name"
+                value={organizationName}
+                onChange={(event) =>
+                  onOrganizationNameChange(event.target.value)
+                }
+                placeholder="Main Street Games"
+                disabled={busy === "org"}
+                required
+              />
+            </Field>
+          </FieldGroup>
+
+          <DialogFooter>
+            <Button type="submit" disabled={busy === "org"}>
+              {busy === "org" ? <Spinner data-icon="inline-start" /> : null}
+              Create
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 

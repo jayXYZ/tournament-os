@@ -53,6 +53,13 @@ test("OrganizerWorkspace keeps a narrow client orchestration boundary", () => {
   assert.match(workspaceSource, /<SidebarProvider[\s>]/);
   assert.match(workspaceSource, /<SidebarInset[\s>]/);
   assert.match(workspaceSource, /<AdminSidebar[\s>]/);
+  assert.match(workspaceSource, /const \[createOrganizationOpen, setCreateOrganizationOpen\]/);
+  assert.match(workspaceSource, /setCreateOrganizationOpen\(false\)/);
+  assert.match(workspaceSource, /createOrganizationOpen={createOrganizationOpen}/);
+  assert.match(
+    workspaceSource,
+    /onCreateOrganizationOpenChange={setCreateOrganizationOpen}/,
+  );
   assert.match(workspaceSource, /<AdminHeader[\s>]/);
   assert.match(workspaceSource, /<StaffView[\s>]/);
   assert.match(workspaceSource, /<TournamentAdminView[\s>]/);
@@ -66,8 +73,12 @@ test("OrganizerWorkspace keeps a narrow client orchestration boundary", () => {
 test("Organizer workspace feature modules own their UI primitives", () => {
   assert.match(sidebarSource, /from "@\/components\/ui\/sidebar"/);
   assert.match(sidebarSource, /from "@\/components\/ui\/dropdown-menu"/);
+  assert.match(sidebarSource, /from "@\/components\/ui\/dialog"/);
   assert.match(sidebarSource, /<Sidebar[\s>]/);
+  assert.match(sidebarSource, /<Sidebar\s+collapsible="icon"[\s>]/);
   assert.match(sidebarSource, /<DropdownMenu[\s>]/);
+  assert.match(sidebarSource, /<Dialog[\s>]/);
+  assert.doesNotMatch(sidebarSource, /<SidebarGroupLabel>New organization/);
 
   assert.match(tournamentSource, /from "\.\/create-tournament-dialog"/);
   assert.match(tournamentSource, /from "\.\/tournament-table"/);
@@ -105,6 +116,45 @@ test("Organizer workspace feature modules own their UI primitives", () => {
   assert.match(staffSource, /<Card[\s>]/);
   assert.match(staffSource, /<Empty[\s>]/);
   assert.match(staffSource, /Invite staff/);
+});
+
+test("Organization switcher collapses to only its icon", () => {
+  const switcherMatch = sidebarSource.match(
+    /function OrganizationSwitcher[\s\S]*?function UserMenu/,
+  );
+  assert.ok(switcherMatch, "expected organization switcher source");
+
+  assert.match(
+    switcherMatch[0],
+    /<SidebarMenuButton[\s\S]*className="group-data-\[collapsible=icon\]:justify-center"/,
+  );
+  assert.match(
+    switcherMatch[0],
+    /<span className="group-data-\[collapsible=icon\]:hidden">/,
+  );
+  assert.match(
+    switcherMatch[0],
+    /<ChevronDown className="ml-auto group-data-\[collapsible=icon\]:hidden" \/>/,
+  );
+});
+
+test("Organization switcher owns create organization dialog", () => {
+  const switcherMatch = sidebarSource.match(
+    /function OrganizationSwitcher[\s\S]*?function UserMenu/,
+  );
+  assert.ok(switcherMatch, "expected organization switcher source");
+
+  assert.match(switcherMatch[0], /<DropdownMenuSeparator \/>/);
+  assert.match(switcherMatch[0], /<DropdownMenuItem[\s\S]*Create organization/);
+  assert.match(switcherMatch[0], /onCreateOrganizationOpenChange\(true\)/);
+  assert.match(switcherMatch[0], /<DialogContent/);
+  assert.match(
+    switcherMatch[0],
+    /<DialogTitle>Create organization<\/DialogTitle>/,
+  );
+  assert.match(switcherMatch[0], /<form onSubmit={onCreateOrganization}/);
+  assert.match(switcherMatch[0], /id="organization-name"/);
+  assert.match(switcherMatch[0], /disabled={busy === "org"}/);
 });
 
 test("Organizer workspace avoids legacy raw controls and stale copy", () => {
