@@ -116,12 +116,11 @@ function TournamentRow({ tournament }: { tournament: Tournament }) {
         <div className="flex min-w-0 items-center gap-2">
           <p className="font-medium text-foreground">{tournament.name}</p>
           {tournament.isTestEvent ? (
-            <Badge variant="secondary">Test</Badge>
+            <Badge className="bg-green-200 text-green-700 dark:bg-green-950 dark:text-green-300">
+              Test
+            </Badge>
           ) : null}
         </div>
-        <p className="mt-1 text-xs text-muted-foreground">
-          {tournament.isTestEvent ? "Test event" : "Organization event"}
-        </p>
       </TableCell>
       <TableCell className="capitalize">{tournament.format}</TableCell>
       <TableCell>
