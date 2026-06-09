@@ -141,9 +141,7 @@ export const createTournament = mutation({
       startDate: args.startDate,
       isTestEvent: false,
       playerCapacity: args.playerCapacity,
-      phases: validPhaseInputs([
-        { phaseOrder: 1, phaseRoundMode: "dynamic" },
-      ]),
+      phases: validPhaseInputs([{ phaseOrder: 1, phaseRoundMode: "dynamic" }]),
     });
   },
 });
@@ -212,7 +210,8 @@ export const configureSwissPhase = mutation({
     requireSetupEditable(tournament);
     const now = Date.now();
     const phaseTotalRounds = validRoundCount(
-      args.phaseTotalRounds ?? defaultSwissRoundCount(tournament.playerCapacity),
+      args.phaseTotalRounds ??
+        defaultSwissRoundCount(tournament.playerCapacity),
     );
     const existing = await ctx.db
       .query("tournamentPhases")
@@ -235,6 +234,7 @@ export const configureSwissPhase = mutation({
 
     return await ctx.db.insert("tournamentPhases", {
       tournamentId: args.tournamentId,
+      phaseName: "Phase 1",
       phaseType: SWISS_FORMAT,
       phaseOrder: 1,
       phaseStatus: "upcoming",
@@ -283,7 +283,11 @@ export const registerSelf = mutation({
       throw new Error("Tournament is not open for registration");
     }
 
-    const existing = await registrationForUser(ctx, args.tournamentId, user._id);
+    const existing = await registrationForUser(
+      ctx,
+      args.tournamentId,
+      user._id,
+    );
     if (existing && existing.status !== "dropped") {
       throw new Error("Already registered");
     }
@@ -417,7 +421,10 @@ export const startTournament = mutation({
       registrations,
     });
     const now = Date.now();
-    await ctx.db.patch(tournament._id, { status: "in_progress", updatedAt: now });
+    await ctx.db.patch(tournament._id, {
+      status: "in_progress",
+      updatedAt: now,
+    });
     await ctx.db.patch(playablePhase._id, {
       phaseStatus: "in_progress",
       phaseCurrentRound: roundId,
@@ -519,11 +526,17 @@ export const completeRound = mutation({
   args: { roundId: v.id("tournamentRounds") },
   handler: async (ctx, args) => {
     const round = await requireRound(ctx, args.roundId);
-    const { tournament } = await requireOrganizerAccess(ctx, round.tournamentId);
+    const { tournament } = await requireOrganizerAccess(
+      ctx,
+      round.tournamentId,
+    );
     const phase = await requireSwissPhase(ctx, round.tournamentId);
     const matches = await roundMatches(ctx, args.roundId);
     for (const match of matches) {
-      if (match.matchStatus !== "completed" && match.matchStatus !== "confirmed") {
+      if (
+        match.matchStatus !== "completed" &&
+        match.matchStatus !== "confirmed"
+      ) {
         throw new Error("All matches need results before completing the round");
       }
     }
@@ -609,9 +622,14 @@ export const createTestTournament = mutation({
     autoStart: v.optional(v.boolean()),
   },
   handler: async (ctx, args): Promise<Id<"tournaments">> => {
-    const { user } = await requireOrganizationMembership(ctx, args.organizationId);
+    const { user } = await requireOrganizationMembership(
+      ctx,
+      args.organizationId,
+    );
     const dummyPlayerCount = validCapacity(args.dummyPlayerCount ?? 8);
-    const playerCapacity = validCapacity(args.playerCapacity ?? dummyPlayerCount);
+    const playerCapacity = validCapacity(
+      args.playerCapacity ?? dummyPlayerCount,
+    );
     if (dummyPlayerCount > playerCapacity) {
       throw new Error("Dummy player count cannot exceed capacity");
     }
@@ -635,6 +653,7 @@ export const createTestTournament = mutation({
 
     const phaseId = await ctx.db.insert("tournamentPhases", {
       tournamentId,
+      phaseName: "Phase 1",
       phaseType: SWISS_FORMAT,
       phaseOrder: 1,
       phaseStatus: "upcoming",
@@ -664,7 +683,10 @@ export const createTestTournament = mutation({
         roundNumber: 1,
         registrations: await activeRegistrations(ctx, tournamentId),
       });
-      await ctx.db.patch(tournamentId, { status: "in_progress", updatedAt: now });
+      await ctx.db.patch(tournamentId, {
+        status: "in_progress",
+        updatedAt: now,
+      });
       await ctx.db.patch(phaseId, {
         phaseStatus: "in_progress",
         phaseCurrentRound: roundId,
@@ -703,7 +725,11 @@ export const generateTestRoundResults = mutation({
       throw new Error("Current round not found");
     }
 
-    await generateTestResultsInternal(ctx, tournament, await requireRound(ctx, roundId));
+    await generateTestResultsInternal(
+      ctx,
+      tournament,
+      await requireRound(ctx, roundId),
+    );
     return roundId;
   },
 });
@@ -766,6 +792,7 @@ export const resetTestTournament = mutation({
     });
     await ctx.db.insert("tournamentPhases", {
       tournamentId: args.tournamentId,
+      phaseName: "Phase 1",
       phaseType: SWISS_FORMAT,
       phaseOrder: 1,
       phaseStatus: "upcoming",
@@ -783,7 +810,11 @@ export const resetTestTournament = mutation({
       createdAt: now,
       updatedAt: now,
     });
-    await seedTestPlayersInternal(ctx, args.tournamentId, config.dummyPlayerCount);
+    await seedTestPlayersInternal(
+      ctx,
+      args.tournamentId,
+      config.dummyPlayerCount,
+    );
     return args.tournamentId;
   },
 });
@@ -799,7 +830,10 @@ async function createTournamentInternal(
     phases: ReturnType<typeof validPhaseInputs>;
   },
 ) {
-  const { user } = await requireOrganizationMembership(ctx, args.organizationId);
+  const { user } = await requireOrganizationMembership(
+    ctx,
+    args.organizationId,
+  );
   const now = Date.now();
   const tournamentId = await ctx.db.insert("tournaments", {
     name: cleanName(args.name, "Tournament name"),
@@ -878,7 +912,10 @@ async function requireOrganizationMembership(
   const membership = await ctx.db
     .query("organizationMemberships")
     .withIndex("by_organizationId_and_userId_and_status", (q) =>
-      q.eq("organizationId", organizationId).eq("userId", user._id).eq("status", "active"),
+      q
+        .eq("organizationId", organizationId)
+        .eq("userId", user._id)
+        .eq("status", "active"),
     )
     .unique();
   if (!membership) {
@@ -919,7 +956,10 @@ async function requireTournament(
   return tournament;
 }
 
-async function requirePhase(ctx: TournamentCtx, phaseId: Id<"tournamentPhases">) {
+async function requirePhase(
+  ctx: TournamentCtx,
+  phaseId: Id<"tournamentPhases">,
+) {
   const phase = await ctx.db.get(phaseId);
   if (!phase) {
     throw new Error("Tournament phase not found");
@@ -943,7 +983,10 @@ async function requireSwissPhase(
   return phase;
 }
 
-async function requireRound(ctx: TournamentCtx, roundId: Id<"tournamentRounds">) {
+async function requireRound(
+  ctx: TournamentCtx,
+  roundId: Id<"tournamentRounds">,
+) {
   const round = await ctx.db.get(roundId);
   if (!round) {
     throw new Error("Round not found");
@@ -951,7 +994,10 @@ async function requireRound(ctx: TournamentCtx, roundId: Id<"tournamentRounds">)
   return round;
 }
 
-async function requireMatch(ctx: TournamentCtx, matchId: Id<"tournamentMatches">) {
+async function requireMatch(
+  ctx: TournamentCtx,
+  matchId: Id<"tournamentMatches">,
+) {
   const match = await ctx.db.get(matchId);
   if (!match) {
     throw new Error("Match not found");
@@ -1005,7 +1051,10 @@ async function requireCapacityAvailable(
   }
 }
 
-async function roundMatches(ctx: TournamentCtx, roundId: Id<"tournamentRounds">) {
+async function roundMatches(
+  ctx: TournamentCtx,
+  roundId: Id<"tournamentRounds">,
+) {
   return await ctx.db
     .query("tournamentMatches")
     .withIndex("by_tournamentRoundId_and_tableNumber", (q) =>
@@ -1468,7 +1517,11 @@ async function seedTestPlayersInternal(
       updatedAt: now,
     });
 
-    const existingRegistration = await registrationForUser(ctx, tournamentId, userId);
+    const existingRegistration = await registrationForUser(
+      ctx,
+      tournamentId,
+      userId,
+    );
     if (!existingRegistration) {
       await ctx.db.insert("tournamentRegistrations", {
         tournamentId,
@@ -1491,7 +1544,10 @@ async function generateTestResultsInternal(
   const matches = await roundMatches(ctx, round._id);
 
   for (const match of matches) {
-    if (match.matchStatus === "completed" || match.matchStatus === "confirmed") {
+    if (
+      match.matchStatus === "completed" ||
+      match.matchStatus === "confirmed"
+    ) {
       continue;
     }
     const players = await matchPlayers(ctx, match._id);
@@ -1599,7 +1655,10 @@ async function deleteTestTournamentOperationalData(
 }
 
 function requireSetupEditable(tournament: Doc<"tournaments">) {
-  if (tournament.status === "in_progress" || tournament.status === "completed") {
+  if (
+    tournament.status === "in_progress" ||
+    tournament.status === "completed"
+  ) {
     throw new Error("Tournament setup is locked");
   }
   if (tournament.status === "cancelled") {
@@ -1675,6 +1734,7 @@ async function createSwissPhases(
   for (const phase of phases) {
     await ctx.db.insert("tournamentPhases", {
       tournamentId,
+      phaseName: `Phase ${phase.phaseOrder}`,
       phaseType: SWISS_FORMAT,
       phaseOrder: phase.phaseOrder,
       phaseStatus: "upcoming",

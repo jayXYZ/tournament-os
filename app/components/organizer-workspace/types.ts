@@ -6,6 +6,7 @@ import type {
 } from "@/lib/organizer-utils";
 
 export type AdminView = "tournaments" | "staff" | "organization";
+export type TournamentManagerView = "registrations" | "pairings" | "standings";
 export type Role = OrganizerInviteRole;
 export type MemberRole = OrganizerRole;
 export type Tournament = Doc<"tournaments">;

@@ -1,4 +1,8 @@
-import { CalendarDays } from "lucide-react";
+"use client";
+
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { ArrowRight, CalendarDays } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -110,8 +114,14 @@ export function TournamentTable({
 }
 
 function TournamentRow({ tournament }: { tournament: Tournament }) {
+  const router = useRouter();
+  const href = `/admin/tournaments/${tournament._id}`;
+
   return (
-    <TableRow>
+    <TableRow
+      onClick={() => router.push(href)}
+      className="cursor-pointer"
+    >
       <TableCell>
         <div className="flex min-w-0 items-center gap-2">
           <p className="font-medium text-foreground">{tournament.name}</p>
@@ -129,8 +139,16 @@ function TournamentRow({ tournament }: { tournament: Tournament }) {
       <TableCell>{tournament.playerCapacity}</TableCell>
       <TableCell className="capitalize">{tournament.status}</TableCell>
       <TableCell className="text-right">
-        <Button type="button" variant="outline" disabled>
-          Manage soon
+        <Button
+          asChild
+          type="button"
+          variant="outline"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <Link href={href}>
+            Manage
+            <ArrowRight />
+          </Link>
         </Button>
       </TableCell>
     </TableRow>

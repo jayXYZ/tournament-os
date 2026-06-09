@@ -13,6 +13,7 @@ import {
   NoticeProvider,
   WorkspaceNotice,
 } from "./organizer-workspace/notice-context";
+import { getStoredSidebarOpen } from "./organizer-workspace/sidebar-state";
 import { StaffView } from "./organizer-workspace/staff-view";
 import { TournamentAdminView } from "./organizer-workspace/tournament-admin-view";
 import type { AdminView } from "./organizer-workspace/types";
@@ -28,7 +29,7 @@ export function OrganizerWorkspace({ view }: { view: AdminView }) {
     <TooltipProvider>
       <OrganizationProvider>
         <NoticeProvider>
-          <SidebarProvider>
+          <SidebarProvider defaultOpen={getStoredSidebarOpen()}>
             <AdminSidebar view={view} />
             <SidebarInset>
               <AdminHeader />

@@ -127,6 +127,7 @@ export default defineSchema({
 
   tournamentPhases: defineTable({
     tournamentId: v.id("tournaments"),
+    phaseName: v.optional(v.string()),
     phaseType: v.string(),
     phaseOrder: v.number(),
     phaseStatus: tournamentPhaseStatusValidator,
@@ -231,9 +232,6 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_tournamentId", ["tournamentId"])
-    .index("by_tournamentId_and_playerNumber", [
-      "tournamentId",
-      "playerNumber",
-    ])
+    .index("by_tournamentId_and_playerNumber", ["tournamentId", "playerNumber"])
     .index("by_userId", ["userId"]),
 });
