@@ -9,7 +9,14 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { canInviteMembers } from "@/lib/organizer-utils";
+import {
+  validateOrganizationProfileImageDetails,
+  type OrganizationProfileImageDetails,
+} from "@/lib/organization-profile-image";
+import {
+  canInviteMembers,
+  canManageOrganizationProfile,
+} from "@/lib/organizer-utils";
 import {
   addTournamentCreationPhase,
   createDefaultTournamentCreationPhase,
@@ -45,6 +52,12 @@ export function OrganizerWorkspace({ view }: { view: AdminView }) {
   );
   const inviteMember = useAction(api.organizations.inviteMember);
   const createTournament = useMutation(api.tournaments.createTournamentWithPhases);
+  const generateProfileImageUploadUrl = useMutation(
+    api.organizations.generateProfileImageUploadUrl,
+  );
+  const updateProfileImage = useMutation(api.organizations.updateProfileImage);
+  const updateProfile = useAction(api.organizations.updateProfile);
+  const archiveOrganization = useMutation(api.organizations.archiveOrganization);
 
   const [explicitOrganizationId, setExplicitOrganizationId] =
     useState<Id<"organizations"> | null>(getStoredOrganizationId);
@@ -58,6 +71,8 @@ export function OrganizerWorkspace({ view }: { view: AdminView }) {
   const [tournamentPhases, setTournamentPhases] = useState<
     TournamentCreationPhaseForm[]
   >([createDefaultTournamentCreationPhase("phase-1")]);
+  const [profileName, setProfileName] = useState("");
+  const [archiveConfirmationName, setArchiveConfirmationName] = useState("");
   const [createOrganizationOpen, setCreateOrganizationOpen] = useState(false);
   const [createTournamentOpen, setCreateTournamentOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -120,6 +135,16 @@ export function OrganizerWorkspace({ view }: { view: AdminView }) {
   const mayInvite = activeMembership
     ? canInviteMembers(activeMembership.role)
     : false;
+  const mayManageProfile = activeMembership
+    ? canManageOrganizationProfile(activeMembership.role)
+    : false;
+
+  useEffect(() => {
+    if (details?.organization.name) {
+      setProfileName(details.organization.name);
+      setArchiveConfirmationName("");
+    }
+  }, [details?.organization._id, details?.organization.name]);
 
   async function handleCreateOrganization(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -216,6 +241,106 @@ export function OrganizerWorkspace({ view }: { view: AdminView }) {
     );
   }
 
+  async function handleUpdateProfile(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedOrganizationId) {
+      return;
+    }
+
+    setBusy("profile");
+    setNotice(null);
+    try {
+      await updateProfile({
+        organizationId: selectedOrganizationId,
+        name: profileName,
+      });
+      setNotice("Organization profile updated.");
+    } catch (error) {
+      setNotice(
+        error instanceof Error
+          ? error.message
+          : "Could not update organization profile.",
+      );
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleUpdateProfileImage(file: File) {
+    if (!selectedOrganizationId) {
+      return;
+    }
+
+    setBusy("profileImage");
+    setNotice(null);
+    try {
+      const dimensions = await readImageDimensions(file);
+      const validationMessage = validateOrganizationProfileImageDetails({
+        type: file.type,
+        size: file.size,
+        ...dimensions,
+      });
+      if (validationMessage) {
+        throw new Error(validationMessage);
+      }
+
+      const uploadUrl = await generateProfileImageUploadUrl({
+        organizationId: selectedOrganizationId,
+      });
+      const response = await fetch(uploadUrl, {
+        method: "POST",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      if (!response.ok) {
+        throw new Error("Could not upload profile picture.");
+      }
+
+      const { storageId } = (await response.json()) as {
+        storageId: Id<"_storage">;
+      };
+      await updateProfileImage({
+        organizationId: selectedOrganizationId,
+        profileImageStorageId: storageId,
+      });
+      setNotice("Organization profile picture updated.");
+    } catch (error) {
+      setNotice(
+        error instanceof Error
+          ? error.message
+          : "Could not update organization profile picture.",
+      );
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleArchiveOrganization(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedOrganizationId) {
+      return;
+    }
+
+    setBusy("archive");
+    setNotice(null);
+    try {
+      await archiveOrganization({
+        organizationId: selectedOrganizationId,
+        confirmationName: archiveConfirmationName,
+      });
+      window.localStorage.removeItem(SELECTED_ORGANIZATION_STORAGE_KEY);
+      setExplicitOrganizationId(null);
+      setArchiveConfirmationName("");
+      setNotice("Organization archived.");
+    } catch (error) {
+      setNotice(
+        error instanceof Error ? error.message : "Could not archive organization.",
+      );
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <TooltipProvider>
       <SidebarProvider>
@@ -262,7 +387,21 @@ export function OrganizerWorkspace({ view }: { view: AdminView }) {
                   onInviteRoleChange={setInviteRole}
                 />
               ) : view === "organization" ? (
-                <OrganizationProfileView />
+                <OrganizationProfileView
+                  archiveConfirmationName={archiveConfirmationName}
+                  busy={busy}
+                  mayManageProfile={mayManageProfile}
+                  membershipRole={activeMembership?.role ?? null}
+                  onArchiveConfirmationNameChange={setArchiveConfirmationName}
+                  onArchiveOrganization={handleArchiveOrganization}
+                  onProfileImageChange={(file) =>
+                    void handleUpdateProfileImage(file)
+                  }
+                  onProfileNameChange={setProfileName}
+                  onUpdateProfile={handleUpdateProfile}
+                  organization={details?.organization ?? null}
+                  profileName={profileName}
+                />
               ) : (
                 <TournamentAdminView
                   busy={busy}
@@ -291,5 +430,24 @@ export function OrganizerWorkspace({ view }: { view: AdminView }) {
         </SidebarInset>
       </SidebarProvider>
     </TooltipProvider>
+  );
+}
+
+function readImageDimensions(file: File) {
+  return new Promise<Pick<OrganizationProfileImageDetails, "width" | "height">>(
+    (resolve, reject) => {
+      const image = new Image();
+      const objectUrl = URL.createObjectURL(file);
+
+      image.onload = () => {
+        URL.revokeObjectURL(objectUrl);
+        resolve({ width: image.naturalWidth, height: image.naturalHeight });
+      };
+      image.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        reject(new Error("Could not read profile picture dimensions."));
+      };
+      image.src = objectUrl;
+    },
   );
 }

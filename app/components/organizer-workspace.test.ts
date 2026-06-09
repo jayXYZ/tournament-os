@@ -184,6 +184,25 @@ test("Organizer workspace exposes an organization profile route", () => {
   assert.match(workspaceSource, /<OrganizationProfileView[\s>]/);
 });
 
+test("Organization profile view owns profile forms and archive confirmation", () => {
+  assert.match(organizationProfileSource, /from "@\/components\/ui\/card"/);
+  assert.match(organizationProfileSource, /from "@\/components\/ui\/field"/);
+  assert.match(organizationProfileSource, /from "@\/components\/ui\/input"/);
+  assert.match(organizationProfileSource, /from "@\/components\/ui\/button"/);
+  assert.match(organizationProfileSource, /Organization profile/);
+  assert.match(organizationProfileSource, /Profile picture/);
+  assert.match(organizationProfileSource, /Archive organization/);
+  assert.match(organizationProfileSource, /Only owners and admins/);
+  assert.match(
+    workspaceSource,
+    /api\.organizations\.generateProfileImageUploadUrl/,
+  );
+  assert.match(workspaceSource, /api\.organizations\.updateProfileImage/);
+  assert.match(workspaceSource, /api\.organizations\.updateProfile/);
+  assert.match(workspaceSource, /api\.organizations\.archiveOrganization/);
+  assert.match(workspaceSource, /validateOrganizationProfileImageDetails/);
+});
+
 test("Organizer workspace avoids legacy raw controls and stale copy", () => {
   const combinedSource = [
     workspaceSource,
