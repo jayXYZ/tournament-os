@@ -16,9 +16,13 @@ function workosApiKey() {
   return apiKey;
 }
 
-async function workosRequest<T>(path: string, body: WorkosObject) {
+async function workosRequest<T>(
+  path: string,
+  body: WorkosObject,
+  method: "POST" | "PUT" = "POST",
+) {
   const response = await fetch(`${WORKOS_API_BASE_URL}${path}`, {
-    method: "POST",
+    method,
     headers: {
       Authorization: `Bearer ${workosApiKey()}`,
       "Content-Type": "application/json",
@@ -68,6 +72,18 @@ export type WorkosInvitation = {
 
 export async function createWorkosOrganization(name: string) {
   const response = await workosRequest<WorkosObject>("/organizations", { name });
+  return extractWorkosOrganization(response);
+}
+
+export async function updateWorkosOrganization(args: {
+  organizationId: string;
+  name: string;
+}) {
+  const response = await workosRequest<WorkosObject>(
+    `/organizations/${args.organizationId}`,
+    { name: args.name },
+    "PUT",
+  );
   return extractWorkosOrganization(response);
 }
 
@@ -145,6 +161,16 @@ export function buildWorkosMembershipPayload(args: {
     organization_id: args.organizationId,
     user_id: args.userId,
     ...(args.roleSlug ? { role_slug: args.roleSlug } : {}),
+  };
+}
+
+export function buildWorkosOrganizationUpdatePayload(args: {
+  organizationId: string;
+  name: string;
+}) {
+  return {
+    organization: args.organizationId,
+    name: args.name,
   };
 }
 

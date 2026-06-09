@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   buildWorkosMembershipPayload,
+  buildWorkosOrganizationUpdatePayload,
   extractWorkosInvitation,
   extractWorkosMembership,
   extractWorkosOrganization,
@@ -69,6 +70,19 @@ test("buildWorkosMembershipPayload can omit role_slug for default-role fallback"
     {
       organization_id: "org_123",
       user_id: "user_123",
+    },
+  );
+});
+
+test("buildWorkosOrganizationUpdatePayload includes the organization id and name", () => {
+  assert.deepEqual(
+    buildWorkosOrganizationUpdatePayload({
+      organizationId: "org_123",
+      name: "Main Street Games",
+    }),
+    {
+      organization: "org_123",
+      name: "Main Street Games",
     },
   );
 });
