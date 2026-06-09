@@ -71,8 +71,15 @@ export function OrganizerWorkspace({ view }: { view: AdminView }) {
   const [tournamentPhases, setTournamentPhases] = useState<
     TournamentCreationPhaseForm[]
   >([createDefaultTournamentCreationPhase("phase-1")]);
-  const [profileName, setProfileName] = useState("");
-  const [archiveConfirmationName, setArchiveConfirmationName] = useState("");
+  const [profileDraft, setProfileDraft] = useState<{
+    organizationId: Id<"organizations"> | null;
+    name: string;
+    archiveConfirmationName: string;
+  }>({
+    organizationId: null,
+    name: "",
+    archiveConfirmationName: "",
+  });
   const [createOrganizationOpen, setCreateOrganizationOpen] = useState(false);
   const [createTournamentOpen, setCreateTournamentOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -138,13 +145,14 @@ export function OrganizerWorkspace({ view }: { view: AdminView }) {
   const mayManageProfile = activeMembership
     ? canManageOrganizationProfile(activeMembership.role)
     : false;
-
-  useEffect(() => {
-    if (details?.organization.name) {
-      setProfileName(details.organization.name);
-      setArchiveConfirmationName("");
-    }
-  }, [details?.organization._id, details?.organization.name]);
+  const profileName =
+    profileDraft.organizationId === selectedOrganizationId
+      ? profileDraft.name
+      : (details?.organization.name ?? "");
+  const archiveConfirmationName =
+    profileDraft.organizationId === selectedOrganizationId
+      ? profileDraft.archiveConfirmationName
+      : "";
 
   async function handleCreateOrganization(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -330,7 +338,11 @@ export function OrganizerWorkspace({ view }: { view: AdminView }) {
       });
       window.localStorage.removeItem(SELECTED_ORGANIZATION_STORAGE_KEY);
       setExplicitOrganizationId(null);
-      setArchiveConfirmationName("");
+      setProfileDraft({
+        organizationId: null,
+        name: "",
+        archiveConfirmationName: "",
+      });
       setNotice("Organization archived.");
     } catch (error) {
       setNotice(
@@ -392,12 +404,30 @@ export function OrganizerWorkspace({ view }: { view: AdminView }) {
                   busy={busy}
                   mayManageProfile={mayManageProfile}
                   membershipRole={activeMembership?.role ?? null}
-                  onArchiveConfirmationNameChange={setArchiveConfirmationName}
+                  onArchiveConfirmationNameChange={(value) =>
+                    setProfileDraft((current) => ({
+                      organizationId: selectedOrganizationId,
+                      name:
+                        current.organizationId === selectedOrganizationId
+                          ? current.name
+                          : (details?.organization.name ?? ""),
+                      archiveConfirmationName: value,
+                    }))
+                  }
                   onArchiveOrganization={handleArchiveOrganization}
                   onProfileImageChange={(file) =>
                     void handleUpdateProfileImage(file)
                   }
-                  onProfileNameChange={setProfileName}
+                  onProfileNameChange={(value) =>
+                    setProfileDraft((current) => ({
+                      organizationId: selectedOrganizationId,
+                      name: value,
+                      archiveConfirmationName:
+                        current.organizationId === selectedOrganizationId
+                          ? current.archiveConfirmationName
+                          : "",
+                    }))
+                  }
                   onUpdateProfile={handleUpdateProfile}
                   organization={details?.organization ?? null}
                   profileName={profileName}
