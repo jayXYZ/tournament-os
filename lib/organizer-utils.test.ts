@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   canInviteMembers,
+  canManageOrganizationProfile,
   normalizeInviteEmail,
   slugifyOrganizationName,
   toInvitationStatus,
@@ -20,6 +21,12 @@ test("canInviteMembers allows only owner and admin roles", () => {
   assert.equal(canInviteMembers("owner"), true);
   assert.equal(canInviteMembers("admin"), true);
   assert.equal(canInviteMembers("staff"), false);
+});
+
+test("canManageOrganizationProfile allows only owner and admin roles", () => {
+  assert.equal(canManageOrganizationProfile("owner"), true);
+  assert.equal(canManageOrganizationProfile("admin"), true);
+  assert.equal(canManageOrganizationProfile("staff"), false);
 });
 
 test("normalizeInviteEmail trims and lowercases emails", () => {

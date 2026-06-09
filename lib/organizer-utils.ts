@@ -32,6 +32,10 @@ export function canInviteMembers(role: OrganizerRole) {
   return role === "owner" || role === "admin";
 }
 
+export function canManageOrganizationProfile(role: OrganizerRole) {
+  return role === "owner" || role === "admin";
+}
+
 export function normalizeInviteEmail(email: string) {
   return email.trim().toLowerCase();
 }
