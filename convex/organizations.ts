@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
+import { validateOrganizationProfileImageDetails } from "../lib/organization-profile-image";
 import {
   toInvitationStatus,
   toOrganizerRoleFromWorkosFields,
@@ -13,6 +14,7 @@ import {
   action,
   internalMutation,
   internalQuery,
+  mutation,
   query,
 } from "./_generated/server";
 import { identityWorkosUserId, requireIdentity } from "./auth";
@@ -20,11 +22,13 @@ import {
   createWorkosOrganization,
   createWorkosOrganizationMembership,
   sendWorkosInvitation,
+  updateWorkosOrganization,
   type WorkosInvitation,
   type WorkosMembership,
 } from "./workosApi";
 import {
   canInviteMembers,
+  canManageOrganizationProfile,
   invitationStatusValidator,
   membershipStatusValidator,
   normalizeEmail,
@@ -60,7 +64,13 @@ export const listMine = query({
     for (const membership of memberships) {
       const organization = await ctx.db.get(membership.organizationId);
       if (organization && organization.status === "active") {
-        rows.push({ organization, membership });
+        rows.push({
+          organization: await organizationWithProfileImageUrl(
+            ctx,
+            organization,
+          ),
+          membership,
+        });
       }
     }
 
@@ -77,7 +87,10 @@ export const getById = query({
       throw new Error("Organization not found");
     }
 
-    return { organization, membership };
+    return {
+      organization: await organizationWithProfileImageUrl(ctx, organization),
+      membership,
+    };
   },
 });
 
@@ -206,6 +219,103 @@ export const inviteMember = action({
   },
 });
 
+export const generateProfileImageUploadUrl = mutation({
+  args: { organizationId: v.id("organizations") },
+  handler: async (ctx, args) => {
+    await requireProfilePermission(ctx, args.organizationId);
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
+export const updateProfileImage = mutation({
+  args: {
+    organizationId: v.id("organizations"),
+    profileImageStorageId: v.id("_storage"),
+  },
+  handler: async (ctx, args) => {
+    await requireProfilePermission(ctx, args.organizationId);
+
+    const metadata = await ctx.db.system.get("_storage", args.profileImageStorageId);
+    if (!metadata) {
+      throw new Error("Uploaded image was not found");
+    }
+
+    const validationMessage = validateOrganizationProfileImageDetails({
+      type: metadata.contentType,
+      size: metadata.size,
+    });
+    if (validationMessage) {
+      throw new Error(validationMessage);
+    }
+
+    await ctx.db.patch(args.organizationId, {
+      profileImageStorageId: args.profileImageStorageId,
+      updatedAt: Date.now(),
+    });
+
+    return { organizationId: args.organizationId };
+  },
+});
+
+export const updateProfile = action({
+  args: {
+    organizationId: v.id("organizations"),
+    name: v.string(),
+  },
+  handler: async (ctx, args): Promise<{ organizationId: Id<"organizations"> }> => {
+    const name = args.name.trim();
+    if (name.length < 2) {
+      throw new Error("Organization name must be at least 2 characters");
+    }
+
+    const identity = await requireIdentity(ctx);
+    const authorization: { organization: Doc<"organizations"> } =
+      await ctx.runQuery(
+        internal.organizations.requireProfilePermissionForAction,
+        {
+          tokenIdentifier: identity.tokenIdentifier,
+          organizationId: args.organizationId,
+        },
+      );
+
+    const workosOrganization = await updateWorkosOrganization({
+      organizationId: authorization.organization.workosOrganizationId,
+      name,
+    });
+
+    await ctx.runMutation(internal.organizations.updateProfileMirror, {
+      organizationId: args.organizationId,
+      name: workosOrganization.name,
+      slug: slugifyOrganizationName(workosOrganization.name),
+    });
+
+    return { organizationId: args.organizationId };
+  },
+});
+
+export const archiveOrganization = mutation({
+  args: {
+    organizationId: v.id("organizations"),
+    confirmationName: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const { organization } = await requireProfilePermission(
+      ctx,
+      args.organizationId,
+    );
+    if (args.confirmationName.trim() !== organization.name) {
+      throw new Error("Type the organization name to archive it");
+    }
+
+    await ctx.db.patch(args.organizationId, {
+      status: "archived",
+      updatedAt: Date.now(),
+    });
+
+    return { organizationId: args.organizationId };
+  },
+});
+
 export const requireInvitePermission = internalQuery({
   args: {
     tokenIdentifier: v.string(),
@@ -228,6 +338,40 @@ export const requireInvitePermission = internalQuery({
       user._id,
     );
     if (!membership || !canInviteMembers(membership.role)) {
+      throw new Error("Unauthorized");
+    }
+
+    const organization = await ctx.db.get(args.organizationId);
+    if (!organization || organization.status !== "active") {
+      throw new Error("Organization not found");
+    }
+
+    return { organization, membership, user };
+  },
+});
+
+export const requireProfilePermissionForAction = internalQuery({
+  args: {
+    tokenIdentifier: v.string(),
+    organizationId: v.id("organizations"),
+  },
+  handler: async (ctx, args) => {
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_tokenIdentifier", (q) =>
+        q.eq("tokenIdentifier", args.tokenIdentifier),
+      )
+      .unique();
+    if (!user) {
+      throw new Error("Not authenticated");
+    }
+
+    const membership = await getActiveMembershipForOrganization(
+      ctx,
+      args.organizationId,
+      user._id,
+    );
+    if (!membership || !canManageOrganizationProfile(membership.role)) {
       throw new Error("Unauthorized");
     }
 
@@ -300,6 +444,23 @@ export const upsertOrganizerMirror = internalMutation({
     });
 
     return organizationId;
+  },
+});
+
+export const updateProfileMirror = internalMutation({
+  args: {
+    organizationId: v.id("organizations"),
+    name: v.string(),
+    slug: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.organizationId, {
+      name: args.name,
+      slug: args.slug,
+      updatedAt: Date.now(),
+    });
+
+    return args.organizationId;
   },
 });
 
@@ -442,4 +603,50 @@ function invitationStatus(invitation: WorkosInvitation) {
 
 export function workosMembershipRole(membership: WorkosMembership): OrganizerRole {
   return toOrganizerRoleFromWorkosFields(membership as Record<string, unknown>);
+}
+
+async function organizationWithProfileImageUrl(
+  ctx: QueryCtx,
+  organization: Doc<"organizations">,
+) {
+  const profileImageUrl = organization.profileImageStorageId
+    ? await ctx.storage.getUrl(organization.profileImageStorageId)
+    : null;
+
+  return {
+    ...organization,
+    profileImageUrl,
+  };
+}
+
+async function requireProfilePermission(
+  ctx: QueryCtx | MutationCtx,
+  organizationId: Id<"organizations">,
+) {
+  const identity = await requireIdentity(ctx);
+  const user = await ctx.db
+    .query("users")
+    .withIndex("by_tokenIdentifier", (q) =>
+      q.eq("tokenIdentifier", identity.tokenIdentifier),
+    )
+    .unique();
+  if (!user) {
+    throw new Error("Not authenticated");
+  }
+
+  const membership = await getActiveMembershipForOrganization(
+    ctx,
+    organizationId,
+    user._id,
+  );
+  if (!membership || !canManageOrganizationProfile(membership.role)) {
+    throw new Error("Unauthorized");
+  }
+
+  const organization = await ctx.db.get(organizationId);
+  if (!organization || organization.status !== "active") {
+    throw new Error("Organization not found");
+  }
+
+  return { organization, membership, user };
 }

@@ -31,6 +31,7 @@ export default defineSchema({
     workosOrganizationId: v.string(),
     name: v.string(),
     slug: v.string(),
+    profileImageStorageId: v.optional(v.id("_storage")),
     createdBy: v.id("users"),
     status: organizationStatusValidator,
     createdAt: v.number(),

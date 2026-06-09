@@ -10,6 +10,7 @@ import {
 
 export {
   canInviteMembers,
+  canManageOrganizationProfile,
   normalizeInviteEmail as normalizeEmail,
   slugifyOrganizationName,
   toMembershipStatus as normalizeMembershipStatus,
