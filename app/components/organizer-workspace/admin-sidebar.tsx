@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useAuth } from "@workos-inc/authkit-nextjs/components";
 import { useAction } from "convex/react";
 import {
@@ -63,7 +64,19 @@ import { useOrganization } from "./organization-context";
 import { useSetNotice } from "./notice-context";
 import type { AdminView } from "./types";
 
-export function AdminSidebar({ view }: { view: AdminView }) {
+function viewFromPathname(pathname: string): AdminView {
+  if (pathname.startsWith("/admin/staff")) {
+    return "staff";
+  }
+  if (pathname.startsWith("/admin/organization")) {
+    return "organization";
+  }
+  return "tournaments";
+}
+
+export function AdminSidebar() {
+  const view = viewFromPathname(usePathname());
+
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader>

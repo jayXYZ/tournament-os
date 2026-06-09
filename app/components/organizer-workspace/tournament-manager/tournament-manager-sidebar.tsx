@@ -1,15 +1,16 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { useQuery } from "convex/react";
 import { ChevronLeft, ClipboardList, Swords, Trophy } from "lucide-react";
 
-import type { Doc } from "@/convex/_generated/dataModel";
+import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { TournamentManagerView } from "../types";
 
 type NavItem = {
-  view: TournamentManagerView;
   label: string;
   href: string;
   icon: typeof ClipboardList;
@@ -17,29 +18,27 @@ type NavItem = {
 
 export function TournamentManagerSidebar({
   tournamentId,
-  tournament,
-  view,
 }: {
   tournamentId: string;
-  tournament: Doc<"tournaments"> | undefined;
-  view: TournamentManagerView;
 }) {
+  const setup = useQuery(api.tournaments.getTournamentSetup, {
+    tournamentId: tournamentId as Id<"tournaments">,
+  });
+  const tournament = setup?.tournament;
+  const pathname = usePathname();
   const base = `/admin/tournaments/${tournamentId}`;
   const items: NavItem[] = [
     {
-      view: "registrations",
       label: "Registrations",
       href: base,
       icon: ClipboardList,
     },
     {
-      view: "pairings",
       label: "Pairings",
       href: `${base}/pairings`,
       icon: Swords,
     },
     {
-      view: "standings",
       label: "Standings",
       href: `${base}/standings`,
       icon: Trophy,
@@ -78,10 +77,10 @@ export function TournamentManagerSidebar({
       <nav className="flex flex-col gap-px p-2">
         {items.map((item) => {
           const Icon = item.icon;
-          const isActive = item.view === view;
+          const isActive = pathname === item.href;
           return (
             <Link
-              key={item.view}
+              key={item.href}
               href={item.href}
               data-active={isActive}
               className={cn(

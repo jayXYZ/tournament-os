@@ -1,20 +1,11 @@
-"use client";
+import { PairingsView } from "@/app/components/organizer-workspace/tournament-manager/pairings-view";
 
-import { use } from "react";
-
-import { AdminAuthGate } from "@/app/components/organizer-workspace/admin-auth-gate";
-import { TournamentManagerWorkspace } from "@/app/components/organizer-workspace/tournament-manager/tournament-manager-workspace";
-
-export default function TournamentPairingsPage({
+export default async function TournamentPairingsPage({
   params,
 }: {
   params: Promise<{ tournamentId: string }>;
 }) {
-  const { tournamentId } = use(params);
+  const { tournamentId } = await params;
 
-  return (
-    <AdminAuthGate description="Manage registrations, pairings, and standings for this tournament from the admin workspace.">
-      <TournamentManagerWorkspace tournamentId={tournamentId} view="pairings" />
-    </AdminAuthGate>
-  );
+  return <PairingsView tournamentId={tournamentId} />;
 }

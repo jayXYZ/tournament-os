@@ -2,8 +2,31 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-const workspaceSource = readFileSync(
-  new URL("./organizer-workspace.tsx", import.meta.url),
+const shellSource = readFileSync(
+  new URL(
+    "./organizer-workspace/admin-workspace-shell.tsx",
+    import.meta.url,
+  ),
+  "utf8",
+);
+const adminLayoutSource = readFileSync(
+  new URL("../admin/layout.tsx", import.meta.url),
+  "utf8",
+);
+const viewsLayoutSource = readFileSync(
+  new URL("../admin/(views)/layout.tsx", import.meta.url),
+  "utf8",
+);
+const adminPageSource = readFileSync(
+  new URL("../admin/(views)/page.tsx", import.meta.url),
+  "utf8",
+);
+const staffPageSource = readFileSync(
+  new URL("../admin/(views)/staff/page.tsx", import.meta.url),
+  "utf8",
+);
+const organizationProfilePageSource = readFileSync(
+  new URL("../admin/(views)/organization/page.tsx", import.meta.url),
   "utf8",
 );
 const sidebarSource = readFileSync(
@@ -38,61 +61,68 @@ const noticeContextSource = readFileSync(
   new URL("./organizer-workspace/notice-context.tsx", import.meta.url),
   "utf8",
 );
-const organizationProfilePageSource = readFileSync(
-  new URL("../admin/organization/page.tsx", import.meta.url),
-  "utf8",
-);
 const organizationProfileSource = readFileSync(
   new URL("./organizer-workspace/organization-profile-view.tsx", import.meta.url),
   "utf8",
 );
 
-test("OrganizerWorkspace is a thin layout shell over feature modules", () => {
-  assert.match(workspaceSource, /^"use client";/);
+test("AdminWorkspaceShell is a thin chrome shell over feature modules", () => {
+  assert.match(shellSource, /^"use client";/);
 
-  assert.match(workspaceSource, /from "@\/components\/ui\/sidebar"/);
-  assert.match(workspaceSource, /from "@\/components\/ui\/tooltip"/);
-  assert.match(workspaceSource, /from "\.\/organizer-workspace\/admin-sidebar"/);
-  assert.match(
-    workspaceSource,
-    /from "\.\/organizer-workspace\/organization-context"/,
-  );
-  assert.match(
-    workspaceSource,
-    /from "\.\/organizer-workspace\/notice-context"/,
-  );
-  assert.match(workspaceSource, /from "\.\/organizer-workspace\/staff-view"/);
-  assert.match(
-    workspaceSource,
-    /from "\.\/organizer-workspace\/tournament-admin-view"/,
-  );
-  assert.match(workspaceSource, /from "\.\/organizer-workspace\/types"/);
+  assert.match(shellSource, /from "@\/components\/ui\/sidebar"/);
+  assert.match(shellSource, /from "@\/components\/ui\/tooltip"/);
+  assert.match(shellSource, /from "\.\/admin-auth-gate"/);
+  assert.match(shellSource, /from "\.\/admin-sidebar"/);
+  assert.match(shellSource, /from "\.\/organization-context"/);
+  assert.match(shellSource, /from "\.\/notice-context"/);
 
-  assert.match(workspaceSource, /<TooltipProvider[\s>]/);
-  assert.match(workspaceSource, /<OrganizationProvider[\s>]/);
-  assert.match(workspaceSource, /<NoticeProvider[\s>]/);
-  assert.match(workspaceSource, /<SidebarProvider[\s>]/);
-  assert.match(workspaceSource, /<SidebarInset[\s>]/);
-  assert.match(workspaceSource, /<AdminSidebar[\s>]/);
-  assert.match(workspaceSource, /<AdminHeader[\s>/]/);
-  assert.match(workspaceSource, /<WorkspaceNotice[\s>/]/);
-  assert.match(workspaceSource, /<StaffView[\s>/]/);
-  assert.match(workspaceSource, /<TournamentAdminView[\s>/]/);
-  assert.match(workspaceSource, /<OrganizationProfileView[\s>/]/);
+  assert.match(shellSource, /<AdminAuthGate[\s>]/);
+  assert.match(shellSource, /<TooltipProvider[\s>]/);
+  assert.match(shellSource, /<OrganizationProvider[\s>]/);
+  assert.match(shellSource, /<NoticeProvider[\s>]/);
+  assert.match(shellSource, /<SidebarProvider defaultOpen={defaultSidebarOpen}>/);
+  assert.match(shellSource, /<SidebarInset[\s>]/);
+  assert.match(shellSource, /<AdminSidebar[\s>/]/);
+  assert.match(shellSource, /<AdminHeader[\s>/]/);
+  assert.match(shellSource, /{children}/);
 });
 
-test("OrganizerWorkspace no longer drills state or owns feature data", () => {
-  assert.doesNotMatch(workspaceSource, /<Dialog[\s>]/);
-  assert.doesNotMatch(workspaceSource, /<Table[\s>]/);
-  assert.doesNotMatch(workspaceSource, /function TournamentRow/);
-  assert.doesNotMatch(workspaceSource, /function StaffView/);
+test("Admin layout reads the sidebar cookie and mounts the shell once", () => {
+  assert.match(adminLayoutSource, /from "next\/headers"/);
+  assert.match(adminLayoutSource, /sidebar_state/);
+  assert.match(adminLayoutSource, /<AdminWorkspaceShell[\s>]/);
+  assert.match(adminLayoutSource, /defaultSidebarOpen={defaultSidebarOpen}/);
+  assert.doesNotMatch(adminLayoutSource, /^"use client";/);
 
-  // No colocated form state, no domain queries/mutations threaded from the top.
-  assert.doesNotMatch(workspaceSource, /useState/);
-  assert.doesNotMatch(workspaceSource, /api\.organizations\./);
-  assert.doesNotMatch(workspaceSource, /api\.tournaments\./);
-  assert.doesNotMatch(workspaceSource, /onCreateTournament=/);
-  assert.doesNotMatch(workspaceSource, /onInvite=/);
+  assert.match(viewsLayoutSource, /<WorkspaceNotice[\s>/]/);
+  assert.match(viewsLayoutSource, /{children}/);
+});
+
+test("Admin pages render feature views directly", () => {
+  assert.match(adminPageSource, /<TournamentAdminView[\s>/]/);
+  assert.match(staffPageSource, /<StaffView[\s>/]/);
+  assert.match(organizationProfilePageSource, /<OrganizationProfileView[\s>/]/);
+
+  // No per-page chrome or auth gates; those live in the admin layout.
+  for (const source of [
+    adminPageSource,
+    staffPageSource,
+    organizationProfilePageSource,
+  ]) {
+    assert.doesNotMatch(source, /AdminAuthGate/);
+    assert.doesNotMatch(source, /SidebarProvider/);
+    assert.doesNotMatch(source, /SignedOutAdmin/);
+  }
+});
+
+test("Shell does not drill state or own feature data", () => {
+  assert.doesNotMatch(shellSource, /<Dialog[\s>]/);
+  assert.doesNotMatch(shellSource, /<Table[\s>]/);
+  assert.doesNotMatch(shellSource, /useState/);
+  assert.doesNotMatch(shellSource, /api\.organizations\./);
+  assert.doesNotMatch(shellSource, /api\.tournaments\./);
+  assert.doesNotMatch(shellSource, /onCreateTournament=/);
+  assert.doesNotMatch(shellSource, /onInvite=/);
 });
 
 test("Feature modules are self-contained client components", () => {
@@ -102,8 +132,8 @@ test("Feature modules are self-contained client components", () => {
   assert.match(staffSource, /^"use client";/);
   assert.match(organizationProfileSource, /^"use client";/);
 
-  // The tournament table stays a pure presentational component.
-  assert.doesNotMatch(tournamentTableSource, /^"use client";/);
+  // The tournament table handles row navigation but still does not fetch data.
+  assert.match(tournamentTableSource, /^"use client";/);
   assert.doesNotMatch(tournamentTableSource, /useQuery/);
 });
 
@@ -217,6 +247,16 @@ test("Organizer workspace feature modules own their UI primitives", () => {
   assert.match(staffSource, /Invite staff/);
 });
 
+test("Admin sidebar derives the active view from the pathname", () => {
+  assert.match(sidebarSource, /from "next\/navigation"/);
+  assert.match(sidebarSource, /usePathname\(\)/);
+  assert.match(sidebarSource, /function viewFromPathname/);
+  assert.match(sidebarSource, /isActive={view === "tournaments"}/);
+  assert.match(sidebarSource, /isActive={view === "staff"}/);
+  assert.match(sidebarSource, /isActive={view === "organization"}/);
+  assert.doesNotMatch(sidebarSource, /AdminSidebar\(\{\s*view/);
+});
+
 test("Organization switcher collapses to only its icon", () => {
   const switcherMatch = sidebarSource.match(
     /function OrganizationSwitcher[\s\S]*?function UserMenu/,
@@ -266,13 +306,8 @@ test("Organizer workspace exposes an organization profile route", () => {
   assert.match(sidebarSource, /<Building2 \/>/);
   assert.match(
     organizationProfilePageSource,
-    /<OrganizerWorkspace view="organization" \/>/,
+    /<OrganizationProfileView \/>/,
   );
-  assert.match(
-    workspaceSource,
-    /from "\.\/organizer-workspace\/organization-profile-view"/,
-  );
-  assert.match(workspaceSource, /<OrganizationProfileView[\s>/]/);
 });
 
 test("Organization profile view owns profile forms and archive confirmation", () => {
@@ -288,7 +323,7 @@ test("Organization profile view owns profile forms and archive confirmation", ()
 
 test("Organizer workspace avoids legacy raw controls and stale copy", () => {
   const combinedSource = [
-    workspaceSource,
+    shellSource,
     sidebarSource,
     tournamentSource,
     createTournamentDialogSource,
