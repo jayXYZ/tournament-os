@@ -580,11 +580,46 @@ export const listRoundPairings = query({
     const rows = [];
 
     for (const match of matches) {
-      const players = await matchPlayers(ctx, match._id);
+      const players = [];
+      for (const player of await matchPlayers(ctx, match._id)) {
+        const registration = await ctx.db.get(player.playerId);
+        const user = registration ? await ctx.db.get(registration.userId) : null;
+        players.push({ ...player, user });
+      }
       rows.push({ match, players });
     }
 
     return rows;
+  },
+});
+
+export const getPairingsBoard = query({
+  args: { tournamentId: v.id("tournaments") },
+  handler: async (ctx, args) => {
+    const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
+    const phases = await ctx.db
+      .query("tournamentPhases")
+      .withIndex("by_tournamentId_and_phaseOrder", (q) =>
+        q.eq("tournamentId", args.tournamentId),
+      )
+      .take(16);
+
+    const phaseBoards = [];
+    for (const phase of phases) {
+      const rounds = await ctx.db
+        .query("tournamentRounds")
+        .withIndex("by_tournamentPhaseId_and_roundNumber", (q) =>
+          q.eq("tournamentPhaseId", phase._id),
+        )
+        .take(64);
+      phaseBoards.push({ phase, rounds });
+    }
+
+    return {
+      tournament,
+      phases: phaseBoards,
+      nextStep: await pairingsNextStep(ctx, tournament),
+    };
   },
 });
 
@@ -967,7 +1002,7 @@ async function requirePhase(
   return phase;
 }
 
-async function requireSwissPhase(
+async function swissPhaseOrNull(
   ctx: TournamentCtx,
   tournamentId: Id<"tournaments">,
 ) {
@@ -978,9 +1013,100 @@ async function requireSwissPhase(
     )
     .unique();
   if (!phase || phase.phaseType !== SWISS_FORMAT) {
+    return null;
+  }
+  return phase;
+}
+
+async function requireSwissPhase(
+  ctx: TournamentCtx,
+  tournamentId: Id<"tournaments">,
+) {
+  const phase = await swissPhaseOrNull(ctx, tournamentId);
+  if (!phase) {
     throw new Error("Swiss phase is not configured");
   }
   return phase;
+}
+
+type PairingsNextStep =
+  | { kind: "startTournament"; ready: boolean; reason: string | null }
+  | {
+      kind: "generateStandings";
+      ready: boolean;
+      reason: string | null;
+      roundId: Id<"tournamentRounds">;
+    }
+  | { kind: "generateNextRound"; ready: boolean; reason: string | null }
+  | { kind: "completeTournament"; ready: boolean; reason: string | null }
+  | { kind: "tournamentCompleted" }
+  | { kind: "tournamentCancelled" };
+
+async function pairingsNextStep(
+  ctx: TournamentCtx,
+  tournament: Doc<"tournaments">,
+): Promise<PairingsNextStep> {
+  if (tournament.status === "cancelled") {
+    return { kind: "tournamentCancelled" };
+  }
+  if (tournament.status === "completed") {
+    return { kind: "tournamentCompleted" };
+  }
+
+  const phase = await swissPhaseOrNull(ctx, tournament._id);
+  if (tournament.status !== "in_progress") {
+    if (!phase) {
+      return {
+        kind: "startTournament",
+        ready: false,
+        reason: "Swiss phase is not configured",
+      };
+    }
+    const registrations = await activeRegistrations(ctx, tournament._id);
+    if (registrations.length < 2) {
+      return {
+        kind: "startTournament",
+        ready: false,
+        reason: "At least two active players are required",
+      };
+    }
+    return { kind: "startTournament", ready: true, reason: null };
+  }
+
+  if (!phase || !phase.phaseCurrentRound) {
+    return {
+      kind: "startTournament",
+      ready: false,
+      reason: "Current round not found",
+    };
+  }
+
+  const round = await requireRound(ctx, phase.phaseCurrentRound);
+  if (round.roundStatus !== "completed") {
+    const matches = await roundMatches(ctx, round._id);
+    const unreported = matches.reduce(
+      (count, match) =>
+        match.matchStatus === "completed" || match.matchStatus === "confirmed"
+          ? count
+          : count + 1,
+      0,
+    );
+    return {
+      kind: "generateStandings",
+      ready: unreported === 0,
+      reason:
+        unreported === 0
+          ? null
+          : `${unreported} ${unreported === 1 ? "match still needs" : "matches still need"} a result`,
+      roundId: round._id,
+    };
+  }
+
+  const phaseTotalRounds = phase.phaseTotalRounds;
+  if (phaseTotalRounds !== null && round.roundNumber >= phaseTotalRounds) {
+    return { kind: "completeTournament", ready: true, reason: null };
+  }
+  return { kind: "generateNextRound", ready: true, reason: null };
 }
 
 async function requireRound(
