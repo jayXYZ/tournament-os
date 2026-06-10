@@ -73,7 +73,7 @@ test("listUpcomingPublic returns future public tournaments in start date order",
     return { earlier, later };
   });
 
-  const tournaments = await t.query(api.tournaments.listUpcomingPublic);
+  const tournaments = await t.query(api.tournaments.lifecycle.listUpcomingPublic);
 
   expect(tournaments.map((tournament) => tournament._id)).toEqual([
     rows.earlier,
@@ -161,7 +161,7 @@ test("listUpcomingForOrganization returns active future tournaments for one orga
 
   const tournaments = await t
     .withIdentity(organizerIdentity)
-    .query(api.tournaments.listUpcomingForOrganization, {
+    .query(api.tournaments.lifecycle.listUpcomingForOrganization, {
       organizationId,
     });
 
@@ -184,7 +184,7 @@ test("createTournamentWithPhases creates a private tournament with one dynamic S
 
   const tournamentId = await t
     .withIdentity(organizerIdentity)
-    .mutation(api.tournaments.createTournamentWithPhases, {
+    .mutation(api.tournaments.lifecycle.createTournamentWithPhases, {
       organizationId,
       name: "Store Championship",
       startDate: now + 86_400_000,
@@ -194,7 +194,7 @@ test("createTournamentWithPhases creates a private tournament with one dynamic S
 
   const setup = await t
     .withIdentity(organizerIdentity)
-    .query(api.tournaments.getTournamentSetup, { tournamentId });
+    .query(api.tournaments.lifecycle.getTournamentSetup, { tournamentId });
 
   expect(setup.tournament.name).toBe("Store Championship");
   expect(setup.tournament.status).toBe("private");
@@ -212,7 +212,7 @@ test("createTournamentWithPhases can mark a tournament as a test event", async (
 
   const tournamentId = await t
     .withIdentity(organizerIdentity)
-    .mutation(api.tournaments.createTournamentWithPhases, {
+    .mutation(api.tournaments.lifecycle.createTournamentWithPhases, {
       organizationId,
       name: "Practice Event",
       startDate: now + 86_400_000,
@@ -223,7 +223,7 @@ test("createTournamentWithPhases can mark a tournament as a test event", async (
 
   const setup = await t
     .withIdentity(organizerIdentity)
-    .query(api.tournaments.getTournamentSetup, { tournamentId });
+    .query(api.tournaments.lifecycle.getTournamentSetup, { tournamentId });
 
   expect(setup.tournament.isTestEvent).toBe(true);
 });
@@ -235,7 +235,7 @@ test("createTournamentWithPhases stores multiple Swiss phases in order", async (
 
   const tournamentId = await t
     .withIdentity(organizerIdentity)
-    .mutation(api.tournaments.createTournamentWithPhases, {
+    .mutation(api.tournaments.lifecycle.createTournamentWithPhases, {
       organizationId,
       name: "Regional Trial",
       startDate: now + 86_400_000,
@@ -248,7 +248,7 @@ test("createTournamentWithPhases stores multiple Swiss phases in order", async (
 
   const setup = await t
     .withIdentity(organizerIdentity)
-    .query(api.tournaments.getTournamentSetup, { tournamentId });
+    .query(api.tournaments.lifecycle.getTournamentSetup, { tournamentId });
 
   expect(setup.phases.map((phase) => phase.phaseOrder)).toEqual([1, 2]);
   expect(setup.phases.map((phase) => phase.phaseRoundMode)).toEqual([
@@ -264,7 +264,7 @@ test("createTournamentWithPhases rejects an empty phase list", async () => {
 
   await expect(
     t.withIdentity(organizerIdentity).mutation(
-      api.tournaments.createTournamentWithPhases,
+      api.tournaments.lifecycle.createTournamentWithPhases,
       {
         organizationId,
         name: "No Phase Event",
@@ -281,7 +281,7 @@ test("startTournament resolves dynamic Swiss rounds from active player count", a
   const { organizationId } = await seedOrganizer(t);
   const authed = t.withIdentity(organizerIdentity);
   const tournamentId = await authed.mutation(
-    api.tournaments.createTournamentWithPhases,
+    api.tournaments.lifecycle.createTournamentWithPhases,
     {
       organizationId,
       name: "Dynamic Round Event",
@@ -292,8 +292,8 @@ test("startTournament resolves dynamic Swiss rounds from active player count", a
   );
   await seedActiveRegistrations(t, tournamentId, 5);
 
-  await authed.mutation(api.tournaments.startTournament, { tournamentId });
-  const setup = await authed.query(api.tournaments.getTournamentSetup, {
+  await authed.mutation(api.tournaments.rounds.startTournament, { tournamentId });
+  const setup = await authed.query(api.tournaments.lifecycle.getTournamentSetup, {
     tournamentId,
   });
 
@@ -339,7 +339,7 @@ test("test tournaments seed players, generate Swiss rounds, and complete", async
   });
   const authed = t.withIdentity(organizerIdentity);
 
-  const tournamentId = await authed.mutation(api.tournaments.createTestTournament, {
+  const tournamentId = await authed.mutation(api.tournaments.testing.createTestTournament, {
     organizationId,
     name: "Simulation Check",
     dummyPlayerCount: 5,
@@ -347,16 +347,16 @@ test("test tournaments seed players, generate Swiss rounds, and complete", async
     seed: 4242,
     autoStart: true,
   });
-  const registrations = await authed.query(api.tournaments.listRegistrations, {
+  const registrations = await authed.query(api.tournaments.registrations.listRegistrations, {
     tournamentId,
   });
   expect(registrations).toHaveLength(5);
 
-  const roundOne = await authed.query(api.tournaments.getCurrentRound, {
+  const roundOne = await authed.query(api.tournaments.rounds.getCurrentRound, {
     tournamentId,
   });
   expect(roundOne?.roundNumber).toBe(1);
-  const roundOnePairings = await authed.query(api.tournaments.listRoundPairings, {
+  const roundOnePairings = await authed.query(api.tournaments.rounds.listRoundPairings, {
     roundId: roundOne!._id,
   });
   expect(roundOnePairings).toHaveLength(3);
@@ -366,33 +366,33 @@ test("test tournaments seed players, generate Swiss rounds, and complete", async
     ),
   ).toBe(true);
 
-  await authed.mutation(api.tournaments.advanceTestRound, { tournamentId });
-  const roundOneStandings = await authed.query(api.tournaments.getStandings, {
+  await authed.mutation(api.tournaments.testing.advanceTestRound, { tournamentId });
+  const roundOneStandings = await authed.query(api.tournaments.rounds.getStandings, {
     roundId: roundOne!._id,
   });
   expect(roundOneStandings).toHaveLength(5);
 
-  const roundTwo = await authed.query(api.tournaments.getCurrentRound, {
+  const roundTwo = await authed.query(api.tournaments.rounds.getCurrentRound, {
     tournamentId,
   });
   expect(roundTwo?.roundNumber).toBe(2);
-  await authed.mutation(api.tournaments.advanceTestRound, { tournamentId });
+  await authed.mutation(api.tournaments.testing.advanceTestRound, { tournamentId });
 
-  const setup = await authed.query(api.tournaments.getTournamentSetup, {
+  const setup = await authed.query(api.tournaments.lifecycle.getTournamentSetup, {
     tournamentId,
   });
   expect(setup.tournament.status).toBe("completed");
   expect(setup.testConfig?.seed).toBe(4242);
 
-  await authed.mutation(api.tournaments.resetTestTournament, { tournamentId });
-  const resetSetup = await authed.query(api.tournaments.getTournamentSetup, {
+  await authed.mutation(api.tournaments.testing.resetTestTournament, { tournamentId });
+  const resetSetup = await authed.query(api.tournaments.lifecycle.getTournamentSetup, {
     tournamentId,
   });
   const resetRegistrations = await authed.query(
-    api.tournaments.listRegistrations,
+    api.tournaments.registrations.listRegistrations,
     { tournamentId },
   );
-  const resetCurrentRound = await authed.query(api.tournaments.getCurrentRound, {
+  const resetCurrentRound = await authed.query(api.tournaments.rounds.getCurrentRound, {
     tournamentId,
   });
   expect(resetSetup.tournament.status).toBe("private");
@@ -406,7 +406,7 @@ test("test simulation functions reject non-test tournaments", async () => {
   const { organizationId } = await seedOrganizer(t);
   const authed = t.withIdentity(organizerIdentity);
   const tournamentId: Id<"tournaments"> = await authed.mutation(
-    api.tournaments.createTournament,
+    api.tournaments.lifecycle.createTournament,
     {
       organizationId,
       name: "Real Event",
@@ -416,7 +416,7 @@ test("test simulation functions reject non-test tournaments", async () => {
   );
 
   await expect(
-    authed.mutation(api.tournaments.seedTestPlayers, {
+    authed.mutation(api.tournaments.testing.seedTestPlayers, {
       tournamentId,
       count: 4,
     }),

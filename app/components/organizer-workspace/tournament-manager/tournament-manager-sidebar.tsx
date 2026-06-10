@@ -21,7 +21,7 @@ export function TournamentManagerSidebar({
 }: {
   tournamentId: string;
 }) {
-  const setup = useQuery(api.tournaments.getTournamentSetup, {
+  const setup = useQuery(api.tournaments.lifecycle.getTournamentSetup, {
     tournamentId: tournamentId as Id<"tournaments">,
   });
   const tournament = setup?.tournament;

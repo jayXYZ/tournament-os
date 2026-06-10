@@ -10,7 +10,7 @@ import { TournamentTable } from "./tournament-table";
 export function TournamentAdminView() {
   const { selectedOrganizationId, selectedOrganization } = useOrganization();
   const tournaments = useQuery(
-    api.tournaments.listUpcomingForOrganization,
+    api.tournaments.lifecycle.listUpcomingForOrganization,
     selectedOrganizationId ? { organizationId: selectedOrganizationId } : "skip",
   );
 

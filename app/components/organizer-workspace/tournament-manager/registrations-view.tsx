@@ -82,10 +82,10 @@ function playerName(row: RegistrationRow) {
 }
 
 export function RegistrationsView({ tournamentId }: { tournamentId: string }) {
-  const registrations = useQuery(api.tournaments.listRegistrations, {
+  const registrations = useQuery(api.tournaments.registrations.listRegistrations, {
     tournamentId: tournamentId as Id<"tournaments">,
   });
-  const setup = useQuery(api.tournaments.getTournamentSetup, {
+  const setup = useQuery(api.tournaments.lifecycle.getTournamentSetup, {
     tournamentId: tournamentId as Id<"tournaments">,
   });
 
@@ -123,7 +123,7 @@ function RegistrationSettingsMenu({
 }: {
   tournament: Doc<"tournaments"> | undefined;
 }) {
-  const seedTestPlayers = useMutation(api.tournaments.seedTestPlayers);
+  const seedTestPlayers = useMutation(api.tournaments.testing.seedTestPlayers);
   const [busy, setBusy] = useState(false);
 
   const canGenerate = tournament !== undefined && tournament.isTestEvent;
@@ -251,7 +251,7 @@ function RegistrationRow({ row }: { row: RegistrationRow }) {
 }
 
 function ManagePlayerMenu({ row }: { row: RegistrationRow }) {
-  const dropRegistration = useMutation(api.tournaments.dropRegistration);
+  const dropRegistration = useMutation(api.tournaments.registrations.dropRegistration);
 
   const [confirmingDrop, setConfirmingDrop] = useState(false);
   const [busy, setBusy] = useState(false);

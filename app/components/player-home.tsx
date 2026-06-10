@@ -53,7 +53,7 @@ const dateFormatter = new Intl.DateTimeFormat("en-US", {
 
 export function PlayerHome() {
   const { user, loading, refreshAuth, signOut } = useAuth();
-  const tournaments = useQuery(api.tournaments.listUpcomingPublic);
+  const tournaments = useQuery(api.tournaments.lifecycle.listUpcomingPublic);
 
   return (
     <main className="min-h-svh bg-background text-foreground">

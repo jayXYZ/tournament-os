@@ -77,7 +77,7 @@ function TournamentBreadcrumb({
   tournamentId: string;
   segment?: string;
 }) {
-  const setup = useQuery(api.tournaments.getTournamentSetup, {
+  const setup = useQuery(api.tournaments.lifecycle.getTournamentSetup, {
     tournamentId: tournamentId as Id<"tournaments">,
   });
   const name = setup?.tournament.name;

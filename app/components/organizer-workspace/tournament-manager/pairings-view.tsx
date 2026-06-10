@@ -49,10 +49,10 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type PairingsBoard = FunctionReturnType<
-  typeof api.tournaments.getPairingsBoard
+  typeof api.tournaments.rounds.getPairingsBoard
 >;
 type PairingRow = FunctionReturnType<
-  typeof api.tournaments.listRoundPairings
+  typeof api.tournaments.rounds.listRoundPairings
 >[number];
 type PairedPlayer = PairingRow["players"][number];
 type AdvanceStep = Exclude<
@@ -61,7 +61,7 @@ type AdvanceStep = Exclude<
 >;
 
 export function PairingsView({ tournamentId }: { tournamentId: string }) {
-  const board = useQuery(api.tournaments.getPairingsBoard, {
+  const board = useQuery(api.tournaments.rounds.getPairingsBoard, {
     tournamentId: tournamentId as Id<"tournaments">,
   });
 
@@ -198,10 +198,10 @@ function AdvanceStepButton({
   board: PairingsBoard | undefined;
   onAdvanced: () => void;
 }) {
-  const startTournament = useMutation(api.tournaments.startTournament);
-  const generateNextRound = useMutation(api.tournaments.generateNextRound);
-  const completeRound = useMutation(api.tournaments.completeRound);
-  const completeTournament = useMutation(api.tournaments.completeTournament);
+  const startTournament = useMutation(api.tournaments.rounds.startTournament);
+  const generateNextRound = useMutation(api.tournaments.rounds.generateNextRound);
+  const completeRound = useMutation(api.tournaments.rounds.completeRound);
+  const completeTournament = useMutation(api.tournaments.lifecycle.completeTournament);
   const [busy, setBusy] = useState(false);
 
   if (board === undefined) {
@@ -313,7 +313,7 @@ function advanceAction(
 }
 
 function PairingsTable({ roundId }: { roundId: Id<"tournamentRounds"> }) {
-  const pairings = useQuery(api.tournaments.listRoundPairings, { roundId });
+  const pairings = useQuery(api.tournaments.rounds.listRoundPairings, { roundId });
 
   if (pairings === undefined) {
     return (

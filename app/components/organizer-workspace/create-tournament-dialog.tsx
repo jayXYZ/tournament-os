@@ -49,7 +49,7 @@ import { useOrganization } from "./organization-context";
 export function CreateTournamentDialog() {
   const { selectedOrganizationId } = useOrganization();
   const createTournament = useMutation(
-    api.tournaments.createTournamentWithPhases,
+    api.tournaments.lifecycle.createTournamentWithPhases,
   );
 
   const [open, setOpen] = useState(false);

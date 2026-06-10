@@ -6,7 +6,6 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { validateOrganizationProfileImageDetails } from "../lib/organization-profile-image";
 import {
   toInvitationStatus,
-  toOrganizerRoleFromWorkosFields,
   type MembershipStatus,
   type OrganizerRole,
 } from "../lib/organizer-utils";
@@ -19,16 +18,20 @@ import {
 } from "./_generated/server";
 import { identityWorkosUserId, requireIdentity } from "./auth";
 import {
+  currentUserOrNull,
+  requireActiveMembership,
+  requireActiveOrganization,
+  requireInvitePermission as requireInvitePermissionForOrganization,
+  requireProfilePermission,
+} from "./model/access";
+import {
   createWorkosOrganization,
   createWorkosOrganizationMembership,
   sendWorkosInvitation,
   updateWorkosOrganization,
   type WorkosInvitation,
-  type WorkosMembership,
 } from "./workosApi";
 import {
-  canInviteMembers,
-  canManageOrganizationProfile,
   invitationStatusValidator,
   membershipStatusValidator,
   normalizeEmail,
@@ -41,14 +44,7 @@ import {
 export const listMine = query({
   args: {},
   handler: async (ctx) => {
-    const identity = await requireIdentity(ctx);
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_tokenIdentifier", (q) =>
-        q.eq("tokenIdentifier", identity.tokenIdentifier),
-      )
-      .unique();
-
+    const user = await currentUserOrNull(ctx);
     if (!user) {
       return [];
     }
@@ -58,7 +54,7 @@ export const listMine = query({
       .withIndex("by_userId_and_status", (q) =>
         q.eq("userId", user._id).eq("status", "active"),
       )
-      .collect();
+      .take(128);
 
     const rows = [];
     for (const membership of memberships) {
@@ -81,11 +77,14 @@ export const listMine = query({
 export const getById = query({
   args: { organizationId: v.id("organizations") },
   handler: async (ctx, args) => {
-    const membership = await requireActiveMembership(ctx, args.organizationId);
-    const organization = await ctx.db.get(args.organizationId);
-    if (!organization || organization.status !== "active") {
-      throw new Error("Organization not found");
-    }
+    const { membership } = await requireActiveMembership(
+      ctx,
+      args.organizationId,
+    );
+    const organization = await requireActiveOrganization(
+      ctx,
+      args.organizationId,
+    );
 
     return {
       organization: await organizationWithProfileImageUrl(ctx, organization),
@@ -98,12 +97,23 @@ export const listMembers = query({
   args: { organizationId: v.id("organizations") },
   handler: async (ctx, args) => {
     await requireActiveMembership(ctx, args.organizationId);
-    return await ctx.db
+    const memberships = await ctx.db
       .query("organizationMemberships")
       .withIndex("by_organizationId", (q) =>
         q.eq("organizationId", args.organizationId),
       )
-      .collect();
+      .take(512);
+
+    return memberships.map((membership) => ({
+      _id: membership._id,
+      _creationTime: membership._creationTime,
+      organizationId: membership.organizationId,
+      userId: membership.userId,
+      workosUserId: membership.workosUserId,
+      email: membership.email,
+      role: membership.role,
+      status: membership.status,
+    }));
   },
 });
 
@@ -116,7 +126,7 @@ export const listInvitations = query({
       .withIndex("by_organizationId", (q) =>
         q.eq("organizationId", args.organizationId),
       )
-      .collect();
+      .take(512);
   },
 });
 
@@ -186,7 +196,6 @@ export const inviteMember = action({
       membership: Doc<"organizationMemberships">;
       user: Doc<"users">;
     } = await ctx.runQuery(internal.organizations.requireInvitePermission, {
-      tokenIdentifier: identity.tokenIdentifier,
       organizationId: args.organizationId,
     });
 
@@ -268,14 +277,10 @@ export const updateProfile = action({
       throw new Error("Organization name must be at least 2 characters");
     }
 
-    const identity = await requireIdentity(ctx);
     const authorization: { organization: Doc<"organizations"> } =
       await ctx.runQuery(
         internal.organizations.requireProfilePermissionForAction,
-        {
-          tokenIdentifier: identity.tokenIdentifier,
-          organizationId: args.organizationId,
-        },
+        { organizationId: args.organizationId },
       );
 
     const workosOrganization = await updateWorkosOrganization({
@@ -317,70 +322,19 @@ export const archiveOrganization = mutation({
 });
 
 export const requireInvitePermission = internalQuery({
-  args: {
-    tokenIdentifier: v.string(),
-    organizationId: v.id("organizations"),
-  },
+  args: { organizationId: v.id("organizations") },
   handler: async (ctx, args) => {
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_tokenIdentifier", (q) =>
-        q.eq("tokenIdentifier", args.tokenIdentifier),
-      )
-      .unique();
-    if (!user) {
-      throw new Error("Not authenticated");
-    }
-
-    const membership = await getActiveMembershipForOrganization(
+    return await requireInvitePermissionForOrganization(
       ctx,
       args.organizationId,
-      user._id,
     );
-    if (!membership || !canInviteMembers(membership.role)) {
-      throw new Error("Unauthorized");
-    }
-
-    const organization = await ctx.db.get(args.organizationId);
-    if (!organization || organization.status !== "active") {
-      throw new Error("Organization not found");
-    }
-
-    return { organization, membership, user };
   },
 });
 
 export const requireProfilePermissionForAction = internalQuery({
-  args: {
-    tokenIdentifier: v.string(),
-    organizationId: v.id("organizations"),
-  },
+  args: { organizationId: v.id("organizations") },
   handler: async (ctx, args) => {
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_tokenIdentifier", (q) =>
-        q.eq("tokenIdentifier", args.tokenIdentifier),
-      )
-      .unique();
-    if (!user) {
-      throw new Error("Not authenticated");
-    }
-
-    const membership = await getActiveMembershipForOrganization(
-      ctx,
-      args.organizationId,
-      user._id,
-    );
-    if (!membership || !canManageOrganizationProfile(membership.role)) {
-      throw new Error("Unauthorized");
-    }
-
-    const organization = await ctx.db.get(args.organizationId);
-    if (!organization || organization.status !== "active") {
-      throw new Error("Organization not found");
-    }
-
-    return { organization, membership, user };
+    return await requireProfilePermission(ctx, args.organizationId);
   },
 });
 
@@ -506,49 +460,6 @@ export const upsertInvitationMirror = internalMutation({
   },
 });
 
-async function requireActiveMembership(
-  ctx: QueryCtx,
-  organizationId: Id<"organizations">,
-) {
-  const identity = await requireIdentity(ctx);
-  const user = await ctx.db
-    .query("users")
-    .withIndex("by_tokenIdentifier", (q) =>
-      q.eq("tokenIdentifier", identity.tokenIdentifier),
-    )
-    .unique();
-  if (!user) {
-    throw new Error("Not authenticated");
-  }
-
-  const membership = await getActiveMembershipForOrganization(
-    ctx,
-    organizationId,
-    user._id,
-  );
-  if (!membership) {
-    throw new Error("Unauthorized");
-  }
-
-  return membership;
-}
-
-async function getActiveMembershipForOrganization(
-  ctx: QueryCtx,
-  organizationId: Id<"organizations">,
-  userId: Id<"users">,
-) {
-  return await ctx.db
-    .query("organizationMemberships")
-    .withIndex("by_organizationId_and_userId_and_status", (q) =>
-      q
-        .eq("organizationId", organizationId)
-        .eq("userId", userId)
-        .eq("status", "active"),
-    )
-    .unique();
-}
-
 async function upsertMembership(
   ctx: MutationCtx,
   args: {
@@ -601,10 +512,6 @@ function invitationStatus(invitation: WorkosInvitation) {
   return toInvitationStatus(invitation.status ?? invitation.state);
 }
 
-export function workosMembershipRole(membership: WorkosMembership): OrganizerRole {
-  return toOrganizerRoleFromWorkosFields(membership as Record<string, unknown>);
-}
-
 async function organizationWithProfileImageUrl(
   ctx: QueryCtx,
   organization: Doc<"organizations">,
@@ -617,36 +524,4 @@ async function organizationWithProfileImageUrl(
     ...organization,
     profileImageUrl,
   };
-}
-
-async function requireProfilePermission(
-  ctx: QueryCtx | MutationCtx,
-  organizationId: Id<"organizations">,
-) {
-  const identity = await requireIdentity(ctx);
-  const user = await ctx.db
-    .query("users")
-    .withIndex("by_tokenIdentifier", (q) =>
-      q.eq("tokenIdentifier", identity.tokenIdentifier),
-    )
-    .unique();
-  if (!user) {
-    throw new Error("Not authenticated");
-  }
-
-  const membership = await getActiveMembershipForOrganization(
-    ctx,
-    organizationId,
-    user._id,
-  );
-  if (!membership || !canManageOrganizationProfile(membership.role)) {
-    throw new Error("Unauthorized");
-  }
-
-  const organization = await ctx.db.get(organizationId);
-  if (!organization || organization.status !== "active") {
-    throw new Error("Organization not found");
-  }
-
-  return { organization, membership, user };
 }

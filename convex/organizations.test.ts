@@ -6,6 +6,10 @@ const organizationsSource = readFileSync(
   new URL("./organizations.ts", import.meta.url),
   "utf8",
 );
+const accessModelSource = readFileSync(
+  new URL("./model/access.ts", import.meta.url),
+  "utf8",
+);
 const schemaSource = readFileSync(new URL("./schema.ts", import.meta.url), "utf8");
 
 test("membership authorization uses an organization-scoped active membership index", () => {
@@ -14,8 +18,9 @@ test("membership authorization uses an organization-scoped active membership ind
     /\.index\("by_organizationId_and_userId_and_status", \[[\s\S]*?"organizationId",[\s\S]*?"userId",[\s\S]*?"status",[\s\S]*?\]\)/,
   );
   assert.doesNotMatch(organizationsSource, /\.filter\(/);
+  assert.doesNotMatch(accessModelSource, /\.filter\(/);
   assert.match(
-    organizationsSource,
+    accessModelSource,
     /withIndex\("by_organizationId_and_userId_and_status"/,
   );
 });
@@ -29,15 +34,12 @@ test("organizations store optional profile image storage ids", () => {
 
 test("organization profile functions enforce owner or admin access without filters", () => {
   assert.doesNotMatch(organizationsSource, /\.filter\(/);
-  assert.match(organizationsSource, /canManageOrganizationProfile/);
+  assert.match(accessModelSource, /canManageOrganizationProfile/);
+  assert.match(organizationsSource, /requireProfilePermission/);
   assert.match(organizationsSource, /generateProfileImageUploadUrl/);
   assert.match(organizationsSource, /updateProfileImage/);
   assert.match(organizationsSource, /updateProfile/);
   assert.match(organizationsSource, /archiveOrganization/);
-  assert.match(
-    organizationsSource,
-    /withIndex\("by_organizationId_and_userId_and_status"/,
-  );
 });
 
 test("organization profile image metadata is validated before attachment", () => {
