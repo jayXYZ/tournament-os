@@ -1,11 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import {
+  ClipboardPen,
+  FlaskConical,
   ListOrdered,
   MoreHorizontal,
+  Settings2,
   Swords,
   Trophy,
 } from "lucide-react";
@@ -17,11 +20,20 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
+  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,6 +41,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import {
   Empty,
   EmptyDescription,
@@ -109,6 +123,12 @@ export function PairingsView({ tournamentId }: { tournamentId: string }) {
           <CardDescription>
             View table assignments and match results for each round.
           </CardDescription>
+          <CardAction>
+            <PairingsSettingsMenu
+              board={board}
+              roundId={selectedRound?._id ?? null}
+            />
+          </CardAction>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           {board === undefined ? (
@@ -188,6 +208,71 @@ export function PairingsView({ tournamentId }: { tournamentId: string }) {
         </CardContent>
       </Card>
     </section>
+  );
+}
+
+function PairingsSettingsMenu({
+  board,
+  roundId,
+}: {
+  board: PairingsBoard | undefined;
+  roundId: Id<"tournamentRounds"> | null;
+}) {
+  const generateTestRoundResults = useMutation(
+    api.tournaments.testing.generateTestRoundResults,
+  );
+  const [busy, setBusy] = useState(false);
+
+  const canSimulate =
+    board !== undefined && board.tournament.isTestEvent && roundId !== null;
+
+  async function handleSimulateResults() {
+    if (!board || !roundId) {
+      return;
+    }
+
+    setBusy(true);
+    try {
+      await generateTestRoundResults({
+        tournamentId: board.tournament._id,
+        roundId,
+      });
+      toast.success("Match results simulated.");
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Could not simulate match results.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          aria-label="Pairings settings"
+        >
+          {busy ? <Spinner /> : <Settings2 />}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuGroup>
+          <DropdownMenuItem
+            disabled={!canSimulate || busy}
+            onSelect={() => void handleSimulateResults()}
+          >
+            <FlaskConical />
+            Simulate Match Results
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -346,8 +431,7 @@ function PairingsTable({ roundId }: { roundId: Id<"tournamentRounds"> }) {
       <TableHeader>
         <TableRow>
           <TableHead className="w-20">Table</TableHead>
-          <TableHead>Player one</TableHead>
-          <TableHead>Player two</TableHead>
+          <TableHead>Players</TableHead>
           <TableHead>Result</TableHead>
           <TableHead className="text-right">Manage</TableHead>
         </TableRow>
@@ -372,16 +456,21 @@ function PairingTableRow({ row }: { row: PairingRow }) {
   return (
     <TableRow>
       <TableCell className="font-medium tabular-nums">
-        {row.match.tableNumber}
+        {row.match.tableNumber ?? (
+          <span className="text-muted-foreground">&mdash;</span>
+        )}
       </TableCell>
       <TableCell>
         <p className="font-medium text-foreground">
           {pairedPlayerName(playerOne)}
+          {isBye ? null : (
+            <span className="font-normal text-muted-foreground"> vs.</span>
+          )}
         </p>
-      </TableCell>
-      <TableCell>
         {isBye ? (
-          <Badge variant="secondary">Bye</Badge>
+          <Badge variant="secondary" className="mt-1">
+            Bye
+          </Badge>
         ) : (
           <p className="font-medium text-foreground">
             {pairedPlayerName(playerTwo)}
@@ -392,7 +481,7 @@ function PairingTableRow({ row }: { row: PairingRow }) {
         <MatchResultCell row={row} />
       </TableCell>
       <TableCell className="text-right">
-        <ManageMatchMenu tableNumber={row.match.tableNumber} />
+        <ManageMatchMenu row={row} />
       </TableCell>
     </TableRow>
   );
@@ -413,32 +502,184 @@ function MatchResultCell({ row }: { row: PairingRow }) {
     ? playerOne?.gameLosses ?? 0
     : playerTwo?.gameWins ?? 0;
 
+  if (playerOneWins === playerTwoWins) {
+    return (
+      <span className="font-medium">
+        Draw {playerOneWins}&ndash;{playerTwoWins}
+      </span>
+    );
+  }
+
+  const playerOneWon = playerOneWins > playerTwoWins;
+  const winnerName = pairedPlayerName(playerOneWon ? playerOne : playerTwo);
+  const winnerWins = playerOneWon ? playerOneWins : playerTwoWins;
+  const loserWins = playerOneWon ? playerTwoWins : playerOneWins;
+
   return (
-    <span className="font-medium tabular-nums">
-      {playerOneWins}&ndash;{playerTwoWins}
+    <span className="font-medium">
+      {winnerName} wins {winnerWins}&ndash;{loserWins}
     </span>
   );
 }
 
-function ManageMatchMenu({ tableNumber }: { tableNumber: number }) {
+function ManageMatchMenu({ row }: { row: PairingRow }) {
+  const isBye = row.players.some((player) => player.isBye);
+  const [enteringResult, setEnteringResult] = useState(false);
+
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          disabled
-          aria-label={`Manage table ${tableNumber}`}
-        >
-          <MoreHorizontal />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuGroup>
-          <DropdownMenuItem disabled>Match actions coming soon</DropdownMenuItem>
-        </DropdownMenuGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            aria-label={
+              row.match.tableNumber === undefined
+                ? "Manage bye match"
+                : `Manage table ${row.match.tableNumber}`
+            }
+          >
+            <MoreHorizontal />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuGroup>
+            <DropdownMenuItem
+              disabled={isBye}
+              onSelect={() => setEnteringResult(true)}
+            >
+              <ClipboardPen />
+              Enter result
+            </DropdownMenuItem>
+          </DropdownMenuGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      {enteringResult ? (
+        <EnterResultDialog
+          row={row}
+          open={enteringResult}
+          onOpenChange={setEnteringResult}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function EnterResultDialog({
+  row,
+  open,
+  onOpenChange,
+}: {
+  row: PairingRow;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const recordMatchResult = useMutation(api.tournaments.rounds.recordMatchResult);
+  const [playerOne, playerTwo] = row.players;
+
+  const [busy, setBusy] = useState(false);
+  const [playerOneWins, setPlayerOneWins] = useState(
+    String(playerOne?.gameWins ?? 0),
+  );
+  const [playerTwoWins, setPlayerTwoWins] = useState(
+    String(playerTwo?.gameWins ?? 0),
+  );
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!playerOne || !playerTwo) {
+      return;
+    }
+
+    setBusy(true);
+    try {
+      await recordMatchResult({
+        matchId: row.match._id,
+        playerOneRegistrationId: playerOne.playerId,
+        playerTwoRegistrationId: playerTwo.playerId,
+        playerOneGameWins: Number.parseInt(playerOneWins, 10),
+        playerTwoGameWins: Number.parseInt(playerTwoWins, 10),
+      });
+      onOpenChange(false);
+      toast.success("Match result recorded.");
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Could not record the match result.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!busy) {
+          onOpenChange(nextOpen);
+        }
+      }}
+    >
+      <DialogContent className="sm:max-w-md">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <DialogHeader>
+            <DialogTitle>Enter match result</DialogTitle>
+            <DialogDescription>
+              Record the game wins for each player
+              {row.match.tableNumber === undefined
+                ? ""
+                : ` at table ${row.match.tableNumber}`}
+              .
+            </DialogDescription>
+          </DialogHeader>
+
+          <FieldGroup>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field>
+                <FieldLabel htmlFor={`player-one-wins-${row.match._id}`}>
+                  {pairedPlayerName(playerOne)}
+                </FieldLabel>
+                <Input
+                  id={`player-one-wins-${row.match._id}`}
+                  value={playerOneWins}
+                  onChange={(event) => setPlayerOneWins(event.target.value)}
+                  type="number"
+                  min={0}
+                  max={2}
+                  disabled={busy}
+                  required
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor={`player-two-wins-${row.match._id}`}>
+                  {pairedPlayerName(playerTwo)}
+                </FieldLabel>
+                <Input
+                  id={`player-two-wins-${row.match._id}`}
+                  value={playerTwoWins}
+                  onChange={(event) => setPlayerTwoWins(event.target.value)}
+                  type="number"
+                  min={0}
+                  max={2}
+                  disabled={busy}
+                  required
+                />
+              </Field>
+            </div>
+          </FieldGroup>
+
+          <DialogFooter>
+            <Button type="submit" disabled={busy}>
+              {busy ? <Spinner data-icon="inline-start" /> : null}
+              Save result
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }

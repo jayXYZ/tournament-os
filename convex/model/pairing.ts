@@ -54,7 +54,7 @@ export async function createRoundWithPairings(
       tournamentId: args.tournament._id,
       tournamentPhaseId: args.phase._id,
       tournamentRoundId: roundId,
-      tableNumber,
+      tableNumber: pairing.isBye ? undefined : tableNumber,
       matchStatus: pairing.isBye ? "completed" : "upcoming",
       updatedAt: now,
     });
@@ -86,7 +86,9 @@ export async function createRoundWithPairings(
       });
     }
 
-    tableNumber += 1;
+    if (!pairing.isBye) {
+      tableNumber += 1;
+    }
   }
 
   return roundId;

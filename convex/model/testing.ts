@@ -43,14 +43,21 @@ export function simulatedMatchResult(random: () => number): SimulatedMatchResult
     : { playerOneGameWins: 1, playerTwoGameWins: 2, draws: 0 };
 }
 
+export async function getTestConfig(
+  ctx: QueryCtx,
+  tournamentId: Id<"tournaments">,
+) {
+  return await ctx.db
+    .query("tournamentTestConfigs")
+    .withIndex("by_tournamentId", (q) => q.eq("tournamentId", tournamentId))
+    .unique();
+}
+
 export async function requireTestConfig(
   ctx: QueryCtx,
   tournamentId: Id<"tournaments">,
 ) {
-  const config = await ctx.db
-    .query("tournamentTestConfigs")
-    .withIndex("by_tournamentId", (q) => q.eq("tournamentId", tournamentId))
-    .unique();
+  const config = await getTestConfig(ctx, tournamentId);
   if (!config) {
     throw new Error("Test tournament config not found");
   }
@@ -125,7 +132,10 @@ export async function generateTestResults(
   round: Doc<"tournamentRounds">,
 ) {
   requireTestTournament(tournament);
-  const config = await requireTestConfig(ctx, tournament._id);
+  // Only tournaments created through createTestTournament have a config row;
+  // events merely flagged as test events fall back to a deterministic seed.
+  const config = await getTestConfig(ctx, tournament._id);
+  const seed = config?.seed ?? Math.trunc(tournament._creationTime);
   const matches = await roundMatches(ctx, round._id);
 
   for (const match of matches) {
@@ -141,7 +151,7 @@ export async function generateTestResults(
     }
 
     const random = createSeededRandom(
-      config.seed + round.roundNumber * 1000 + match.tableNumber,
+      seed + round.roundNumber * 1000 + (match.tableNumber ?? 0),
     );
     const result = simulatedMatchResult(random);
     const [playerOnePoints, playerTwoPoints] = matchPointsForResult(result);

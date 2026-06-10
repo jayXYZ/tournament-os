@@ -156,7 +156,9 @@ export default defineSchema({
     tournamentId: v.id("tournaments"),
     tournamentPhaseId: v.id("tournamentPhases"),
     tournamentRoundId: v.id("tournamentRounds"),
-    tableNumber: v.number(),
+    // Byes have no table assignment; in the round index they sort before
+    // numbered matches because undefined orders first.
+    tableNumber: v.optional(v.number()),
     matchStatus: tournamentMatchStatusValidator,
     updatedAt: v.number(),
   })
