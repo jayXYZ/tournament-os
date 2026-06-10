@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from "react";
 import { useMutation } from "convex/react";
 import { Plus, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 
 import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
@@ -44,11 +45,9 @@ import {
   type TournamentCreationPhaseRoundMode,
 } from "@/lib/tournament-creation-utils";
 import { useOrganization } from "./organization-context";
-import { useSetNotice } from "./notice-context";
 
 export function CreateTournamentDialog() {
   const { selectedOrganizationId } = useOrganization();
-  const setNotice = useSetNotice();
   const createTournament = useMutation(
     api.tournaments.createTournamentWithPhases,
   );
@@ -90,7 +89,6 @@ export function CreateTournamentDialog() {
     }
 
     setBusy(true);
-    setNotice(null);
     try {
       await createTournament({
         organizationId: selectedOrganizationId,
@@ -102,9 +100,9 @@ export function CreateTournamentDialog() {
       });
       resetForm();
       setOpen(false);
-      setNotice("Tournament created.");
+      toast.success("Tournament created.");
     } catch (error) {
-      setNotice(
+      toast.error(
         error instanceof Error
           ? error.message
           : "Could not create tournament.",

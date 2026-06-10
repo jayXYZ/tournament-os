@@ -16,6 +16,7 @@ import {
   UserRound,
   Users,
 } from "lucide-react";
+import { toast } from "sonner";
 
 import { api } from "@/convex/_generated/api";
 import { cn } from "@/lib/utils";
@@ -43,6 +44,7 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
 import {
   Sidebar,
   SidebarContent,
@@ -60,8 +62,8 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
+import { AdminBreadcrumb } from "./admin-breadcrumb";
 import { useOrganization } from "./organization-context";
-import { useSetNotice } from "./notice-context";
 import type { AdminView } from "./types";
 
 function viewFromPathname(pathname: string): AdminView {
@@ -157,6 +159,8 @@ export function AdminHeader() {
     <header className="flex min-h-14 items-center justify-between gap-3 border-b border-border px-4 sm:px-6">
       <div className="flex items-center gap-2">
         <SidebarTrigger />
+        <Separator orientation="vertical" className="h-4 data-vertical:self-center" />
+        <AdminBreadcrumb />
       </div>
       <UserMenu
         email={user?.email ?? undefined}
@@ -174,7 +178,6 @@ function OrganizationSwitcher() {
     selectedOrganization,
     selectOrganization,
   } = useOrganization();
-  const setNotice = useSetNotice();
   const { state, isMobile } = useSidebar();
   const createOrganization = useAction(
     api.organizations.createOrganizerOrganization,
@@ -187,15 +190,14 @@ function OrganizationSwitcher() {
   async function handleCreateOrganization(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
-    setNotice(null);
     try {
       const result = await createOrganization({ name: organizationName });
       selectOrganization(result.organizationId);
       setOrganizationName("");
       setOpen(false);
-      setNotice("Organizer workspace created.");
+      toast.success("Organizer workspace created.");
     } catch (error) {
-      setNotice(
+      toast.error(
         error instanceof Error
           ? error.message
           : "Could not create organization.",

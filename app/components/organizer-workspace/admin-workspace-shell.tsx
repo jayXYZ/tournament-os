@@ -5,10 +5,10 @@ import { useMutation } from "convex/react";
 
 import { api } from "@/convex/_generated/api";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AdminAuthGate } from "./admin-auth-gate";
 import { AdminHeader, AdminSidebar } from "./admin-sidebar";
-import { NoticeProvider } from "./notice-context";
 import { OrganizationProvider } from "./organization-context";
 
 export function AdminWorkspaceShell({
@@ -22,16 +22,15 @@ export function AdminWorkspaceShell({
     <AdminAuthGate>
       <TooltipProvider>
         <OrganizationProvider>
-          <NoticeProvider>
-            <SidebarProvider defaultOpen={defaultSidebarOpen}>
-              <UpsertCurrentUser />
-              <AdminSidebar />
-              <SidebarInset>
-                <AdminHeader />
-                {children}
-              </SidebarInset>
-            </SidebarProvider>
-          </NoticeProvider>
+          <SidebarProvider defaultOpen={defaultSidebarOpen}>
+            <UpsertCurrentUser />
+            <AdminSidebar />
+            <SidebarInset>
+              <AdminHeader />
+              {children}
+            </SidebarInset>
+            <Toaster />
+          </SidebarProvider>
         </OrganizationProvider>
       </TooltipProvider>
     </AdminAuthGate>

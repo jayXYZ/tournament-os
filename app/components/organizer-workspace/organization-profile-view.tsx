@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from "react";
 import { useAction, useMutation } from "convex/react";
 import { Archive, Building2 } from "lucide-react";
+import { toast } from "sonner";
 
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -29,13 +30,11 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { useOrganization } from "./organization-context";
-import { useSetNotice } from "./notice-context";
 
 type ProfileBusy = "profile" | "profileImage" | "archive" | null;
 
 export function OrganizationProfileView() {
   const { selectedOrganization, clearSelectedOrganization } = useOrganization();
-  const setNotice = useSetNotice();
 
   const generateProfileImageUploadUrl = useMutation(
     api.organizations.generateProfileImageUploadUrl,
@@ -73,12 +72,11 @@ export function OrganizationProfileView() {
     }
 
     setBusy("profile");
-    setNotice(null);
     try {
       await updateProfile({ organizationId, name: profileName });
-      setNotice("Organization profile updated.");
+      toast.success("Organization profile updated.");
     } catch (error) {
-      setNotice(
+      toast.error(
         error instanceof Error
           ? error.message
           : "Could not update organization profile.",
@@ -94,7 +92,6 @@ export function OrganizationProfileView() {
     }
 
     setBusy("profileImage");
-    setNotice(null);
     try {
       const dimensions = await readImageDimensions(file);
       const validationMessage = validateOrganizationProfileImageDetails({
@@ -123,9 +120,9 @@ export function OrganizationProfileView() {
         organizationId,
         profileImageStorageId: storageId,
       });
-      setNotice("Organization profile picture updated.");
+      toast.success("Organization profile picture updated.");
     } catch (error) {
-      setNotice(
+      toast.error(
         error instanceof Error
           ? error.message
           : "Could not update organization profile picture.",
@@ -142,7 +139,6 @@ export function OrganizationProfileView() {
     }
 
     setBusy("archive");
-    setNotice(null);
     try {
       await archiveOrganization({
         organizationId,
@@ -150,9 +146,9 @@ export function OrganizationProfileView() {
       });
       clearSelectedOrganization();
       setArchiveConfirmationName("");
-      setNotice("Organization archived.");
+      toast.success("Organization archived.");
     } catch (error) {
-      setNotice(
+      toast.error(
         error instanceof Error
           ? error.message
           : "Could not archive organization.",

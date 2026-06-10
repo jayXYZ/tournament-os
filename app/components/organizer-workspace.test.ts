@@ -57,10 +57,6 @@ const organizationContextSource = readFileSync(
   new URL("./organizer-workspace/organization-context.tsx", import.meta.url),
   "utf8",
 );
-const noticeContextSource = readFileSync(
-  new URL("./organizer-workspace/notice-context.tsx", import.meta.url),
-  "utf8",
-);
 const organizationProfileSource = readFileSync(
   new URL("./organizer-workspace/organization-profile-view.tsx", import.meta.url),
   "utf8",
@@ -74,12 +70,12 @@ test("AdminWorkspaceShell is a thin chrome shell over feature modules", () => {
   assert.match(shellSource, /from "\.\/admin-auth-gate"/);
   assert.match(shellSource, /from "\.\/admin-sidebar"/);
   assert.match(shellSource, /from "\.\/organization-context"/);
-  assert.match(shellSource, /from "\.\/notice-context"/);
+  assert.match(shellSource, /from "@\/components\/ui\/sonner"/);
 
   assert.match(shellSource, /<AdminAuthGate[\s>]/);
   assert.match(shellSource, /<TooltipProvider[\s>]/);
   assert.match(shellSource, /<OrganizationProvider[\s>]/);
-  assert.match(shellSource, /<NoticeProvider[\s>]/);
+  assert.match(shellSource, /<Toaster[\s>/]/);
   assert.match(shellSource, /<SidebarProvider defaultOpen={defaultSidebarOpen}>/);
   assert.match(shellSource, /<SidebarInset[\s>]/);
   assert.match(shellSource, /<AdminSidebar[\s>/]/);
@@ -94,7 +90,6 @@ test("Admin layout reads the sidebar cookie and mounts the shell once", () => {
   assert.match(adminLayoutSource, /defaultSidebarOpen={defaultSidebarOpen}/);
   assert.doesNotMatch(adminLayoutSource, /^"use client";/);
 
-  assert.match(viewsLayoutSource, /<WorkspaceNotice[\s>/]/);
   assert.match(viewsLayoutSource, /{children}/);
 });
 
@@ -160,17 +155,18 @@ test("Organization selection lives in a shared context", () => {
   assert.match(organizationProfileSource, /useOrganization\(\)/);
 });
 
-test("Notice messaging flows through a shared context", () => {
-  assert.match(noticeContextSource, /^"use client";/);
-  assert.match(noticeContextSource, /export function NoticeProvider/);
-  assert.match(noticeContextSource, /export function useSetNotice/);
-  assert.match(noticeContextSource, /export function WorkspaceNotice/);
-  assert.match(noticeContextSource, /from "lucide-react"/);
-
-  assert.match(createTournamentDialogSource, /useSetNotice\(\)/);
-  assert.match(staffSource, /useSetNotice\(\)/);
-  assert.match(organizationProfileSource, /useSetNotice\(\)/);
-  assert.match(sidebarSource, /useSetNotice\(\)/);
+test("Notice messaging surfaces as sonner toasts", () => {
+  for (const source of [
+    createTournamentDialogSource,
+    staffSource,
+    organizationProfileSource,
+    sidebarSource,
+  ]) {
+    assert.match(source, /import { toast } from "sonner";/);
+    assert.match(source, /toast\.success\(/);
+    assert.match(source, /toast\.error\(/);
+    assert.doesNotMatch(source, /useSetNotice/);
+  }
 });
 
 test("Each feature module owns its Convex data and mutations", () => {
@@ -331,7 +327,6 @@ test("Organizer workspace avoids legacy raw controls and stale copy", () => {
     staffSource,
     typesSource,
     organizationContextSource,
-    noticeContextSource,
     organizationProfileSource,
   ].join("\n");
 

@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from "react";
 import { useAction, useQuery } from "convex/react";
 import { Users } from "lucide-react";
+import { toast } from "sonner";
 
 import { api } from "@/convex/_generated/api";
 import { canInviteMembers } from "@/lib/organizer-utils";
@@ -38,12 +39,10 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { useOrganization } from "./organization-context";
-import { useSetNotice } from "./notice-context";
 import type { Role } from "./types";
 
 export function StaffView() {
   const { selectedOrganizationId, selectedOrganization } = useOrganization();
-  const setNotice = useSetNotice();
   const inviteMember = useAction(api.organizations.inviteMember);
 
   const members = useQuery(
@@ -71,7 +70,6 @@ export function StaffView() {
     }
 
     setBusy(true);
-    setNotice(null);
     try {
       await inviteMember({
         organizationId: selectedOrganizationId,
@@ -80,9 +78,9 @@ export function StaffView() {
       });
       setInviteEmail("");
       setInviteRole("staff");
-      setNotice("Invitation sent.");
+      toast.success("Invitation sent.");
     } catch (error) {
-      setNotice(
+      toast.error(
         error instanceof Error ? error.message : "Could not send invitation.",
       );
     } finally {
