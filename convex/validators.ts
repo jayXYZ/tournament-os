@@ -73,6 +73,12 @@ export const tournamentPhaseRoundModeValidator = v.union(
   v.literal("fixed"),
 );
 
+export const tournamentPhaseCutoffValidator = v.union(
+  v.literal("top_X_players"),
+  v.literal("X_points_or_more"),
+  v.null(),
+);
+
 export const tournamentRoundStatusValidator = v.union(
   v.literal("upcoming"),
   v.literal("in_progress"),

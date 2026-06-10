@@ -207,7 +207,6 @@ export const configureSwissPhase = mutation({
       phaseRoundMode: "fixed",
       phaseTotalRounds,
       phaseCutoff: null,
-      createdAt: now,
       updatedAt: now,
     });
   },

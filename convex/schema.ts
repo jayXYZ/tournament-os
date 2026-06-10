@@ -10,6 +10,7 @@ import {
   tournamentRegistrationStatusValidator,
   tournamentPhaseStatusValidator,
   tournamentPhaseRoundModeValidator,
+  tournamentPhaseCutoffValidator,
   tournamentRoundStatusValidator,
   tournamentMatchStatusValidator,
 } from "./validators";
@@ -21,7 +22,6 @@ export default defineSchema({
     email: v.optional(v.string()),
     name: v.optional(v.string()),
     avatarUrl: v.optional(v.string()),
-    createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_tokenIdentifier", ["tokenIdentifier"])
@@ -34,7 +34,6 @@ export default defineSchema({
     profileImageStorageId: v.optional(v.id("_storage")),
     createdBy: v.id("users"),
     status: organizationStatusValidator,
-    createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_workosOrganizationId", ["workosOrganizationId"])
@@ -50,7 +49,6 @@ export default defineSchema({
     email: v.optional(v.string()),
     role: organizerRoleValidator,
     status: membershipStatusValidator,
-    createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_organizationId", ["organizationId"])
@@ -79,7 +77,6 @@ export default defineSchema({
     role: organizerRoleValidator,
     status: invitationStatusValidator,
     invitedBy: v.id("users"),
-    createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_organizationId", ["organizationId"])
@@ -102,7 +99,6 @@ export default defineSchema({
     playerCapacity: v.number(),
     format: v.string(),
     isTestEvent: v.boolean(),
-    createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_organizationId", ["organizationId"])
@@ -117,6 +113,8 @@ export default defineSchema({
     tournamentId: v.id("tournaments"),
     userId: v.id("users"),
     status: tournamentRegistrationStatusValidator,
+    // Kept alongside _creationTime: pairing and standings tie-break on this,
+    // and test seeding deliberately offsets it per player for determinism.
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -134,12 +132,7 @@ export default defineSchema({
     phaseRoundMode: tournamentPhaseRoundModeValidator,
     phaseTotalRounds: v.union(v.number(), v.null()),
     phaseCurrentRound: v.optional(v.id("tournamentRounds")),
-    phaseCutoff: v.union(
-      v.literal("top_X_players"),
-      v.literal("X_points_or_more"),
-      v.null(),
-    ),
-    createdAt: v.number(),
+    phaseCutoff: tournamentPhaseCutoffValidator,
     updatedAt: v.number(),
   })
     .index("by_tournamentId", ["tournamentId"])
@@ -151,7 +144,6 @@ export default defineSchema({
     roundNumber: v.number(),
     roundName: v.string(),
     roundStatus: tournamentRoundStatusValidator,
-    createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_tournamentPhaseId", ["tournamentPhaseId"])
@@ -166,7 +158,6 @@ export default defineSchema({
     tournamentRoundId: v.id("tournamentRounds"),
     tableNumber: v.number(),
     matchStatus: tournamentMatchStatusValidator,
-    createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_tournamentRoundId", ["tournamentRoundId"])
@@ -183,7 +174,6 @@ export default defineSchema({
     gameWins: v.optional(v.number()),
     gameLosses: v.optional(v.number()),
     isBye: v.boolean(),
-    createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_tournamentMatchId_and_playerId", [
@@ -202,11 +192,18 @@ export default defineSchema({
     matchWins: v.number(),
     matchLosses: v.number(),
     matchDraws: v.number(),
+    // Cumulative totals through this round, denormalized so the next round's
+    // standings and pairings never re-read full match history. Optional only
+    // for rows written before these fields existed; readers fall back to a
+    // per-player history walk when they are missing.
+    gameWins: v.optional(v.number()),
+    gameLosses: v.optional(v.number()),
+    opponentIds: v.optional(v.array(v.id("tournamentRegistrations"))),
+    hasHadBye: v.optional(v.boolean()),
     opponentMatchWinPct: v.number(),
     gameWinPct: v.number(),
     opponentGameWinPct: v.number(),
     sortKey: v.number(),
-    createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_tournamentRoundId_and_playerId", [
@@ -220,7 +217,6 @@ export default defineSchema({
     dummyPlayerCount: v.number(),
     roundsToGenerate: v.number(),
     seed: v.number(),
-    createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_tournamentId", ["tournamentId"]),
 
@@ -228,7 +224,6 @@ export default defineSchema({
     tournamentId: v.id("tournaments"),
     userId: v.id("users"),
     playerNumber: v.number(),
-    createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_tournamentId", ["tournamentId"])

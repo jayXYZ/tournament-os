@@ -371,7 +371,6 @@ export const upsertOrganizerMirror = internalMutation({
         slug: args.slug,
         createdBy: args.createdBy,
         status: "active",
-        createdAt: now,
         updatedAt: now,
       }));
 
@@ -455,7 +454,6 @@ export const upsertInvitationMirror = internalMutation({
     return await ctx.db.insert("organizationInvitations", {
       workosInvitationId: args.workosInvitationId,
       ...patch,
-      createdAt: now,
     });
   },
 });
@@ -502,10 +500,7 @@ async function upsertMembership(
     return existing._id;
   }
 
-  return await ctx.db.insert("organizationMemberships", {
-    ...patch,
-    createdAt: args.now,
-  });
+  return await ctx.db.insert("organizationMemberships", patch);
 }
 
 function invitationStatus(invitation: WorkosInvitation) {

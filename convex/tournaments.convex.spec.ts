@@ -29,7 +29,6 @@ test("listUpcomingPublic returns future public tournaments in start date order",
       playerCapacity: 32,
       format: "swiss",
       isTestEvent: false,
-      createdAt: now,
       updatedAt: now,
     };
 
@@ -96,7 +95,6 @@ test("listUpcomingForOrganization returns active future tournaments for one orga
       slug: "other-org",
       createdBy: userId,
       status: "active",
-      createdAt: now,
       updatedAt: now,
     });
   });
@@ -108,7 +106,6 @@ test("listUpcomingForOrganization returns active future tournaments for one orga
       playerCapacity: 32,
       format: "swiss",
       isTestEvent: false,
-      createdAt: now,
       updatedAt: now,
     };
 
@@ -310,7 +307,6 @@ test("test tournaments seed players, generate Swiss rounds, and complete", async
       workosUserId: organizerIdentity.subject,
       email: organizerIdentity.email,
       name: organizerIdentity.name,
-      createdAt: now,
       updatedAt: now,
     });
     const organizationId = await ctx.db.insert("organizations", {
@@ -319,7 +315,6 @@ test("test tournaments seed players, generate Swiss rounds, and complete", async
       slug: "test-org",
       createdBy: userId,
       status: "active",
-      createdAt: now,
       updatedAt: now,
     });
     await ctx.db.insert("organizationMemberships", {
@@ -331,7 +326,6 @@ test("test tournaments seed players, generate Swiss rounds, and complete", async
       email: organizerIdentity.email,
       role: "owner",
       status: "active",
-      createdAt: now,
       updatedAt: now,
     });
 
@@ -431,7 +425,6 @@ async function seedOrganizer(t: ReturnType<typeof convexTest>) {
       workosUserId: organizerIdentity.subject,
       email: organizerIdentity.email,
       name: organizerIdentity.name,
-      createdAt: now,
       updatedAt: now,
     });
     const organizationId = await ctx.db.insert("organizations", {
@@ -440,7 +433,6 @@ async function seedOrganizer(t: ReturnType<typeof convexTest>) {
       slug: "test-org",
       createdBy: userId,
       status: "active",
-      createdAt: now,
       updatedAt: now,
     });
     await ctx.db.insert("organizationMemberships", {
@@ -452,7 +444,6 @@ async function seedOrganizer(t: ReturnType<typeof convexTest>) {
       email: organizerIdentity.email,
       role: "owner",
       status: "active",
-      createdAt: now,
       updatedAt: now,
     });
 
@@ -473,7 +464,6 @@ async function seedActiveRegistrations(
         workosUserId: `player:${playerNumber}`,
         email: `player${playerNumber}@example.test`,
         name: `Player ${playerNumber}`,
-        createdAt: now,
         updatedAt: now,
       });
       await ctx.db.insert("tournamentRegistrations", {

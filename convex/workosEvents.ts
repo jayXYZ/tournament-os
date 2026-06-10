@@ -105,10 +105,7 @@ async function processMembershipEvent(
     return;
   }
 
-  await ctx.db.insert("organizationMemberships", {
-    ...patch,
-    createdAt: now,
-  });
+  await ctx.db.insert("organizationMemberships", patch);
 }
 
 async function processInvitationEvent(

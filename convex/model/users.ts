@@ -41,7 +41,6 @@ export async function upsertUser(
     : await ctx.db.insert("users", {
         tokenIdentifier: fields.tokenIdentifier,
         ...patch,
-        createdAt: now,
       });
 
   await linkMembershipsToUser(ctx, {
