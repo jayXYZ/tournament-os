@@ -276,12 +276,21 @@ function MyTournamentsSection({
                   )}
                 </TableCell>
                 <TableCell className="text-right">
-                  <Button asChild type="button" variant="outline">
-                    <Link href={`/tournaments/${entry.tournament._id}`}>
-                      <Ticket data-icon="inline-start" />
-                      View event
-                    </Link>
-                  </Button>
+                  {entry.tournament.status === "in_progress" ? (
+                    <Button asChild type="button">
+                      <Link href={`/tournaments/${entry.tournament._id}/play`}>
+                        <Swords data-icon="inline-start" />
+                        Open player controller
+                      </Link>
+                    </Button>
+                  ) : (
+                    <Button asChild type="button" variant="outline">
+                      <Link href={`/tournaments/${entry.tournament._id}`}>
+                        <Ticket data-icon="inline-start" />
+                        View event
+                      </Link>
+                    </Button>
+                  )}
                 </TableCell>
               </TableRow>
             ))}
