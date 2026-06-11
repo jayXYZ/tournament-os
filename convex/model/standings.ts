@@ -308,12 +308,12 @@ export function comparableFromStats(
   playerStats: PlayerStats,
   allStats: Map<Id<"tournamentRegistrations">, PlayerStats>,
 ): StandingComparable {
-  const opponentMatchWinPct = average(
+  const opponentMatchWinPct = averageOrFloor(
     playerStats.opponentIds.map((opponentId) =>
       Math.max(0.33, matchWinPct(allStats.get(opponentId))),
     ),
   );
-  const opponentGameWinPct = average(
+  const opponentGameWinPct = averageOrFloor(
     playerStats.opponentIds.map((opponentId) =>
       Math.max(0.33, gameWinPct(allStats.get(opponentId))),
     ),
@@ -352,9 +352,12 @@ function gameWinPct(stats: PlayerStats | undefined) {
   return stats.gameWins / games;
 }
 
-function average(values: number[]) {
+// A player with only byes has no opponents to average; MTR's per-opponent
+// floor makes 0.33 the lowest achievable value, so it is also the default —
+// returning 0 would rank a bye below every real win.
+function averageOrFloor(values: number[]) {
   if (values.length === 0) {
-    return 0;
+    return 0.33;
   }
   return values.reduce((sum, value) => sum + value, 0) / values.length;
 }

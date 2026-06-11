@@ -91,16 +91,36 @@ test("odd-sized Swiss events give byes to distinct players and stay consistent",
     },
   );
 
+  let firstRoundId: Id<"tournamentRounds"> | null = null;
   let finalRound: Doc<"tournamentRounds"> | null = null;
   for (let roundNumber = 1; roundNumber <= 4; roundNumber += 1) {
     finalRound = await authed.query(api.tournaments.rounds.getCurrentRound, {
       tournamentId,
     });
     expect(finalRound?.roundNumber).toBe(roundNumber);
+    if (roundNumber === 1) {
+      firstRoundId = finalRound!._id;
+    }
     await authed.mutation(api.tournaments.testing.advanceTestRound, {
       tournamentId,
     });
   }
+
+  // A round-one bye leaves a player with no opponents; their OMW%/OGW% must
+  // fall back to the 0.33 floor instead of 0, which would rank the bye below
+  // every real win.
+  await t.run(async (ctx) => {
+    const roundOneStandings = await ctx.db
+      .query("roundStandings")
+      .withIndex("by_tournamentRoundId_and_rank", (q) =>
+        q.eq("tournamentRoundId", firstRoundId!),
+      )
+      .collect();
+    const byeStanding = roundOneStandings.find((row) => row.hasHadBye);
+    expect(byeStanding).toBeDefined();
+    expect(byeStanding!.opponentMatchWinPct).toBe(0.33);
+    expect(byeStanding!.opponentGameWinPct).toBe(0.33);
+  });
 
   const setup = await authed.query(api.tournaments.lifecycle.getTournamentSetup, {
     tournamentId,
