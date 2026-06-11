@@ -1,11 +1,11 @@
-import { RegistrationsView } from "@/app/components/organizer-workspace/tournament-manager/registrations-view";
+import { TournamentOverviewView } from "@/app/components/organizer-workspace/tournament-manager/tournament-overview-view";
 
-export default async function TournamentRegistrationsPage({
+export default async function TournamentOverviewPage({
   params,
 }: {
   params: Promise<{ tournamentId: string }>;
 }) {
   const { tournamentId } = await params;
 
-  return <RegistrationsView tournamentId={tournamentId} />;
+  return <TournamentOverviewView tournamentId={tournamentId} />;
 }

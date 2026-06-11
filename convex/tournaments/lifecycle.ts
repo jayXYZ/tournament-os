@@ -10,6 +10,7 @@ import {
   createTournament as createTournamentModel,
   defaultSwissRoundCount,
   requireOrganizerAccess,
+  requirePhase,
   requireSetupEditable,
   requireSwissPhase,
   validCapacity,
@@ -209,6 +210,38 @@ export const configureSwissPhase = mutation({
       phaseCutoff: null,
       updatedAt: now,
     });
+  },
+});
+
+export const updatePhaseSetup = mutation({
+  args: {
+    phaseId: v.id("tournamentPhases"),
+    phaseRoundMode: tournamentPhaseRoundModeValidator,
+    phaseTotalRounds: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<Id<"tournamentPhases">> => {
+    const phase = await requirePhase(ctx, args.phaseId);
+    const { tournament } = await requireOrganizerAccess(
+      ctx,
+      phase.tournamentId,
+    );
+    requireSetupEditable(tournament);
+
+    const phaseTotalRounds =
+      args.phaseRoundMode === "fixed"
+        ? validRoundCount(
+            args.phaseTotalRounds ??
+              phase.phaseTotalRounds ??
+              defaultSwissRoundCount(tournament.playerCapacity),
+          )
+        : null;
+
+    await ctx.db.patch(args.phaseId, {
+      phaseRoundMode: args.phaseRoundMode,
+      phaseTotalRounds,
+      updatedAt: Date.now(),
+    });
+    return args.phaseId;
   },
 });
 

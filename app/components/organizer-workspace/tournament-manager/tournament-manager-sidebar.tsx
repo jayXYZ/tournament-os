@@ -3,7 +3,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useQuery } from "convex/react";
-import { ChevronLeft, ClipboardList, Swords, Trophy } from "lucide-react";
+import {
+  ChevronLeft,
+  ClipboardList,
+  LayoutDashboard,
+  Swords,
+  Trophy,
+} from "lucide-react";
 
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -29,8 +35,13 @@ export function TournamentManagerSidebar({
   const base = `/admin/tournaments/${tournamentId}`;
   const items: NavItem[] = [
     {
-      label: "Registrations",
+      label: "Overview",
       href: base,
+      icon: LayoutDashboard,
+    },
+    {
+      label: "Registrations",
+      href: `${base}/registrations`,
       icon: ClipboardList,
     },
     {

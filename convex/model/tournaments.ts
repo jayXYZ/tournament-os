@@ -131,6 +131,18 @@ export async function registrationForUser(
     .unique();
 }
 
+// Includes dropped/eliminated/disqualified players: their match history must
+// still feed opponents' tiebreakers even though they are no longer ranked.
+export async function allRegistrations(
+  ctx: QueryCtx,
+  tournamentId: Id<"tournaments">,
+) {
+  return await ctx.db
+    .query("tournamentRegistrations")
+    .withIndex("by_tournamentId", (q) => q.eq("tournamentId", tournamentId))
+    .take(512);
+}
+
 export async function activeRegistrations(
   ctx: QueryCtx,
   tournamentId: Id<"tournaments">,

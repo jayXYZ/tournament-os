@@ -24,6 +24,7 @@ const viewLabels: Record<AdminView, string> = {
 };
 
 const tournamentPageLabels: Record<string, string> = {
+  registrations: "Registrations",
   pairings: "Pairings",
   standings: "Standings",
 };

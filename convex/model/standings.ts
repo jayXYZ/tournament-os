@@ -1,6 +1,6 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
-import { activeRegistrations, matchPlayers, roundMatches } from "./tournaments";
+import { allRegistrations, matchPlayers, roundMatches } from "./tournaments";
 
 export const MATCH_WIN_POINTS = 3;
 export const MATCH_DRAW_POINTS = 1;
@@ -84,12 +84,14 @@ export async function replaceStandingsForRound(
   }
 
   const stats = await cumulativeStatsThroughRound(ctx, tournament._id, phase, round);
-  const ranked = [...stats.values()].sort((left, right) =>
-    compareStandingRows(
-      comparableFromStats(left, stats),
-      comparableFromStats(right, stats),
-    ),
-  );
+  const ranked = [...stats.values()]
+    .filter((playerStats) => playerStats.registration.status === "active")
+    .sort((left, right) =>
+      compareStandingRows(
+        comparableFromStats(left, stats),
+        comparableFromStats(right, stats),
+      ),
+    );
   const now = Date.now();
 
   for (let index = 0; index < ranked.length; index += 1) {
@@ -127,7 +129,10 @@ async function cumulativeStatsThroughRound(
   phase: Doc<"tournamentPhases">,
   round: Doc<"tournamentRounds">,
 ) {
-  const registrations = await activeRegistrations(ctx, tournamentId);
+  // Dropped players stay in the map so their records keep feeding their
+  // former opponents' OMW%/OGW% (MTR Appendix C: withdrawal does not erase
+  // a record); they are filtered out before ranks are assigned.
+  const registrations = await allRegistrations(ctx, tournamentId);
   const stats = new Map<Id<"tournamentRegistrations">, PlayerStats>(
     registrations.map((registration) => [
       registration._id,
@@ -243,7 +248,7 @@ export async function recomputeStatsThroughRound(
   tournamentId: Id<"tournaments">,
   roundNumber: number,
 ) {
-  const registrations = await activeRegistrations(ctx, tournamentId);
+  const registrations = await allRegistrations(ctx, tournamentId);
   const stats = new Map<Id<"tournamentRegistrations">, PlayerStats>(
     registrations.map((registration) => [
       registration._id,
@@ -317,7 +322,9 @@ export function comparableFromStats(
   return {
     matchPoints: playerStats.matchPoints,
     opponentMatchWinPct,
-    gameWinPct: gameWinPct(playerStats),
+    // MTR Appendix C floors game-win percentage at 0.33 in its definition,
+    // so the floor applies to a player's own tiebreaker, not just opponents'.
+    gameWinPct: Math.max(0.33, gameWinPct(playerStats)),
     opponentGameWinPct,
     createdAt: playerStats.createdAt,
   };

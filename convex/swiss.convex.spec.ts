@@ -180,6 +180,135 @@ test("standings and pairings fall back to match history for legacy rows", async 
   await expectStandingsMatchOracle(t, tournamentId, roundTwoId, 2);
 });
 
+test("dropped players keep feeding their opponents' tiebreakers", async () => {
+  const t = createTest();
+  const { organizationId } = await seedOrganizer(t);
+  const authed = t.withIdentity(organizerIdentity);
+
+  const tournamentId = await authed.mutation(
+    api.tournaments.testing.createTestTournament,
+    {
+      organizationId,
+      name: "Drop Event",
+      dummyPlayerCount: 8,
+      roundsToGenerate: 3,
+      seed: 13,
+      autoStart: true,
+    },
+  );
+
+  const roundOne = await authed.query(api.tournaments.rounds.getCurrentRound, {
+    tournamentId,
+  });
+  await authed.mutation(api.tournaments.testing.generateTestRoundResults, {
+    tournamentId,
+  });
+  await authed.mutation(api.tournaments.rounds.completeRound, {
+    roundId: roundOne!._id,
+  });
+
+  // Drop a round-one winner: with a 1-0 record their match-win percentage is
+  // 1.0, so collapsing them to the 0.33 floor would be clearly visible in
+  // their opponent's OMW%.
+  const { droppedId, opponentId } = await t.run(async (ctx) => {
+    const matches = await ctx.db
+      .query("tournamentMatches")
+      .withIndex("by_tournamentRoundId", (q) =>
+        q.eq("tournamentRoundId", roundOne!._id),
+      )
+      .collect();
+    for (const match of matches) {
+      const players = await ctx.db
+        .query("tournamentMatchPlayers")
+        .withIndex("by_tournamentMatchId_and_playerId", (q) =>
+          q.eq("tournamentMatchId", match._id),
+        )
+        .collect();
+      const winner = players.find(
+        (row) => row.matchPointsEarned === 3 && row.opponentPlayerId,
+      );
+      if (winner) {
+        return {
+          droppedId: winner.playerId,
+          opponentId: winner.opponentPlayerId!,
+        };
+      }
+    }
+    throw new Error("Expected a decisive round-one match");
+  });
+  await authed.mutation(api.tournaments.registrations.dropRegistration, {
+    registrationId: droppedId,
+  });
+
+  const roundTwoId = await authed.mutation(
+    api.tournaments.rounds.generateNextRound,
+    { tournamentId },
+  );
+  await authed.mutation(api.tournaments.testing.generateTestRoundResults, {
+    tournamentId,
+  });
+  await authed.mutation(api.tournaments.rounds.completeRound, {
+    roundId: roundTwoId,
+  });
+
+  await t.run(async (ctx) => {
+    const standings = await ctx.db
+      .query("roundStandings")
+      .withIndex("by_tournamentRoundId_and_rank", (q) =>
+        q.eq("tournamentRoundId", roundTwoId),
+      )
+      .collect();
+
+    // The dropped player is not ranked, but everyone else still is.
+    expect(standings).toHaveLength(7);
+    expect(standings.some((row) => row.playerId === droppedId)).toBe(false);
+
+    // MTR Appendix C floors game-win percentage at 0.33.
+    for (const row of standings) {
+      expect(row.gameWinPct).toBeGreaterThanOrEqual(0.33);
+    }
+
+    // Recompute opponents' match-win percentages by hand from raw match rows,
+    // independent of the standings code paths under test.
+    const matchWinPctFromHistory = async (
+      playerId: Id<"tournamentRegistrations">,
+    ) => {
+      const rows = (
+        await ctx.db
+          .query("tournamentMatchPlayers")
+          .withIndex("by_playerId", (q) => q.eq("playerId", playerId))
+          .collect()
+      ).filter((row) => row.matchPointsEarned !== undefined);
+      const points = rows.reduce(
+        (sum, row) => sum + (row.matchPointsEarned ?? 0),
+        0,
+      );
+      return points / (3 * rows.length);
+    };
+
+    // The dropped player's actual record (1-0, then withdrew) must count,
+    // not the 0.33 floor a missing record would collapse to.
+    expect(await matchWinPctFromHistory(droppedId)).toBe(1);
+
+    const opponentStanding = standings.find(
+      (row) => row.playerId === opponentId,
+    );
+    expect(opponentStanding).toBeDefined();
+    expect(opponentStanding!.opponentIds).toContain(droppedId);
+
+    let omwSum = 0;
+    for (const oppId of opponentStanding!.opponentIds ?? []) {
+      omwSum += Math.max(0.33, await matchWinPctFromHistory(oppId));
+    }
+    expect(opponentStanding!.opponentMatchWinPct).toBeCloseTo(
+      omwSum / (opponentStanding!.opponentIds ?? []).length,
+      12,
+    );
+  });
+
+  await expectStandingsMatchOracle(t, tournamentId, roundTwoId, 2);
+});
+
 async function expectStandingsMatchOracle(
   t: Test,
   tournamentId: Id<"tournaments">,
@@ -199,12 +328,16 @@ async function expectStandingsMatchOracle(
       roundNumber,
     );
 
-    const expectedOrder = [...oracle.values()].sort((left, right) =>
-      compareStandingRows(
-        comparableFromStats(left, oracle),
-        comparableFromStats(right, oracle),
-      ),
-    );
+    // The oracle tracks every registration (dropped players still feed
+    // opponents' tiebreakers), but only active players receive ranks.
+    const expectedOrder = [...oracle.values()]
+      .filter((stats) => stats.registration.status === "active")
+      .sort((left, right) =>
+        compareStandingRows(
+          comparableFromStats(left, oracle),
+          comparableFromStats(right, oracle),
+        ),
+      );
     expect(standings.map((row) => row.playerId)).toEqual(
       expectedOrder.map((stats) => stats.registration._id),
     );
