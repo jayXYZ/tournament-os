@@ -263,3 +263,27 @@ export const getStandings = query({
       .take(512);
   },
 });
+
+export const listRoundStandings = query({
+  args: { roundId: v.id("tournamentRounds") },
+  handler: async (ctx, args) => {
+    const round = await requireRound(ctx, args.roundId);
+    await requireOrganizerAccess(ctx, round.tournamentId);
+    const standings = await ctx.db
+      .query("roundStandings")
+      .withIndex("by_tournamentRoundId_and_rank", (q) =>
+        q.eq("tournamentRoundId", args.roundId),
+      )
+      .take(512);
+
+    return await Promise.all(
+      standings.map(async (standing) => {
+        const registration = await ctx.db.get(standing.playerId);
+        const user = registration
+          ? await ctx.db.get(registration.userId)
+          : null;
+        return { standing, user };
+      }),
+    );
+  },
+});
