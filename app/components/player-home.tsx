@@ -8,10 +8,12 @@ import {
   LogIn,
   ShieldCheck,
   Swords,
+  Ticket,
   UserRound,
   Users,
 } from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -43,6 +45,12 @@ import type { Doc } from "@/convex/_generated/dataModel";
 
 type Tournament = Doc<"tournaments">;
 
+type MyTournamentEntry = {
+  registration: Doc<"tournamentRegistrations">;
+  tournament: Tournament;
+  organizationName: string | null;
+};
+
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
   month: "short",
   day: "numeric",
@@ -54,6 +62,10 @@ const dateFormatter = new Intl.DateTimeFormat("en-US", {
 export function PlayerHome() {
   const { user, loading, refreshAuth, signOut } = useAuth();
   const tournaments = useQuery(api.tournaments.lifecycle.listUpcomingPublic);
+  const myTournaments = useQuery(
+    api.tournaments.registrations.listMyTournaments,
+    user ? {} : "skip",
+  );
 
   return (
     <main className="min-h-svh bg-background text-foreground">
@@ -91,6 +103,8 @@ export function PlayerHome() {
       </header>
 
       <section className="mx-auto grid max-w-7xl gap-8 px-4 py-8 sm:px-6 lg:px-8">
+        {user ? <MyTournamentsSection entries={myTournaments} /> : null}
+
         <div className="flex flex-col justify-between gap-5 md:flex-row md:items-end">
           <div>
             <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
@@ -105,7 +119,7 @@ export function PlayerHome() {
               icon={CalendarDays}
               label="Showing public future events"
             />
-            <StatusLine icon={Users} label="Registration actions coming next" />
+            <StatusLine icon={Users} label="Open an event to register" />
           </div>
         </div>
 
@@ -172,6 +186,109 @@ function StatusLine({
       <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
       <span>{label}</span>
     </div>
+  );
+}
+
+function MyTournamentsSection({
+  entries,
+}: {
+  entries: MyTournamentEntry[] | undefined;
+}) {
+  if (entries === undefined) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>My tournaments</CardTitle>
+          <CardDescription>
+            Checking your ongoing and upcoming registrations.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-3">
+            {[0, 1].map((row) => (
+              <Skeleton key={row} className="h-12" />
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (entries.length === 0) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>My tournaments</CardTitle>
+          <CardDescription>
+            You are not registered for any upcoming events yet. Pick one from
+            the schedule below to get started.
+          </CardDescription>
+        </CardHeader>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>My tournaments</CardTitle>
+        <CardDescription>
+          Ongoing and upcoming events you are registered for.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Table className="min-w-[760px]">
+          <TableHeader>
+            <TableRow>
+              <TableHead>Tournament</TableHead>
+              <TableHead>Organizer</TableHead>
+              <TableHead>Format</TableHead>
+              <TableHead>Start date</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className="text-right">Action</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {entries.map((entry) => (
+              <TableRow key={entry.registration._id}>
+                <TableCell>
+                  <p className="font-medium text-foreground">
+                    {entry.tournament.name}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {entry.tournament.isTestEvent
+                      ? "Test event"
+                      : "Public event"}
+                  </p>
+                </TableCell>
+                <TableCell>{entry.organizationName ?? "—"}</TableCell>
+                <TableCell className="capitalize">
+                  {entry.tournament.format}
+                </TableCell>
+                <TableCell>
+                  {dateFormatter.format(new Date(entry.tournament.startDate))}
+                </TableCell>
+                <TableCell>
+                  {entry.tournament.status === "in_progress" ? (
+                    <Badge>In progress</Badge>
+                  ) : (
+                    <Badge variant="secondary">Registered</Badge>
+                  )}
+                </TableCell>
+                <TableCell className="text-right">
+                  <Button asChild type="button" variant="outline">
+                    <Link href={`/tournaments/${entry.tournament._id}`}>
+                      <Ticket data-icon="inline-start" />
+                      View event
+                    </Link>
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -264,8 +381,10 @@ function TournamentRow({ tournament }: { tournament: Tournament }) {
       <TableCell>{tournament.playerCapacity}</TableCell>
       <TableCell className="capitalize">{tournament.status}</TableCell>
       <TableCell className="text-right">
-        <Button type="button" variant="outline" disabled>
-          Registration soon
+        <Button asChild type="button" variant="outline">
+          <Link href={`/tournaments/${tournament._id}`}>
+            View &amp; register
+          </Link>
         </Button>
       </TableCell>
     </TableRow>

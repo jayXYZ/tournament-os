@@ -84,6 +84,155 @@ test("listUpcomingPublic returns future public tournaments in start date order",
   ]);
 });
 
+test("getPublicTournament hides private events and reports registration counts", async () => {
+  const t = convexTest(schema, modules);
+  const now = Date.now();
+  const { organizationId, userId } = await seedOrganizer(t);
+
+  const rows = await t.run(async (ctx) => {
+    const base = {
+      organizationId,
+      createdBy: userId,
+      playerCapacity: 32,
+      format: "standard" as const,
+      isTestEvent: false,
+      updatedAt: now,
+    };
+
+    const publicId = await ctx.db.insert("tournaments", {
+      ...base,
+      name: "Open Event",
+      status: "public",
+      startDate: now + 60_000,
+    });
+    const privateId = await ctx.db.insert("tournaments", {
+      ...base,
+      name: "Hidden Event",
+      status: "private",
+      startDate: now + 60_000,
+    });
+
+    return { publicId, privateId };
+  });
+  await seedActiveRegistrations(t, rows.publicId, 3);
+
+  const visible = await t.query(api.tournaments.lifecycle.getPublicTournament, {
+    tournamentId: rows.publicId,
+  });
+  expect(visible?.tournament.name).toBe("Open Event");
+  expect(visible?.organizationName).toBe("Test Org");
+  expect(visible?.registeredCount).toBe(3);
+
+  expect(
+    await t.query(api.tournaments.lifecycle.getPublicTournament, {
+      tournamentId: rows.privateId,
+    }),
+  ).toBeNull();
+  expect(
+    await t.query(api.tournaments.lifecycle.getPublicTournament, {
+      tournamentId: "not-a-real-id",
+    }),
+  ).toBeNull();
+});
+
+test("listMyTournaments returns the player's active registrations for visible events", async () => {
+  const t = convexTest(schema, modules);
+  const now = Date.now();
+  const { organizationId, userId } = await seedOrganizer(t);
+  const playerIdentity = {
+    issuer: "https://convex.test",
+    subject: "player",
+    tokenIdentifier: "https://convex.test|player",
+    email: "player@example.test",
+    name: "Player",
+  };
+
+  await t.run(async (ctx) => {
+    const playerUserId = await ctx.db.insert("users", {
+      tokenIdentifier: playerIdentity.tokenIdentifier,
+      workosUserId: playerIdentity.subject,
+      email: playerIdentity.email,
+      name: playerIdentity.name,
+      updatedAt: now,
+    });
+    const base = {
+      organizationId,
+      createdBy: userId,
+      playerCapacity: 32,
+      format: "standard" as const,
+      isTestEvent: false,
+      updatedAt: now,
+    };
+    const registrationBase = {
+      userId: playerUserId,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    const laterPublic = await ctx.db.insert("tournaments", {
+      ...base,
+      name: "Later Public Event",
+      status: "public",
+      startDate: now + 120_000,
+    });
+    const inProgress = await ctx.db.insert("tournaments", {
+      ...base,
+      name: "In Progress Event",
+      status: "in_progress",
+      startDate: now + 60_000,
+    });
+    const completed = await ctx.db.insert("tournaments", {
+      ...base,
+      name: "Completed Event",
+      status: "completed",
+      startDate: now - 60_000,
+    });
+    const droppedFrom = await ctx.db.insert("tournaments", {
+      ...base,
+      name: "Dropped Event",
+      status: "public",
+      startDate: now + 90_000,
+    });
+
+    await ctx.db.insert("tournamentRegistrations", {
+      ...registrationBase,
+      tournamentId: laterPublic,
+      status: "active",
+    });
+    await ctx.db.insert("tournamentRegistrations", {
+      ...registrationBase,
+      tournamentId: inProgress,
+      status: "active",
+    });
+    await ctx.db.insert("tournamentRegistrations", {
+      ...registrationBase,
+      tournamentId: completed,
+      status: "active",
+    });
+    await ctx.db.insert("tournamentRegistrations", {
+      ...registrationBase,
+      tournamentId: droppedFrom,
+      status: "dropped",
+    });
+  });
+
+  const rows = await t
+    .withIdentity(playerIdentity)
+    .query(api.tournaments.registrations.listMyTournaments, {});
+
+  expect(rows.map((row) => row.tournament.name)).toEqual([
+    "In Progress Event",
+    "Later Public Event",
+  ]);
+  expect(rows[0].organizationName).toBe("Test Org");
+
+  const anonymous = await t.query(
+    api.tournaments.registrations.listMyTournaments,
+    {},
+  );
+  expect(anonymous).toEqual([]);
+});
+
 test("listUpcomingForOrganization returns active future tournaments for one organization", async () => {
   const t = convexTest(schema, modules);
   const now = Date.now();

@@ -5,6 +5,7 @@ import { mutation, query } from "../_generated/server";
 import { requireActiveMembership } from "../model/access";
 import {
   SWISS_FORMAT,
+  activeRegistrations,
   cleanName,
   completeTournament as completeTournamentModel,
   createTournament as createTournamentModel,
@@ -73,6 +74,31 @@ export const listUpcomingForOrganization = query({
 
     rows.sort((left, right) => left.startDate - right.startDate);
     return rows.slice(0, 100);
+  },
+});
+
+// Takes the id as a plain string because it arrives from a public URL; an
+// unrecognized or private id returns null instead of throwing.
+export const getPublicTournament = query({
+  args: { tournamentId: v.string() },
+  handler: async (ctx, args) => {
+    const tournamentId = ctx.db.normalizeId("tournaments", args.tournamentId);
+    if (!tournamentId) {
+      return null;
+    }
+
+    const tournament = await ctx.db.get(tournamentId);
+    if (!tournament || tournament.status === "private") {
+      return null;
+    }
+
+    const organization = await ctx.db.get(tournament.organizationId);
+    const registrations = await activeRegistrations(ctx, tournamentId);
+    return {
+      tournament,
+      organizationName: organization?.name ?? null,
+      registeredCount: registrations.length,
+    };
   },
 });
 

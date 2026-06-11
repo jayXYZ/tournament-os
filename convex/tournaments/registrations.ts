@@ -83,6 +83,43 @@ export const getMyRegistration = query({
   },
 });
 
+export const listMyTournaments = query({
+  args: {},
+  handler: async (ctx) => {
+    const user = await currentUserOrNull(ctx);
+    if (!user) {
+      return [];
+    }
+
+    const registrations = await ctx.db
+      .query("tournamentRegistrations")
+      .withIndex("by_userId_and_status", (q) =>
+        q.eq("userId", user._id).eq("status", "active"),
+      )
+      .take(100);
+
+    const rows = [];
+    for (const registration of registrations) {
+      const tournament = await ctx.db.get(registration.tournamentId);
+      if (
+        !tournament ||
+        (tournament.status !== "public" && tournament.status !== "in_progress")
+      ) {
+        continue;
+      }
+      const organization = await ctx.db.get(tournament.organizationId);
+      rows.push({
+        registration,
+        tournament,
+        organizationName: organization?.name ?? null,
+      });
+    }
+
+    rows.sort((left, right) => left.tournament.startDate - right.tournament.startDate);
+    return rows;
+  },
+});
+
 export const listRegistrations = query({
   args: { tournamentId: v.id("tournaments") },
   handler: async (ctx, args) => {
