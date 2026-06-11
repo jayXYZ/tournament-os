@@ -332,6 +332,13 @@ function RegistrationPanel({
             {pending ? <Spinner /> : null}
             Cancel registration
           </Button>
+        ) : tournament.status === "in_progress" ? (
+          <Button asChild type="button">
+            <Link href={`/tournaments/${tournament._id}/play`}>
+              <Swords data-icon="inline-start" />
+              Open player controller
+            </Link>
+          </Button>
         ) : (
           <p className="text-sm text-muted-foreground">
             The event has started, so registration changes are locked.
