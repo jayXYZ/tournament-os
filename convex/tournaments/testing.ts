@@ -29,6 +29,7 @@ import {
   requireTestConfig,
   seedTestPlayers as seedTestPlayersModel,
 } from "../model/testing";
+import { tournamentFormatValidator } from "../validators";
 
 export const createTestTournament = mutation({
   args: {
@@ -36,6 +37,7 @@ export const createTestTournament = mutation({
     name: v.optional(v.string()),
     startDate: v.optional(v.number()),
     playerCapacity: v.optional(v.number()),
+    format: v.optional(tournamentFormatValidator),
     dummyPlayerCount: v.optional(v.number()),
     roundsToGenerate: v.optional(v.number()),
     seed: v.optional(v.number()),
@@ -62,7 +64,7 @@ export const createTestTournament = mutation({
       status: "private",
       startDate: args.startDate ?? now,
       playerCapacity,
-      format: SWISS_FORMAT,
+      format: args.format ?? "standard",
       isTestEvent: true,
       updatedAt: now,
     });

@@ -7,6 +7,7 @@ import {
   organizerInviteRoles,
   organizerRoles,
 } from "../lib/organizer-utils";
+import { tournamentFormats } from "../lib/tournament-creation-utils";
 
 export {
   canInviteMembers,
@@ -43,6 +44,17 @@ export const invitationStatusValidator = v.union(
 export const organizerInviteRoleValidator = v.union(
   v.literal(organizerInviteRoles[0]),
   v.literal(organizerInviteRoles[1]),
+);
+
+export const tournamentFormatValidator = v.union(
+  v.literal(tournamentFormats[0]),
+  v.literal(tournamentFormats[1]),
+  v.literal(tournamentFormats[2]),
+  v.literal(tournamentFormats[3]),
+  v.literal(tournamentFormats[4]),
+  v.literal(tournamentFormats[5]),
+  v.literal(tournamentFormats[6]),
+  v.literal(tournamentFormats[7]),
 );
 
 export const tournamentStatusValidator = v.union(

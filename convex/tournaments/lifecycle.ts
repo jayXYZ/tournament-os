@@ -17,7 +17,10 @@ import {
   validPhaseInputs,
   validRoundCount,
 } from "../model/tournaments";
-import { tournamentPhaseRoundModeValidator } from "../validators";
+import {
+  tournamentFormatValidator,
+  tournamentPhaseRoundModeValidator,
+} from "../validators";
 
 export const listForOrganization = query({
   args: { organizationId: v.id("organizations") },
@@ -100,6 +103,7 @@ export const createTournament = mutation({
     name: v.string(),
     startDate: v.number(),
     playerCapacity: v.number(),
+    format: tournamentFormatValidator,
   },
   handler: async (ctx, args): Promise<Id<"tournaments">> => {
     return await createTournamentModel(ctx, {
@@ -108,6 +112,7 @@ export const createTournament = mutation({
       startDate: args.startDate,
       isTestEvent: false,
       playerCapacity: args.playerCapacity,
+      format: args.format,
       phases: validPhaseInputs([{ phaseOrder: 1, phaseRoundMode: "dynamic" }]),
     });
   },
@@ -119,6 +124,7 @@ export const createTournamentWithPhases = mutation({
     name: v.string(),
     startDate: v.number(),
     playerCapacity: v.number(),
+    format: tournamentFormatValidator,
     isTestEvent: v.optional(v.boolean()),
     phases: v.array(
       v.object({
@@ -134,6 +140,7 @@ export const createTournamentWithPhases = mutation({
       name: args.name,
       startDate: args.startDate,
       playerCapacity: args.playerCapacity,
+      format: args.format,
       isTestEvent: args.isTestEvent ?? false,
       phases: validPhaseInputs(args.phases),
     });
@@ -146,6 +153,7 @@ export const updateTournamentSetup = mutation({
     name: v.optional(v.string()),
     startDate: v.optional(v.number()),
     playerCapacity: v.optional(v.number()),
+    format: v.optional(tournamentFormatValidator),
   },
   handler: async (ctx, args) => {
     const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
@@ -160,6 +168,9 @@ export const updateTournamentSetup = mutation({
     }
     if (args.playerCapacity !== undefined) {
       patch.playerCapacity = validCapacity(args.playerCapacity);
+    }
+    if (args.format !== undefined) {
+      patch.format = args.format;
     }
 
     await ctx.db.patch(args.tournamentId, patch);

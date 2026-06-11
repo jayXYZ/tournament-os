@@ -1,3 +1,16 @@
+export const tournamentFormats = [
+  "standard",
+  "modern",
+  "pioneer",
+  "legacy",
+  "vintage",
+  "premodern",
+  "sealed",
+  "draft",
+] as const;
+
+export type TournamentFormat = (typeof tournamentFormats)[number];
+
 export type TournamentCreationPhaseRoundMode = "dynamic" | "fixed";
 
 export type TournamentCreationPhaseForm = {

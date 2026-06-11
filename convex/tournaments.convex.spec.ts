@@ -27,7 +27,7 @@ test("listUpcomingPublic returns future public tournaments in start date order",
       organizationId,
       createdBy: userId,
       playerCapacity: 32,
-      format: "swiss",
+      format: "standard" as const,
       isTestEvent: false,
       updatedAt: now,
     };
@@ -104,7 +104,7 @@ test("listUpcomingForOrganization returns active future tournaments for one orga
       organizationId,
       createdBy: userId,
       playerCapacity: 32,
-      format: "swiss",
+      format: "standard" as const,
       isTestEvent: false,
       updatedAt: now,
     };
@@ -186,6 +186,7 @@ test("createTournamentWithPhases creates a private tournament with one dynamic S
       name: "Store Championship",
       startDate: now + 86_400_000,
       playerCapacity: 32,
+      format: "modern",
       phases: [{ phaseOrder: 1, phaseRoundMode: "dynamic" }],
     });
 
@@ -195,6 +196,7 @@ test("createTournamentWithPhases creates a private tournament with one dynamic S
 
   expect(setup.tournament.name).toBe("Store Championship");
   expect(setup.tournament.status).toBe("private");
+  expect(setup.tournament.format).toBe("modern");
   expect(setup.phases).toHaveLength(1);
   expect(setup.phases[0].phaseType).toBe("swiss");
   expect(setup.phases[0].phaseOrder).toBe(1);
@@ -214,6 +216,7 @@ test("createTournamentWithPhases can mark a tournament as a test event", async (
       name: "Practice Event",
       startDate: now + 86_400_000,
       playerCapacity: 16,
+      format: "draft",
       isTestEvent: true,
       phases: [{ phaseOrder: 1, phaseRoundMode: "dynamic" }],
     });
@@ -237,6 +240,7 @@ test("createTournamentWithPhases stores multiple Swiss phases in order", async (
       name: "Regional Trial",
       startDate: now + 86_400_000,
       playerCapacity: 64,
+      format: "standard",
       phases: [
         { phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 6 },
         { phaseOrder: 2, phaseRoundMode: "dynamic" },
@@ -267,6 +271,7 @@ test("createTournamentWithPhases rejects an empty phase list", async () => {
         name: "No Phase Event",
         startDate: Date.now() + 86_400_000,
         playerCapacity: 16,
+        format: "standard",
         phases: [],
       },
     ),
@@ -284,6 +289,7 @@ test("startTournament resolves dynamic Swiss rounds from active player count", a
       name: "Dynamic Round Event",
       startDate: Date.now(),
       playerCapacity: 16,
+      format: "standard",
       phases: [{ phaseOrder: 1, phaseRoundMode: "dynamic" }],
     },
   );
@@ -406,6 +412,7 @@ test("test simulation functions reject non-test tournaments", async () => {
       name: "Real Event",
       startDate: Date.now(),
       playerCapacity: 8,
+      format: "standard",
     },
   );
 

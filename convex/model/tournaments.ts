@@ -1,3 +1,4 @@
+import type { TournamentFormat } from "../../lib/tournament-creation-utils";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { requireActiveMembership } from "./access";
@@ -196,6 +197,7 @@ export async function createTournament(
     name: string;
     startDate: number;
     playerCapacity: number;
+    format: TournamentFormat;
     isTestEvent: boolean;
     phases: ReturnType<typeof validPhaseInputs>;
   },
@@ -209,7 +211,7 @@ export async function createTournament(
     status: "private",
     startDate: args.startDate,
     playerCapacity: validCapacity(args.playerCapacity),
-    format: SWISS_FORMAT,
+    format: args.format,
     isTestEvent: args.isTestEvent,
     updatedAt: now,
   });

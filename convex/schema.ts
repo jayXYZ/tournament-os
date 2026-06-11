@@ -6,6 +6,7 @@ import {
   membershipStatusValidator,
   organizationStatusValidator,
   organizerRoleValidator,
+  tournamentFormatValidator,
   tournamentStatusValidator,
   tournamentRegistrationStatusValidator,
   tournamentPhaseStatusValidator,
@@ -97,7 +98,7 @@ export default defineSchema({
     status: tournamentStatusValidator,
     startDate: v.number(),
     playerCapacity: v.number(),
-    format: v.string(),
+    format: tournamentFormatValidator,
     isTestEvent: v.boolean(),
     updatedAt: v.number(),
   })

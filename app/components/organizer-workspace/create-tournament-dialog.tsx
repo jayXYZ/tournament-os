@@ -41,8 +41,10 @@ import {
   createDefaultTournamentCreationPhase,
   removeTournamentCreationPhase,
   toTournamentCreationPhasePayload,
+  tournamentFormats,
   type TournamentCreationPhaseForm,
   type TournamentCreationPhaseRoundMode,
+  type TournamentFormat,
 } from "@/lib/tournament-creation-utils";
 import { useOrganization } from "./organization-context";
 
@@ -57,6 +59,7 @@ export function CreateTournamentDialog() {
   const [name, setName] = useState("");
   const [startDateTime, setStartDateTime] = useState("");
   const [playerCapacity, setPlayerCapacity] = useState("32");
+  const [format, setFormat] = useState<TournamentFormat>("standard");
   const [isTestEvent, setIsTestEvent] = useState(false);
   const [phases, setPhases] = useState<TournamentCreationPhaseForm[]>([
     createDefaultTournamentCreationPhase("phase-1"),
@@ -68,6 +71,7 @@ export function CreateTournamentDialog() {
     setName("");
     setStartDateTime("");
     setPlayerCapacity("32");
+    setFormat("standard");
     setIsTestEvent(false);
     setPhases([createDefaultTournamentCreationPhase("phase-1")]);
   }
@@ -95,6 +99,7 @@ export function CreateTournamentDialog() {
         name,
         startDate: new Date(startDateTime).getTime(),
         playerCapacity: Number.parseInt(playerCapacity, 10),
+        format,
         isTestEvent,
         phases: toTournamentCreationPhasePayload(phases),
       });
@@ -167,6 +172,32 @@ export function CreateTournamentDialog() {
                 />
               </Field>
             </div>
+
+            <Field>
+              <FieldLabel htmlFor="tournament-format">Format</FieldLabel>
+              <Select
+                value={format}
+                onValueChange={(value) => setFormat(value as TournamentFormat)}
+                disabled={disabled}
+              >
+                <SelectTrigger id="tournament-format" className="w-full capitalize">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {tournamentFormats.map((tournamentFormat) => (
+                      <SelectItem
+                        key={tournamentFormat}
+                        value={tournamentFormat}
+                        className="capitalize"
+                      >
+                        {tournamentFormat}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </Field>
 
             <Field orientation="horizontal" data-disabled={disabled}>
               <Checkbox
