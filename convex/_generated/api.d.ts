@@ -18,6 +18,7 @@ import type * as model_tournaments from "../model/tournaments.js";
 import type * as model_users from "../model/users.js";
 import type * as organizations from "../organizations.js";
 import type * as tournaments_lifecycle from "../tournaments/lifecycle.js";
+import type * as tournaments_player from "../tournaments/player.js";
 import type * as tournaments_registrations from "../tournaments/registrations.js";
 import type * as tournaments_rounds from "../tournaments/rounds.js";
 import type * as tournaments_testing from "../tournaments/testing.js";
@@ -43,6 +44,7 @@ declare const fullApi: ApiFromModules<{
   "model/users": typeof model_users;
   organizations: typeof organizations;
   "tournaments/lifecycle": typeof tournaments_lifecycle;
+  "tournaments/player": typeof tournaments_player;
   "tournaments/registrations": typeof tournaments_registrations;
   "tournaments/rounds": typeof tournaments_rounds;
   "tournaments/testing": typeof tournaments_testing;

@@ -168,7 +168,11 @@ export async function generateTestResults(
       gameLosses: result.playerOneGameWins,
       updatedAt: now,
     });
-    await ctx.db.patch(match._id, { matchStatus: "completed", updatedAt: now });
+    await ctx.db.patch(match._id, {
+      matchStatus: "completed",
+      reportedByRegistrationId: undefined,
+      updatedAt: now,
+    });
   }
 }
 

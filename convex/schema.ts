@@ -161,6 +161,9 @@ export default defineSchema({
     // numbered matches because undefined orders first.
     tableNumber: v.optional(v.number()),
     matchStatus: tournamentMatchStatusValidator,
+    // Set when a player self-reports the result; absent once an organizer
+    // records or overrides it. "completed" + this field = unconfirmed report.
+    reportedByRegistrationId: v.optional(v.id("tournamentRegistrations")),
     updatedAt: v.number(),
   })
     .index("by_tournamentRoundId", ["tournamentRoundId"])

@@ -140,6 +140,9 @@ export const recordMatchResult = mutation({
     });
     await ctx.db.patch(args.matchId, {
       matchStatus: "completed",
+      // An organizer-recorded result supersedes any player self-report; this
+      // is also the resolution path when players disagree about a result.
+      reportedByRegistrationId: undefined,
       updatedAt: now,
     });
     return args.matchId;

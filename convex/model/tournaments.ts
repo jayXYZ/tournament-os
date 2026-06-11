@@ -1,7 +1,7 @@
 import type { TournamentFormat } from "../../lib/tournament-creation-utils";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
-import { requireActiveMembership } from "./access";
+import { requireActiveMembership, requireCurrentUser } from "./access";
 
 export const SWISS_FORMAT = "swiss";
 
@@ -130,6 +130,21 @@ export async function registrationForUser(
       q.eq("tournamentId", tournamentId).eq("userId", userId),
     )
     .unique();
+}
+
+// Any registration status grants read access: dropped players keep watching
+// standings and pairings. Mutations check registration status themselves.
+export async function requireRegisteredPlayer(
+  ctx: QueryCtx,
+  tournamentId: Id<"tournaments">,
+) {
+  const tournament = await requireTournament(ctx, tournamentId);
+  const user = await requireCurrentUser(ctx);
+  const registration = await registrationForUser(ctx, tournamentId, user._id);
+  if (!registration) {
+    throw new Error("Not registered for this tournament");
+  }
+  return { tournament, user, registration };
 }
 
 // Includes dropped/eliminated/disqualified players: their match history must

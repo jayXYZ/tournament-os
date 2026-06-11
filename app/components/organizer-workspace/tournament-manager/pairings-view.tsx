@@ -504,9 +504,9 @@ function MatchResultCell({ row }: { row: PairingRow }) {
 
   if (playerOneWins === playerTwoWins) {
     return (
-      <span className="font-medium">
+      <ResultWithProvenance row={row}>
         Draw {playerOneWins}&ndash;{playerTwoWins}
-      </span>
+      </ResultWithProvenance>
     );
   }
 
@@ -516,9 +516,30 @@ function MatchResultCell({ row }: { row: PairingRow }) {
   const loserWins = playerOneWon ? playerTwoWins : playerOneWins;
 
   return (
-    <span className="font-medium">
+    <ResultWithProvenance row={row}>
       {winnerName} wins {winnerWins}&ndash;{loserWins}
-    </span>
+    </ResultWithProvenance>
+  );
+}
+
+// Distinguishes player self-reported results from organizer-entered ones, so
+// the organizer can spot unconfirmed reports before completing the round.
+function ResultWithProvenance({
+  row,
+  children,
+}: {
+  row: PairingRow;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="font-medium">{children}</span>
+      {row.match.matchStatus === "confirmed" ? (
+        <Badge variant="secondary">Confirmed by players</Badge>
+      ) : row.match.reportedByRegistrationId !== undefined ? (
+        <Badge variant="outline">Player-reported &middot; unconfirmed</Badge>
+      ) : null}
+    </div>
   );
 }
 
