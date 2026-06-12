@@ -1,10 +1,10 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
-import { identityWorkosUserId, requireIdentity } from "../auth";
+import { requireIdentity } from "../auth";
+import { normalizeEmail } from "../validators";
 
 export type UserIdentityFields = {
   tokenIdentifier: string;
-  workosUserId: string;
   email?: string;
   name?: string;
   avatarUrl?: string;
@@ -29,7 +29,6 @@ export async function upsertUser(
   const now = Date.now();
   const existing = await userByTokenIdentifier(ctx, fields.tokenIdentifier);
   const patch = {
-    workosUserId: fields.workosUserId,
     email: fields.email,
     name: fields.name,
     avatarUrl: fields.avatarUrl,
@@ -43,10 +42,8 @@ export async function upsertUser(
         ...patch,
       });
 
-  await linkMembershipsToUser(ctx, {
+  await acceptPendingInvitations(ctx, {
     userId,
-    tokenIdentifier: fields.tokenIdentifier,
-    workosUserId: fields.workosUserId,
     email: fields.email,
     now,
   });
@@ -60,7 +57,6 @@ export async function ensureCurrentUser(
   const identity = await requireIdentity(ctx);
   const userId = await upsertUser(ctx, {
     tokenIdentifier: identity.tokenIdentifier,
-    workosUserId: identityWorkosUserId(identity),
     email: identity.email,
     name: identity.name,
     avatarUrl: identity.pictureUrl,
@@ -72,28 +68,58 @@ export async function ensureCurrentUser(
   return user;
 }
 
-async function linkMembershipsToUser(
+// Invitations are keyed by email. When a user signs in (or refreshes their
+// profile) we activate any memberships they were invited to.
+async function acceptPendingInvitations(
   ctx: MutationCtx,
   args: {
     userId: Id<"users">;
-    tokenIdentifier: string;
-    workosUserId: string;
     email?: string;
     now: number;
   },
 ) {
-  const membershipsByWorkosUser = await ctx.db
-    .query("organizationMemberships")
-    .withIndex("by_workosUserId", (q) =>
-      q.eq("workosUserId", args.workosUserId),
-    )
-    .take(128);
+  if (!args.email) {
+    return;
+  }
 
-  for (const membership of membershipsByWorkosUser) {
-    await ctx.db.patch(membership._id, {
-      userId: args.userId,
-      tokenIdentifier: args.tokenIdentifier,
-      email: args.email ?? membership.email,
+  const email = normalizeEmail(args.email);
+  const pending = await ctx.db
+    .query("organizationInvitations")
+    .withIndex("by_email_and_status", (q) =>
+      q.eq("email", email).eq("status", "pending"),
+    )
+    .take(64);
+
+  for (const invitation of pending) {
+    const existing = await ctx.db
+      .query("organizationMemberships")
+      .withIndex("by_organizationId_and_userId", (q) =>
+        q
+          .eq("organizationId", invitation.organizationId)
+          .eq("userId", args.userId),
+      )
+      .unique();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        role: invitation.role,
+        status: "active",
+        email,
+        updatedAt: args.now,
+      });
+    } else {
+      await ctx.db.insert("organizationMemberships", {
+        organizationId: invitation.organizationId,
+        userId: args.userId,
+        email,
+        role: invitation.role,
+        status: "active",
+        updatedAt: args.now,
+      });
+    }
+
+    await ctx.db.patch(invitation._id, {
+      status: "accepted",
       updatedAt: args.now,
     });
   }

@@ -150,7 +150,6 @@ test("listMyTournaments returns the player's active registrations for visible ev
   await t.run(async (ctx) => {
     const playerUserId = await ctx.db.insert("users", {
       tokenIdentifier: playerIdentity.tokenIdentifier,
-      workosUserId: playerIdentity.subject,
       email: playerIdentity.email,
       name: playerIdentity.name,
       updatedAt: now,
@@ -239,7 +238,6 @@ test("listUpcomingForOrganization returns active future tournaments for one orga
   const { organizationId, userId } = await seedOrganizer(t);
   const otherOrganizationId = await t.run(async (ctx) => {
     return await ctx.db.insert("organizations", {
-      workosOrganizationId: "org_other",
       name: "Other Org",
       slug: "other-org",
       createdBy: userId,
@@ -459,13 +457,11 @@ test("test tournaments seed players, generate Swiss rounds, and complete", async
     const now = Date.now();
     const userId = await ctx.db.insert("users", {
       tokenIdentifier: organizerIdentity.tokenIdentifier,
-      workosUserId: organizerIdentity.subject,
       email: organizerIdentity.email,
       name: organizerIdentity.name,
       updatedAt: now,
     });
     const organizationId = await ctx.db.insert("organizations", {
-      workosOrganizationId: "org_test",
       name: "Test Org",
       slug: "test-org",
       createdBy: userId,
@@ -474,10 +470,7 @@ test("test tournaments seed players, generate Swiss rounds, and complete", async
     });
     await ctx.db.insert("organizationMemberships", {
       organizationId,
-      workosOrganizationId: "org_test",
       userId,
-      tokenIdentifier: organizerIdentity.tokenIdentifier,
-      workosUserId: organizerIdentity.subject,
       email: organizerIdentity.email,
       role: "owner",
       status: "active",
@@ -578,13 +571,11 @@ async function seedOrganizer(t: ReturnType<typeof convexTest>) {
     const now = Date.now();
     const userId = await ctx.db.insert("users", {
       tokenIdentifier: organizerIdentity.tokenIdentifier,
-      workosUserId: organizerIdentity.subject,
       email: organizerIdentity.email,
       name: organizerIdentity.name,
       updatedAt: now,
     });
     const organizationId = await ctx.db.insert("organizations", {
-      workosOrganizationId: "org_test",
       name: "Test Org",
       slug: "test-org",
       createdBy: userId,
@@ -593,10 +584,7 @@ async function seedOrganizer(t: ReturnType<typeof convexTest>) {
     });
     await ctx.db.insert("organizationMemberships", {
       organizationId,
-      workosOrganizationId: "org_test",
       userId,
-      tokenIdentifier: organizerIdentity.tokenIdentifier,
-      workosUserId: organizerIdentity.subject,
       email: organizerIdentity.email,
       role: "owner",
       status: "active",
@@ -617,7 +605,6 @@ async function seedActiveRegistrations(
     for (let playerNumber = 1; playerNumber <= count; playerNumber += 1) {
       const userId = await ctx.db.insert("users", {
         tokenIdentifier: `player:${playerNumber}`,
-        workosUserId: `player:${playerNumber}`,
         email: `player${playerNumber}@example.test`,
         name: `Player ${playerNumber}`,
         updatedAt: now,

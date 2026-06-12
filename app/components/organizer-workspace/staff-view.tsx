@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { useAction, useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { Users } from "lucide-react";
 import { toast } from "sonner";
 
@@ -43,7 +43,7 @@ import type { Role } from "./types";
 
 export function StaffView() {
   const { selectedOrganizationId, selectedOrganization } = useOrganization();
-  const inviteMember = useAction(api.organizations.inviteMember);
+  const inviteMember = useMutation(api.organizations.inviteMember);
 
   const members = useQuery(
     api.organizations.listMembers,
@@ -109,7 +109,7 @@ export function StaffView() {
                 className="grid gap-2 border-b border-border py-3 last:border-b-0 sm:grid-cols-[1fr_auto_auto]"
               >
                 <span className="text-sm font-medium">
-                  {member.email ?? member.workosUserId ?? "Pending user"}
+                  {member.email ?? "Pending user"}
                 </span>
                 <span className="text-xs capitalize text-muted-foreground">
                   {member.role}

@@ -10,6 +10,7 @@
 
 import type * as auth from "../auth.js";
 import type * as http from "../http.js";
+import type * as maintenance from "../maintenance.js";
 import type * as model_access from "../model/access.js";
 import type * as model_pairing from "../model/pairing.js";
 import type * as model_standings from "../model/standings.js";
@@ -24,8 +25,6 @@ import type * as tournaments_rounds from "../tournaments/rounds.js";
 import type * as tournaments_testing from "../tournaments/testing.js";
 import type * as users from "../users.js";
 import type * as validators from "../validators.js";
-import type * as workosApi from "../workosApi.js";
-import type * as workosEvents from "../workosEvents.js";
 
 import type {
   ApiFromModules,
@@ -36,6 +35,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   http: typeof http;
+  maintenance: typeof maintenance;
   "model/access": typeof model_access;
   "model/pairing": typeof model_pairing;
   "model/standings": typeof model_standings;
@@ -50,8 +50,6 @@ declare const fullApi: ApiFromModules<{
   "tournaments/testing": typeof tournaments_testing;
   users: typeof users;
   validators: typeof validators;
-  workosApi: typeof workosApi;
-  workosEvents: typeof workosEvents;
 }>;
 
 /**

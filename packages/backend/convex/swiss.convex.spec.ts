@@ -428,13 +428,11 @@ async function seedOrganizer(t: Test) {
     const now = Date.now();
     const userId = await ctx.db.insert("users", {
       tokenIdentifier: organizerIdentity.tokenIdentifier,
-      workosUserId: organizerIdentity.subject,
       email: organizerIdentity.email,
       name: organizerIdentity.name,
       updatedAt: now,
     });
     const organizationId = await ctx.db.insert("organizations", {
-      workosOrganizationId: "org_test",
       name: "Test Org",
       slug: "test-org",
       createdBy: userId,
@@ -443,10 +441,7 @@ async function seedOrganizer(t: Test) {
     });
     await ctx.db.insert("organizationMemberships", {
       organizationId,
-      workosOrganizationId: "org_test",
       userId,
-      tokenIdentifier: organizerIdentity.tokenIdentifier,
-      workosUserId: organizerIdentity.subject,
       email: organizerIdentity.email,
       role: "owner",
       status: "active",

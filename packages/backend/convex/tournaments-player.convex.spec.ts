@@ -401,7 +401,6 @@ test("player queries reject users who never registered", async () => {
   await t.run(async (ctx) => {
     await ctx.db.insert("users", {
       tokenIdentifier: playerIdentity(99).tokenIdentifier,
-      workosUserId: playerIdentity(99).subject,
       email: playerIdentity(99).email,
       name: playerIdentity(99).name,
       updatedAt: Date.now(),
@@ -436,7 +435,6 @@ async function seedTournament(t: TestConvex<typeof schema>, playerCount: number)
       const identity = playerIdentity(playerNumber);
       const userId = await ctx.db.insert("users", {
         tokenIdentifier: identity.tokenIdentifier,
-        workosUserId: identity.subject,
         email: identity.email,
         name: identity.name,
         updatedAt: now,
@@ -519,13 +517,11 @@ async function seedOrganizer(t: TestConvex<typeof schema>) {
     const now = Date.now();
     const userId = await ctx.db.insert("users", {
       tokenIdentifier: organizerIdentity.tokenIdentifier,
-      workosUserId: organizerIdentity.subject,
       email: organizerIdentity.email,
       name: organizerIdentity.name,
       updatedAt: now,
     });
     const organizationId = await ctx.db.insert("organizations", {
-      workosOrganizationId: "org_test",
       name: "Test Org",
       slug: "test-org",
       createdBy: userId,
@@ -534,10 +530,7 @@ async function seedOrganizer(t: TestConvex<typeof schema>) {
     });
     await ctx.db.insert("organizationMemberships", {
       organizationId,
-      workosOrganizationId: "org_test",
       userId,
-      tokenIdentifier: organizerIdentity.tokenIdentifier,
-      workosUserId: organizerIdentity.subject,
       email: organizerIdentity.email,
       role: "owner",
       status: "active",

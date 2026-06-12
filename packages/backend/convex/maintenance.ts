@@ -1,0 +1,40 @@
+import { internalMutation } from "./_generated/server";
+import type { TableNames } from "./_generated/dataModel";
+
+const allTables: TableNames[] = [
+  "users",
+  "organizations",
+  "organizationMemberships",
+  "organizationInvitations",
+  "tournaments",
+  "tournamentRegistrations",
+  "tournamentPhases",
+  "tournamentRounds",
+  "tournamentMatches",
+  "tournamentMatchPlayers",
+  "roundStandings",
+  "tournamentTestConfigs",
+  "testTournamentPlayers",
+];
+
+// Dev-only reset. Internal so it is not callable from clients; run it with
+// `npx convex run maintenance:wipeAll`.
+export const wipeAll = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    let deleted = 0;
+    for (const table of allTables) {
+      for (;;) {
+        const rows = await ctx.db.query(table).take(500);
+        if (rows.length === 0) {
+          break;
+        }
+        for (const row of rows) {
+          await ctx.db.delete(row._id);
+          deleted += 1;
+        }
+      }
+    }
+    return { deleted };
+  },
+});

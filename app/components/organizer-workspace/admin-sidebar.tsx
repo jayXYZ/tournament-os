@@ -4,7 +4,7 @@ import { useState, type FormEvent } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@workos-inc/authkit-nextjs/components";
-import { useAction } from "convex/react";
+import { useMutation } from "convex/react";
 import {
   ArrowLeft,
   Building2,
@@ -179,7 +179,7 @@ function OrganizationSwitcher() {
     selectOrganization,
   } = useOrganization();
   const { state, isMobile } = useSidebar();
-  const createOrganization = useAction(
+  const createOrganization = useMutation(
     api.organizations.createOrganizerOrganization,
   );
 

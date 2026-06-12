@@ -28,7 +28,6 @@ export type InvitationRow = {
 export type MemberRow = {
   _id: Doc<"organizationMemberships">["_id"];
   email?: string;
-  workosUserId?: string;
   role: MemberRole;
   status: string;
 };

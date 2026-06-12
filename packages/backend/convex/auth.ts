@@ -8,7 +8,3 @@ export async function requireIdentity(ctx: QueryCtx | MutationCtx | ActionCtx) {
 
   return identity;
 }
-
-export function identityWorkosUserId(identity: { subject: string }) {
-  return identity.subject;
-}

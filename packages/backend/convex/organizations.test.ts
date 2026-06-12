@@ -54,8 +54,7 @@ test("organization profile image metadata is validated before attachment", () =>
   );
 });
 
-test("organization archive is a soft delete and does not call WorkOS delete", () => {
+test("organization archive is a soft delete", () => {
   assert.match(organizationsSource, /status: "archived"/);
-  assert.doesNotMatch(organizationsSource, /deleteWorkosOrganization/);
   assert.doesNotMatch(organizationsSource, /deleteOrganization/);
 });

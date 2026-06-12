@@ -14,7 +14,6 @@ export {
   canManageOrganizationProfile,
   normalizeInviteEmail as normalizeEmail,
   slugifyOrganizationName,
-  toMembershipStatus as normalizeMembershipStatus,
 } from "@tournament-os/core/organizer-utils";
 
 export const organizerRoleValidator = v.union(

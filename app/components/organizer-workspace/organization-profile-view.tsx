@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { useAction, useMutation } from "convex/react";
+import { useMutation } from "convex/react";
 import { Archive, Building2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -40,7 +40,7 @@ export function OrganizationProfileView() {
     api.organizations.generateProfileImageUploadUrl,
   );
   const updateProfileImage = useMutation(api.organizations.updateProfileImage);
-  const updateProfile = useAction(api.organizations.updateProfile);
+  const updateProfile = useMutation(api.organizations.updateProfile);
   const archiveOrganization = useMutation(
     api.organizations.archiveOrganization,
   );

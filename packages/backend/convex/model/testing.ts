@@ -96,7 +96,6 @@ export async function seedTestPlayers(
       existingUser?._id ??
       (await ctx.db.insert("users", {
         tokenIdentifier,
-        workosUserId: tokenIdentifier,
         email: `player${playerNumber}@test.tournament.local`,
         name: `Test Player ${playerNumber}`,
         updatedAt: now,
