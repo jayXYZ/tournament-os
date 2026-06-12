@@ -1,9 +1,9 @@
-import type { Doc } from "@/convex/_generated/dataModel";
+import type { Doc } from "@tournament-os/backend/convex/_generated/dataModel";
 import type {
   InvitationStatus,
   OrganizerInviteRole,
   OrganizerRole,
-} from "@/lib/organizer-utils";
+} from "@tournament-os/core/organizer-utils";
 
 export type AdminView = "tournaments" | "staff" | "organization";
 export type Role = OrganizerInviteRole;

@@ -1,6 +1,6 @@
 import type { FunctionReturnType } from "convex/server";
 
-import type { api } from "../../../convex/_generated/api";
+import type { api } from "@tournament-os/backend/convex/_generated/api";
 
 export type MyCurrentMatch = FunctionReturnType<
   typeof api.tournaments.player.getMyCurrentMatch

@@ -36,8 +36,8 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Toaster } from "@/components/ui/sonner";
-import { api } from "@/convex/_generated/api";
-import type { Doc } from "@/convex/_generated/dataModel";
+import { api } from "@tournament-os/backend/convex/_generated/api";
+import type { Doc } from "@tournament-os/backend/convex/_generated/dataModel";
 
 type Tournament = Doc<"tournaments">;
 

@@ -24,7 +24,7 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { Id } from "@/convex/_generated/dataModel";
+import type { Id } from "@tournament-os/backend/convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
 
 export function StandingsList({

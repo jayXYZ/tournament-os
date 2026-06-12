@@ -15,7 +15,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
-import type { Id } from "@/convex/_generated/dataModel";
+import type { Id } from "@tournament-os/backend/convex/_generated/dataModel";
 
 export function ReportResultDialog({
   matchId,

@@ -40,8 +40,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { api } from "@/convex/_generated/api";
-import type { Doc } from "@/convex/_generated/dataModel";
+import { api } from "@tournament-os/backend/convex/_generated/api";
+import type { Doc } from "@tournament-os/backend/convex/_generated/dataModel";
 
 type Tournament = Doc<"tournaments">;
 

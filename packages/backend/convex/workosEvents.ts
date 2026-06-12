@@ -6,7 +6,7 @@ import {
   toInvitationStatus,
   toOrganizerRoleFromWorkosFields,
   type OrganizerRole,
-} from "../lib/organizer-utils";
+} from "@tournament-os/core/organizer-utils";
 import {
   normalizeEmail,
   normalizeMembershipStatus,

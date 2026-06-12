@@ -6,8 +6,8 @@ import {
   organizationStatuses,
   organizerInviteRoles,
   organizerRoles,
-} from "../lib/organizer-utils";
-import { tournamentFormats } from "../lib/tournament-creation-utils";
+} from "@tournament-os/core/organizer-utils";
+import { tournamentFormats } from "@tournament-os/core/tournament-creation-utils";
 
 export {
   canInviteMembers,
@@ -15,7 +15,7 @@ export {
   normalizeInviteEmail as normalizeEmail,
   slugifyOrganizationName,
   toMembershipStatus as normalizeMembershipStatus,
-} from "../lib/organizer-utils";
+} from "@tournament-os/core/organizer-utils";
 
 export const organizerRoleValidator = v.union(
   v.literal(organizerRoles[0]),

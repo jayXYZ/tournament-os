@@ -5,7 +5,7 @@ import { useMutation } from "convex/react";
 import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { api } from "@/convex/_generated/api";
+import { api } from "@tournament-os/backend/convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -45,7 +45,7 @@ import {
   type TournamentCreationPhaseForm,
   type TournamentCreationPhaseRoundMode,
   type TournamentFormat,
-} from "@/lib/tournament-creation-utils";
+} from "@tournament-os/core/tournament-creation-utils";
 import { useOrganization } from "./organization-context";
 
 export function CreateTournamentDialog() {

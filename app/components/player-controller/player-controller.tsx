@@ -19,8 +19,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Toaster } from "@/components/ui/sonner";
 import { Spinner } from "@/components/ui/spinner";
-import { api } from "@/convex/_generated/api";
-import type { Id } from "@/convex/_generated/dataModel";
+import { api } from "@tournament-os/backend/convex/_generated/api";
+import type { Id } from "@tournament-os/backend/convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
 
 import { CurrentMatchCard } from "./current-match-card";

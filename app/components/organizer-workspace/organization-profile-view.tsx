@@ -5,13 +5,13 @@ import { useAction, useMutation } from "convex/react";
 import { Archive, Building2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { api } from "@/convex/_generated/api";
-import type { Id } from "@/convex/_generated/dataModel";
+import { api } from "@tournament-os/backend/convex/_generated/api";
+import type { Id } from "@tournament-os/backend/convex/_generated/dataModel";
 import {
   validateOrganizationProfileImageDetails,
   type OrganizationProfileImageDetails,
-} from "@/lib/organization-profile-image";
-import { canManageOrganizationProfile } from "@/lib/organizer-utils";
+} from "@tournament-os/core/organization-profile-image";
+import { canManageOrganizationProfile } from "@tournament-os/core/organizer-utils";
 import { Button } from "@/components/ui/button";
 import {
   Card,

@@ -5,8 +5,8 @@ import { useMutation, useQuery } from "convex/react";
 import { Globe } from "lucide-react";
 import { toast } from "sonner";
 
-import { api } from "@/convex/_generated/api";
-import type { Doc, Id } from "@/convex/_generated/dataModel";
+import { api } from "@tournament-os/backend/convex/_generated/api";
+import type { Doc, Id } from "@tournament-os/backend/convex/_generated/dataModel";
 import {
   AlertDialog,
   AlertDialogAction,

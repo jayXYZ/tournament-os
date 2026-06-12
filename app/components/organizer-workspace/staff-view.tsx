@@ -5,8 +5,8 @@ import { useAction, useQuery } from "convex/react";
 import { Users } from "lucide-react";
 import { toast } from "sonner";
 
-import { api } from "@/convex/_generated/api";
-import { canInviteMembers } from "@/lib/organizer-utils";
+import { api } from "@tournament-os/backend/convex/_generated/api";
+import { canInviteMembers } from "@tournament-os/core/organizer-utils";
 import { Button } from "@/components/ui/button";
 import {
   Card,

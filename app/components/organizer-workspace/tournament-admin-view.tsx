@@ -2,7 +2,7 @@
 
 import { useQuery } from "convex/react";
 
-import { api } from "@/convex/_generated/api";
+import { api } from "@tournament-os/backend/convex/_generated/api";
 import { CreateTournamentDialog } from "./create-tournament-dialog";
 import { useOrganization } from "./organization-context";
 import { TournamentTable } from "./tournament-table";

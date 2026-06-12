@@ -1,7 +1,7 @@
 import type {
   OrganizerInviteRole,
   OrganizerRole,
-} from "../lib/organizer-utils";
+} from "@tournament-os/core/organizer-utils";
 
 const WORKOS_API_BASE_URL = "https://api.workos.com";
 

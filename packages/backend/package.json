@@ -1,0 +1,23 @@
+{
+  "name": "@tournament-os/backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Convex backend (schema, functions, generated API) shared by the web and mobile apps.",
+  "type": "module",
+  "scripts": {
+    "dev": "convex dev",
+    "deploy": "convex deploy",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@tournament-os/core": "workspace:*",
+    "convex": "^1.39.1"
+  },
+  "devDependencies": {
+    "@edge-runtime/vm": "^5.0.0",
+    "convex-test": "^0.0.53",
+    "typescript": "^5",
+    "vite": "^8.0.16",
+    "vitest": "^4.1.8"
+  }
+}

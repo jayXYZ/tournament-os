@@ -5,8 +5,8 @@ import { useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { Trophy } from "lucide-react";
 
-import { api } from "@/convex/_generated/api";
-import type { Id } from "@/convex/_generated/dataModel";
+import { api } from "@tournament-os/backend/convex/_generated/api";
+import type { Id } from "@tournament-os/backend/convex/_generated/dataModel";
 import {
   Card,
   CardContent,

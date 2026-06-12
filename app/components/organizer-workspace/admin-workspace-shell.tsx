@@ -3,7 +3,7 @@
 import { useEffect, type ReactNode } from "react";
 import { useMutation } from "convex/react";
 
-import { api } from "@/convex/_generated/api";
+import { api } from "@tournament-os/backend/convex/_generated/api";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
