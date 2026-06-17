@@ -9,7 +9,6 @@ import {
   toInvitationStatus,
   toMembershipStatus,
   toOrganizerRole,
-  toOrganizerRoleFromWorkosFields,
 } from "./organizer-utils.ts";
 
 test("slugifyOrganizationName creates stable slugs from organizer names", () => {
@@ -40,23 +39,12 @@ test("toMembershipStatus only exposes known lifecycle states", () => {
   assert.equal(toMembershipStatus("unknown"), "pending");
 });
 
-test("toOrganizerRole reads supported WorkOS role shapes and defaults safely", () => {
+test("toOrganizerRole reads supported role shapes and defaults safely", () => {
   assert.equal(toOrganizerRole({ slug: "owner" }), "owner");
   assert.equal(toOrganizerRole({ slug: "admin" }), "admin");
   assert.equal(toOrganizerRole("staff"), "staff");
   assert.equal(toOrganizerRole({ slug: "unknown" }), "staff");
   assert.equal(toOrganizerRole(undefined), "staff");
-});
-
-test("toOrganizerRoleFromWorkosFields uses WorkOS field precedence", () => {
-  assert.equal(toOrganizerRoleFromWorkosFields({ role: { slug: "owner" } }), "owner");
-  assert.equal(toOrganizerRoleFromWorkosFields({ roles: [{ slug: "admin" }] }), "admin");
-  assert.equal(
-    toOrganizerRoleFromWorkosFields({ role: { slug: "unknown" }, role_slug: "admin" }),
-    "admin",
-  );
-  assert.equal(toOrganizerRoleFromWorkosFields({ roleSlug: "staff" }), "staff");
-  assert.equal(toOrganizerRoleFromWorkosFields({ role_slug: "unknown" }), "staff");
 });
 
 test("toInvitationStatus only exposes known invitation lifecycle states", () => {

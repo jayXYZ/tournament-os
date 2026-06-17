@@ -52,23 +52,6 @@ export function toOrganizerRole(role: unknown): OrganizerRole {
   return organizerRoleValue(role) ?? "staff";
 }
 
-export function toOrganizerRoleFromWorkosFields(
-  fields: Record<string, unknown> | null | undefined,
-): OrganizerRole {
-  if (!fields) {
-    return "staff";
-  }
-
-  const roles = Array.isArray(fields.roles) ? fields.roles : [];
-  return (
-    organizerRoleValue(fields.role) ??
-    organizerRoleValue(roles[0]) ??
-    organizerRoleValue(fields.role_slug) ??
-    organizerRoleValue(fields.roleSlug) ??
-    "staff"
-  );
-}
-
 export function toInvitationStatus(status: unknown): InvitationStatus {
   if (isInvitationStatus(status)) {
     return status;
