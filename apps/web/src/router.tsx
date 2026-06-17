@@ -33,7 +33,12 @@ export function getRouter() {
       defaultPreload: 'intent',
       scrollRestoration: true,
       defaultPreloadStaleTime: 0, // Let React Query handle all caching
-      defaultErrorComponent: (err) => <p>{err.error.stack}</p>,
+      defaultErrorComponent: (err) =>
+        (import.meta as any).env.DEV ? (
+          <pre>{err.error.stack}</pre>
+        ) : (
+          <p>Something went wrong. Please try again.</p>
+        ),
       defaultNotFoundComponent: () => <p>not found</p>,
       context: { queryClient, convexClient: convex, convexQueryClient },
       Wrap: ({ children }) => (

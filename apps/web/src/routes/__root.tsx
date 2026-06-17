@@ -1,19 +1,11 @@
 import {
   HeadContent,
-  Link,
   Outlet,
   Scripts,
   createRootRouteWithContext,
   useRouteContext,
 } from '@tanstack/react-router'
-import {
-  ClerkProvider,
-  SignInButton,
-  SignedIn,
-  SignedOut,
-  UserButton,
-  useAuth,
-} from '@clerk/tanstack-react-start'
+import { ClerkProvider, useAuth } from '@clerk/tanstack-react-start'
 import { TanStackRouterDevtools } from '@tanstack/react-router-devtools'
 import { createServerFn } from '@tanstack/react-start'
 import * as React from 'react'
@@ -49,7 +41,12 @@ export const Route = createRootRouteWithContext<{
         content: 'width=device-width, initial-scale=1',
       },
       {
-        title: 'TanStack Start Starter',
+        title: 'Tournament OS',
+      },
+      {
+        name: 'description',
+        content:
+          'Organizer workspaces and event operations for Magic tournaments.',
       },
     ],
     links: [
@@ -86,7 +83,6 @@ export const Route = createRootRouteWithContext<{
 
     return {
       userId,
-      token,
     }
   },
   component: RootComponent,
@@ -108,47 +104,11 @@ function RootComponent() {
 
 function RootDocument({ children }: { children: React.ReactNode }) {
   return (
-    <html>
+    <html lang="en" className="h-full antialiased font-sans">
       <head>
         <HeadContent />
       </head>
-      <body>
-        <div className="p-2 flex gap-2 text-lg">
-          <Link
-            to="/"
-            activeProps={{
-              className: 'font-bold',
-            }}
-            activeOptions={{ exact: true }}
-          >
-            Home
-          </Link>
-          <Link
-            to="/tournaments"
-            activeProps={{
-              className: 'font-bold',
-            }}
-          >
-            Tournaments
-          </Link>
-          <Link
-            to="/user"
-            activeProps={{
-              className: 'font-bold',
-            }}
-          >
-            User
-          </Link>
-          <div className="ml-auto">
-            <SignedIn>
-              <UserButton />
-            </SignedIn>
-            <SignedOut>
-              <SignInButton mode="modal" />
-            </SignedOut>
-          </div>
-        </div>
-        <hr />
+      <body className="min-h-full flex flex-col">
         {children}
         <TanStackRouterDevtools position="bottom-right" />
         <Scripts />
