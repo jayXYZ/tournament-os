@@ -6,6 +6,7 @@
     "dev": "pnpm run dev:frontend & pnpm run dev:backend",
     "dev:frontend": "pnpm --filter @tournament-os/web dev",
     "dev:backend": "pnpm --filter @tournament-os/backend dev",
+    "dev:native": "pnpm --filter @tournament-os/native start",
     "build": "pnpm --filter @tournament-os/web build",
     "start": "pnpm --filter @tournament-os/web start",
     "lint": "pnpm --filter @tournament-os/web lint"
