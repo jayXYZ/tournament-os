@@ -1,25 +1,24 @@
+import { Link, useNavigate  } from '@tanstack/react-router'
+import { ArrowRight, CalendarDays } from 'lucide-react'
 
-import { Link } from "@tanstack/react-router";
-import { useNavigate } from "@tanstack/react-router";
-import { ArrowRight, CalendarDays } from "lucide-react";
-
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import type { Tournament } from './types'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
+} from '@/components/ui/card'
 import {
   Empty,
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
-} from "@/components/ui/empty";
-import { Skeleton } from "@/components/ui/skeleton";
+} from '@/components/ui/empty'
+import { Skeleton } from '@/components/ui/skeleton'
 import {
   Table,
   TableBody,
@@ -27,21 +26,20 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
-import type { Tournament } from "./types";
+} from '@/components/ui/table'
 
-const dateFormatter = new Intl.DateTimeFormat("en-US", {
-  month: "short",
-  day: "numeric",
-  year: "numeric",
-  hour: "numeric",
-  minute: "2-digit",
-});
+const dateFormatter = new Intl.DateTimeFormat('en-US', {
+  month: 'short',
+  day: 'numeric',
+  year: 'numeric',
+  hour: 'numeric',
+  minute: '2-digit',
+})
 
 export function TournamentTable({
   tournaments,
 }: {
-  tournaments: Tournament[] | undefined;
+  tournaments: Array<Tournament> | undefined
 }) {
   if (tournaments === undefined) {
     return (
@@ -60,7 +58,7 @@ export function TournamentTable({
           </div>
         </CardContent>
       </Card>
-    );
+    )
   }
 
   if (tournaments.length === 0) {
@@ -80,7 +78,7 @@ export function TournamentTable({
           </Empty>
         </CardContent>
       </Card>
-    );
+    )
   }
 
   return (
@@ -109,18 +107,15 @@ export function TournamentTable({
         </Table>
       </CardContent>
     </Card>
-  );
+  )
 }
 
 function TournamentRow({ tournament }: { tournament: Tournament }) {
-  const navigate = useNavigate();
-  const href = `/admin/tournaments/${tournament._id}`;
+  const navigate = useNavigate()
+  const href = `/admin/tournaments/${tournament._id}`
 
   return (
-    <TableRow
-      onClick={() => navigate({ to: href })}
-      className="cursor-pointer"
-    >
+    <TableRow onClick={() => navigate({ to: href })} className="cursor-pointer">
       <TableCell>
         <div className="flex min-w-0 items-center gap-2">
           <p className="font-medium text-foreground">{tournament.name}</p>
@@ -151,5 +146,5 @@ function TournamentRow({ tournament }: { tournament: Tournament }) {
         </Button>
       </TableCell>
     </TableRow>
-  );
+  )
 }

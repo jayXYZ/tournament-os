@@ -1,7 +1,5 @@
-
-import { Link } from "@tanstack/react-router";
-import { useAppAuth } from "@/lib/use-app-auth";
-import { useQuery } from "convex/react";
+import { Link } from '@tanstack/react-router'
+import { useQuery } from 'convex/react'
 import {
   CalendarDays,
   LogIn,
@@ -10,27 +8,30 @@ import {
   Ticket,
   UserRound,
   Users,
-} from "lucide-react";
+} from 'lucide-react'
+import { api } from '@tournament-os/backend/convex/_generated/api'
+import type { Doc } from '@tournament-os/backend/convex/_generated/dataModel'
+import { useAppAuth } from '@/lib/use-app-auth'
 
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
+} from '@/components/ui/card'
 import {
   Empty,
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
-} from "@/components/ui/empty";
-import { Separator } from "@/components/ui/separator";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Spinner } from "@/components/ui/spinner";
+} from '@/components/ui/empty'
+import { Separator } from '@/components/ui/separator'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Spinner } from '@/components/ui/spinner'
 import {
   Table,
   TableBody,
@@ -38,33 +39,31 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
-import { api } from "@tournament-os/backend/convex/_generated/api";
-import type { Doc } from "@tournament-os/backend/convex/_generated/dataModel";
+} from '@/components/ui/table'
 
-type Tournament = Doc<"tournaments">;
+type Tournament = Doc<'tournaments'>
 
 type MyTournamentEntry = {
-  registration: Doc<"tournamentRegistrations">;
-  tournament: Tournament;
-  organizationName: string | null;
-};
+  registration: Doc<'tournamentRegistrations'>
+  tournament: Tournament
+  organizationName: string | null
+}
 
-const dateFormatter = new Intl.DateTimeFormat("en-US", {
-  month: "short",
-  day: "numeric",
-  year: "numeric",
-  hour: "numeric",
-  minute: "2-digit",
-});
+const dateFormatter = new Intl.DateTimeFormat('en-US', {
+  month: 'short',
+  day: 'numeric',
+  year: 'numeric',
+  hour: 'numeric',
+  minute: '2-digit',
+})
 
 export function PlayerHome() {
-  const { user, loading, refreshAuth, signOut } = useAppAuth();
-  const tournaments = useQuery(api.tournaments.lifecycle.listUpcomingPublic);
+  const { user, loading, refreshAuth, signOut } = useAppAuth()
+  const tournaments = useQuery(api.tournaments.lifecycle.listUpcomingPublic)
   const myTournaments = useQuery(
     api.tournaments.registrations.listMyTournaments,
-    user ? {} : "skip",
-  );
+    user ? {} : 'skip',
+  )
 
   return (
     <main className="min-h-svh bg-background text-foreground">
@@ -127,7 +126,7 @@ export function PlayerHome() {
         <TournamentTable tournaments={tournaments} />
       </section>
     </main>
-  );
+  )
 }
 
 function AuthControls({
@@ -136,10 +135,10 @@ function AuthControls({
   onSignIn,
   onSignOut,
 }: {
-  loading: boolean;
-  email?: string;
-  onSignIn: () => void;
-  onSignOut: () => void;
+  loading: boolean
+  email?: string
+  onSignIn: () => void
+  onSignOut: () => void
 }) {
   if (loading) {
     return (
@@ -147,7 +146,7 @@ function AuthControls({
         <Spinner />
         <span className="sr-only">Loading authentication</span>
       </Button>
-    );
+    )
   }
 
   if (email) {
@@ -160,7 +159,7 @@ function AuthControls({
           Sign out
         </Button>
       </div>
-    );
+    )
   }
 
   return (
@@ -170,28 +169,28 @@ function AuthControls({
         Sign in
       </Button>
     </div>
-  );
+  )
 }
 
 function StatusLine({
   icon: Icon,
   label,
 }: {
-  icon: typeof CalendarDays;
-  label: string;
+  icon: typeof CalendarDays
+  label: string
 }) {
   return (
     <div className="flex items-center gap-2">
       <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
       <span>{label}</span>
     </div>
-  );
+  )
 }
 
 function MyTournamentsSection({
   entries,
 }: {
-  entries: MyTournamentEntry[] | undefined;
+  entries: Array<MyTournamentEntry> | undefined
 }) {
   if (entries === undefined) {
     return (
@@ -210,7 +209,7 @@ function MyTournamentsSection({
           </div>
         </CardContent>
       </Card>
-    );
+    )
   }
 
   if (entries.length === 0) {
@@ -224,7 +223,7 @@ function MyTournamentsSection({
           </CardDescription>
         </CardHeader>
       </Card>
-    );
+    )
   }
 
   return (
@@ -256,11 +255,11 @@ function MyTournamentsSection({
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">
                     {entry.tournament.isTestEvent
-                      ? "Test event"
-                      : "Public event"}
+                      ? 'Test event'
+                      : 'Public event'}
                   </p>
                 </TableCell>
-                <TableCell>{entry.organizationName ?? "—"}</TableCell>
+                <TableCell>{entry.organizationName ?? '—'}</TableCell>
                 <TableCell className="capitalize">
                   {entry.tournament.format}
                 </TableCell>
@@ -268,23 +267,29 @@ function MyTournamentsSection({
                   {dateFormatter.format(new Date(entry.tournament.startDate))}
                 </TableCell>
                 <TableCell>
-                  {entry.tournament.status === "in_progress" ? (
+                  {entry.tournament.status === 'in_progress' ? (
                     <Badge>In progress</Badge>
                   ) : (
                     <Badge variant="secondary">Registered</Badge>
                   )}
                 </TableCell>
                 <TableCell className="text-right">
-                  {entry.tournament.status === "in_progress" ? (
+                  {entry.tournament.status === 'in_progress' ? (
                     <Button asChild type="button">
-                      <Link to="/tournaments/$tournamentId/play" params={{ tournamentId: entry.tournament._id }}>
+                      <Link
+                        to="/tournaments/$tournamentId/play"
+                        params={{ tournamentId: entry.tournament._id }}
+                      >
                         <Swords data-icon="inline-start" />
                         Open player controller
                       </Link>
                     </Button>
                   ) : (
                     <Button asChild type="button" variant="outline">
-                      <Link to="/tournaments/$tournamentId" params={{ tournamentId: entry.tournament._id }}>
+                      <Link
+                        to="/tournaments/$tournamentId"
+                        params={{ tournamentId: entry.tournament._id }}
+                      >
                         <Ticket data-icon="inline-start" />
                         View event
                       </Link>
@@ -297,13 +302,13 @@ function MyTournamentsSection({
         </Table>
       </CardContent>
     </Card>
-  );
+  )
 }
 
 function TournamentTable({
   tournaments,
 }: {
-  tournaments: Tournament[] | undefined;
+  tournaments: Array<Tournament> | undefined
 }) {
   if (tournaments === undefined) {
     return (
@@ -322,7 +327,7 @@ function TournamentTable({
           </div>
         </CardContent>
       </Card>
-    );
+    )
   }
 
   if (tournaments.length === 0) {
@@ -339,7 +344,7 @@ function TournamentTable({
           </EmptyDescription>
         </EmptyHeader>
       </Empty>
-    );
+    )
   }
 
   return (
@@ -370,7 +375,7 @@ function TournamentTable({
         </Table>
       </CardContent>
     </Card>
-  );
+  )
 }
 
 function TournamentRow({ tournament }: { tournament: Tournament }) {
@@ -379,7 +384,7 @@ function TournamentRow({ tournament }: { tournament: Tournament }) {
       <TableCell>
         <p className="font-medium text-foreground">{tournament.name}</p>
         <p className="mt-1 text-xs text-muted-foreground">
-          {tournament.isTestEvent ? "Test event" : "Public event"}
+          {tournament.isTestEvent ? 'Test event' : 'Public event'}
         </p>
       </TableCell>
       <TableCell className="capitalize">{tournament.format}</TableCell>
@@ -390,11 +395,14 @@ function TournamentRow({ tournament }: { tournament: Tournament }) {
       <TableCell className="capitalize">{tournament.status}</TableCell>
       <TableCell className="text-right">
         <Button asChild type="button" variant="outline">
-          <Link to="/tournaments/$tournamentId" params={{ tournamentId: tournament._id }}>
+          <Link
+            to="/tournaments/$tournamentId"
+            params={{ tournamentId: tournament._id }}
+          >
             View &amp; register
           </Link>
         </Button>
       </TableCell>
     </TableRow>
-  );
+  )
 }

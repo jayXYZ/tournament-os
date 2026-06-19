@@ -1,32 +1,34 @@
+import {  useState } from 'react'
+import { useMutation, useQuery } from 'convex/react'
+import { Users } from 'lucide-react'
+import { toast } from 'sonner'
 
-import { useState, type FormEvent } from "react";
-import { useMutation, useQuery } from "convex/react";
-import { Users } from "lucide-react";
-import { toast } from "sonner";
-
-import { api } from "@tournament-os/backend/convex/_generated/api";
-import { canInviteMembers } from "@tournament-os/core/organizer-utils";
-import { Button } from "@/components/ui/button";
+import { api } from '@tournament-os/backend/convex/_generated/api'
+import { canInviteMembers } from '@tournament-os/core/organizer-utils'
+import { useOrganization } from './organization-context'
+import type {FormEvent} from 'react';
+import type { Role } from './types'
+import { Button } from '@/components/ui/button'
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
+} from '@/components/ui/card'
 import {
   Empty,
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
-} from "@/components/ui/empty";
+} from '@/components/ui/empty'
 import {
   Field,
   FieldDescription,
   FieldGroup,
   FieldLabel,
-} from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
+} from '@/components/ui/field'
+import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectContent,
@@ -34,56 +36,58 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Spinner } from "@/components/ui/spinner";
-import { useOrganization } from "./organization-context";
-import type { Role } from "./types";
+} from '@/components/ui/select'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Spinner } from '@/components/ui/spinner'
 
 export function StaffView() {
-  const { selectedOrganizationId, selectedOrganization } = useOrganization();
-  const inviteMember = useMutation(api.organizations.inviteMember);
+  const { selectedOrganizationId, selectedOrganization } = useOrganization()
+  const inviteMember = useMutation(api.organizations.inviteMember)
 
   const members = useQuery(
     api.organizations.listMembers,
-    selectedOrganizationId ? { organizationId: selectedOrganizationId } : "skip",
-  );
+    selectedOrganizationId
+      ? { organizationId: selectedOrganizationId }
+      : 'skip',
+  )
   const invitations = useQuery(
     api.organizations.listInvitations,
-    selectedOrganizationId ? { organizationId: selectedOrganizationId } : "skip",
-  );
+    selectedOrganizationId
+      ? { organizationId: selectedOrganizationId }
+      : 'skip',
+  )
 
-  const activeMembership = selectedOrganization?.membership ?? null;
+  const activeMembership = selectedOrganization?.membership ?? null
   const mayInvite = activeMembership
     ? canInviteMembers(activeMembership.role)
-    : false;
+    : false
 
-  const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteRole, setInviteRole] = useState<Role>("staff");
-  const [busy, setBusy] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteRole, setInviteRole] = useState<Role>('staff')
+  const [busy, setBusy] = useState(false)
 
   async function handleInvite(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+    event.preventDefault()
     if (!selectedOrganizationId) {
-      return;
+      return
     }
 
-    setBusy(true);
+    setBusy(true)
     try {
       await inviteMember({
         organizationId: selectedOrganizationId,
         email: inviteEmail,
         role: inviteRole,
-      });
-      setInviteEmail("");
-      setInviteRole("staff");
-      toast.success("Invitation sent.");
+      })
+      setInviteEmail('')
+      setInviteRole('staff')
+      toast.success('Invitation sent.')
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Could not send invitation.",
-      );
+        error instanceof Error ? error.message : 'Could not send invitation.',
+      )
     } finally {
-      setBusy(false);
+      setBusy(false)
     }
   }
 
@@ -108,7 +112,7 @@ export function StaffView() {
                 className="grid gap-2 border-b border-border py-3 last:border-b-0 sm:grid-cols-[1fr_auto_auto]"
               >
                 <span className="text-sm font-medium">
-                  {member.email ?? "Pending user"}
+                  {member.email ?? 'Pending user'}
                 </span>
                 <span className="text-xs capitalize text-muted-foreground">
                   {member.role}
@@ -138,7 +142,7 @@ export function StaffView() {
           <CardHeader>
             <CardTitle>Current access</CardTitle>
             <CardDescription className="capitalize">
-              {activeMembership?.role ?? "No org"}
+              {activeMembership?.role ?? 'No org'}
             </CardDescription>
           </CardHeader>
         </Card>
@@ -222,5 +226,5 @@ export function StaffView() {
         </Card>
       </aside>
     </div>
-  );
+  )
 }

@@ -1,7 +1,5 @@
-
-import { useState, type FormEvent } from "react";
-import { useMutation, useQuery } from "convex/react";
-import type { FunctionReturnType } from "convex/server";
+import {  useState } from 'react'
+import { useMutation, useQuery } from 'convex/react'
 import {
   ClipboardPen,
   FlaskConical,
@@ -10,13 +8,15 @@ import {
   Settings2,
   Swords,
   Trophy,
-} from "lucide-react";
-import { toast } from "sonner";
+} from 'lucide-react'
+import { toast } from 'sonner'
 
-import { api } from "@tournament-os/backend/convex/_generated/api";
-import type { Id } from "@tournament-os/backend/convex/_generated/dataModel";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { api } from '@tournament-os/backend/convex/_generated/api'
+import type {FormEvent} from 'react';
+import type { FunctionReturnType } from 'convex/server'
+import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import {
   Card,
   CardAction,
@@ -24,7 +24,7 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
+} from '@/components/ui/card'
 import {
   Dialog,
   DialogContent,
@@ -32,25 +32,25 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from '@/components/ui/dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
+} from '@/components/ui/dropdown-menu'
+import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
+import { Input } from '@/components/ui/input'
 import {
   Empty,
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
-} from "@/components/ui/empty";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Spinner } from "@/components/ui/spinner";
+} from '@/components/ui/empty'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Spinner } from '@/components/ui/spinner'
 import {
   Table,
   TableBody,
@@ -58,46 +58,45 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+} from '@/components/ui/table'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 type PairingsBoard = FunctionReturnType<
   typeof api.tournaments.rounds.getPairingsBoard
->;
+>
 type PairingRow = FunctionReturnType<
   typeof api.tournaments.rounds.listRoundPairings
->[number];
-type PairedPlayer = PairingRow["players"][number];
+>[number]
+type PairedPlayer = PairingRow['players'][number]
 type AdvanceStep = Exclude<
-  PairingsBoard["nextStep"],
-  { kind: "tournamentCompleted" } | { kind: "tournamentCancelled" }
->;
+  PairingsBoard['nextStep'],
+  { kind: 'tournamentCompleted' } | { kind: 'tournamentCancelled' }
+>
 
 export function PairingsView({ tournamentId }: { tournamentId: string }) {
   const board = useQuery(api.tournaments.rounds.getPairingsBoard, {
-    tournamentId: tournamentId as Id<"tournaments">,
-  });
+    tournamentId: tournamentId as Id<'tournaments'>,
+  })
 
-  const [selectedPhaseId, setSelectedPhaseId] = useState<string | null>(null);
-  const [selectedRoundNumber, setSelectedRoundNumber] = useState<
-    number | null
-  >(null);
+  const [selectedPhaseId, setSelectedPhaseId] = useState<string | null>(null)
+  const [selectedRoundNumber, setSelectedRoundNumber] = useState<number | null>(
+    null,
+  )
 
-  const phases = board?.phases ?? [];
+  const phases = board?.phases ?? []
   const defaultPhase =
-    phases.find(({ phase }) => phase.phaseStatus === "in_progress") ??
-    phases[0];
+    phases.find(({ phase }) => phase.phaseStatus === 'in_progress') ?? phases[0]
   const activePhase =
-    phases.find(({ phase }) => phase._id === selectedPhaseId) ?? defaultPhase;
-  const rounds = activePhase?.rounds ?? [];
-  const latestRound = rounds[rounds.length - 1];
+    phases.find(({ phase }) => phase._id === selectedPhaseId) ?? defaultPhase
+  const rounds = activePhase?.rounds ?? []
+  const latestRound = rounds[rounds.length - 1]
   const selectedRound =
     rounds.find((round) => round.roundNumber === selectedRoundNumber) ??
-    latestRound;
+    latestRound
   const roundTabCount = Math.max(
     activePhase?.phase.phaseTotalRounds ?? 0,
     rounds.length,
-  );
+  )
 
   return (
     <section className="flex flex-col gap-4">
@@ -142,8 +141,8 @@ export function PairingsView({ tournamentId }: { tournamentId: string }) {
                 <Tabs
                   value={activePhase.phase._id}
                   onValueChange={(value) => {
-                    setSelectedPhaseId(value);
-                    setSelectedRoundNumber(null);
+                    setSelectedPhaseId(value)
+                    setSelectedRoundNumber(null)
                   }}
                 >
                   <TabsList>
@@ -151,7 +150,7 @@ export function PairingsView({ tournamentId }: { tournamentId: string }) {
                       <TabsTrigger
                         key={phase._id}
                         value={phase._id}
-                        disabled={phase.phaseStatus === "upcoming"}
+                        disabled={phase.phaseStatus === 'upcoming'}
                       >
                         {phase.phaseName ?? `Phase ${phase.phaseOrder}`}
                       </TabsTrigger>
@@ -183,10 +182,10 @@ export function PairingsView({ tournamentId }: { tournamentId: string }) {
                   >
                     <TabsList>
                       {Array.from({ length: roundTabCount }, (_, index) => {
-                        const roundNumber = index + 1;
+                        const roundNumber = index + 1
                         const exists = rounds.some(
                           (round) => round.roundNumber === roundNumber,
-                        );
+                        )
                         return (
                           <TabsTrigger
                             key={roundNumber}
@@ -195,7 +194,7 @@ export function PairingsView({ tournamentId }: { tournamentId: string }) {
                           >
                             Round {roundNumber}
                           </TabsTrigger>
-                        );
+                        )
                       })}
                     </TabsList>
                   </Tabs>
@@ -207,44 +206,44 @@ export function PairingsView({ tournamentId }: { tournamentId: string }) {
         </CardContent>
       </Card>
     </section>
-  );
+  )
 }
 
 function PairingsSettingsMenu({
   board,
   roundId,
 }: {
-  board: PairingsBoard | undefined;
-  roundId: Id<"tournamentRounds"> | null;
+  board: PairingsBoard | undefined
+  roundId: Id<'tournamentRounds'> | null
 }) {
   const generateTestRoundResults = useMutation(
     api.tournaments.testing.generateTestRoundResults,
-  );
-  const [busy, setBusy] = useState(false);
+  )
+  const [busy, setBusy] = useState(false)
 
   const canSimulate =
-    board !== undefined && board.tournament.isTestEvent && roundId !== null;
+    board !== undefined && board.tournament.isTestEvent && roundId !== null
 
   async function handleSimulateResults() {
     if (!board || !roundId) {
-      return;
+      return
     }
 
-    setBusy(true);
+    setBusy(true)
     try {
       await generateTestRoundResults({
         tournamentId: board.tournament._id,
         roundId,
-      });
-      toast.success("Match results simulated.");
+      })
+      toast.success('Match results simulated.')
     } catch (error) {
       toast.error(
         error instanceof Error
           ? error.message
-          : "Could not simulate match results.",
-      );
+          : 'Could not simulate match results.',
+      )
     } finally {
-      setBusy(false);
+      setBusy(false)
     }
   }
 
@@ -272,37 +271,41 @@ function PairingsSettingsMenu({
         </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
-  );
+  )
 }
 
 function AdvanceStepButton({
   board,
   onAdvanced,
 }: {
-  board: PairingsBoard | undefined;
-  onAdvanced: () => void;
+  board: PairingsBoard | undefined
+  onAdvanced: () => void
 }) {
-  const startTournament = useMutation(api.tournaments.rounds.startTournament);
-  const generateNextRound = useMutation(api.tournaments.rounds.generateNextRound);
-  const completeRound = useMutation(api.tournaments.rounds.completeRound);
-  const completeTournament = useMutation(api.tournaments.lifecycle.completeTournament);
-  const [busy, setBusy] = useState(false);
+  const startTournament = useMutation(api.tournaments.rounds.startTournament)
+  const generateNextRound = useMutation(
+    api.tournaments.rounds.generateNextRound,
+  )
+  const completeRound = useMutation(api.tournaments.rounds.completeRound)
+  const completeTournament = useMutation(
+    api.tournaments.lifecycle.completeTournament,
+  )
+  const [busy, setBusy] = useState(false)
 
   if (board === undefined) {
-    return <Skeleton className="h-8 w-44" />;
+    return <Skeleton className="h-8 w-44" />
   }
 
-  const step = board.nextStep;
-  if (step.kind === "tournamentCancelled") {
-    return <Badge variant="destructive">Tournament cancelled</Badge>;
+  const step = board.nextStep
+  if (step.kind === 'tournamentCancelled') {
+    return <Badge variant="destructive">Tournament cancelled</Badge>
   }
-  if (step.kind === "tournamentCompleted") {
+  if (step.kind === 'tournamentCompleted') {
     return (
       <Button type="button" disabled>
         <Trophy />
         Tournament complete
       </Button>
-    );
+    )
   }
 
   const action = advanceAction(step, board.tournament._id, {
@@ -310,22 +313,22 @@ function AdvanceStepButton({
     generateNextRound,
     completeRound,
     completeTournament,
-  });
+  })
 
   async function handleAdvance() {
-    setBusy(true);
+    setBusy(true)
     try {
-      await action.run();
-      toast.success(action.success);
-      onAdvanced();
+      await action.run()
+      toast.success(action.success)
+      onAdvanced()
     } catch (error) {
       toast.error(
         error instanceof Error
           ? error.message
-          : "Could not advance the tournament.",
-      );
+          : 'Could not advance the tournament.',
+      )
     } finally {
-      setBusy(false);
+      setBusy(false)
     }
   }
 
@@ -343,61 +346,63 @@ function AdvanceStepButton({
         <p className="text-xs text-muted-foreground">{step.reason}</p>
       ) : null}
     </div>
-  );
+  )
 }
 
 function advanceAction(
   step: AdvanceStep,
-  tournamentId: Id<"tournaments">,
+  tournamentId: Id<'tournaments'>,
   mutations: {
     startTournament: (args: {
-      tournamentId: Id<"tournaments">;
-    }) => Promise<unknown>;
+      tournamentId: Id<'tournaments'>
+    }) => Promise<unknown>
     generateNextRound: (args: {
-      tournamentId: Id<"tournaments">;
-    }) => Promise<unknown>;
+      tournamentId: Id<'tournaments'>
+    }) => Promise<unknown>
     completeRound: (args: {
-      roundId: Id<"tournamentRounds">;
-    }) => Promise<unknown>;
+      roundId: Id<'tournamentRounds'>
+    }) => Promise<unknown>
     completeTournament: (args: {
-      tournamentId: Id<"tournaments">;
-    }) => Promise<unknown>;
+      tournamentId: Id<'tournaments'>
+    }) => Promise<unknown>
   },
 ) {
   switch (step.kind) {
-    case "startTournament":
+    case 'startTournament':
       return {
-        label: "Generate pairings",
+        label: 'Generate pairings',
         icon: <Swords />,
-        success: "Round 1 pairings generated.",
+        success: 'Round 1 pairings generated.',
         run: () => mutations.startTournament({ tournamentId }),
-      };
-    case "generateStandings":
+      }
+    case 'generateStandings':
       return {
-        label: "Generate standings",
+        label: 'Generate standings',
         icon: <ListOrdered />,
-        success: "Standings generated and round completed.",
+        success: 'Standings generated and round completed.',
         run: () => mutations.completeRound({ roundId: step.roundId }),
-      };
-    case "generateNextRound":
+      }
+    case 'generateNextRound':
       return {
-        label: "Generate pairings",
+        label: 'Generate pairings',
         icon: <Swords />,
-        success: "Next round pairings generated.",
+        success: 'Next round pairings generated.',
         run: () => mutations.generateNextRound({ tournamentId }),
-      };
-    case "completeTournament":
+      }
+    case 'completeTournament':
       return {
-        label: "Complete tournament",
+        label: 'Complete tournament',
         icon: <Trophy />,
-        success: "Tournament completed.",
+        success: 'Tournament completed.',
         run: () => mutations.completeTournament({ tournamentId }),
-      };
+      }
   }
 }
 
-function PairingsTable({ roundId }: { roundId: Id<"tournamentRounds"> }) {
-  const pairings = useQuery(api.tournaments.rounds.listRoundPairings, { roundId });
+function PairingsTable({ roundId }: { roundId: Id<'tournamentRounds'> }) {
+  const pairings = useQuery(api.tournaments.rounds.listRoundPairings, {
+    roundId,
+  })
 
   if (pairings === undefined) {
     return (
@@ -406,7 +411,7 @@ function PairingsTable({ roundId }: { roundId: Id<"tournamentRounds"> }) {
           <Skeleton key={row} className="h-12" />
         ))}
       </div>
-    );
+    )
   }
 
   if (pairings.length === 0) {
@@ -422,7 +427,7 @@ function PairingsTable({ roundId }: { roundId: Id<"tournamentRounds"> }) {
           </EmptyDescription>
         </EmptyHeader>
       </Empty>
-    );
+    )
   }
 
   return (
@@ -441,16 +446,16 @@ function PairingsTable({ roundId }: { roundId: Id<"tournamentRounds"> }) {
         ))}
       </TableBody>
     </Table>
-  );
+  )
 }
 
 function pairedPlayerName(player: PairedPlayer | undefined) {
-  return player?.user?.name ?? player?.user?.email ?? "Unknown player";
+  return player?.user?.name ?? player?.user?.email ?? 'Unknown player'
 }
 
 function PairingTableRow({ row }: { row: PairingRow }) {
-  const [playerOne, playerTwo] = row.players;
-  const isBye = row.players.some((player) => player.isBye);
+  const [playerOne, playerTwo] = row.players
+  const isBye = row.players.some((player) => player.isBye)
 
   return (
     <TableRow>
@@ -483,42 +488,42 @@ function PairingTableRow({ row }: { row: PairingRow }) {
         <ManageMatchMenu row={row} />
       </TableCell>
     </TableRow>
-  );
+  )
 }
 
 function MatchResultCell({ row }: { row: PairingRow }) {
-  const [playerOne, playerTwo] = row.players;
+  const [playerOne, playerTwo] = row.players
   const hasResult =
-    row.match.matchStatus === "completed" ||
-    row.match.matchStatus === "confirmed";
+    row.match.matchStatus === 'completed' ||
+    row.match.matchStatus === 'confirmed'
 
   if (!hasResult) {
-    return <Badge variant="outline">Awaiting result</Badge>;
+    return <Badge variant="outline">Awaiting result</Badge>
   }
 
-  const playerOneWins = playerOne?.gameWins ?? 0;
+  const playerOneWins = playerOne?.gameWins ?? 0
   const playerTwoWins = playerOne?.isBye
-    ? playerOne?.gameLosses ?? 0
-    : playerTwo?.gameWins ?? 0;
+    ? (playerOne?.gameLosses ?? 0)
+    : (playerTwo?.gameWins ?? 0)
 
   if (playerOneWins === playerTwoWins) {
     return (
       <ResultWithProvenance row={row}>
         Draw {playerOneWins}&ndash;{playerTwoWins}
       </ResultWithProvenance>
-    );
+    )
   }
 
-  const playerOneWon = playerOneWins > playerTwoWins;
-  const winnerName = pairedPlayerName(playerOneWon ? playerOne : playerTwo);
-  const winnerWins = playerOneWon ? playerOneWins : playerTwoWins;
-  const loserWins = playerOneWon ? playerTwoWins : playerOneWins;
+  const playerOneWon = playerOneWins > playerTwoWins
+  const winnerName = pairedPlayerName(playerOneWon ? playerOne : playerTwo)
+  const winnerWins = playerOneWon ? playerOneWins : playerTwoWins
+  const loserWins = playerOneWon ? playerTwoWins : playerOneWins
 
   return (
     <ResultWithProvenance row={row}>
       {winnerName} wins {winnerWins}&ndash;{loserWins}
     </ResultWithProvenance>
-  );
+  )
 }
 
 // Distinguishes player self-reported results from organizer-entered ones, so
@@ -527,24 +532,24 @@ function ResultWithProvenance({
   row,
   children,
 }: {
-  row: PairingRow;
-  children: React.ReactNode;
+  row: PairingRow
+  children: React.ReactNode
 }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
       <span className="font-medium">{children}</span>
-      {row.match.matchStatus === "confirmed" ? (
+      {row.match.matchStatus === 'confirmed' ? (
         <Badge variant="secondary">Confirmed by players</Badge>
       ) : row.match.reportedByRegistrationId !== undefined ? (
         <Badge variant="outline">Player-reported &middot; unconfirmed</Badge>
       ) : null}
     </div>
-  );
+  )
 }
 
 function ManageMatchMenu({ row }: { row: PairingRow }) {
-  const isBye = row.players.some((player) => player.isBye);
-  const [enteringResult, setEnteringResult] = useState(false);
+  const isBye = row.players.some((player) => player.isBye)
+  const [enteringResult, setEnteringResult] = useState(false)
 
   return (
     <>
@@ -556,7 +561,7 @@ function ManageMatchMenu({ row }: { row: PairingRow }) {
             size="icon"
             aria-label={
               row.match.tableNumber === undefined
-                ? "Manage bye match"
+                ? 'Manage bye match'
                 : `Manage table ${row.match.tableNumber}`
             }
           >
@@ -584,7 +589,7 @@ function ManageMatchMenu({ row }: { row: PairingRow }) {
         />
       ) : null}
     </>
-  );
+  )
 }
 
 function EnterResultDialog({
@@ -592,28 +597,30 @@ function EnterResultDialog({
   open,
   onOpenChange,
 }: {
-  row: PairingRow;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
+  row: PairingRow
+  open: boolean
+  onOpenChange: (open: boolean) => void
 }) {
-  const recordMatchResult = useMutation(api.tournaments.rounds.recordMatchResult);
-  const [playerOne, playerTwo] = row.players;
+  const recordMatchResult = useMutation(
+    api.tournaments.rounds.recordMatchResult,
+  )
+  const [playerOne, playerTwo] = row.players
 
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(false)
   const [playerOneWins, setPlayerOneWins] = useState(
     String(playerOne?.gameWins ?? 0),
-  );
+  )
   const [playerTwoWins, setPlayerTwoWins] = useState(
     String(playerTwo?.gameWins ?? 0),
-  );
+  )
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+    event.preventDefault()
     if (!playerOne || !playerTwo) {
-      return;
+      return
     }
 
-    setBusy(true);
+    setBusy(true)
     try {
       await recordMatchResult({
         matchId: row.match._id,
@@ -621,17 +628,17 @@ function EnterResultDialog({
         playerTwoRegistrationId: playerTwo.playerId,
         playerOneGameWins: Number.parseInt(playerOneWins, 10),
         playerTwoGameWins: Number.parseInt(playerTwoWins, 10),
-      });
-      onOpenChange(false);
-      toast.success("Match result recorded.");
+      })
+      onOpenChange(false)
+      toast.success('Match result recorded.')
     } catch (error) {
       toast.error(
         error instanceof Error
           ? error.message
-          : "Could not record the match result.",
-      );
+          : 'Could not record the match result.',
+      )
     } finally {
-      setBusy(false);
+      setBusy(false)
     }
   }
 
@@ -640,7 +647,7 @@ function EnterResultDialog({
       open={open}
       onOpenChange={(nextOpen) => {
         if (!busy) {
-          onOpenChange(nextOpen);
+          onOpenChange(nextOpen)
         }
       }}
     >
@@ -651,7 +658,7 @@ function EnterResultDialog({
             <DialogDescription>
               Record the game wins for each player
               {row.match.tableNumber === undefined
-                ? ""
+                ? ''
                 : ` at table ${row.match.tableNumber}`}
               .
             </DialogDescription>
@@ -701,5 +708,5 @@ function EnterResultDialog({
         </form>
       </DialogContent>
     </Dialog>
-  );
+  )
 }

@@ -1,18 +1,17 @@
+import { Link } from '@tanstack/react-router'
+import { AuthLoading, Authenticated, Unauthenticated } from 'convex/react'
+import { ArrowLeft, LogIn, Swords } from 'lucide-react'
+import type { ReactNode } from 'react'
+import { useAppAuth } from '@/lib/use-app-auth'
 
-import type { ReactNode } from "react";
-import { Link } from "@tanstack/react-router";
-import { useAppAuth } from "@/lib/use-app-auth";
-import { Authenticated, AuthLoading, Unauthenticated } from "convex/react";
-import { ArrowLeft, LogIn, Swords } from "lucide-react";
-
-import { Button } from "@/components/ui/button";
+import { Button } from '@/components/ui/button'
 
 export function AdminAuthGate({
   children,
-  description = "Organization creation, staff invites, and tournament operations live in the admin workspace.",
+  description = 'Organization creation, staff invites, and tournament operations live in the admin workspace.',
 }: {
-  children: ReactNode;
-  description?: string;
+  children: ReactNode
+  description?: string
 }) {
   return (
     <main className="min-h-svh bg-stone-100 text-stone-950">
@@ -26,11 +25,11 @@ export function AdminAuthGate({
       </Unauthenticated>
       <Authenticated>{children}</Authenticated>
     </main>
-  );
+  )
 }
 
 function SignedOutAdmin({ description }: { description: string }) {
-  const { refreshAuth } = useAppAuth();
+  const { refreshAuth } = useAppAuth()
 
   return (
     <section className="flex min-h-svh flex-col bg-stone-950 text-stone-50">
@@ -78,5 +77,5 @@ function SignedOutAdmin({ description }: { description: string }) {
         </div>
       </div>
     </section>
-  );
+  )
 }

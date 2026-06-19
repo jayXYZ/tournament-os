@@ -1,18 +1,21 @@
-
-import { useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useState } from 'react'
+import { useMutation, useQuery } from 'convex/react'
 import {
   ClipboardList,
   FlaskConical,
   MoreHorizontal,
   Settings2,
   UserMinus,
-} from "lucide-react";
+} from 'lucide-react'
 
-import { api } from "@tournament-os/backend/convex/_generated/api";
-import type { Doc, Id } from "@tournament-os/backend/convex/_generated/dataModel";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { api } from '@tournament-os/backend/convex/_generated/api'
+import { toast } from 'sonner'
+import type {
+  Doc,
+  Id,
+} from '@tournament-os/backend/convex/_generated/dataModel'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import {
   Card,
   CardAction,
@@ -20,7 +23,7 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
+} from '@/components/ui/card'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -31,23 +34,23 @@ import {
   AlertDialogHeader,
   AlertDialogMedia,
   AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+} from '@/components/ui/alert-dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from '@/components/ui/dropdown-menu'
 import {
   Empty,
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
-} from "@/components/ui/empty";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Spinner } from "@/components/ui/spinner";
+} from '@/components/ui/empty'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Spinner } from '@/components/ui/spinner'
 import {
   Table,
   TableBody,
@@ -55,38 +58,40 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
-import { toast } from "sonner";
+} from '@/components/ui/table'
 
 type RegistrationRow = {
-  registration: Doc<"tournamentRegistrations">;
-  user: Doc<"users"> | null;
-};
+  registration: Doc<'tournamentRegistrations'>
+  user: Doc<'users'> | null
+}
 
-type RegistrationStatus = Doc<"tournamentRegistrations">["status"];
+type RegistrationStatus = Doc<'tournamentRegistrations'>['status']
 
 const statusBadgeVariant: Record<
   RegistrationStatus,
-  "default" | "secondary" | "destructive" | "outline"
+  'default' | 'secondary' | 'destructive' | 'outline'
 > = {
-  active: "default",
-  pending: "outline",
-  eliminated: "secondary",
-  dropped: "destructive",
-  disqualified: "destructive",
-};
+  active: 'default',
+  pending: 'outline',
+  eliminated: 'secondary',
+  dropped: 'destructive',
+  disqualified: 'destructive',
+}
 
 function playerName(row: RegistrationRow) {
-  return row.user?.name ?? row.user?.email ?? "Unknown player";
+  return row.user?.name ?? row.user?.email ?? 'Unknown player'
 }
 
 export function RegistrationsView({ tournamentId }: { tournamentId: string }) {
-  const registrations = useQuery(api.tournaments.registrations.listRegistrations, {
-    tournamentId: tournamentId as Id<"tournaments">,
-  });
+  const registrations = useQuery(
+    api.tournaments.registrations.listRegistrations,
+    {
+      tournamentId: tournamentId as Id<'tournaments'>,
+    },
+  )
   const setup = useQuery(api.tournaments.lifecycle.getTournamentSetup, {
-    tournamentId: tournamentId as Id<"tournaments">,
-  });
+    tournamentId: tournamentId as Id<'tournaments'>,
+  })
 
   return (
     <section className="flex flex-col gap-4">
@@ -114,39 +119,39 @@ export function RegistrationsView({ tournamentId }: { tournamentId: string }) {
         </CardContent>
       </Card>
     </section>
-  );
+  )
 }
 
 function RegistrationSettingsMenu({
   tournament,
 }: {
-  tournament: Doc<"tournaments"> | undefined;
+  tournament: Doc<'tournaments'> | undefined
 }) {
-  const seedTestPlayers = useMutation(api.tournaments.testing.seedTestPlayers);
-  const [busy, setBusy] = useState(false);
+  const seedTestPlayers = useMutation(api.tournaments.testing.seedTestPlayers)
+  const [busy, setBusy] = useState(false)
 
-  const canGenerate = tournament !== undefined && tournament.isTestEvent;
+  const canGenerate = tournament !== undefined && tournament.isTestEvent
 
   async function handleGenerateTestUsers() {
     if (!tournament) {
-      return;
+      return
     }
 
-    setBusy(true);
+    setBusy(true)
     try {
       await seedTestPlayers({
         tournamentId: tournament._id,
         count: tournament.playerCapacity,
-      });
-      toast.success("Test users generated.");
+      })
+      toast.success('Test users generated.')
     } catch (error) {
       toast.error(
         error instanceof Error
           ? error.message
-          : "Could not generate test users.",
-      );
+          : 'Could not generate test users.',
+      )
     } finally {
-      setBusy(false);
+      setBusy(false)
     }
   }
 
@@ -174,13 +179,13 @@ function RegistrationSettingsMenu({
         </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
-  );
+  )
 }
 
 function RegistrationsTable({
   registrations,
 }: {
-  registrations: RegistrationRow[] | undefined;
+  registrations: Array<RegistrationRow> | undefined
 }) {
   if (registrations === undefined) {
     return (
@@ -189,7 +194,7 @@ function RegistrationsTable({
           <Skeleton key={row} className="h-12" />
         ))}
       </div>
-    );
+    )
   }
 
   if (registrations.length === 0) {
@@ -205,7 +210,7 @@ function RegistrationsTable({
           </EmptyDescription>
         </EmptyHeader>
       </Empty>
-    );
+    )
   }
 
   return (
@@ -223,11 +228,11 @@ function RegistrationsTable({
         ))}
       </TableBody>
     </Table>
-  );
+  )
 }
 
 function RegistrationRow({ row }: { row: RegistrationRow }) {
-  const { registration } = row;
+  const { registration } = row
 
   return (
     <TableRow>
@@ -246,29 +251,31 @@ function RegistrationRow({ row }: { row: RegistrationRow }) {
         <ManagePlayerMenu row={row} />
       </TableCell>
     </TableRow>
-  );
+  )
 }
 
 function ManagePlayerMenu({ row }: { row: RegistrationRow }) {
-  const dropRegistration = useMutation(api.tournaments.registrations.dropRegistration);
+  const dropRegistration = useMutation(
+    api.tournaments.registrations.dropRegistration,
+  )
 
-  const [confirmingDrop, setConfirmingDrop] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [confirmingDrop, setConfirmingDrop] = useState(false)
+  const [busy, setBusy] = useState(false)
 
-  const alreadyDropped = row.registration.status === "dropped";
+  const alreadyDropped = row.registration.status === 'dropped'
 
   async function handleDrop() {
-    setBusy(true);
+    setBusy(true)
     try {
-      await dropRegistration({ registrationId: row.registration._id });
-      setConfirmingDrop(false);
-      toast.success(`${playerName(row)} has been dropped.`);
+      await dropRegistration({ registrationId: row.registration._id })
+      setConfirmingDrop(false)
+      toast.success(`${playerName(row)} has been dropped.`)
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Could not drop player.",
-      );
+        error instanceof Error ? error.message : 'Could not drop player.',
+      )
     } finally {
-      setBusy(false);
+      setBusy(false)
     }
   }
 
@@ -303,7 +310,7 @@ function ManagePlayerMenu({ row }: { row: RegistrationRow }) {
         open={confirmingDrop}
         onOpenChange={(open) => {
           if (!busy) {
-            setConfirmingDrop(open);
+            setConfirmingDrop(open)
           }
         }}
       >
@@ -314,8 +321,8 @@ function ManagePlayerMenu({ row }: { row: RegistrationRow }) {
             </AlertDialogMedia>
             <AlertDialogTitle>Drop {playerName(row)}?</AlertDialogTitle>
             <AlertDialogDescription>
-              This player will be removed from future pairings and their
-              status will be set to dropped.
+              This player will be removed from future pairings and their status
+              will be set to dropped.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -324,8 +331,8 @@ function ManagePlayerMenu({ row }: { row: RegistrationRow }) {
               variant="destructive"
               disabled={busy}
               onClick={(event) => {
-                event.preventDefault();
-                void handleDrop();
+                event.preventDefault()
+                void handleDrop()
               }}
             >
               {busy ? <Spinner data-icon="inline-start" /> : null}
@@ -335,5 +342,5 @@ function ManagePlayerMenu({ row }: { row: RegistrationRow }) {
         </AlertDialogContent>
       </AlertDialog>
     </>
-  );
+  )
 }

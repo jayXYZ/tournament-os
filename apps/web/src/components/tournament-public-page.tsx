@@ -1,8 +1,6 @@
-
-import { Link } from "@tanstack/react-router";
-import { useState } from "react";
-import { useAppAuth } from "@/lib/use-app-auth";
-import { useMutation, useQuery } from "convex/react";
+import { Link } from '@tanstack/react-router'
+import { useState } from 'react'
+import { useMutation, useQuery } from 'convex/react'
 import {
   ArrowLeft,
   Building2,
@@ -11,11 +9,14 @@ import {
   SearchX,
   Swords,
   Users,
-} from "lucide-react";
-import { toast } from "sonner";
+} from 'lucide-react'
+import { toast } from 'sonner'
+import { api } from '@tournament-os/backend/convex/_generated/api'
+import type { Doc } from '@tournament-os/backend/convex/_generated/dataModel'
+import { useAppAuth } from '@/lib/use-app-auth'
 
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import {
   Card,
   CardContent,
@@ -23,51 +24,52 @@ import {
   CardFooter,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
+} from '@/components/ui/card'
 import {
   Empty,
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
-} from "@/components/ui/empty";
-import { Separator } from "@/components/ui/separator";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Spinner } from "@/components/ui/spinner";
-import { Toaster } from "@/components/ui/sonner";
-import { api } from "@tournament-os/backend/convex/_generated/api";
-import type { Doc } from "@tournament-os/backend/convex/_generated/dataModel";
+} from '@/components/ui/empty'
+import { Separator } from '@/components/ui/separator'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Spinner } from '@/components/ui/spinner'
+import { Toaster } from '@/components/ui/sonner'
 
-type Tournament = Doc<"tournaments">;
+type Tournament = Doc<'tournaments'>
 
-const dateFormatter = new Intl.DateTimeFormat("en-US", {
-  weekday: "long",
-  month: "long",
-  day: "numeric",
-  year: "numeric",
-  hour: "numeric",
-  minute: "2-digit",
-});
+const dateFormatter = new Intl.DateTimeFormat('en-US', {
+  weekday: 'long',
+  month: 'long',
+  day: 'numeric',
+  year: 'numeric',
+  hour: 'numeric',
+  minute: '2-digit',
+})
 
 const statusBadges: Record<
-  Tournament["status"],
-  { label: string; variant: "default" | "secondary" | "outline" | "destructive" }
+  Tournament['status'],
+  {
+    label: string
+    variant: 'default' | 'secondary' | 'outline' | 'destructive'
+  }
 > = {
-  private: { label: "Private", variant: "outline" },
-  public: { label: "Open for registration", variant: "secondary" },
-  in_progress: { label: "In progress", variant: "default" },
-  completed: { label: "Completed", variant: "outline" },
-  cancelled: { label: "Cancelled", variant: "destructive" },
-};
+  private: { label: 'Private', variant: 'outline' },
+  public: { label: 'Open for registration', variant: 'secondary' },
+  in_progress: { label: 'In progress', variant: 'default' },
+  completed: { label: 'Completed', variant: 'outline' },
+  cancelled: { label: 'Cancelled', variant: 'destructive' },
+}
 
 export function TournamentPublicPage({
   tournamentId,
 }: {
-  tournamentId: string;
+  tournamentId: string
 }) {
   const event = useQuery(api.tournaments.lifecycle.getPublicTournament, {
     tournamentId,
-  });
+  })
 
   return (
     <main className="min-h-svh bg-background text-foreground">
@@ -110,7 +112,7 @@ export function TournamentPublicPage({
       </section>
       <Toaster />
     </main>
-  );
+  )
 }
 
 function LoadingCard() {
@@ -128,7 +130,7 @@ function LoadingCard() {
         </div>
       </CardContent>
     </Card>
-  );
+  )
 }
 
 function NotFound() {
@@ -147,7 +149,7 @@ function NotFound() {
         <Link to="/">Browse upcoming tournaments</Link>
       </Button>
     </Empty>
-  );
+  )
 }
 
 function TournamentDetails({
@@ -155,12 +157,12 @@ function TournamentDetails({
   organizationName,
   registeredCount,
 }: {
-  tournament: Tournament;
-  organizationName: string | null;
-  registeredCount: number;
+  tournament: Tournament
+  organizationName: string | null
+  registeredCount: number
 }) {
-  const badge = statusBadges[tournament.status];
-  const spotsLeft = Math.max(tournament.playerCapacity - registeredCount, 0);
+  const badge = statusBadges[tournament.status]
+  const spotsLeft = Math.max(tournament.playerCapacity - registeredCount, 0)
 
   return (
     <Card>
@@ -170,8 +172,8 @@ function TournamentDetails({
           <Badge variant={badge.variant}>{badge.label}</Badge>
         </div>
         <CardDescription>
-          {tournament.isTestEvent ? "Test event" : "Public event"}
-          {organizationName ? ` hosted by ${organizationName}` : ""}
+          {tournament.isTestEvent ? 'Test event' : 'Public event'}
+          {organizationName ? ` hosted by ${organizationName}` : ''}
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4">
@@ -209,7 +211,7 @@ function TournamentDetails({
         </p>
       </CardFooter>
     </Card>
-  );
+  )
 }
 
 function DetailLine({
@@ -218,56 +220,59 @@ function DetailLine({
   value,
   capitalize = false,
 }: {
-  icon: typeof CalendarDays;
-  label: string;
-  value: string;
-  capitalize?: boolean;
+  icon: typeof CalendarDays
+  label: string
+  value: string
+  capitalize?: boolean
 }) {
   return (
     <div className="flex items-center gap-2">
-      <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+      <Icon
+        className="size-4 shrink-0 text-muted-foreground"
+        aria-hidden="true"
+      />
       <span className="text-muted-foreground">{label}:</span>
-      <span className={capitalize ? "font-medium capitalize" : "font-medium"}>
+      <span className={capitalize ? 'font-medium capitalize' : 'font-medium'}>
         {value}
       </span>
     </div>
-  );
+  )
 }
 
 function RegistrationPanel({
   tournament,
   spotsLeft,
 }: {
-  tournament: Tournament;
-  spotsLeft: number;
+  tournament: Tournament
+  spotsLeft: number
 }) {
-  const { user, loading, refreshAuth } = useAppAuth();
+  const { user, loading, refreshAuth } = useAppAuth()
   const registration = useQuery(
     api.tournaments.registrations.getMyRegistration,
-    user ? { tournamentId: tournament._id } : "skip",
-  );
-  const registerSelf = useMutation(api.tournaments.registrations.registerSelf);
+    user ? { tournamentId: tournament._id } : 'skip',
+  )
+  const registerSelf = useMutation(api.tournaments.registrations.registerSelf)
   const cancelRegistration = useMutation(
     api.tournaments.registrations.cancelMyRegistration,
-  );
-  const [pending, setPending] = useState(false);
+  )
+  const [pending, setPending] = useState(false)
 
   const runAction = async (
     action: () => Promise<unknown>,
     successMessage: string,
   ) => {
-    setPending(true);
+    setPending(true)
     try {
-      await action();
-      toast.success(successMessage);
+      await action()
+      toast.success(successMessage)
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Something went wrong",
-      );
+        error instanceof Error ? error.message : 'Something went wrong',
+      )
     } finally {
-      setPending(false);
+      setPending(false)
     }
-  };
+  }
 
   if (loading) {
     return (
@@ -275,16 +280,16 @@ function RegistrationPanel({
         <Spinner />
         Checking your registration
       </Button>
-    );
+    )
   }
 
   if (!user) {
-    if (tournament.status !== "public") {
+    if (tournament.status !== 'public') {
       return (
         <p className="text-sm text-muted-foreground">
           Registration is closed for this event.
         </p>
-      );
+      )
     }
     return (
       <div className="flex flex-wrap items-center gap-3">
@@ -296,10 +301,10 @@ function RegistrationPanel({
           Sign in to register
         </Button>
         <p className="text-sm text-muted-foreground">
-          {spotsLeft === 1 ? "1 spot left" : `${spotsLeft} spots left`}
+          {spotsLeft === 1 ? '1 spot left' : `${spotsLeft} spots left`}
         </p>
       </div>
-    );
+    )
   }
 
   if (registration === undefined) {
@@ -308,32 +313,34 @@ function RegistrationPanel({
         <Spinner />
         Checking your registration
       </Button>
-    );
+    )
   }
 
-  if (registration && registration.status === "active") {
+  if (registration && registration.status === 'active') {
     return (
       <div className="flex flex-wrap items-center gap-3">
         <Badge>You&apos;re registered</Badge>
-        {tournament.status === "public" ? (
+        {tournament.status === 'public' ? (
           <Button
             type="button"
             variant="outline"
             disabled={pending}
             onClick={() =>
               void runAction(
-                () =>
-                  cancelRegistration({ tournamentId: tournament._id }),
-                "Your registration has been cancelled.",
+                () => cancelRegistration({ tournamentId: tournament._id }),
+                'Your registration has been cancelled.',
               )
             }
           >
             {pending ? <Spinner /> : null}
             Cancel registration
           </Button>
-        ) : tournament.status === "in_progress" ? (
+        ) : tournament.status === 'in_progress' ? (
           <Button asChild type="button">
-            <Link to="/tournaments/$tournamentId/play" params={{ tournamentId: tournament._id }}>
+            <Link
+              to="/tournaments/$tournamentId/play"
+              params={{ tournamentId: tournament._id }}
+            >
               <Swords data-icon="inline-start" />
               Open player controller
             </Link>
@@ -344,15 +351,15 @@ function RegistrationPanel({
           </p>
         )}
       </div>
-    );
+    )
   }
 
-  if (tournament.status !== "public") {
+  if (tournament.status !== 'public') {
     return (
       <p className="text-sm text-muted-foreground">
         Registration is closed for this event.
       </p>
-    );
+    )
   }
 
   if (spotsLeft === 0) {
@@ -360,7 +367,7 @@ function RegistrationPanel({
       <Button type="button" variant="outline" disabled className="w-fit">
         Tournament is full
       </Button>
-    );
+    )
   }
 
   return (
@@ -379,8 +386,8 @@ function RegistrationPanel({
         Register for this event
       </Button>
       <p className="text-sm text-muted-foreground">
-        {spotsLeft === 1 ? "1 spot left" : `${spotsLeft} spots left`}
+        {spotsLeft === 1 ? '1 spot left' : `${spotsLeft} spots left`}
       </p>
     </div>
-  );
+  )
 }

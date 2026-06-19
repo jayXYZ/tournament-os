@@ -1,11 +1,14 @@
+import {  useState } from 'react'
+import { useMutation, useQuery } from 'convex/react'
+import { Globe } from 'lucide-react'
+import { toast } from 'sonner'
 
-import { useState, type FormEvent } from "react";
-import { useMutation, useQuery } from "convex/react";
-import { Globe } from "lucide-react";
-import { toast } from "sonner";
-
-import { api } from "@tournament-os/backend/convex/_generated/api";
-import type { Doc, Id } from "@tournament-os/backend/convex/_generated/dataModel";
+import { api } from '@tournament-os/backend/convex/_generated/api'
+import type {FormEvent} from 'react';
+import type {
+  Doc,
+  Id,
+} from '@tournament-os/backend/convex/_generated/dataModel'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,9 +19,9 @@ import {
   AlertDialogHeader,
   AlertDialogMedia,
   AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+} from '@/components/ui/alert-dialog'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import {
   Card,
   CardAction,
@@ -26,7 +29,7 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
+} from '@/components/ui/card'
 import {
   Field,
   FieldDescription,
@@ -34,8 +37,8 @@ import {
   FieldLabel,
   FieldLegend,
   FieldSet,
-} from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
+} from '@/components/ui/field'
+import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectContent,
@@ -43,58 +46,58 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Spinner } from "@/components/ui/spinner";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
+} from '@/components/ui/select'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Spinner } from '@/components/ui/spinner'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Textarea } from '@/components/ui/textarea'
 
-type TournamentStatus = Doc<"tournaments">["status"];
-type PhaseStatus = Doc<"tournamentPhases">["phaseStatus"];
-type PhaseRoundMode = Doc<"tournamentPhases">["phaseRoundMode"];
+type TournamentStatus = Doc<'tournaments'>['status']
+type PhaseStatus = Doc<'tournamentPhases'>['phaseStatus']
+type PhaseRoundMode = Doc<'tournamentPhases'>['phaseRoundMode']
 
 const tournamentStatusBadgeVariant: Record<
   TournamentStatus,
-  "default" | "secondary" | "destructive" | "outline"
+  'default' | 'secondary' | 'destructive' | 'outline'
 > = {
-  private: "outline",
-  public: "default",
-  in_progress: "default",
-  completed: "secondary",
-  cancelled: "destructive",
-};
+  private: 'outline',
+  public: 'default',
+  in_progress: 'default',
+  completed: 'secondary',
+  cancelled: 'destructive',
+}
 
 const phaseStatusBadgeVariant: Record<
   PhaseStatus,
-  "default" | "secondary" | "destructive" | "outline"
+  'default' | 'secondary' | 'destructive' | 'outline'
 > = {
-  upcoming: "outline",
-  in_progress: "default",
-  completed: "secondary",
-  cancelled: "destructive",
-};
+  upcoming: 'outline',
+  in_progress: 'default',
+  completed: 'secondary',
+  cancelled: 'destructive',
+}
 
-function isSetupLocked(tournament: Doc<"tournaments">) {
+function isSetupLocked(tournament: Doc<'tournaments'>) {
   return (
-    tournament.status === "in_progress" ||
-    tournament.status === "completed" ||
-    tournament.status === "cancelled"
-  );
+    tournament.status === 'in_progress' ||
+    tournament.status === 'completed' ||
+    tournament.status === 'cancelled'
+  )
 }
 
 function toDatetimeLocalValue(timestamp: number) {
-  const offsetMs = new Date(timestamp).getTimezoneOffset() * 60_000;
-  return new Date(timestamp - offsetMs).toISOString().slice(0, 16);
+  const offsetMs = new Date(timestamp).getTimezoneOffset() * 60_000
+  return new Date(timestamp - offsetMs).toISOString().slice(0, 16)
 }
 
 export function TournamentOverviewView({
   tournamentId,
 }: {
-  tournamentId: string;
+  tournamentId: string
 }) {
   const setup = useQuery(api.tournaments.lifecycle.getTournamentSetup, {
-    tournamentId: tournamentId as Id<"tournaments">,
-  });
+    tournamentId: tournamentId as Id<'tournaments'>,
+  })
 
   return (
     <section className="flex flex-col gap-4">
@@ -109,7 +112,7 @@ export function TournamentOverviewView({
               variant={tournamentStatusBadgeVariant[setup.tournament.status]}
               className="capitalize"
             >
-              {setup.tournament.status.replace(/_/g, " ")}
+              {setup.tournament.status.replace(/_/g, ' ')}
             </Badge>
           ) : null}
         </div>
@@ -130,7 +133,7 @@ export function TournamentOverviewView({
         </>
       )}
     </section>
-  );
+  )
 }
 
 function OverviewSkeleton() {
@@ -139,50 +142,50 @@ function OverviewSkeleton() {
       <Skeleton className="h-72" />
       <Skeleton className="h-56" />
     </div>
-  );
+  )
 }
 
 function TournamentSettingsCard({
   tournament,
 }: {
-  tournament: Doc<"tournaments">;
+  tournament: Doc<'tournaments'>
 }) {
   const updateTournamentSetup = useMutation(
     api.tournaments.lifecycle.updateTournamentSetup,
-  );
+  )
 
-  const [name, setName] = useState(tournament.name);
+  const [name, setName] = useState(tournament.name)
   const [startDateTime, setStartDateTime] = useState(
     toDatetimeLocalValue(tournament.startDate),
-  );
+  )
   const [playerCapacity, setPlayerCapacity] = useState(
     String(tournament.playerCapacity),
-  );
-  const [busy, setBusy] = useState(false);
+  )
+  const [busy, setBusy] = useState(false)
 
-  const locked = isSetupLocked(tournament);
-  const disabled = locked || busy;
+  const locked = isSetupLocked(tournament)
+  const disabled = locked || busy
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+    event.preventDefault()
 
-    setBusy(true);
+    setBusy(true)
     try {
       await updateTournamentSetup({
         tournamentId: tournament._id,
         name,
         startDate: new Date(startDateTime).getTime(),
         playerCapacity: Number.parseInt(playerCapacity, 10),
-      });
-      toast.success("Tournament settings saved.");
+      })
+      toast.success('Tournament settings saved.')
     } catch (error) {
       toast.error(
         error instanceof Error
           ? error.message
-          : "Could not save tournament settings.",
-      );
+          : 'Could not save tournament settings.',
+      )
     } finally {
-      setBusy(false);
+      setBusy(false)
     }
   }
 
@@ -192,8 +195,8 @@ function TournamentSettingsCard({
         <CardTitle>Tournament settings</CardTitle>
         <CardDescription>
           {locked
-            ? "Setup is locked once the tournament starts."
-            : "Update the basic details for this tournament."}
+            ? 'Setup is locked once the tournament starts.'
+            : 'Update the basic details for this tournament.'}
         </CardDescription>
         <CardAction>
           <PublishTournamentButton tournament={tournament} />
@@ -300,38 +303,38 @@ function TournamentSettingsCard({
         </form>
       </CardContent>
     </Card>
-  );
+  )
 }
 
 function PublishTournamentButton({
   tournament,
 }: {
-  tournament: Doc<"tournaments">;
+  tournament: Doc<'tournaments'>
 }) {
   const publishTournament = useMutation(
     api.tournaments.lifecycle.publishTournament,
-  );
-  const [confirming, setConfirming] = useState(false);
-  const [busy, setBusy] = useState(false);
+  )
+  const [confirming, setConfirming] = useState(false)
+  const [busy, setBusy] = useState(false)
 
-  if (tournament.status !== "private") {
-    return null;
+  if (tournament.status !== 'private') {
+    return null
   }
 
   async function handlePublish() {
-    setBusy(true);
+    setBusy(true)
     try {
-      await publishTournament({ tournamentId: tournament._id });
-      setConfirming(false);
-      toast.success("Tournament published.");
+      await publishTournament({ tournamentId: tournament._id })
+      setConfirming(false)
+      toast.success('Tournament published.')
     } catch (error) {
       toast.error(
         error instanceof Error
           ? error.message
-          : "Could not publish tournament.",
-      );
+          : 'Could not publish tournament.',
+      )
     } finally {
-      setBusy(false);
+      setBusy(false)
     }
   }
 
@@ -350,7 +353,7 @@ function PublishTournamentButton({
         open={confirming}
         onOpenChange={(open) => {
           if (!busy) {
-            setConfirming(open);
+            setConfirming(open)
           }
         }}
       >
@@ -370,8 +373,8 @@ function PublishTournamentButton({
             <AlertDialogAction
               disabled={busy}
               onClick={(event) => {
-                event.preventDefault();
-                void handlePublish();
+                event.preventDefault()
+                void handlePublish()
               }}
             >
               {busy ? <Spinner data-icon="inline-start" /> : null}
@@ -381,15 +384,15 @@ function PublishTournamentButton({
         </AlertDialogContent>
       </AlertDialog>
     </>
-  );
+  )
 }
 
 function PhaseSettingsCard({
   tournament,
   phases,
 }: {
-  tournament: Doc<"tournaments">;
-  phases: Doc<"tournamentPhases">[];
+  tournament: Doc<'tournaments'>
+  phases: Array<Doc<'tournamentPhases'>>
 }) {
   return (
     <Card>
@@ -422,53 +425,51 @@ function PhaseSettingsCard({
         )}
       </CardContent>
     </Card>
-  );
+  )
 }
 
 function PhaseSettingsForm({
   tournament,
   phase,
 }: {
-  tournament: Doc<"tournaments">;
-  phase: Doc<"tournamentPhases">;
+  tournament: Doc<'tournaments'>
+  phase: Doc<'tournamentPhases'>
 }) {
   const updatePhaseSetup = useMutation(
     api.tournaments.lifecycle.updatePhaseSetup,
-  );
+  )
 
   const [roundMode, setRoundMode] = useState<PhaseRoundMode>(
     phase.phaseRoundMode,
-  );
+  )
   const [totalRounds, setTotalRounds] = useState(
-    phase.phaseTotalRounds === null ? "" : String(phase.phaseTotalRounds),
-  );
-  const [busy, setBusy] = useState(false);
+    phase.phaseTotalRounds === null ? '' : String(phase.phaseTotalRounds),
+  )
+  const [busy, setBusy] = useState(false)
 
-  const locked = isSetupLocked(tournament);
-  const disabled = locked || busy;
+  const locked = isSetupLocked(tournament)
+  const disabled = locked || busy
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+    event.preventDefault()
 
-    setBusy(true);
+    setBusy(true)
     try {
       await updatePhaseSetup({
         phaseId: phase._id,
         phaseRoundMode: roundMode,
         phaseTotalRounds:
-          roundMode === "fixed"
-            ? Number.parseInt(totalRounds, 10)
-            : undefined,
-      });
-      toast.success("Phase settings saved.");
+          roundMode === 'fixed' ? Number.parseInt(totalRounds, 10) : undefined,
+      })
+      toast.success('Phase settings saved.')
     } catch (error) {
       toast.error(
         error instanceof Error
           ? error.message
-          : "Could not save phase settings.",
-      );
+          : 'Could not save phase settings.',
+      )
     } finally {
-      setBusy(false);
+      setBusy(false)
     }
   }
 
@@ -483,7 +484,7 @@ function PhaseSettingsForm({
             variant={phaseStatusBadgeVariant[phase.phaseStatus]}
             className="capitalize"
           >
-            {phase.phaseStatus.replace(/_/g, " ")}
+            {phase.phaseStatus.replace(/_/g, ' ')}
           </Badge>
         </div>
 
@@ -521,8 +522,8 @@ function PhaseSettingsForm({
               type="number"
               min={1}
               max={16}
-              disabled={disabled || roundMode === "dynamic"}
-              required={roundMode === "fixed"}
+              disabled={disabled || roundMode === 'dynamic'}
+              required={roundMode === 'fixed'}
             />
           </Field>
         </div>
@@ -570,5 +571,5 @@ function PhaseSettingsForm({
         </div>
       </FieldGroup>
     </form>
-  );
+  )
 }

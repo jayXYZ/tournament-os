@@ -1,10 +1,9 @@
+import { Link, useLocation  } from '@tanstack/react-router'
+import { useQuery } from 'convex/react'
 
-import { Link } from "@tanstack/react-router";
-import { useLocation } from "@tanstack/react-router";
-import { useQuery } from "convex/react";
-
-import { api } from "@tournament-os/backend/convex/_generated/api";
-import type { Id } from "@tournament-os/backend/convex/_generated/dataModel";
+import { api } from '@tournament-os/backend/convex/_generated/api'
+import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
+import type { AdminView } from './types'
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -12,37 +11,36 @@ import {
   BreadcrumbList,
   BreadcrumbPage,
   BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb";
-import { Skeleton } from "@/components/ui/skeleton";
-import type { AdminView } from "./types";
+} from '@/components/ui/breadcrumb'
+import { Skeleton } from '@/components/ui/skeleton'
 
 const viewLabels: Record<AdminView, string> = {
-  tournaments: "Tournaments",
-  staff: "Staff",
-  organization: "Organization",
-};
+  tournaments: 'Tournaments',
+  staff: 'Staff',
+  organization: 'Organization',
+}
 
 const tournamentPageLabels: Record<string, string> = {
-  registrations: "Registrations",
-  pairings: "Pairings",
-  standings: "Standings",
-};
+  registrations: 'Registrations',
+  pairings: 'Pairings',
+  standings: 'Standings',
+}
 
 function viewFromPathname(pathname: string): AdminView {
-  if (pathname.startsWith("/admin/staff")) {
-    return "staff";
+  if (pathname.startsWith('/admin/staff')) {
+    return 'staff'
   }
-  if (pathname.startsWith("/admin/organization")) {
-    return "organization";
+  if (pathname.startsWith('/admin/organization')) {
+    return 'organization'
   }
-  return "tournaments";
+  return 'tournaments'
 }
 
 export function AdminBreadcrumb() {
-  const pathname = useLocation().pathname;
+  const pathname = useLocation().pathname
   const tournamentMatch = pathname.match(
     /^\/admin\/tournaments\/([^/]+)(?:\/([^/]+))?/,
-  );
+  )
 
   if (tournamentMatch) {
     return (
@@ -50,7 +48,7 @@ export function AdminBreadcrumb() {
         tournamentId={tournamentMatch[1]}
         segment={tournamentMatch[2]}
       />
-    );
+    )
   }
 
   return (
@@ -63,26 +61,28 @@ export function AdminBreadcrumb() {
         </BreadcrumbItem>
         <BreadcrumbSeparator />
         <BreadcrumbItem>
-          <BreadcrumbPage>{viewLabels[viewFromPathname(pathname)]}</BreadcrumbPage>
+          <BreadcrumbPage>
+            {viewLabels[viewFromPathname(pathname)]}
+          </BreadcrumbPage>
         </BreadcrumbItem>
       </BreadcrumbList>
     </Breadcrumb>
-  );
+  )
 }
 
 function TournamentBreadcrumb({
   tournamentId,
   segment,
 }: {
-  tournamentId: string;
-  segment?: string;
+  tournamentId: string
+  segment?: string
 }) {
   const setup = useQuery(api.tournaments.lifecycle.getTournamentSetup, {
-    tournamentId: tournamentId as Id<"tournaments">,
-  });
-  const name = setup?.tournament.name;
-  const pageLabel = segment ? tournamentPageLabels[segment] : undefined;
-  const base = `/admin/tournaments/${tournamentId}`;
+    tournamentId: tournamentId as Id<'tournaments'>,
+  })
+  const name = setup?.tournament.name
+  const pageLabel = segment ? tournamentPageLabels[segment] : undefined
+  const base = `/admin/tournaments/${tournamentId}`
 
   return (
     <Breadcrumb>
@@ -124,5 +124,5 @@ function TournamentBreadcrumb({
         )}
       </BreadcrumbList>
     </Breadcrumb>
-  );
+  )
 }

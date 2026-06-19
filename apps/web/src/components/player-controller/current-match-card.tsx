@@ -1,101 +1,101 @@
-
-import { useState } from "react";
+import { useState } from 'react'
 import {
-  useConfirmResult,
-  type MyActiveMatch,
-  type MyCurrentMatch,
-} from "@tournament-os/core";
-import { CheckCheck, Hourglass, Swords } from "lucide-react";
-import { toast } from "sonner";
+  
+  
+  useConfirmResult
+} from '@tournament-os/core'
+import { CheckCheck, Hourglass, Swords } from 'lucide-react'
+import { toast } from 'sonner'
 
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { ReportResultDialog } from './report-result-dialog'
+import type {MyActiveMatch, MyCurrentMatch} from '@tournament-os/core';
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
+} from '@/components/ui/card'
 import {
   Empty,
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
-} from "@/components/ui/empty";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Spinner } from "@/components/ui/spinner";
+} from '@/components/ui/empty'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Spinner } from '@/components/ui/spinner'
 
-import { ReportResultDialog } from "./report-result-dialog";
 
 export function CurrentMatchCard({
   currentMatch,
 }: {
-  currentMatch: MyCurrentMatch | undefined;
+  currentMatch: MyCurrentMatch | undefined
 }) {
   if (currentMatch === undefined) {
-    return <Skeleton className="h-56" />;
+    return <Skeleton className="h-56" />
   }
 
-  if (currentMatch.kind === "not_started") {
+  if (currentMatch.kind === 'not_started') {
     return (
       <StatusEmpty
         icon={Hourglass}
         title="Waiting for round one"
         description="Pairings will appear here as soon as the organizer starts the tournament."
       />
-    );
+    )
   }
 
-  if (currentMatch.kind === "between_rounds") {
+  if (currentMatch.kind === 'between_rounds') {
     return (
       <StatusEmpty
         icon={Hourglass}
         title={`Round ${currentMatch.round.roundNumber} complete`}
         description={
           currentMatch.round.isFinalRound
-            ? "That was the final round. Check the standings tab for the final results."
+            ? 'That was the final round. Check the standings tab for the final results.'
             : "Hang tight — the organizer is preparing the next round's pairings."
         }
       />
-    );
+    )
   }
 
-  if (currentMatch.kind === "no_match") {
+  if (currentMatch.kind === 'no_match') {
     return (
       <StatusEmpty
         icon={Swords}
         title="No match this round"
         description={
-          currentMatch.myRegistrationStatus === "dropped"
-            ? "You have dropped from this tournament, so you are no longer paired."
-            : "You are not paired this round."
+          currentMatch.myRegistrationStatus === 'dropped'
+            ? 'You have dropped from this tournament, so you are no longer paired.'
+            : 'You are not paired this round.'
         }
       />
-    );
+    )
   }
 
-  return <ActiveMatch currentMatch={currentMatch} />;
+  return <ActiveMatch currentMatch={currentMatch} />
 }
 
 function ActiveMatch({ currentMatch }: { currentMatch: MyActiveMatch }) {
-  const { match, me, opponent, round } = currentMatch;
-  const opponentName = opponent?.name ?? "your opponent";
+  const { match, me, opponent, round } = currentMatch
+  const opponentName = opponent?.name ?? 'your opponent'
 
   return (
     <Card>
       <CardHeader>
         <CardDescription>
           {round.roundName}
-          {round.isFinalRound ? " · Final round" : ""}
+          {round.isFinalRound ? ' · Final round' : ''}
         </CardDescription>
         <CardTitle className="text-2xl">
           {me.isBye ? (
-            "You have a bye"
+            'You have a bye'
           ) : (
             <>
-              Table {match.tableNumber ?? "—"}
+              Table {match.tableNumber ?? '—'}
               <span className="block text-base font-normal text-muted-foreground">
                 vs {opponentName}
               </span>
@@ -107,14 +107,14 @@ function ActiveMatch({ currentMatch }: { currentMatch: MyActiveMatch }) {
         <MatchStatusSection currentMatch={currentMatch} />
       </CardContent>
     </Card>
-  );
+  )
 }
 
 function MatchStatusSection({ currentMatch }: { currentMatch: MyActiveMatch }) {
-  const { match, me, opponent } = currentMatch;
-  const confirmResult = useConfirmResult();
-  const [reporting, setReporting] = useState(false);
-  const [confirming, setConfirming] = useState(false);
+  const { match, me, opponent } = currentMatch
+  const confirmResult = useConfirmResult()
+  const [reporting, setReporting] = useState(false)
+  const [confirming, setConfirming] = useState(false)
 
   if (me.isBye) {
     return (
@@ -122,10 +122,10 @@ function MatchStatusSection({ currentMatch }: { currentMatch: MyActiveMatch }) {
         You receive an automatic match win this round. Sit back and enjoy the
         break.
       </p>
-    );
+    )
   }
 
-  if (match.matchStatus === "upcoming") {
+  if (match.matchStatus === 'upcoming') {
     return (
       <>
         <p className="text-sm text-muted-foreground">
@@ -144,13 +144,13 @@ function MatchStatusSection({ currentMatch }: { currentMatch: MyActiveMatch }) {
           />
         ) : null}
       </>
-    );
+    )
   }
 
-  const scoreline = formatScoreline(me.gameWins, me.gameLosses);
-  const reportedByMe = match.reportedByRegistrationId === me.registrationId;
+  const scoreline = formatScoreline(me.gameWins, me.gameLosses)
+  const reportedByMe = match.reportedByRegistrationId === me.registrationId
 
-  if (match.matchStatus === "confirmed") {
+  if (match.matchStatus === 'confirmed') {
     return (
       <ResultSummary
         scoreline={scoreline}
@@ -161,18 +161,18 @@ function MatchStatusSection({ currentMatch }: { currentMatch: MyActiveMatch }) {
           </Badge>
         }
       />
-    );
+    )
   }
 
-  if (match.matchStatus === "completed" && match.reportedByRegistrationId) {
+  if (match.matchStatus === 'completed' && match.reportedByRegistrationId) {
     if (reportedByMe) {
       return (
         <ResultSummary
           scoreline={scoreline}
           badge={<Badge variant="outline">Waiting for confirmation</Badge>}
-          note={`Waiting for ${opponent?.name ?? "your opponent"} to confirm. The round can continue without it.`}
+          note={`Waiting for ${opponent?.name ?? 'your opponent'} to confirm. The round can continue without it.`}
         />
-      );
+      )
     }
 
     return (
@@ -186,18 +186,18 @@ function MatchStatusSection({ currentMatch }: { currentMatch: MyActiveMatch }) {
           size="lg"
           disabled={confirming}
           onClick={async () => {
-            setConfirming(true);
+            setConfirming(true)
             try {
-              await confirmResult({ matchId: match._id });
-              toast.success("Result confirmed.");
+              await confirmResult({ matchId: match._id })
+              toast.success('Result confirmed.')
             } catch (error) {
               toast.error(
                 error instanceof Error
                   ? error.message
-                  : "Could not confirm the result.",
-              );
+                  : 'Could not confirm the result.',
+              )
             } finally {
-              setConfirming(false);
+              setConfirming(false)
             }
           }}
         >
@@ -205,7 +205,7 @@ function MatchStatusSection({ currentMatch }: { currentMatch: MyActiveMatch }) {
           Confirm result
         </Button>
       </ResultSummary>
-    );
+    )
   }
 
   // Completed without a reporting player: the organizer entered it.
@@ -214,7 +214,7 @@ function MatchStatusSection({ currentMatch }: { currentMatch: MyActiveMatch }) {
       scoreline={scoreline}
       badge={<Badge variant="secondary">Recorded by organizer</Badge>}
     />
-  );
+  )
 }
 
 function ResultSummary({
@@ -223,10 +223,10 @@ function ResultSummary({
   note,
   children,
 }: {
-  scoreline: string;
-  badge: React.ReactNode;
-  note?: string;
-  children?: React.ReactNode;
+  scoreline: string
+  badge: React.ReactNode
+  note?: string
+  children?: React.ReactNode
 }) {
   return (
     <>
@@ -237,7 +237,7 @@ function ResultSummary({
       {note ? <p className="text-sm text-muted-foreground">{note}</p> : null}
       {children}
     </>
-  );
+  )
 }
 
 function StatusEmpty({
@@ -245,9 +245,9 @@ function StatusEmpty({
   title,
   description,
 }: {
-  icon: typeof Swords;
-  title: string;
-  description: string;
+  icon: typeof Swords
+  title: string
+  description: string
 }) {
   return (
     <Empty className="min-h-60 border bg-card">
@@ -259,24 +259,21 @@ function StatusEmpty({
         <EmptyDescription>{description}</EmptyDescription>
       </EmptyHeader>
     </Empty>
-  );
+  )
 }
 
 function opponentName(currentMatch: MyActiveMatch) {
-  return currentMatch.opponent?.name ?? "Opponent";
+  return currentMatch.opponent?.name ?? 'Opponent'
 }
 
-function formatScoreline(
-  gameWins: number | null,
-  gameLosses: number | null,
-) {
-  const wins = gameWins ?? 0;
-  const losses = gameLosses ?? 0;
+function formatScoreline(gameWins: number | null, gameLosses: number | null) {
+  const wins = gameWins ?? 0
+  const losses = gameLosses ?? 0
   if (wins > losses) {
-    return `You win ${wins}–${losses}`;
+    return `You win ${wins}–${losses}`
   }
   if (wins < losses) {
-    return `You lose ${wins}–${losses}`;
+    return `You lose ${wins}–${losses}`
   }
-  return `Draw ${wins}–${losses}`;
+  return `Draw ${wins}–${losses}`
 }

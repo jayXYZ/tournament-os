@@ -1,164 +1,163 @@
-
-import { useState, type FormEvent } from "react";
-import { useMutation } from "convex/react";
-import { Archive, Building2 } from "lucide-react";
-import { toast } from "sonner";
-
-import { api } from "@tournament-os/backend/convex/_generated/api";
-import type { Id } from "@tournament-os/backend/convex/_generated/dataModel";
+import {  useState } from 'react'
+import { useMutation } from 'convex/react'
+import { Archive, Building2 } from 'lucide-react'
+import { toast } from 'sonner'
+import { api } from '@tournament-os/backend/convex/_generated/api'
 import {
-  validateOrganizationProfileImageDetails,
-  type OrganizationProfileImageDetails,
-} from "@tournament-os/core/organization-profile-image";
-import { canManageOrganizationProfile } from "@tournament-os/core/organizer-utils";
-import { Button } from "@/components/ui/button";
+  
+  validateOrganizationProfileImageDetails
+} from '@tournament-os/core/organization-profile-image'
+import { canManageOrganizationProfile } from '@tournament-os/core/organizer-utils'
+import { useOrganization } from './organization-context'
+import type {FormEvent} from 'react';
+
+import type {OrganizationProfileImageDetails} from '@tournament-os/core/organization-profile-image';
+import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
+import { Button } from '@/components/ui/button'
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
+} from '@/components/ui/card'
 import {
   Field,
   FieldDescription,
   FieldGroup,
   FieldLabel,
-} from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Spinner } from "@/components/ui/spinner";
-import { useOrganization } from "./organization-context";
+} from '@/components/ui/field'
+import { Input } from '@/components/ui/input'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Spinner } from '@/components/ui/spinner'
 
-type ProfileBusy = "profile" | "profileImage" | "archive" | null;
+type ProfileBusy = 'profile' | 'profileImage' | 'archive' | null
 
 export function OrganizationProfileView() {
-  const { selectedOrganization, clearSelectedOrganization } = useOrganization();
+  const { selectedOrganization, clearSelectedOrganization } = useOrganization()
 
   const generateProfileImageUploadUrl = useMutation(
     api.organizations.generateProfileImageUploadUrl,
-  );
-  const updateProfileImage = useMutation(api.organizations.updateProfileImage);
-  const updateProfile = useMutation(api.organizations.updateProfile);
-  const archiveOrganization = useMutation(
-    api.organizations.archiveOrganization,
-  );
+  )
+  const updateProfileImage = useMutation(api.organizations.updateProfileImage)
+  const updateProfile = useMutation(api.organizations.updateProfile)
+  const archiveOrganization = useMutation(api.organizations.archiveOrganization)
 
-  const organization = selectedOrganization?.organization ?? null;
-  const membershipRole = selectedOrganization?.membership.role ?? null;
+  const organization = selectedOrganization?.organization ?? null
+  const membershipRole = selectedOrganization?.membership.role ?? null
   const mayManageProfile = membershipRole
     ? canManageOrganizationProfile(membershipRole)
-    : false;
-  const organizationId = organization?._id ?? null;
+    : false
+  const organizationId = organization?._id ?? null
 
-  const [busy, setBusy] = useState<ProfileBusy>(null);
-  const [profileName, setProfileName] = useState(organization?.name ?? "");
-  const [archiveConfirmationName, setArchiveConfirmationName] = useState("");
+  const [busy, setBusy] = useState<ProfileBusy>(null)
+  const [profileName, setProfileName] = useState(organization?.name ?? '')
+  const [archiveConfirmationName, setArchiveConfirmationName] = useState('')
 
   // Reset the draft when the selected organization changes, using React's
   // "adjust state during render" pattern instead of an effect.
-  const [draftOrganizationId, setDraftOrganizationId] = useState(organizationId);
+  const [draftOrganizationId, setDraftOrganizationId] = useState(organizationId)
   if (organizationId !== draftOrganizationId) {
-    setDraftOrganizationId(organizationId);
-    setProfileName(organization?.name ?? "");
-    setArchiveConfirmationName("");
+    setDraftOrganizationId(organizationId)
+    setProfileName(organization?.name ?? '')
+    setArchiveConfirmationName('')
   }
 
   async function handleUpdateProfile(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+    event.preventDefault()
     if (!organizationId) {
-      return;
+      return
     }
 
-    setBusy("profile");
+    setBusy('profile')
     try {
-      await updateProfile({ organizationId, name: profileName });
-      toast.success("Organization profile updated.");
+      await updateProfile({ organizationId, name: profileName })
+      toast.success('Organization profile updated.')
     } catch (error) {
       toast.error(
         error instanceof Error
           ? error.message
-          : "Could not update organization profile.",
-      );
+          : 'Could not update organization profile.',
+      )
     } finally {
-      setBusy(null);
+      setBusy(null)
     }
   }
 
   async function handleUpdateProfileImage(file: File) {
     if (!organizationId) {
-      return;
+      return
     }
 
-    setBusy("profileImage");
+    setBusy('profileImage')
     try {
-      const dimensions = await readImageDimensions(file);
+      const dimensions = await readImageDimensions(file)
       const validationMessage = validateOrganizationProfileImageDetails({
         type: file.type,
         size: file.size,
         ...dimensions,
-      });
+      })
       if (validationMessage) {
-        throw new Error(validationMessage);
+        throw new Error(validationMessage)
       }
 
-      const uploadUrl = await generateProfileImageUploadUrl({ organizationId });
+      const uploadUrl = await generateProfileImageUploadUrl({ organizationId })
       const response = await fetch(uploadUrl, {
-        method: "POST",
-        headers: { "Content-Type": file.type },
+        method: 'POST',
+        headers: { 'Content-Type': file.type },
         body: file,
-      });
+      })
       if (!response.ok) {
-        throw new Error("Could not upload profile picture.");
+        throw new Error('Could not upload profile picture.')
       }
 
       const { storageId } = (await response.json()) as {
-        storageId: Id<"_storage">;
-      };
+        storageId: Id<'_storage'>
+      }
       await updateProfileImage({
         organizationId,
         profileImageStorageId: storageId,
-      });
-      toast.success("Organization profile picture updated.");
+      })
+      toast.success('Organization profile picture updated.')
     } catch (error) {
       toast.error(
         error instanceof Error
           ? error.message
-          : "Could not update organization profile picture.",
-      );
+          : 'Could not update organization profile picture.',
+      )
     } finally {
-      setBusy(null);
+      setBusy(null)
     }
   }
 
   async function handleArchiveOrganization(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+    event.preventDefault()
     if (!organizationId) {
-      return;
+      return
     }
 
-    setBusy("archive");
+    setBusy('archive')
     try {
       await archiveOrganization({
         organizationId,
         confirmationName: archiveConfirmationName,
-      });
-      clearSelectedOrganization();
-      setArchiveConfirmationName("");
-      toast.success("Organization archived.");
+      })
+      clearSelectedOrganization()
+      setArchiveConfirmationName('')
+      toast.success('Organization archived.')
     } catch (error) {
       toast.error(
         error instanceof Error
           ? error.message
-          : "Could not archive organization.",
-      );
+          : 'Could not archive organization.',
+      )
     } finally {
-      setBusy(null);
+      setBusy(null)
     }
   }
 
   if (!organization) {
-    return <Skeleton className="h-72" />;
+    return <Skeleton className="h-72" />
   }
 
   return (
@@ -166,7 +165,7 @@ export function OrganizationProfileView() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
-            {membershipRole ?? "No org"}
+            {membershipRole ?? 'No org'}
           </p>
           <h1 className="mt-2 text-3xl font-semibold tracking-normal">
             Organization profile
@@ -193,15 +192,15 @@ export function OrganizationProfileView() {
                     id="profile-organization-name"
                     value={profileName}
                     onChange={(event) => setProfileName(event.target.value)}
-                    disabled={!mayManageProfile || busy === "profile"}
+                    disabled={!mayManageProfile || busy === 'profile'}
                     required
                   />
                 </Field>
                 <Button
                   type="submit"
-                  disabled={!mayManageProfile || busy === "profile"}
+                  disabled={!mayManageProfile || busy === 'profile'}
                 >
-                  {busy === "profile" ? (
+                  {busy === 'profile' ? (
                     <Spinner data-icon="inline-start" />
                   ) : null}
                   Save changes
@@ -227,7 +226,9 @@ export function OrganizationProfileView() {
                 className="flex size-28 items-center justify-center overflow-hidden rounded-md border border-border bg-muted bg-cover bg-center"
                 style={
                   organization.profileImageUrl
-                    ? { backgroundImage: `url(${organization.profileImageUrl})` }
+                    ? {
+                        backgroundImage: `url(${organization.profileImageUrl})`,
+                      }
                     : undefined
                 }
               >
@@ -242,20 +243,20 @@ export function OrganizationProfileView() {
                     id="profile-image"
                     type="file"
                     accept="image/png,image/jpeg,image/webp"
-                    disabled={!mayManageProfile || busy === "profileImage"}
+                    disabled={!mayManageProfile || busy === 'profileImage'}
                     onChange={(event) => {
-                      const file = event.target.files?.[0];
+                      const file = event.target.files?.[0]
                       if (file) {
-                        void handleUpdateProfileImage(file);
+                        void handleUpdateProfileImage(file)
                       }
-                      event.target.value = "";
+                      event.target.value = ''
                     }}
                   />
                   <FieldDescription>
                     Use a square image at least 256 x 256 pixels.
                   </FieldDescription>
                 </Field>
-                {busy === "profileImage" && (
+                {busy === 'profileImage' && (
                   <p className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Spinner data-icon="inline-start" />
                     Uploading profile picture
@@ -285,15 +286,15 @@ export function OrganizationProfileView() {
                       onChange={(event) =>
                         setArchiveConfirmationName(event.target.value)
                       }
-                      disabled={!mayManageProfile || busy === "archive"}
+                      disabled={!mayManageProfile || busy === 'archive'}
                     />
                   </Field>
                   <Button
                     type="submit"
                     variant="destructive"
-                    disabled={!mayManageProfile || busy === "archive"}
+                    disabled={!mayManageProfile || busy === 'archive'}
                   >
-                    {busy === "archive" ? (
+                    {busy === 'archive' ? (
                       <Spinner data-icon="inline-start" />
                     ) : (
                       <Archive data-icon="inline-start" />
@@ -307,24 +308,24 @@ export function OrganizationProfileView() {
         </aside>
       </div>
     </section>
-  );
+  )
 }
 
 function readImageDimensions(file: File) {
-  return new Promise<Pick<OrganizationProfileImageDetails, "width" | "height">>(
+  return new Promise<Pick<OrganizationProfileImageDetails, 'width' | 'height'>>(
     (resolve, reject) => {
-      const image = new Image();
-      const objectUrl = URL.createObjectURL(file);
+      const image = new Image()
+      const objectUrl = URL.createObjectURL(file)
 
       image.onload = () => {
-        URL.revokeObjectURL(objectUrl);
-        resolve({ width: image.naturalWidth, height: image.naturalHeight });
-      };
+        URL.revokeObjectURL(objectUrl)
+        resolve({ width: image.naturalWidth, height: image.naturalHeight })
+      }
       image.onerror = () => {
-        URL.revokeObjectURL(objectUrl);
-        reject(new Error("Could not read profile picture dimensions."));
-      };
-      image.src = objectUrl;
+        URL.revokeObjectURL(objectUrl)
+        reject(new Error('Could not read profile picture dimensions.'))
+      }
+      image.src = objectUrl
     },
-  );
+  )
 }

@@ -1,9 +1,6 @@
-
-import { useState, type FormEvent } from "react";
-import { Link } from "@tanstack/react-router";
-import { useLocation } from "@tanstack/react-router";
-import { useAppAuth } from "@/lib/use-app-auth";
-import { useMutation } from "convex/react";
+import {  useState } from 'react'
+import { Link, useLocation  } from '@tanstack/react-router'
+import { useMutation } from 'convex/react'
 import {
   ArrowLeft,
   Building2,
@@ -14,12 +11,17 @@ import {
   Trophy,
   UserRound,
   Users,
-} from "lucide-react";
-import { toast } from "sonner";
+} from 'lucide-react'
+import { toast } from 'sonner'
+import { api } from '@tournament-os/backend/convex/_generated/api'
+import { AdminBreadcrumb } from './admin-breadcrumb'
+import { useOrganization } from './organization-context'
+import type {FormEvent} from 'react';
+import type { AdminView } from './types'
+import { useAppAuth } from '@/lib/use-app-auth'
 
-import { api } from "@tournament-os/backend/convex/_generated/api";
-import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
+import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,7 +30,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from '@/components/ui/dropdown-menu'
 import {
   Dialog,
   DialogContent,
@@ -36,14 +38,10 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  Field,
-  FieldGroup,
-  FieldLabel,
-} from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
+} from '@/components/ui/dialog'
+import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
+import { Input } from '@/components/ui/input'
+import { Separator } from '@/components/ui/separator'
 import {
   Sidebar,
   SidebarContent,
@@ -59,24 +57,21 @@ import {
   SidebarRail,
   SidebarTrigger,
   useSidebar,
-} from "@/components/ui/sidebar";
-import { Spinner } from "@/components/ui/spinner";
-import { AdminBreadcrumb } from "./admin-breadcrumb";
-import { useOrganization } from "./organization-context";
-import type { AdminView } from "./types";
+} from '@/components/ui/sidebar'
+import { Spinner } from '@/components/ui/spinner'
 
 function viewFromPathname(pathname: string): AdminView {
-  if (pathname.startsWith("/admin/staff")) {
-    return "staff";
+  if (pathname.startsWith('/admin/staff')) {
+    return 'staff'
   }
-  if (pathname.startsWith("/admin/organization")) {
-    return "organization";
+  if (pathname.startsWith('/admin/organization')) {
+    return 'organization'
   }
-  return "tournaments";
+  return 'tournaments'
 }
 
 export function AdminSidebar() {
-  const view = viewFromPathname(useLocation().pathname);
+  const view = viewFromPathname(useLocation().pathname)
 
   return (
     <Sidebar collapsible="icon">
@@ -96,7 +91,7 @@ export function AdminSidebar() {
               <SidebarMenuItem>
                 <SidebarMenuButton
                   asChild
-                  isActive={view === "tournaments"}
+                  isActive={view === 'tournaments'}
                   tooltip="Tournaments"
                 >
                   <Link to="/admin">
@@ -108,7 +103,7 @@ export function AdminSidebar() {
               <SidebarMenuItem>
                 <SidebarMenuButton
                   asChild
-                  isActive={view === "staff"}
+                  isActive={view === 'staff'}
                   tooltip="Staff"
                 >
                   <Link to="/admin/staff">
@@ -120,7 +115,7 @@ export function AdminSidebar() {
               <SidebarMenuItem>
                 <SidebarMenuButton
                   asChild
-                  isActive={view === "organization"}
+                  isActive={view === 'organization'}
                   tooltip="Organization"
                 >
                   <Link to="/admin/organization">
@@ -148,17 +143,20 @@ export function AdminSidebar() {
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>
-  );
+  )
 }
 
 export function AdminHeader() {
-  const { user, signOut } = useAppAuth();
+  const { user, signOut } = useAppAuth()
 
   return (
     <header className="flex min-h-14 items-center justify-between gap-3 border-b border-border px-4 sm:px-6">
       <div className="flex items-center gap-2">
         <SidebarTrigger />
-        <Separator orientation="vertical" className="h-4 data-vertical:self-center" />
+        <Separator
+          orientation="vertical"
+          className="h-4 data-vertical:self-center"
+        />
         <AdminBreadcrumb />
       </div>
       <UserMenu
@@ -167,7 +165,7 @@ export function AdminHeader() {
         onSignOut={() => void signOut()}
       />
     </header>
-  );
+  )
 }
 
 function OrganizationSwitcher() {
@@ -176,33 +174,33 @@ function OrganizationSwitcher() {
     selectedOrganizationId,
     selectedOrganization,
     selectOrganization,
-  } = useOrganization();
-  const { state, isMobile } = useSidebar();
+  } = useOrganization()
+  const { state, isMobile } = useSidebar()
   const createOrganization = useMutation(
     api.organizations.createOrganizerOrganization,
-  );
+  )
 
-  const [open, setOpen] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [organizationName, setOrganizationName] = useState("");
+  const [open, setOpen] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [organizationName, setOrganizationName] = useState('')
 
   async function handleCreateOrganization(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setBusy(true);
+    event.preventDefault()
+    setBusy(true)
     try {
-      const result = await createOrganization({ name: organizationName });
-      selectOrganization(result.organizationId);
-      setOrganizationName("");
-      setOpen(false);
-      toast.success("Organizer workspace created.");
+      const result = await createOrganization({ name: organizationName })
+      selectOrganization(result.organizationId)
+      setOrganizationName('')
+      setOpen(false)
+      toast.success('Organizer workspace created.')
     } catch (error) {
       toast.error(
         error instanceof Error
           ? error.message
-          : "Could not create organization.",
-      );
+          : 'Could not create organization.',
+      )
     } finally {
-      setBusy(false);
+      setBusy(false)
     }
   }
 
@@ -215,21 +213,21 @@ function OrganizationSwitcher() {
             className="group-data-[collapsible=icon]:justify-center"
           >
             <OrganizationAvatar
-              name={selectedOrganization?.organization.name ?? "Organization"}
+              name={selectedOrganization?.organization.name ?? 'Organization'}
               profileImageUrl={
                 selectedOrganization?.organization.profileImageUrl ?? null
               }
               className="size-8 rounded-md"
             />
             <span className="group-data-[collapsible=icon]:hidden">
-              {selectedOrganization?.organization.name ?? "Select organization"}
+              {selectedOrganization?.organization.name ?? 'Select organization'}
             </span>
             <ChevronDown className="ml-auto group-data-[collapsible=icon]:hidden" />
           </SidebarMenuButton>
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align="start"
-          side={!isMobile && state === "collapsed" ? "right" : "bottom"}
+          side={!isMobile && state === 'collapsed' ? 'right' : 'bottom'}
           sideOffset={4}
           className="min-w-56 border-sidebar-border bg-sidebar-accent text-sidebar-accent-foreground"
         >
@@ -309,7 +307,7 @@ function OrganizationSwitcher() {
         </form>
       </DialogContent>
     </Dialog>
-  );
+  )
 }
 
 function OrganizationAvatar({
@@ -317,9 +315,9 @@ function OrganizationAvatar({
   profileImageUrl,
   className,
 }: {
-  name: string;
-  profileImageUrl: string | null;
-  className?: string;
+  name: string
+  profileImageUrl: string | null
+  className?: string
 }) {
   if (profileImageUrl) {
     return (
@@ -327,15 +325,15 @@ function OrganizationAvatar({
         role="img"
         aria-label={name}
         className={cn(
-          "size-4 shrink-0 overflow-hidden rounded-sm bg-muted bg-cover bg-center",
+          'size-4 shrink-0 overflow-hidden rounded-sm bg-muted bg-cover bg-center',
           className,
         )}
         style={{ backgroundImage: `url(${profileImageUrl})` }}
       />
-    );
+    )
   }
 
-  return <Building2 className={className} />;
+  return <Building2 className={className} />
 }
 
 function UserMenu({
@@ -343,9 +341,9 @@ function UserMenu({
   name,
   onSignOut,
 }: {
-  email?: string;
-  name?: string;
-  onSignOut: () => void;
+  email?: string
+  name?: string
+  onSignOut: () => void
 }) {
   return (
     <DropdownMenu>
@@ -358,7 +356,7 @@ function UserMenu({
       <DropdownMenuContent align="end">
         <DropdownMenuLabel>
           <span className="block text-foreground">
-            {name ?? "Player account"}
+            {name ?? 'Player account'}
           </span>
           {email && <span className="block truncate">{email}</span>}
         </DropdownMenuLabel>
@@ -369,5 +367,5 @@ function UserMenu({
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
-  );
+  )
 }

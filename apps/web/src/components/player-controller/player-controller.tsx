@@ -1,46 +1,45 @@
+import { useState } from 'react'
+import { Link } from '@tanstack/react-router'
+import { useMyCurrentMatch } from '@tournament-os/core'
+import { useQuery } from 'convex/react'
+import { ListOrdered, LogIn, Menu, Swords, UserRound } from 'lucide-react'
+import { api } from '@tournament-os/backend/convex/_generated/api'
+import { CurrentMatchCard } from './current-match-card'
+import { MoreTab } from './more-tab'
+import { StandingsList } from './standings-list'
+import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
+import { useAppAuth } from '@/lib/use-app-auth'
 
-import { useState } from "react";
-import { Link } from "@tanstack/react-router";
-import { useAppAuth } from "@/lib/use-app-auth";
-import { useMyCurrentMatch } from "@tournament-os/core";
-import { useQuery } from "convex/react";
-import { ListOrdered, LogIn, Menu, Swords, UserRound } from "lucide-react";
-
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import {
   Empty,
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
-} from "@/components/ui/empty";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Toaster } from "@/components/ui/sonner";
-import { Spinner } from "@/components/ui/spinner";
-import { api } from "@tournament-os/backend/convex/_generated/api";
-import type { Id } from "@tournament-os/backend/convex/_generated/dataModel";
-import { cn } from "@/lib/utils";
+} from '@/components/ui/empty'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Toaster } from '@/components/ui/sonner'
+import { Spinner } from '@/components/ui/spinner'
+import { cn } from '@/lib/utils'
 
-import { CurrentMatchCard } from "./current-match-card";
-import { MoreTab } from "./more-tab";
-import { StandingsList } from "./standings-list";
 
-type ControllerTab = "match" | "standings" | "more";
+type ControllerTab = 'match' | 'standings' | 'more'
 
 export function PlayerController({ tournamentId }: { tournamentId: string }) {
-  const { user, loading, refreshAuth } = useAppAuth();
-  const typedTournamentId = tournamentId as Id<"tournaments">;
+  const { user, loading, refreshAuth } = useAppAuth()
+  const typedTournamentId = tournamentId as Id<'tournaments'>
   // getMyRegistration returns null for signed-in users who never registered,
   // so it gates the player queries (which reject unregistered users).
   const registration = useQuery(
     api.tournaments.registrations.getMyRegistration,
-    user ? { tournamentId: typedTournamentId } : "skip",
-  );
+    user ? { tournamentId: typedTournamentId } : 'skip',
+  )
   const currentMatch = useMyCurrentMatch(
     user && registration ? typedTournamentId : null,
-  );
-  const [tab, setTab] = useState<ControllerTab>("match");
+  )
+  const [tab, setTab] = useState<ControllerTab>('match')
 
   if (loading) {
     return (
@@ -49,7 +48,7 @@ export function PlayerController({ tournamentId }: { tournamentId: string }) {
           <Spinner className="size-6" />
         </div>
       </ControllerFrame>
-    );
+    )
   }
 
   if (!user) {
@@ -74,7 +73,7 @@ export function PlayerController({ tournamentId }: { tournamentId: string }) {
           </Button>
         </Empty>
       </ControllerFrame>
-    );
+    )
   }
 
   if (registration === undefined) {
@@ -86,7 +85,7 @@ export function PlayerController({ tournamentId }: { tournamentId: string }) {
           ))}
         </div>
       </ControllerFrame>
-    );
+    )
   }
 
   if (registration === null) {
@@ -104,11 +103,13 @@ export function PlayerController({ tournamentId }: { tournamentId: string }) {
             </EmptyDescription>
           </EmptyHeader>
           <Button asChild type="button" variant="outline">
-            <Link to="/tournaments/$tournamentId" params={{ tournamentId }}>View event page</Link>
+            <Link to="/tournaments/$tournamentId" params={{ tournamentId }}>
+              View event page
+            </Link>
           </Button>
         </Empty>
       </ControllerFrame>
-    );
+    )
   }
 
   return (
@@ -132,13 +133,13 @@ export function PlayerController({ tournamentId }: { tournamentId: string }) {
       }
     >
       <div className="pt-4">
-        {tab === "match" ? (
+        {tab === 'match' ? (
           <CurrentMatchCard currentMatch={currentMatch} />
         ) : null}
-        {tab === "standings" ? (
+        {tab === 'standings' ? (
           <StandingsList tournamentId={typedTournamentId} />
         ) : null}
-        {tab === "more" ? (
+        {tab === 'more' ? (
           <MoreTab
             tournamentId={typedTournamentId}
             currentMatch={currentMatch}
@@ -151,33 +152,33 @@ export function PlayerController({ tournamentId }: { tournamentId: string }) {
           <TabButton
             icon={Swords}
             label="Match"
-            active={tab === "match"}
-            onClick={() => setTab("match")}
+            active={tab === 'match'}
+            onClick={() => setTab('match')}
           />
           <TabButton
             icon={ListOrdered}
             label="Standings"
-            active={tab === "standings"}
-            onClick={() => setTab("standings")}
+            active={tab === 'standings'}
+            onClick={() => setTab('standings')}
           />
           <TabButton
             icon={Menu}
             label="More"
-            active={tab === "more"}
-            onClick={() => setTab("more")}
+            active={tab === 'more'}
+            onClick={() => setTab('more')}
           />
         </div>
       </nav>
     </ControllerFrame>
-  );
+  )
 }
 
 function ControllerFrame({
   header,
   children,
 }: {
-  header?: React.ReactNode;
-  children: React.ReactNode;
+  header?: React.ReactNode
+  children: React.ReactNode
 }) {
   return (
     <main className="min-h-svh bg-background text-foreground">
@@ -196,27 +197,27 @@ function ControllerFrame({
       <div className="mx-auto max-w-md px-4 pb-24">{children}</div>
       <Toaster />
     </main>
-  );
+  )
 }
 
 function HeaderBadge({
   currentMatch,
 }: {
-  currentMatch: NonNullable<ReturnType<typeof useMyCurrentMatch>>;
+  currentMatch: NonNullable<ReturnType<typeof useMyCurrentMatch>>
 }) {
-  if (currentMatch.myRegistrationStatus === "dropped") {
-    return <Badge variant="destructive">Dropped</Badge>;
+  if (currentMatch.myRegistrationStatus === 'dropped') {
+    return <Badge variant="destructive">Dropped</Badge>
   }
-  if (currentMatch.tournament.status === "completed") {
-    return <Badge variant="secondary">Completed</Badge>;
+  if (currentMatch.tournament.status === 'completed') {
+    return <Badge variant="secondary">Completed</Badge>
   }
-  if (currentMatch.kind === "not_started") {
-    return <Badge variant="outline">Not started</Badge>;
+  if (currentMatch.kind === 'not_started') {
+    return <Badge variant="outline">Not started</Badge>
   }
-  if (currentMatch.kind === "match" || currentMatch.kind === "between_rounds") {
-    return <Badge>Round {currentMatch.round.roundNumber}</Badge>;
+  if (currentMatch.kind === 'match' || currentMatch.kind === 'between_rounds') {
+    return <Badge>Round {currentMatch.round.roundNumber}</Badge>
   }
-  return null;
+  return null
 }
 
 function TabButton({
@@ -225,23 +226,23 @@ function TabButton({
   active,
   onClick,
 }: {
-  icon: typeof Swords;
-  label: string;
-  active: boolean;
-  onClick: () => void;
+  icon: typeof Swords
+  label: string
+  active: boolean
+  onClick: () => void
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      aria-current={active ? "page" : undefined}
+      aria-current={active ? 'page' : undefined}
       className={cn(
-        "flex flex-col items-center gap-1 py-2.5 text-xs",
-        active ? "text-foreground" : "text-muted-foreground",
+        'flex flex-col items-center gap-1 py-2.5 text-xs',
+        active ? 'text-foreground' : 'text-muted-foreground',
       )}
     >
       <Icon className="size-5" aria-hidden="true" />
       {label}
     </button>
-  );
+  )
 }

@@ -1,40 +1,40 @@
-
-import { useState } from "react";
+import { useState } from 'react'
 import {
+  
   formatPercent,
   formatRecord,
-  useLatestStandings,
-  type StandingRow,
-} from "@tournament-os/core";
-import { ListOrdered } from "lucide-react";
+  useLatestStandings
+} from '@tournament-os/core'
+import { ListOrdered } from 'lucide-react'
+import type {StandingRow} from '@tournament-os/core';
 
+import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
+} from '@/components/ui/card'
 import {
   Empty,
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
-} from "@/components/ui/empty";
-import { Skeleton } from "@/components/ui/skeleton";
-import type { Id } from "@tournament-os/backend/convex/_generated/dataModel";
-import { cn } from "@/lib/utils";
+} from '@/components/ui/empty'
+import { Skeleton } from '@/components/ui/skeleton'
+import { cn } from '@/lib/utils'
 
 export function StandingsList({
   tournamentId,
 }: {
-  tournamentId: Id<"tournaments">;
+  tournamentId: Id<'tournaments'>
 }) {
-  const standings = useLatestStandings(tournamentId);
+  const standings = useLatestStandings(tournamentId)
 
   if (standings === undefined) {
-    return <Skeleton className="h-56" />;
+    return <Skeleton className="h-56" />
   }
 
   if (standings === null) {
@@ -50,10 +50,10 @@ export function StandingsList({
           </EmptyDescription>
         </EmptyHeader>
       </Empty>
-    );
+    )
   }
 
-  const myRow = standings.rows.find((row) => row.isMe);
+  const myRow = standings.rows.find((row) => row.isMe)
 
   return (
     <Card>
@@ -63,9 +63,9 @@ export function StandingsList({
           After round {standings.roundNumber}
           {myRow
             ? ` · You're ${ordinal(myRow.rank)} with ${myRow.matchPoints} ${
-                myRow.matchPoints === 1 ? "point" : "points"
+                myRow.matchPoints === 1 ? 'point' : 'points'
               }`
-            : ""}
+            : ''}
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-1.5">
@@ -74,11 +74,11 @@ export function StandingsList({
         ))}
       </CardContent>
     </Card>
-  );
+  )
 }
 
 function StandingsRow({ row }: { row: StandingRow }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(false)
 
   return (
     <button
@@ -86,8 +86,8 @@ function StandingsRow({ row }: { row: StandingRow }) {
       onClick={() => setExpanded((value) => !value)}
       aria-expanded={expanded}
       className={cn(
-        "rounded-md border px-3 py-2 text-left",
-        row.isMe ? "border-primary bg-primary/5" : "border-border",
+        'rounded-md border px-3 py-2 text-left',
+        row.isMe ? 'border-primary bg-primary/5' : 'border-border',
       )}
     >
       <div className="flex items-center gap-3">
@@ -95,7 +95,7 @@ function StandingsRow({ row }: { row: StandingRow }) {
           {row.rank}
         </span>
         <span className="min-w-0 flex-1 truncate text-sm font-medium">
-          {row.name ?? "Unknown player"}
+          {row.name ?? 'Unknown player'}
           {row.isMe ? (
             <span className="text-muted-foreground"> (you)</span>
           ) : null}
@@ -109,26 +109,26 @@ function StandingsRow({ row }: { row: StandingRow }) {
       </div>
       {expanded ? (
         <p className="mt-1.5 pl-10 text-xs text-muted-foreground">
-          OMW {formatPercent(row.opponentMatchWinPct)} · GW{" "}
-          {formatPercent(row.gameWinPct)} · OGW{" "}
+          OMW {formatPercent(row.opponentMatchWinPct)} · GW{' '}
+          {formatPercent(row.gameWinPct)} · OGW{' '}
           {formatPercent(row.opponentGameWinPct)}
         </p>
       ) : null}
     </button>
-  );
+  )
 }
 
 function ordinal(value: number) {
-  const remainderTen = value % 10;
-  const remainderHundred = value % 100;
+  const remainderTen = value % 10
+  const remainderHundred = value % 100
   if (remainderTen === 1 && remainderHundred !== 11) {
-    return `${value}st`;
+    return `${value}st`
   }
   if (remainderTen === 2 && remainderHundred !== 12) {
-    return `${value}nd`;
+    return `${value}nd`
   }
   if (remainderTen === 3 && remainderHundred !== 13) {
-    return `${value}rd`;
+    return `${value}rd`
   }
-  return `${value}th`;
+  return `${value}th`
 }

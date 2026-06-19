@@ -1,59 +1,57 @@
-
-import { Link } from "@tanstack/react-router";
-import { useLocation } from "@tanstack/react-router";
-import { useQuery } from "convex/react";
+import { Link, useLocation  } from '@tanstack/react-router'
+import { useQuery } from 'convex/react'
 import {
   ChevronLeft,
   ClipboardList,
   LayoutDashboard,
   Swords,
   Trophy,
-} from "lucide-react";
+} from 'lucide-react'
 
-import { api } from "@tournament-os/backend/convex/_generated/api";
-import type { Id } from "@tournament-os/backend/convex/_generated/dataModel";
-import { cn } from "@/lib/utils";
-import { Skeleton } from "@/components/ui/skeleton";
+import { api } from '@tournament-os/backend/convex/_generated/api'
+import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
+import { cn } from '@/lib/utils'
+import { Skeleton } from '@/components/ui/skeleton'
 
 type NavItem = {
-  label: string;
-  href: string;
-  icon: typeof ClipboardList;
-};
+  label: string
+  href: string
+  icon: typeof ClipboardList
+}
 
 export function TournamentManagerSidebar({
   tournamentId,
 }: {
-  tournamentId: string;
+  tournamentId: string
 }) {
   const setup = useQuery(api.tournaments.lifecycle.getTournamentSetup, {
-    tournamentId: tournamentId as Id<"tournaments">,
-  });
-  const tournament = setup?.tournament;
-  const pathname = useLocation().pathname;
-  const base = `/admin/tournaments/${tournamentId}`;
-  const items: NavItem[] = [
+    tournamentId: tournamentId as Id<'tournaments'>,
+  })
+  const tournament = setup?.tournament
+  const pathname = useLocation().pathname
+  const base = `/admin/tournaments/${tournamentId}`
+  const items: Array<NavItem> = [
     {
-      label: "Overview",
+      label: 'Overview',
       href: base,
       icon: LayoutDashboard,
     },
     {
-      label: "Registrations",
+      label: 'Registrations',
       href: `${base}/registrations`,
       icon: ClipboardList,
     },
     {
-      label: "Pairings",
+      label: 'Pairings',
       href: `${base}/pairings`,
       icon: Swords,
     },
     {
-      label: "Standings",
+      label: 'Standings',
       href: `${base}/standings`,
       icon: Trophy,
     },
-  ];
+  ]
 
   return (
     <aside className="hidden w-60 shrink-0 flex-col border-r border-border bg-sidebar text-sidebar-foreground md:flex">
@@ -72,7 +70,7 @@ export function TournamentManagerSidebar({
                 {tournament.name}
               </p>
               <p className="mt-1 text-xs capitalize text-muted-foreground">
-                {tournament.status.replace(/_/g, " ")}
+                {tournament.status.replace(/_/g, ' ')}
               </p>
             </>
           ) : (
@@ -86,25 +84,25 @@ export function TournamentManagerSidebar({
 
       <nav className="flex flex-col gap-px p-2">
         {items.map((item) => {
-          const Icon = item.icon;
-          const isActive = pathname === item.href;
+          const Icon = item.icon
+          const isActive = pathname === item.href
           return (
             <Link
               key={item.href}
               to={item.href}
               data-active={isActive}
               className={cn(
-                "flex items-center gap-2 rounded-md px-2 py-2 text-sm text-sidebar-foreground transition-colors",
-                "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                "data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground",
+                'flex items-center gap-2 rounded-md px-2 py-2 text-sm text-sidebar-foreground transition-colors',
+                'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+                'data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground',
               )}
             >
               <Icon className="size-4 shrink-0" />
               <span>{item.label}</span>
             </Link>
-          );
+          )
         })}
       </nav>
     </aside>
-  );
+  )
 }

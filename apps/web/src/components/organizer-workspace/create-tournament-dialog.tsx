@@ -1,12 +1,24 @@
+import {  useState } from 'react'
+import { useMutation } from 'convex/react'
+import { Plus, Trash2 } from 'lucide-react'
+import { toast } from 'sonner'
 
-import { useState, type FormEvent } from "react";
-import { useMutation } from "convex/react";
-import { Plus, Trash2 } from "lucide-react";
-import { toast } from "sonner";
-
-import { api } from "@tournament-os/backend/convex/_generated/api";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
+import { api } from '@tournament-os/backend/convex/_generated/api'
+import {
+  
+  
+  
+  addTournamentCreationPhase,
+  createDefaultTournamentCreationPhase,
+  removeTournamentCreationPhase,
+  toTournamentCreationPhasePayload,
+  tournamentFormats
+} from '@tournament-os/core/tournament-creation-utils'
+import { useOrganization } from './organization-context'
+import type {TournamentCreationPhaseForm, TournamentCreationPhaseRoundMode, TournamentFormat} from '@tournament-os/core/tournament-creation-utils';
+import type {FormEvent} from 'react';
+import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -15,7 +27,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog";
+} from '@/components/ui/dialog'
 import {
   Field,
   FieldContent,
@@ -24,8 +36,8 @@ import {
   FieldLabel,
   FieldLegend,
   FieldSet,
-} from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
+} from '@/components/ui/field'
+import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectContent,
@@ -33,65 +45,54 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { Spinner } from "@/components/ui/spinner";
-import {
-  addTournamentCreationPhase,
-  createDefaultTournamentCreationPhase,
-  removeTournamentCreationPhase,
-  toTournamentCreationPhasePayload,
-  tournamentFormats,
-  type TournamentCreationPhaseForm,
-  type TournamentCreationPhaseRoundMode,
-  type TournamentFormat,
-} from "@tournament-os/core/tournament-creation-utils";
-import { useOrganization } from "./organization-context";
+} from '@/components/ui/select'
+import { Spinner } from '@/components/ui/spinner'
 
 export function CreateTournamentDialog() {
-  const { selectedOrganizationId } = useOrganization();
+  const { selectedOrganizationId } = useOrganization()
   const createTournament = useMutation(
     api.tournaments.lifecycle.createTournamentWithPhases,
-  );
+  )
 
-  const [open, setOpen] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [name, setName] = useState("");
-  const [startDateTime, setStartDateTime] = useState("");
-  const [playerCapacity, setPlayerCapacity] = useState("32");
-  const [format, setFormat] = useState<TournamentFormat>("standard");
-  const [isTestEvent, setIsTestEvent] = useState(false);
-  const [phases, setPhases] = useState<TournamentCreationPhaseForm[]>([
-    createDefaultTournamentCreationPhase("phase-1"),
-  ]);
+  const [open, setOpen] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [name, setName] = useState('')
+  const [startDateTime, setStartDateTime] = useState('')
+  const [playerCapacity, setPlayerCapacity] = useState('32')
+  const [format, setFormat] = useState<TournamentFormat>('standard')
+  const [isTestEvent, setIsTestEvent] = useState(false)
+  const [phases, setPhases] = useState<Array<TournamentCreationPhaseForm>>([
+    createDefaultTournamentCreationPhase('phase-1'),
+  ])
 
-  const disabled = !selectedOrganizationId || busy;
+  const disabled = !selectedOrganizationId || busy
 
   function resetForm() {
-    setName("");
-    setStartDateTime("");
-    setPlayerCapacity("32");
-    setFormat("standard");
-    setIsTestEvent(false);
-    setPhases([createDefaultTournamentCreationPhase("phase-1")]);
+    setName('')
+    setStartDateTime('')
+    setPlayerCapacity('32')
+    setFormat('standard')
+    setIsTestEvent(false)
+    setPhases([createDefaultTournamentCreationPhase('phase-1')])
   }
 
   function handleAddPhase() {
     setPhases((current) =>
       addTournamentCreationPhase(current, `phase-${Date.now()}`),
-    );
+    )
   }
 
   function handleRemovePhase(id: string) {
-    setPhases((current) => removeTournamentCreationPhase(current, id));
+    setPhases((current) => removeTournamentCreationPhase(current, id))
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+    event.preventDefault()
     if (!selectedOrganizationId) {
-      return;
+      return
     }
 
-    setBusy(true);
+    setBusy(true)
     try {
       await createTournament({
         organizationId: selectedOrganizationId,
@@ -101,18 +102,16 @@ export function CreateTournamentDialog() {
         format,
         isTestEvent,
         phases: toTournamentCreationPhasePayload(phases),
-      });
-      resetForm();
-      setOpen(false);
-      toast.success("Tournament created.");
+      })
+      resetForm()
+      setOpen(false)
+      toast.success('Tournament created.')
     } catch (error) {
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Could not create tournament.",
-      );
+        error instanceof Error ? error.message : 'Could not create tournament.',
+      )
     } finally {
-      setBusy(false);
+      setBusy(false)
     }
   }
 
@@ -179,7 +178,10 @@ export function CreateTournamentDialog() {
                 onValueChange={(value) => setFormat(value as TournamentFormat)}
                 disabled={disabled}
               >
-                <SelectTrigger id="tournament-format" className="w-full capitalize">
+                <SelectTrigger
+                  id="tournament-format"
+                  className="w-full capitalize"
+                >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -257,7 +259,7 @@ export function CreateTournamentDialog() {
         </form>
       </DialogContent>
     </Dialog>
-  );
+  )
 }
 
 function TournamentPhaseField({
@@ -268,12 +270,12 @@ function TournamentPhaseField({
   phase,
   phases,
 }: {
-  disabled: boolean;
-  index: number;
-  onRemovePhase: (id: string) => void;
-  onPhasesChange: (phases: TournamentCreationPhaseForm[]) => void;
-  phase: TournamentCreationPhaseForm;
-  phases: TournamentCreationPhaseForm[];
+  disabled: boolean
+  index: number
+  onRemovePhase: (id: string) => void
+  onPhasesChange: (phases: Array<TournamentCreationPhaseForm>) => void
+  phase: TournamentCreationPhaseForm
+  phases: Array<TournamentCreationPhaseForm>
 }) {
   return (
     <Field className="rounded-md border border-border p-3">
@@ -331,8 +333,8 @@ function TournamentPhaseField({
             type="number"
             min={1}
             max={16}
-            disabled={disabled || phase.phaseRoundMode === "dynamic"}
-            required={phase.phaseRoundMode === "fixed"}
+            disabled={disabled || phase.phaseRoundMode === 'dynamic'}
+            required={phase.phaseRoundMode === 'fixed'}
           />
         </Field>
         <Button
@@ -347,5 +349,5 @@ function TournamentPhaseField({
         </Button>
       </div>
     </Field>
-  );
+  )
 }

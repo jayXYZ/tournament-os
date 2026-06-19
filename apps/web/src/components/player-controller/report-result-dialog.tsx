@@ -1,10 +1,10 @@
+import { useState } from 'react'
+import { useReportResult } from '@tournament-os/core'
+import { Minus, Plus } from 'lucide-react'
+import { toast } from 'sonner'
 
-import { useState } from "react";
-import { useReportResult } from "@tournament-os/core";
-import { Minus, Plus } from "lucide-react";
-import { toast } from "sonner";
-
-import { Button } from "@/components/ui/button";
+import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
+import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
@@ -12,9 +12,8 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Spinner } from "@/components/ui/spinner";
-import type { Id } from "@tournament-os/backend/convex/_generated/dataModel";
+} from '@/components/ui/dialog'
+import { Spinner } from '@/components/ui/spinner'
 
 export function ReportResultDialog({
   matchId,
@@ -22,30 +21,28 @@ export function ReportResultDialog({
   open,
   onOpenChange,
 }: {
-  matchId: Id<"tournamentMatches">;
-  opponentName: string;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
+  matchId: Id<'tournamentMatches'>
+  opponentName: string
+  open: boolean
+  onOpenChange: (open: boolean) => void
 }) {
-  const reportResult = useReportResult();
-  const [busy, setBusy] = useState(false);
-  const [myGameWins, setMyGameWins] = useState(0);
-  const [opponentGameWins, setOpponentGameWins] = useState(0);
+  const reportResult = useReportResult()
+  const [busy, setBusy] = useState(false)
+  const [myGameWins, setMyGameWins] = useState(0)
+  const [opponentGameWins, setOpponentGameWins] = useState(0)
 
   async function handleSubmit() {
-    setBusy(true);
+    setBusy(true)
     try {
-      await reportResult({ matchId, myGameWins, opponentGameWins });
-      onOpenChange(false);
-      toast.success("Result reported.");
+      await reportResult({ matchId, myGameWins, opponentGameWins })
+      onOpenChange(false)
+      toast.success('Result reported.')
     } catch (error) {
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Could not report the result.",
-      );
+        error instanceof Error ? error.message : 'Could not report the result.',
+      )
     } finally {
-      setBusy(false);
+      setBusy(false)
     }
   }
 
@@ -54,7 +51,7 @@ export function ReportResultDialog({
       open={open}
       onOpenChange={(nextOpen) => {
         if (!busy) {
-          onOpenChange(nextOpen);
+          onOpenChange(nextOpen)
         }
       }}
     >
@@ -98,7 +95,7 @@ export function ReportResultDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
+  )
 }
 
 function GameWinsStepper({
@@ -107,10 +104,10 @@ function GameWinsStepper({
   onChange,
   disabled,
 }: {
-  label: string;
-  value: number;
-  onChange: (value: number) => void;
-  disabled: boolean;
+  label: string
+  value: number
+  onChange: (value: number) => void
+  disabled: boolean
 }) {
   return (
     <div className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
@@ -141,7 +138,7 @@ function GameWinsStepper({
         </Button>
       </div>
     </div>
-  );
+  )
 }
 
 function resultPreview(
@@ -150,10 +147,10 @@ function resultPreview(
   opponentName: string,
 ) {
   if (myGameWins > opponentGameWins) {
-    return `You win ${myGameWins}–${opponentGameWins}`;
+    return `You win ${myGameWins}–${opponentGameWins}`
   }
   if (myGameWins < opponentGameWins) {
-    return `${opponentName} wins ${opponentGameWins}–${myGameWins}`;
+    return `${opponentName} wins ${opponentGameWins}–${myGameWins}`
   }
-  return `Draw ${myGameWins}–${opponentGameWins}`;
+  return `Draw ${myGameWins}–${opponentGameWins}`
 }

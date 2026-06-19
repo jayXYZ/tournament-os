@@ -1,10 +1,10 @@
-@import "@fontsource-variable/inter";
-@import "@fontsource-variable/geist";
-@import "@fontsource-variable/geist-mono";
+@import '@fontsource-variable/inter';
+@import '@fontsource-variable/geist';
+@import '@fontsource-variable/geist-mono';
 
-@import "tailwindcss";
-@import "tw-animate-css";
-@import "shadcn/tailwind.css";
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
 
 @custom-variant dark (&:is(.dark *));
 
@@ -128,7 +128,8 @@
   body {
     @apply bg-background text-foreground;
   }
-  button:not(:disabled), [role="button"]:not(:disabled) {
+  button:not(:disabled),
+  [role='button']:not(:disabled) {
     cursor: pointer;
   }
   html {
@@ -138,7 +139,8 @@
 /* Fonts were provided by next/font in the Next.js app; Fontsource supplies
    them here. These vars feed the @theme inline font mappings above. */
 :root {
-  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
-  --font-geist-sans: "Geist Variable", var(--font-sans);
-  --font-geist-mono: "Geist Mono Variable", ui-monospace, SFMono-Regular, monospace;
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-geist-sans: 'Geist Variable', var(--font-sans);
+  --font-geist-mono:
+    'Geist Mono Variable', ui-monospace, SFMono-Regular, monospace;
 }

@@ -1,26 +1,25 @@
+import { useState } from 'react'
+import { useQuery } from 'convex/react'
+import { Trophy } from 'lucide-react'
 
-import { useState } from "react";
-import { useQuery } from "convex/react";
-import type { FunctionReturnType } from "convex/server";
-import { Trophy } from "lucide-react";
-
-import { api } from "@tournament-os/backend/convex/_generated/api";
-import type { Id } from "@tournament-os/backend/convex/_generated/dataModel";
+import { api } from '@tournament-os/backend/convex/_generated/api'
+import type { FunctionReturnType } from 'convex/server'
+import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
+} from '@/components/ui/card'
 import {
   Empty,
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
-} from "@/components/ui/empty";
-import { Skeleton } from "@/components/ui/skeleton";
+} from '@/components/ui/empty'
+import { Skeleton } from '@/components/ui/skeleton'
 import {
   Table,
   TableBody,
@@ -28,42 +27,41 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+} from '@/components/ui/table'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 type StandingRow = FunctionReturnType<
   typeof api.tournaments.rounds.listRoundStandings
->[number];
+>[number]
 
 export function StandingsView({ tournamentId }: { tournamentId: string }) {
   const board = useQuery(api.tournaments.rounds.getPairingsBoard, {
-    tournamentId: tournamentId as Id<"tournaments">,
-  });
+    tournamentId: tournamentId as Id<'tournaments'>,
+  })
 
-  const [selectedPhaseId, setSelectedPhaseId] = useState<string | null>(null);
-  const [selectedRoundNumber, setSelectedRoundNumber] = useState<
-    number | null
-  >(null);
+  const [selectedPhaseId, setSelectedPhaseId] = useState<string | null>(null)
+  const [selectedRoundNumber, setSelectedRoundNumber] = useState<number | null>(
+    null,
+  )
 
-  const phases = board?.phases ?? [];
+  const phases = board?.phases ?? []
   const defaultPhase =
-    phases.find(({ phase }) => phase.phaseStatus === "in_progress") ??
-    phases[0];
+    phases.find(({ phase }) => phase.phaseStatus === 'in_progress') ?? phases[0]
   const activePhase =
-    phases.find(({ phase }) => phase._id === selectedPhaseId) ?? defaultPhase;
-  const rounds = activePhase?.rounds ?? [];
+    phases.find(({ phase }) => phase._id === selectedPhaseId) ?? defaultPhase
+  const rounds = activePhase?.rounds ?? []
   const completedRounds = rounds.filter(
-    (round) => round.roundStatus === "completed",
-  );
-  const latestCompletedRound = completedRounds[completedRounds.length - 1];
+    (round) => round.roundStatus === 'completed',
+  )
+  const latestCompletedRound = completedRounds[completedRounds.length - 1]
   const selectedRound =
     completedRounds.find(
       (round) => round.roundNumber === selectedRoundNumber,
-    ) ?? latestCompletedRound;
+    ) ?? latestCompletedRound
   const roundTabCount = Math.max(
     activePhase?.phase.phaseTotalRounds ?? 0,
     rounds.length,
-  );
+  )
 
   return (
     <section className="flex flex-col gap-4">
@@ -96,8 +94,8 @@ export function StandingsView({ tournamentId }: { tournamentId: string }) {
                 <Tabs
                   value={activePhase.phase._id}
                   onValueChange={(value) => {
-                    setSelectedPhaseId(value);
-                    setSelectedRoundNumber(null);
+                    setSelectedPhaseId(value)
+                    setSelectedRoundNumber(null)
                   }}
                 >
                   <TabsList>
@@ -105,7 +103,7 @@ export function StandingsView({ tournamentId }: { tournamentId: string }) {
                       <TabsTrigger
                         key={phase._id}
                         value={phase._id}
-                        disabled={phase.phaseStatus === "upcoming"}
+                        disabled={phase.phaseStatus === 'upcoming'}
                       >
                         {phase.phaseName ?? `Phase ${phase.phaseOrder}`}
                       </TabsTrigger>
@@ -137,10 +135,10 @@ export function StandingsView({ tournamentId }: { tournamentId: string }) {
                   >
                     <TabsList>
                       {Array.from({ length: roundTabCount }, (_, index) => {
-                        const roundNumber = index + 1;
+                        const roundNumber = index + 1
                         const hasStandings = completedRounds.some(
                           (round) => round.roundNumber === roundNumber,
-                        );
+                        )
                         return (
                           <TabsTrigger
                             key={roundNumber}
@@ -149,7 +147,7 @@ export function StandingsView({ tournamentId }: { tournamentId: string }) {
                           >
                             Round {roundNumber}
                           </TabsTrigger>
-                        );
+                        )
                       })}
                     </TabsList>
                   </Tabs>
@@ -161,21 +159,21 @@ export function StandingsView({ tournamentId }: { tournamentId: string }) {
         </CardContent>
       </Card>
     </section>
-  );
+  )
 }
 
 function standingPlayerName(row: StandingRow) {
-  return row.user?.name ?? row.user?.email ?? "Unknown player";
+  return row.user?.name ?? row.user?.email ?? 'Unknown player'
 }
 
 function formatPercent(value: number) {
-  return `${(value * 100).toFixed(1)}%`;
+  return `${(value * 100).toFixed(1)}%`
 }
 
-function StandingsTable({ roundId }: { roundId: Id<"tournamentRounds"> }) {
+function StandingsTable({ roundId }: { roundId: Id<'tournamentRounds'> }) {
   const standings = useQuery(api.tournaments.rounds.listRoundStandings, {
     roundId,
-  });
+  })
 
   if (standings === undefined) {
     return (
@@ -184,7 +182,7 @@ function StandingsTable({ roundId }: { roundId: Id<"tournamentRounds"> }) {
           <Skeleton key={row} className="h-12" />
         ))}
       </div>
-    );
+    )
   }
 
   if (standings.length === 0) {
@@ -200,7 +198,7 @@ function StandingsTable({ roundId }: { roundId: Id<"tournamentRounds"> }) {
           </EmptyDescription>
         </EmptyHeader>
       </Empty>
-    );
+    )
   }
 
   return (
@@ -222,11 +220,11 @@ function StandingsTable({ roundId }: { roundId: Id<"tournamentRounds"> }) {
         ))}
       </TableBody>
     </Table>
-  );
+  )
 }
 
 function StandingTableRow({ row }: { row: StandingRow }) {
-  const { standing } = row;
+  const { standing } = row
 
   return (
     <TableRow>
@@ -253,5 +251,5 @@ function StandingTableRow({ row }: { row: StandingRow }) {
         {formatPercent(standing.opponentGameWinPct)}
       </TableCell>
     </TableRow>
-  );
+  )
 }
