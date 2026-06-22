@@ -1,10 +1,23 @@
 packages:
   - packages/*
   - apps/*
-
 ignoredBuiltDependencies:
   - sharp
   - unrs-resolver
-
 onlyBuiltDependencies:
-  - "@clerk/shared"
+  - '@clerk/shared'
+patchedDependencies:
+  '@clerk/expo': patches/@clerk__expo.patch
+# Pin a single React version across the workspace. pnpm otherwise installs
+# multiple peer-instances of react/react-dom (and therefore convex), which
+# Metro loads as separate module copies, breaking React context (e.g.
+# ConvexProvider lookups and hooks) in apps/native. See apps/native/metro.config.js.
+#
+# The exact version is dictated by react-native@0.85.3: its bundled renderer is
+# stamped with React "19.2.3" (Libraries/Renderer/implementations/*.js) and RN
+# asserts at runtime that `react` matches the renderer's version exactly. Bumping
+# react past 19.2.3 throws "react and react-native-renderer must have the exact
+# same version". Keep this in lockstep with the React Native upgrade.
+overrides:
+  react: 19.2.3
+  react-dom: 19.2.3
