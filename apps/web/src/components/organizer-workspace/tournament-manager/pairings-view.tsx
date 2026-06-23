@@ -85,11 +85,12 @@ export function PairingsView({ tournamentId }: { tournamentId: string }) {
 
   const phases = board?.phases ?? []
   const defaultPhase =
-    phases.find(({ phase }) => phase.phaseStatus === 'in_progress') ?? phases[0]
+    phases.find(({ phase }) => phase.phaseStatus === 'in_progress') ??
+    phases.at(0)
   const activePhase =
     phases.find(({ phase }) => phase._id === selectedPhaseId) ?? defaultPhase
   const rounds = activePhase?.rounds ?? []
-  const latestRound = rounds[rounds.length - 1]
+  const latestRound = rounds.at(-1)
   const selectedRound =
     rounds.find((round) => round.roundNumber === selectedRoundNumber) ??
     latestRound
@@ -454,7 +455,8 @@ function pairedPlayerName(player: PairedPlayer | undefined) {
 }
 
 function PairingTableRow({ row }: { row: PairingRow }) {
-  const [playerOne, playerTwo] = row.players
+  const playerOne = row.players.at(0)
+  const playerTwo = row.players.at(1)
   const isBye = row.players.some((player) => player.isBye)
 
   return (
@@ -492,7 +494,8 @@ function PairingTableRow({ row }: { row: PairingRow }) {
 }
 
 function MatchResultCell({ row }: { row: PairingRow }) {
-  const [playerOne, playerTwo] = row.players
+  const playerOne = row.players.at(0)
+  const playerTwo = row.players.at(1)
   const hasResult =
     row.match.matchStatus === 'completed' ||
     row.match.matchStatus === 'confirmed'
@@ -503,7 +506,7 @@ function MatchResultCell({ row }: { row: PairingRow }) {
 
   const playerOneWins = playerOne?.gameWins ?? 0
   const playerTwoWins = playerOne?.isBye
-    ? (playerOne?.gameLosses ?? 0)
+    ? (playerOne.gameLosses ?? 0)
     : (playerTwo?.gameWins ?? 0)
 
   if (playerOneWins === playerTwoWins) {
@@ -604,7 +607,8 @@ function EnterResultDialog({
   const recordMatchResult = useMutation(
     api.tournaments.rounds.recordMatchResult,
   )
-  const [playerOne, playerTwo] = row.players
+  const playerOne = row.players.at(0)
+  const playerTwo = row.players.at(1)
 
   const [busy, setBusy] = useState(false)
   const [playerOneWins, setPlayerOneWins] = useState(

@@ -46,14 +46,15 @@ export function StandingsView({ tournamentId }: { tournamentId: string }) {
 
   const phases = board?.phases ?? []
   const defaultPhase =
-    phases.find(({ phase }) => phase.phaseStatus === 'in_progress') ?? phases[0]
+    phases.find(({ phase }) => phase.phaseStatus === 'in_progress') ??
+    phases.at(0)
   const activePhase =
     phases.find(({ phase }) => phase._id === selectedPhaseId) ?? defaultPhase
   const rounds = activePhase?.rounds ?? []
   const completedRounds = rounds.filter(
     (round) => round.roundStatus === 'completed',
   )
-  const latestCompletedRound = completedRounds[completedRounds.length - 1]
+  const latestCompletedRound = completedRounds.at(-1)
   const selectedRound =
     completedRounds.find(
       (round) => round.roundNumber === selectedRoundNumber,

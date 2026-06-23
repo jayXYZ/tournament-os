@@ -81,7 +81,7 @@ export function CurrentMatchCard({
 
 function ActiveMatch({ currentMatch }: { currentMatch: MyActiveMatch }) {
   const { match, me, opponent, round } = currentMatch
-  const opponentName = opponent?.name ?? 'your opponent'
+  const opponentDisplayName = opponent?.name ?? 'your opponent'
 
   return (
     <Card>
@@ -97,7 +97,7 @@ function ActiveMatch({ currentMatch }: { currentMatch: MyActiveMatch }) {
             <>
               Table {match.tableNumber ?? '—'}
               <span className="block text-base font-normal text-muted-foreground">
-                vs {opponentName}
+                vs {opponentDisplayName}
               </span>
             </>
           )}
