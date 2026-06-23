@@ -21,3 +21,6 @@ patchedDependencies:
 overrides:
   react: 19.2.3
   react-dom: 19.2.3
+  "@clerk/clerk-react>react-dom": 19.2.3
+  "@clerk/react>react-dom": 19.2.3
+  "@clerk/shared>react-dom": 19.2.3

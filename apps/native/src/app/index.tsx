@@ -1,9 +1,9 @@
-import { useAuth } from '@clerk/expo';
-import { AuthView, UserButton } from '@clerk/expo/native';
-import { api } from '@tournament-os/backend/convex/_generated/api';
-import { useQuery } from 'convex/react';
-import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useAuth } from "@clerk/expo";
+import { AuthView, UserButton } from "@clerk/expo/native";
+import { api } from "@tournament-os/backend/convex/_generated/api";
+import { useQuery } from "convex/react";
+import { useRouter } from "expo-router";
+import { useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -12,8 +12,8 @@ import {
   StyleSheet,
   Text,
   View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function HomeScreen() {
   // `treatPendingAsSignedOut: false` keeps users with pending session tasks
@@ -25,7 +25,7 @@ export default function HomeScreen() {
   // Player's active tournaments. `undefined` while loading (Convex convention).
   const tournaments = useQuery(
     api.tournaments.registrations.listMyTournaments,
-    isSignedIn ? {} : 'skip',
+    isSignedIn ? {} : "skip",
   );
 
   if (!isLoaded) {
@@ -62,11 +62,13 @@ export default function HomeScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+    <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
       <View style={styles.header}>
         <View style={styles.headerText}>
           <Text style={styles.greeting}>Your tournaments</Text>
-          <Text style={styles.subtitle}>Active events you're registered for</Text>
+          <Text style={styles.subtitle}>
+            Active events you’re registered for
+          </Text>
         </View>
         <UserButton />
       </View>
@@ -84,7 +86,7 @@ export default function HomeScreen() {
             <View style={styles.empty}>
               <Text style={styles.emptyTitle}>No active tournaments</Text>
               <Text style={styles.emptyBody}>
-                When you register for an event it'll show up here.
+                When you register for an event it’ll show up here.
               </Text>
             </View>
           }
@@ -93,7 +95,7 @@ export default function HomeScreen() {
               style={styles.card}
               onPress={() =>
                 router.push({
-                  pathname: '/tournament/[id]',
+                  pathname: "/tournament/[id]",
                   params: { id: item.tournament._id },
                 })
               }
@@ -103,9 +105,9 @@ export default function HomeScreen() {
                 <Text style={styles.cardOrg}>{item.organizationName}</Text>
               ) : null}
               <Text style={styles.cardStatus}>
-                {item.tournament.status === 'in_progress'
-                  ? 'In progress'
-                  : 'Upcoming'}
+                {item.tournament.status === "in_progress"
+                  ? "In progress"
+                  : "Upcoming"}
               </Text>
             </Pressable>
           )}
@@ -118,41 +120,41 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0b0b0f',
+    backgroundColor: "#0b0b0f",
   },
   centered: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#0b0b0f',
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#0b0b0f",
   },
   signedOut: {
     flex: 1,
-    justifyContent: 'center',
+    justifyContent: "center",
     paddingHorizontal: 24,
     gap: 12,
   },
   brand: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 34,
-    fontWeight: '800',
+    fontWeight: "800",
   },
   tagline: {
-    color: '#8b8b96',
+    color: "#8b8b96",
     fontSize: 16,
     marginBottom: 12,
   },
   button: {
-    backgroundColor: '#5b6bff',
+    backgroundColor: "#5b6bff",
     borderRadius: 12,
     paddingVertical: 15,
-    alignItems: 'center',
+    alignItems: "center",
   },
-  buttonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  buttonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: 20,
     paddingTop: 12,
     paddingBottom: 16,
@@ -161,12 +163,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   greeting: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 24,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   subtitle: {
-    color: '#8b8b96',
+    color: "#8b8b96",
     fontSize: 14,
     marginTop: 2,
   },
@@ -176,40 +178,40 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   card: {
-    backgroundColor: '#16161d',
+    backgroundColor: "#16161d",
     borderRadius: 14,
     padding: 16,
     gap: 4,
   },
   cardTitle: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 17,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   cardOrg: {
-    color: '#8b8b96',
+    color: "#8b8b96",
     fontSize: 14,
   },
   cardStatus: {
-    color: '#7c8cff',
+    color: "#7c8cff",
     fontSize: 13,
     marginTop: 4,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   empty: {
-    alignItems: 'center',
+    alignItems: "center",
     paddingTop: 80,
     paddingHorizontal: 24,
     gap: 8,
   },
   emptyTitle: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 18,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   emptyBody: {
-    color: '#8b8b96',
+    color: "#8b8b96",
     fontSize: 14,
-    textAlign: 'center',
+    textAlign: "center",
   },
 });

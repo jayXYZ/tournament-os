@@ -34,7 +34,7 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
 
   if (isSingleton) {
     return context.resolveRequest(
-      { ...context, originModulePath: path.join(projectRoot, 'index.js') },
+      { ...context, originModulePath: path.join(projectRoot, 'package.json') },
       moduleName,
       platform,
     );
