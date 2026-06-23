@@ -2,7 +2,7 @@ import { v } from "convex/values";
 
 import type { Doc } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
-import { validateOrganizationProfileImageDetails } from "@tournament-os/core/organization-profile-image";
+import { validateOrganizationProfileImageDetails } from "@tournament-os/shared/organization-profile-image";
 import { mutation, query } from "./_generated/server";
 import {
   currentUserOrNull,

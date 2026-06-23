@@ -4,7 +4,7 @@ import { Users } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { api } from '@tournament-os/backend/convex/_generated/api'
-import { canInviteMembers } from '@tournament-os/core/organizer-utils'
+import { canInviteMembers } from '@tournament-os/shared/organizer-utils'
 import { useOrganization } from './organization-context'
 import type {FormEvent} from 'react';
 import type { Role } from './types'

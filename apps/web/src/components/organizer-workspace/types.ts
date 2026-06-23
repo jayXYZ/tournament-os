@@ -3,7 +3,7 @@ import type {
   InvitationStatus,
   OrganizerInviteRole,
   OrganizerRole,
-} from '@tournament-os/core/organizer-utils'
+} from '@tournament-os/shared/organizer-utils'
 
 export type AdminView = 'tournaments' | 'staff' | 'organization'
 export type Role = OrganizerInviteRole

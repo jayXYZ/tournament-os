@@ -6,12 +6,12 @@ import { api } from '@tournament-os/backend/convex/_generated/api'
 import {
   
   validateOrganizationProfileImageDetails
-} from '@tournament-os/core/organization-profile-image'
-import { canManageOrganizationProfile } from '@tournament-os/core/organizer-utils'
+} from '@tournament-os/shared/organization-profile-image'
+import { canManageOrganizationProfile } from '@tournament-os/shared/organizer-utils'
 import { useOrganization } from './organization-context'
 import type {FormEvent} from 'react';
 
-import type {OrganizationProfileImageDetails} from '@tournament-os/core/organization-profile-image';
+import type {OrganizationProfileImageDetails} from '@tournament-os/shared/organization-profile-image';
 import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
 import { Button } from '@/components/ui/button'
 import {

@@ -6,15 +6,15 @@ import {
   organizationStatuses,
   organizerInviteRoles,
   organizerRoles,
-} from "@tournament-os/core/organizer-utils";
-import { tournamentFormats } from "@tournament-os/core/tournament-creation-utils";
+} from "@tournament-os/shared/organizer-utils";
+import { tournamentFormats } from "@tournament-os/shared/tournament-creation-utils";
 
 export {
   canInviteMembers,
   canManageOrganizationProfile,
   normalizeInviteEmail as normalizeEmail,
   slugifyOrganizationName,
-} from "@tournament-os/core/organizer-utils";
+} from "@tournament-os/shared/organizer-utils";
 
 export const organizerRoleValidator = v.union(
   v.literal(organizerRoles[0]),

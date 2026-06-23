@@ -10,7 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@tournament-os/core": "workspace:*",
+    "@tournament-os/shared": "workspace:*",
     "convex": "^1.39.1"
   },
   "devDependencies": {

@@ -24,6 +24,7 @@
     "@tanstack/react-start": "^1.167.41",
     "@tournament-os/backend": "workspace:*",
     "@tournament-os/core": "workspace:*",
+    "@tournament-os/shared": "workspace:*",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "convex": "^1.36.1",

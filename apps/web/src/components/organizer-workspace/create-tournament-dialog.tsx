@@ -13,9 +13,9 @@ import {
   removeTournamentCreationPhase,
   toTournamentCreationPhasePayload,
   tournamentFormats
-} from '@tournament-os/core/tournament-creation-utils'
+} from '@tournament-os/shared/tournament-creation-utils'
 import { useOrganization } from './organization-context'
-import type {TournamentCreationPhaseForm, TournamentCreationPhaseRoundMode, TournamentFormat} from '@tournament-os/core/tournament-creation-utils';
+import type {TournamentCreationPhaseForm, TournamentCreationPhaseRoundMode, TournamentFormat} from '@tournament-os/shared/tournament-creation-utils';
 import type {FormEvent} from 'react';
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
