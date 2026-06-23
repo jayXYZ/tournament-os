@@ -379,6 +379,63 @@ test("createTournamentWithPhases can mark a tournament as a test event", async (
   expect(setup.tournament.isTestEvent).toBe(true);
 });
 
+test("seedTestPlayers fills only remaining active registration seats", async () => {
+  const t = convexTest(schema, modules);
+  const now = Date.now();
+  const { organizationId } = await seedOrganizer(t);
+  const authed = t.withIdentity(organizerIdentity);
+
+  const tournamentId = await authed.mutation(
+    api.tournaments.lifecycle.createTournamentWithPhases,
+    {
+      organizationId,
+      name: "Mixed Test Field",
+      startDate: now + 86_400_000,
+      playerCapacity: 32,
+      format: "standard",
+      isTestEvent: true,
+      phases: [{ phaseOrder: 1, phaseRoundMode: "dynamic" }],
+    },
+  );
+
+  await t.run(async (ctx) => {
+    const userId = await ctx.db.insert("users", {
+      tokenIdentifier: "player:real",
+      email: "player@example.test",
+      name: "Real Player",
+      updatedAt: now,
+    });
+    await ctx.db.insert("tournamentRegistrations", {
+      tournamentId,
+      userId,
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+    });
+  });
+
+  await authed.mutation(api.tournaments.testing.seedTestPlayers, {
+    tournamentId,
+    count: 32,
+  });
+
+  const registrations = await authed.query(
+    api.tournaments.registrations.listRegistrations,
+    { tournamentId },
+  );
+  expect(registrations).toHaveLength(32);
+
+  const testPlayerCount = await t.run(async (ctx) => {
+    return (
+      await ctx.db
+        .query("testTournamentPlayers")
+        .withIndex("by_tournamentId", (q) => q.eq("tournamentId", tournamentId))
+        .collect()
+    ).length;
+  });
+  expect(testPlayerCount).toBe(31);
+});
+
 test("createTournamentWithPhases stores multiple Swiss phases in order", async () => {
   const t = convexTest(schema, modules);
   const now = Date.now();
@@ -545,6 +602,63 @@ test("test tournaments seed players, generate Swiss rounds, and complete", async
   expect(resetSetup.testConfig?.seed).toBe(4242);
   expect(resetRegistrations).toHaveLength(5);
   expect(resetCurrentRound).toBeNull();
+});
+
+test("test round simulation generates varied results after an existing report", async () => {
+  const t = convexTest(schema, modules);
+  const { organizationId } = await seedOrganizer(t);
+  const authed = t.withIdentity(organizerIdentity);
+
+  const tournamentId = await authed.mutation(
+    api.tournaments.testing.createTestTournament,
+    {
+      organizationId,
+      name: "Simulation Variety Check",
+      dummyPlayerCount: 32,
+      roundsToGenerate: 1,
+      seed: 971,
+      autoStart: true,
+    },
+  );
+  const round = await authed.query(api.tournaments.rounds.getCurrentRound, {
+    tournamentId,
+  });
+  const initialPairings = await authed.query(
+    api.tournaments.rounds.listRoundPairings,
+    { roundId: round!._id },
+  );
+  const firstMatch = initialPairings.find(
+    (pairing) => pairing.players.length === 2,
+  );
+  if (!firstMatch) {
+    throw new Error("Expected a two-player match");
+  }
+
+  await authed.mutation(api.tournaments.rounds.recordMatchResult, {
+    matchId: firstMatch.match._id,
+    playerOneRegistrationId: firstMatch.players[0].playerId,
+    playerTwoRegistrationId: firstMatch.players[1].playerId,
+    playerOneGameWins: 2,
+    playerTwoGameWins: 0,
+  });
+  await authed.mutation(api.tournaments.testing.generateTestRoundResults, {
+    tournamentId,
+  });
+
+  const resolvedPairings = await authed.query(
+    api.tournaments.rounds.listRoundPairings,
+    { roundId: round!._id },
+  );
+  const simulatedOutcomes = resolvedPairings
+    .filter((pairing) => pairing.match._id !== firstMatch.match._id)
+    .map((pairing) =>
+      pairing.players
+        .map((player) => `${player.gameWins ?? 0}-${player.gameLosses ?? 0}`)
+        .join("|"),
+    );
+
+  expect(simulatedOutcomes).toHaveLength(15);
+  expect(simulatedOutcomes.some((outcome) => outcome !== "1-1|1-1")).toBe(true);
 });
 
 test("test simulation functions reject non-test tournaments", async () => {

@@ -2,6 +2,7 @@ import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { matchPointsForResult } from "./standings";
 import {
+  activeRegistrations,
   matchPlayers,
   registrationForUser,
   requireTestTournament,
@@ -72,9 +73,17 @@ export async function seedTestPlayers(
   const tournament = await requireTournament(ctx, tournamentId);
   requireTestTournament(tournament);
   const targetCount = Math.min(validCapacity(count), tournament.playerCapacity);
-  const now = Date.now();
+  const active = await activeRegistrations(ctx, tournamentId);
+  const playersToCreate = targetCount - active.length;
+  if (playersToCreate <= 0) {
+    return;
+  }
 
-  for (let playerNumber = 1; playerNumber <= targetCount; playerNumber += 1) {
+  const now = Date.now();
+  let created = 0;
+  let playerNumber = 1;
+
+  while (created < playersToCreate) {
     const existingTestPlayer = await ctx.db
       .query("testTournamentPlayers")
       .withIndex("by_tournamentId_and_playerNumber", (q) =>
@@ -82,6 +91,7 @@ export async function seedTestPlayers(
       )
       .unique();
     if (existingTestPlayer) {
+      playerNumber += 1;
       continue;
     }
 
@@ -122,6 +132,8 @@ export async function seedTestPlayers(
         updatedAt: now,
       });
     }
+    created += 1;
+    playerNumber += 1;
   }
 }
 
@@ -136,23 +148,21 @@ export async function generateTestResults(
   const config = await getTestConfig(ctx, tournament._id);
   const seed = config?.seed ?? Math.trunc(tournament._creationTime);
   const matches = await roundMatches(ctx, round._id);
+  const random = createSeededRandom(seed + round.roundNumber * 1000);
 
   for (const match of matches) {
+    const players = await matchPlayers(ctx, match._id);
+    if (players.length !== 2) {
+      continue;
+    }
+    const result = simulatedMatchResult(random);
     if (
       match.matchStatus === "completed" ||
       match.matchStatus === "confirmed"
     ) {
       continue;
     }
-    const players = await matchPlayers(ctx, match._id);
-    if (players.length !== 2) {
-      continue;
-    }
 
-    const random = createSeededRandom(
-      seed + round.roundNumber * 1000 + (match.tableNumber ?? 0),
-    );
-    const result = simulatedMatchResult(random);
     const [playerOnePoints, playerTwoPoints] = matchPointsForResult(result);
     const now = Date.now();
     await ctx.db.patch(players[0]._id, {
