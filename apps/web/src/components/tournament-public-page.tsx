@@ -13,6 +13,12 @@ import {
 import { toast } from 'sonner'
 import { api } from '@tournament-os/backend/convex/_generated/api'
 import type { Doc } from '@tournament-os/backend/convex/_generated/dataModel'
+import { PublicSiteHeader } from '@/components/shared/public-site-header'
+import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'
+import {
+  TournamentStatusBadge,
+  formatTournamentDateLong,
+} from '@/components/tournaments'
 import { useAppAuth } from '@/lib/use-app-auth'
 
 import { Badge } from '@/components/ui/badge'
@@ -33,34 +39,11 @@ import {
   EmptyTitle,
 } from '@/components/ui/empty'
 import { Separator } from '@/components/ui/separator'
-import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
 import { Toaster } from '@/components/ui/sonner'
+import { cn } from '@/lib/utils'
 
 type Tournament = Doc<'tournaments'>
-
-const dateFormatter = new Intl.DateTimeFormat('en-US', {
-  weekday: 'long',
-  month: 'long',
-  day: 'numeric',
-  year: 'numeric',
-  hour: 'numeric',
-  minute: '2-digit',
-})
-
-const statusBadges: Record<
-  Tournament['status'],
-  {
-    label: string
-    variant: 'default' | 'secondary' | 'outline' | 'destructive'
-  }
-> = {
-  private: { label: 'Private', variant: 'outline' },
-  public: { label: 'Open for registration', variant: 'secondary' },
-  in_progress: { label: 'In progress', variant: 'default' },
-  completed: { label: 'Completed', variant: 'outline' },
-  cancelled: { label: 'Cancelled', variant: 'destructive' },
-}
 
 export function TournamentPublicPage({
   tournamentId,
@@ -73,29 +56,18 @@ export function TournamentPublicPage({
 
   return (
     <main className="min-h-svh bg-background text-foreground">
-      <header className="border-b border-border bg-background">
-        <div className="mx-auto flex min-h-16 max-w-4xl items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-3">
-            <div className="flex size-9 items-center justify-center rounded-md bg-primary text-primary-foreground">
-              <Swords className="size-5" aria-hidden="true" />
-            </div>
-            <div>
-              <p className="text-sm font-semibold leading-none">
-                Tournament OS
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Tournament details
-              </p>
-            </div>
-          </div>
+      <PublicSiteHeader
+        maxWidth="4xl"
+        subtitle="Tournament details"
+        actions={
           <Button asChild type="button" variant="ghost">
             <Link to="/">
               <ArrowLeft data-icon="inline-start" />
               All tournaments
             </Link>
           </Button>
-        </div>
-      </header>
+        }
+      />
 
       <section className="mx-auto grid max-w-4xl gap-6 px-4 py-8 sm:px-6 lg:px-8">
         {event === undefined ? (
@@ -123,11 +95,7 @@ function LoadingCard() {
         <CardDescription>Fetching event details.</CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="grid gap-3">
-          {[0, 1, 2].map((row) => (
-            <Skeleton key={row} className="h-12" />
-          ))}
-        </div>
+        <TableLoadingSkeleton />
       </CardContent>
     </Card>
   )
@@ -161,7 +129,6 @@ function TournamentDetails({
   organizationName: string | null
   registeredCount: number
 }) {
-  const badge = statusBadges[tournament.status]
   const spotsLeft = Math.max(tournament.playerCapacity - registeredCount, 0)
 
   return (
@@ -169,7 +136,7 @@ function TournamentDetails({
       <CardHeader>
         <div className="flex flex-wrap items-center gap-3">
           <CardTitle className="text-2xl">{tournament.name}</CardTitle>
-          <Badge variant={badge.variant}>{badge.label}</Badge>
+          <TournamentStatusBadge status={tournament.status} />
         </div>
         <CardDescription>
           {tournament.isTestEvent ? 'Test event' : 'Public event'}
@@ -181,7 +148,7 @@ function TournamentDetails({
           <DetailLine
             icon={CalendarDays}
             label="Starts"
-            value={dateFormatter.format(new Date(tournament.startDate))}
+            value={formatTournamentDateLong(tournament.startDate)}
           />
           <DetailLine
             icon={Swords}
@@ -232,7 +199,7 @@ function DetailLine({
         aria-hidden="true"
       />
       <span className="text-muted-foreground">{label}:</span>
-      <span className={capitalize ? 'font-medium capitalize' : 'font-medium'}>
+      <span className={cn('font-medium', capitalize && 'capitalize')}>
         {value}
       </span>
     </div>

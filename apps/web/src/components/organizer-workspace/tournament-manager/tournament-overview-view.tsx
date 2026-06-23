@@ -1,14 +1,25 @@
-import {  useState } from 'react'
+import { useState } from 'react'
 import { useMutation, useQuery } from 'convex/react'
 import { Globe } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { api } from '@tournament-os/backend/convex/_generated/api'
-import type {FormEvent} from 'react';
+import type { FormEvent } from 'react'
 import type {
   Doc,
   Id,
 } from '@tournament-os/backend/convex/_generated/dataModel'
+import type {
+  RoundConfigurationValue,
+  TournamentBasicsValue,
+} from '@/components/tournaments'
+import { WorkspacePageHeader } from '@/components/shared/workspace-page-header'
+import {
+  RoundConfigurationFields,
+  TournamentBasicsFields,
+  TournamentStatusBadge,
+  toDatetimeLocalValue,
+} from '@/components/tournaments'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -52,20 +63,7 @@ import { Spinner } from '@/components/ui/spinner'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 
-type TournamentStatus = Doc<'tournaments'>['status']
 type PhaseStatus = Doc<'tournamentPhases'>['phaseStatus']
-type PhaseRoundMode = Doc<'tournamentPhases'>['phaseRoundMode']
-
-const tournamentStatusBadgeVariant: Record<
-  TournamentStatus,
-  'default' | 'secondary' | 'destructive' | 'outline'
-> = {
-  private: 'outline',
-  public: 'default',
-  in_progress: 'default',
-  completed: 'secondary',
-  cancelled: 'destructive',
-}
 
 const phaseStatusBadgeVariant: Record<
   PhaseStatus,
@@ -85,11 +83,6 @@ function isSetupLocked(tournament: Doc<'tournaments'>) {
   )
 }
 
-function toDatetimeLocalValue(timestamp: number) {
-  const offsetMs = new Date(timestamp).getTimezoneOffset() * 60_000
-  return new Date(timestamp - offsetMs).toISOString().slice(0, 16)
-}
-
 export function TournamentOverviewView({
   tournamentId,
 }: {
@@ -101,22 +94,15 @@ export function TournamentOverviewView({
 
   return (
     <section className="flex flex-col gap-4">
-      <div>
-        <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
-          Tournament manager
-        </p>
-        <div className="mt-2 flex flex-wrap items-center gap-3">
-          <h1 className="text-3xl font-semibold tracking-normal">Overview</h1>
-          {setup ? (
-            <Badge
-              variant={tournamentStatusBadgeVariant[setup.tournament.status]}
-              className="capitalize"
-            >
-              {setup.tournament.status.replace(/_/g, ' ')}
-            </Badge>
-          ) : null}
-        </div>
-      </div>
+      <WorkspacePageHeader
+        eyebrow="Tournament manager"
+        title="Overview"
+        metadata={
+          setup ? (
+            <TournamentStatusBadge status={setup.tournament.status} />
+          ) : null
+        }
+      />
 
       {setup === undefined ? (
         <OverviewSkeleton />
@@ -154,13 +140,11 @@ function TournamentSettingsCard({
     api.tournaments.lifecycle.updateTournamentSetup,
   )
 
-  const [name, setName] = useState(tournament.name)
-  const [startDateTime, setStartDateTime] = useState(
-    toDatetimeLocalValue(tournament.startDate),
-  )
-  const [playerCapacity, setPlayerCapacity] = useState(
-    String(tournament.playerCapacity),
-  )
+  const [basics, setBasics] = useState<TournamentBasicsValue>({
+    name: tournament.name,
+    playerCapacity: String(tournament.playerCapacity),
+    startDateTime: toDatetimeLocalValue(tournament.startDate),
+  })
   const [busy, setBusy] = useState(false)
 
   const locked = isSetupLocked(tournament)
@@ -173,9 +157,9 @@ function TournamentSettingsCard({
     try {
       await updateTournamentSetup({
         tournamentId: tournament._id,
-        name,
-        startDate: new Date(startDateTime).getTime(),
-        playerCapacity: Number.parseInt(playerCapacity, 10),
+        name: basics.name,
+        startDate: new Date(basics.startDateTime).getTime(),
+        playerCapacity: Number.parseInt(basics.playerCapacity, 10),
       })
       toast.success('Tournament settings saved.')
     } catch (error) {
@@ -205,43 +189,12 @@ function TournamentSettingsCard({
       <CardContent>
         <form onSubmit={handleSubmit}>
           <FieldGroup>
-            <div className="grid gap-4 md:grid-cols-[1.2fr_1fr_120px]">
-              <Field>
-                <FieldLabel htmlFor="overview-name">Name</FieldLabel>
-                <Input
-                  id="overview-name"
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
-                  placeholder="Store Championship"
-                  disabled={disabled}
-                  required
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="overview-start">Start date</FieldLabel>
-                <Input
-                  id="overview-start"
-                  value={startDateTime}
-                  onChange={(event) => setStartDateTime(event.target.value)}
-                  type="datetime-local"
-                  disabled={disabled}
-                  required
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="overview-capacity">Capacity</FieldLabel>
-                <Input
-                  id="overview-capacity"
-                  value={playerCapacity}
-                  onChange={(event) => setPlayerCapacity(event.target.value)}
-                  type="number"
-                  min={2}
-                  max={512}
-                  disabled={disabled}
-                  required
-                />
-              </Field>
-            </div>
+            <TournamentBasicsFields
+              disabled={disabled}
+              idPrefix="overview"
+              value={basics}
+              onChange={setBasics}
+            />
 
             <FieldSet>
               <FieldLegend>Coming soon</FieldLegend>
@@ -439,12 +392,12 @@ function PhaseSettingsForm({
     api.tournaments.lifecycle.updatePhaseSetup,
   )
 
-  const [roundMode, setRoundMode] = useState<PhaseRoundMode>(
-    phase.phaseRoundMode,
-  )
-  const [totalRounds, setTotalRounds] = useState(
-    phase.phaseTotalRounds === null ? '' : String(phase.phaseTotalRounds),
-  )
+  const [roundConfiguration, setRoundConfiguration] =
+    useState<RoundConfigurationValue>({
+      roundMode: phase.phaseRoundMode,
+      totalRounds:
+        phase.phaseTotalRounds === null ? '' : String(phase.phaseTotalRounds),
+    })
   const [busy, setBusy] = useState(false)
 
   const locked = isSetupLocked(tournament)
@@ -457,9 +410,11 @@ function PhaseSettingsForm({
     try {
       await updatePhaseSetup({
         phaseId: phase._id,
-        phaseRoundMode: roundMode,
+        phaseRoundMode: roundConfiguration.roundMode,
         phaseTotalRounds:
-          roundMode === 'fixed' ? Number.parseInt(totalRounds, 10) : undefined,
+          roundConfiguration.roundMode === 'fixed'
+            ? Number.parseInt(roundConfiguration.totalRounds, 10)
+            : undefined,
       })
       toast.success('Phase settings saved.')
     } catch (error) {
@@ -488,45 +443,13 @@ function PhaseSettingsForm({
           </Badge>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-[1fr_120px]">
-          <Field>
-            <FieldLabel>Rounds</FieldLabel>
-            <Select
-              value={roundMode}
-              onValueChange={(value) => setRoundMode(value as PhaseRoundMode)}
-              disabled={disabled}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  <SelectItem value="dynamic">Dynamic rounds</SelectItem>
-                  <SelectItem value="fixed">Fixed rounds</SelectItem>
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-            <FieldDescription>
-              Dynamic rounds are calculated from the number of active players
-              when the phase starts.
-            </FieldDescription>
-          </Field>
-          <Field>
-            <FieldLabel htmlFor={`${phase._id}-total-rounds`}>
-              Total rounds
-            </FieldLabel>
-            <Input
-              id={`${phase._id}-total-rounds`}
-              value={totalRounds}
-              onChange={(event) => setTotalRounds(event.target.value)}
-              type="number"
-              min={1}
-              max={16}
-              disabled={disabled || roundMode === 'dynamic'}
-              required={roundMode === 'fixed'}
-            />
-          </Field>
-        </div>
+        <RoundConfigurationFields
+          disabled={disabled}
+          idPrefix={phase._id}
+          value={roundConfiguration}
+          onChange={setRoundConfiguration}
+          showDynamicDescription
+        />
 
         <FieldSet>
           <FieldLegend>Coming soon</FieldLegend>

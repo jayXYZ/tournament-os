@@ -1,18 +1,16 @@
-import {  useState } from 'react'
+import { useState } from 'react'
 import { useMutation } from 'convex/react'
 import { Archive, Building2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@tournament-os/backend/convex/_generated/api'
-import {
-  
-  validateOrganizationProfileImageDetails
-} from '@tournament-os/shared/organization-profile-image'
+import { validateOrganizationProfileImageDetails } from '@tournament-os/shared/organization-profile-image'
 import { canManageOrganizationProfile } from '@tournament-os/shared/organizer-utils'
 import { useOrganization } from './organization-context'
-import type {FormEvent} from 'react';
+import type { FormEvent } from 'react'
 
-import type {OrganizationProfileImageDetails} from '@tournament-os/shared/organization-profile-image';
+import type { OrganizationProfileImageDetails } from '@tournament-os/shared/organization-profile-image'
 import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
+import { WorkspacePageHeader } from '@/components/shared/workspace-page-header'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -162,16 +160,10 @@ export function OrganizationProfileView() {
 
   return (
     <section className="flex flex-col gap-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
-            {membershipRole ?? 'No org'}
-          </p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-normal">
-            Organization profile
-          </h1>
-        </div>
-      </div>
+      <WorkspacePageHeader
+        eyebrow={membershipRole ?? 'No org'}
+        title="Organization profile"
+      />
 
       <div className="grid gap-6 xl:grid-cols-[1fr_360px]">
         <Card>

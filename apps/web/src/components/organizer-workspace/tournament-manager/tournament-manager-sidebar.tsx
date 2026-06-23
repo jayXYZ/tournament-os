@@ -1,17 +1,12 @@
-import { Link, useLocation  } from '@tanstack/react-router'
-import { useQuery } from 'convex/react'
+import { Link, useLocation } from '@tanstack/react-router'
 import {
-  ChevronLeft,
   ClipboardList,
   LayoutDashboard,
   Swords,
   Trophy,
 } from 'lucide-react'
 
-import { api } from '@tournament-os/backend/convex/_generated/api'
-import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
 import { cn } from '@/lib/utils'
-import { Skeleton } from '@/components/ui/skeleton'
 
 type NavItem = {
   label: string
@@ -24,10 +19,6 @@ export function TournamentManagerSidebar({
 }: {
   tournamentId: string
 }) {
-  const setup = useQuery(api.tournaments.lifecycle.getTournamentSetup, {
-    tournamentId: tournamentId as Id<'tournaments'>,
-  })
-  const tournament = setup?.tournament
   const pathname = useLocation().pathname
   const base = `/admin/tournaments/${tournamentId}`
   const items: Array<NavItem> = [
@@ -55,33 +46,6 @@ export function TournamentManagerSidebar({
 
   return (
     <aside className="hidden w-60 shrink-0 flex-col border-r border-border bg-sidebar text-sidebar-foreground md:flex">
-      <div className="border-b border-border p-3">
-        <Link
-          to="/admin"
-          className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <ChevronLeft className="size-3.5" />
-          All tournaments
-        </Link>
-        <div className="mt-3">
-          {tournament ? (
-            <>
-              <p className="truncate text-sm font-semibold text-foreground">
-                {tournament.name}
-              </p>
-              <p className="mt-1 text-xs capitalize text-muted-foreground">
-                {tournament.status.replace(/_/g, ' ')}
-              </p>
-            </>
-          ) : (
-            <div className="grid gap-2">
-              <Skeleton className="h-4 w-32" />
-              <Skeleton className="h-3 w-16" />
-            </div>
-          )}
-        </div>
-      </div>
-
       <nav className="flex flex-col gap-px p-2">
         {items.map((item) => {
           const Icon = item.icon

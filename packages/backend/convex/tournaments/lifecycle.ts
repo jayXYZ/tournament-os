@@ -41,13 +41,24 @@ export const listForOrganization = query({
 export const listUpcomingPublic = query({
   args: {},
   handler: async (ctx) => {
-    return await ctx.db
+    const tournaments = await ctx.db
       .query("tournaments")
       .withIndex("by_status_and_startDate", (q) =>
         q.eq("status", "public").gte("startDate", Date.now()),
       )
       .order("asc")
       .take(100);
+
+    const rows = [];
+    for (const tournament of tournaments) {
+      const organization = await ctx.db.get(tournament.organizationId);
+      rows.push({
+        ...tournament,
+        organizationName: organization?.name ?? null,
+      });
+    }
+
+    return rows;
   },
 });
 

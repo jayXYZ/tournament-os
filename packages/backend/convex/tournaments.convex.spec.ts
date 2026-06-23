@@ -82,6 +82,10 @@ test("listUpcomingPublic returns future public tournaments in start date order",
     "Earlier Public",
     "Later Public",
   ]);
+  expect(tournaments.map((tournament) => tournament.organizationName)).toEqual([
+    "Test Org",
+    "Test Org",
+  ]);
 });
 
 test("getPublicTournament hides private events and reports registration counts", async () => {

@@ -1,10 +1,17 @@
-import { useState } from 'react'
 import { useQuery } from 'convex/react'
 import { Trophy } from 'lucide-react'
 
 import { api } from '@tournament-os/backend/convex/_generated/api'
+import { formatPercent, formatRecord } from '@tournament-os/core'
 import type { FunctionReturnType } from 'convex/server'
 import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
+import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'
+import { WorkspacePageHeader } from '@/components/shared/workspace-page-header'
+import {
+  TournamentPhaseTabs,
+  TournamentRoundTabs,
+  useTournamentRoundNavigation,
+} from '@/components/tournaments'
 import {
   Card,
   CardContent,
@@ -19,7 +26,6 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@/components/ui/empty'
-import { Skeleton } from '@/components/ui/skeleton'
 import {
   Table,
   TableBody,
@@ -28,7 +34,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 type StandingRow = FunctionReturnType<
   typeof api.tournaments.rounds.listRoundStandings
@@ -39,41 +44,12 @@ export function StandingsView({ tournamentId }: { tournamentId: string }) {
     tournamentId: tournamentId as Id<'tournaments'>,
   })
 
-  const [selectedPhaseId, setSelectedPhaseId] = useState<string | null>(null)
-  const [selectedRoundNumber, setSelectedRoundNumber] = useState<number | null>(
-    null,
-  )
-
   const phases = board?.phases ?? []
-  const defaultPhase =
-    phases.find(({ phase }) => phase.phaseStatus === 'in_progress') ??
-    phases.at(0)
-  const activePhase =
-    phases.find(({ phase }) => phase._id === selectedPhaseId) ?? defaultPhase
-  const rounds = activePhase?.rounds ?? []
-  const completedRounds = rounds.filter(
-    (round) => round.roundStatus === 'completed',
-  )
-  const latestCompletedRound = completedRounds.at(-1)
-  const selectedRound =
-    completedRounds.find(
-      (round) => round.roundNumber === selectedRoundNumber,
-    ) ?? latestCompletedRound
-  const roundTabCount = Math.max(
-    activePhase?.phase.phaseTotalRounds ?? 0,
-    rounds.length,
-  )
+  const navigation = useTournamentRoundNavigation(phases, 'completed')
 
   return (
     <section className="flex flex-col gap-4">
-      <div>
-        <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
-          Tournament manager
-        </p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-normal">
-          Standings
-        </h1>
-      </div>
+      <WorkspacePageHeader eyebrow="Tournament manager" title="Standings" />
 
       <Card>
         <CardHeader>
@@ -84,36 +60,18 @@ export function StandingsView({ tournamentId }: { tournamentId: string }) {
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           {board === undefined ? (
-            <div className="grid gap-3">
-              {[0, 1, 2].map((row) => (
-                <Skeleton key={row} className="h-12" />
-              ))}
-            </div>
+            <TableLoadingSkeleton />
           ) : (
             <>
-              {phases.length > 1 && activePhase ? (
-                <Tabs
-                  value={activePhase.phase._id}
-                  onValueChange={(value) => {
-                    setSelectedPhaseId(value)
-                    setSelectedRoundNumber(null)
-                  }}
-                >
-                  <TabsList>
-                    {phases.map(({ phase }) => (
-                      <TabsTrigger
-                        key={phase._id}
-                        value={phase._id}
-                        disabled={phase.phaseStatus === 'upcoming'}
-                      >
-                        {phase.phaseName ?? `Phase ${phase.phaseOrder}`}
-                      </TabsTrigger>
-                    ))}
-                  </TabsList>
-                </Tabs>
+              {navigation.activePhase ? (
+                <TournamentPhaseTabs
+                  activePhaseId={navigation.activePhase.phase._id}
+                  phases={navigation.phases}
+                  onValueChange={navigation.selectPhase}
+                />
               ) : null}
 
-              {!selectedRound ? (
+              {!navigation.selectedRound ? (
                 <Empty className="min-h-64">
                   <EmptyHeader>
                     <EmptyMedia variant="icon">
@@ -128,31 +86,15 @@ export function StandingsView({ tournamentId }: { tournamentId: string }) {
                 </Empty>
               ) : (
                 <>
-                  <Tabs
-                    value={String(selectedRound.roundNumber)}
-                    onValueChange={(value) =>
-                      setSelectedRoundNumber(Number(value))
-                    }
-                  >
-                    <TabsList>
-                      {Array.from({ length: roundTabCount }, (_, index) => {
-                        const roundNumber = index + 1
-                        const hasStandings = completedRounds.some(
-                          (round) => round.roundNumber === roundNumber,
-                        )
-                        return (
-                          <TabsTrigger
-                            key={roundNumber}
-                            value={String(roundNumber)}
-                            disabled={!hasStandings}
-                          >
-                            Round {roundNumber}
-                          </TabsTrigger>
-                        )
-                      })}
-                    </TabsList>
-                  </Tabs>
-                  <StandingsTable roundId={selectedRound._id} />
+                  <TournamentRoundTabs
+                    activeRoundNumber={navigation.selectedRound.roundNumber}
+                    availableRoundNumbers={navigation.availableRounds.map(
+                      (round) => round.roundNumber,
+                    )}
+                    onValueChange={navigation.selectRound}
+                    roundCount={navigation.roundTabCount}
+                  />
+                  <StandingsTable roundId={navigation.selectedRound._id} />
                 </>
               )}
             </>
@@ -167,23 +109,13 @@ function standingPlayerName(row: StandingRow) {
   return row.user?.name ?? row.user?.email ?? 'Unknown player'
 }
 
-function formatPercent(value: number) {
-  return `${(value * 100).toFixed(1)}%`
-}
-
 function StandingsTable({ roundId }: { roundId: Id<'tournamentRounds'> }) {
   const standings = useQuery(api.tournaments.rounds.listRoundStandings, {
     roundId,
   })
 
   if (standings === undefined) {
-    return (
-      <div className="grid gap-3">
-        {[0, 1, 2].map((row) => (
-          <Skeleton key={row} className="h-12" />
-        ))}
-      </div>
-    )
+    return <TableLoadingSkeleton />
   }
 
   if (standings.length === 0) {
@@ -239,8 +171,11 @@ function StandingTableRow({ row }: { row: StandingRow }) {
         {standing.matchPoints}
       </TableCell>
       <TableCell className="text-right tabular-nums">
-        {standing.matchWins}&ndash;{standing.matchLosses}&ndash;
-        {standing.matchDraws}
+        {formatRecord(
+          standing.matchWins,
+          standing.matchLosses,
+          standing.matchDraws,
+        )}
       </TableCell>
       <TableCell className="text-right tabular-nums text-muted-foreground">
         {formatPercent(standing.opponentMatchWinPct)}

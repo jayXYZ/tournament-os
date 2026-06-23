@@ -14,6 +14,8 @@ import type {
   Doc,
   Id,
 } from '@tournament-os/backend/convex/_generated/dataModel'
+import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'
+import { WorkspacePageHeader } from '@/components/shared/workspace-page-header'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -49,7 +51,6 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@/components/ui/empty'
-import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
 import {
   Table,
@@ -95,14 +96,7 @@ export function RegistrationsView({ tournamentId }: { tournamentId: string }) {
 
   return (
     <section className="flex flex-col gap-4">
-      <div>
-        <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
-          Tournament manager
-        </p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-normal">
-          Registrations
-        </h1>
-      </div>
+      <WorkspacePageHeader eyebrow="Tournament manager" title="Registrations" />
 
       <Card>
         <CardHeader>
@@ -188,13 +182,7 @@ function RegistrationsTable({
   registrations: Array<RegistrationRow> | undefined
 }) {
   if (registrations === undefined) {
-    return (
-      <div className="grid gap-3">
-        {[0, 1, 2].map((row) => (
-          <Skeleton key={row} className="h-12" />
-        ))}
-      </div>
-    )
+    return <TableLoadingSkeleton />
   }
 
   if (registrations.length === 0) {

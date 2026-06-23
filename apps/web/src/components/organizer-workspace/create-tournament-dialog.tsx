@@ -1,22 +1,27 @@
-import {  useState } from 'react'
+import { useState } from 'react'
 import { useMutation } from 'convex/react'
 import { Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { api } from '@tournament-os/backend/convex/_generated/api'
 import {
-  
-  
-  
   addTournamentCreationPhase,
   createDefaultTournamentCreationPhase,
   removeTournamentCreationPhase,
   toTournamentCreationPhasePayload,
-  tournamentFormats
+  tournamentFormats,
 } from '@tournament-os/shared/tournament-creation-utils'
 import { useOrganization } from './organization-context'
-import type {TournamentCreationPhaseForm, TournamentCreationPhaseRoundMode, TournamentFormat} from '@tournament-os/shared/tournament-creation-utils';
-import type {FormEvent} from 'react';
+import type {
+  TournamentCreationPhaseForm,
+  TournamentFormat,
+} from '@tournament-os/shared/tournament-creation-utils'
+import type { FormEvent } from 'react'
+import type { TournamentBasicsValue } from '@/components/tournaments'
+import {
+  RoundConfigurationFields,
+  TournamentBasicsFields,
+} from '@/components/tournaments'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -37,7 +42,6 @@ import {
   FieldLegend,
   FieldSet,
 } from '@/components/ui/field'
-import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectContent,
@@ -56,9 +60,11 @@ export function CreateTournamentDialog() {
 
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [name, setName] = useState('')
-  const [startDateTime, setStartDateTime] = useState('')
-  const [playerCapacity, setPlayerCapacity] = useState('32')
+  const [basics, setBasics] = useState<TournamentBasicsValue>({
+    name: '',
+    playerCapacity: '32',
+    startDateTime: '',
+  })
   const [format, setFormat] = useState<TournamentFormat>('standard')
   const [isTestEvent, setIsTestEvent] = useState(false)
   const [phases, setPhases] = useState<Array<TournamentCreationPhaseForm>>([
@@ -68,9 +74,11 @@ export function CreateTournamentDialog() {
   const disabled = !selectedOrganizationId || busy
 
   function resetForm() {
-    setName('')
-    setStartDateTime('')
-    setPlayerCapacity('32')
+    setBasics({
+      name: '',
+      playerCapacity: '32',
+      startDateTime: '',
+    })
     setFormat('standard')
     setIsTestEvent(false)
     setPhases([createDefaultTournamentCreationPhase('phase-1')])
@@ -96,9 +104,9 @@ export function CreateTournamentDialog() {
     try {
       await createTournament({
         organizationId: selectedOrganizationId,
-        name,
-        startDate: new Date(startDateTime).getTime(),
-        playerCapacity: Number.parseInt(playerCapacity, 10),
+        name: basics.name,
+        startDate: new Date(basics.startDateTime).getTime(),
+        playerCapacity: Number.parseInt(basics.playerCapacity, 10),
         format,
         isTestEvent,
         phases: toTournamentCreationPhasePayload(phases),
@@ -133,43 +141,12 @@ export function CreateTournamentDialog() {
           </DialogHeader>
 
           <FieldGroup>
-            <div className="grid gap-4 md:grid-cols-[1.2fr_1fr_120px]">
-              <Field>
-                <FieldLabel htmlFor="tournament-name">Name</FieldLabel>
-                <Input
-                  id="tournament-name"
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
-                  placeholder="Store Championship"
-                  disabled={disabled}
-                  required
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="tournament-start">Start date</FieldLabel>
-                <Input
-                  id="tournament-start"
-                  value={startDateTime}
-                  onChange={(event) => setStartDateTime(event.target.value)}
-                  type="datetime-local"
-                  disabled={disabled}
-                  required
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="tournament-capacity">Capacity</FieldLabel>
-                <Input
-                  id="tournament-capacity"
-                  value={playerCapacity}
-                  onChange={(event) => setPlayerCapacity(event.target.value)}
-                  type="number"
-                  min={2}
-                  max={512}
-                  disabled={disabled}
-                  required
-                />
-              </Field>
-            </div>
+            <TournamentBasicsFields
+              disabled={disabled}
+              idPrefix="tournament"
+              value={basics}
+              onChange={setBasics}
+            />
 
             <Field>
               <FieldLabel htmlFor="tournament-format">Format</FieldLabel>
@@ -279,64 +256,32 @@ function TournamentPhaseField({
 }) {
   return (
     <Field className="rounded-md border border-border p-3">
-      <div className="grid gap-3 md:grid-cols-[90px_1fr_120px_32px] md:items-end">
+      <div className="grid gap-3 md:grid-cols-[90px_1fr_32px] md:items-end">
         <div className="flex flex-col gap-1">
           <FieldLabel>Phase {index + 1}</FieldLabel>
           <FieldDescription>Swiss</FieldDescription>
         </div>
-        <Field>
-          <FieldLabel>Rounds</FieldLabel>
-          <Select
-            value={phase.phaseRoundMode}
-            onValueChange={(value) =>
-              onPhasesChange(
-                phases.map((current) =>
-                  current.id === phase.id
-                    ? {
-                        ...current,
-                        phaseRoundMode:
-                          value as TournamentCreationPhaseRoundMode,
-                      }
-                    : current,
-                ),
-              )
-            }
-            disabled={disabled}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                <SelectItem value="dynamic">Dynamic rounds</SelectItem>
-                <SelectItem value="fixed">Fixed rounds</SelectItem>
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-        </Field>
-        <Field>
-          <FieldLabel htmlFor={`${phase.id}-total-rounds`}>
-            Total rounds
-          </FieldLabel>
-          <Input
-            id={`${phase.id}-total-rounds`}
-            value={phase.phaseTotalRounds}
-            onChange={(event) =>
-              onPhasesChange(
-                phases.map((current) =>
-                  current.id === phase.id
-                    ? { ...current, phaseTotalRounds: event.target.value }
-                    : current,
-                ),
-              )
-            }
-            type="number"
-            min={1}
-            max={16}
-            disabled={disabled || phase.phaseRoundMode === 'dynamic'}
-            required={phase.phaseRoundMode === 'fixed'}
-          />
-        </Field>
+        <RoundConfigurationFields
+          disabled={disabled}
+          idPrefix={phase.id}
+          value={{
+            roundMode: phase.phaseRoundMode,
+            totalRounds: phase.phaseTotalRounds,
+          }}
+          onChange={(value) =>
+            onPhasesChange(
+              phases.map((current) =>
+                current.id === phase.id
+                  ? {
+                      ...current,
+                      phaseRoundMode: value.roundMode,
+                      phaseTotalRounds: value.totalRounds,
+                    }
+                  : current,
+              ),
+            )
+          }
+        />
         <Button
           type="button"
           variant="outline"
