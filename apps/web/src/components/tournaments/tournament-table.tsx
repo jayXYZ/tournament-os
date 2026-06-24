@@ -222,6 +222,7 @@ function TournamentTableRow({
   const navigate = useNavigate()
   const { tournament } = item
   const manageHref = `/admin/tournaments/${tournament._id}`
+  const publicCode = String(tournament.publicCode)
   const isManage = variant === 'manage'
   const showOrganizer = !isManage
 
@@ -259,6 +260,7 @@ function TournamentTableRow({
       <TableCell className="text-right">
         <TournamentTableAction
           manageHref={manageHref}
+          publicCode={publicCode}
           tournament={tournament}
           variant={variant}
         />
@@ -269,10 +271,12 @@ function TournamentTableRow({
 
 function TournamentTableAction({
   manageHref,
+  publicCode,
   tournament,
   variant,
 }: {
   manageHref: string
+  publicCode: string
   tournament: Doc<'tournaments'>
   variant: TournamentTableVariant
 }) {
@@ -298,7 +302,7 @@ function TournamentTableAction({
         <Button asChild type="button">
           <Link
             to="/tournaments/$tournamentId/play"
-            params={{ tournamentId: tournament._id }}
+            params={{ tournamentId: publicCode }}
           >
             <Swords data-icon="inline-start" />
             Open player controller
@@ -311,7 +315,7 @@ function TournamentTableAction({
       <Button asChild type="button" variant="outline">
         <Link
           to="/tournaments/$tournamentId"
-          params={{ tournamentId: tournament._id }}
+          params={{ tournamentId: publicCode }}
         >
           <Ticket data-icon="inline-start" />
           View event
@@ -324,7 +328,7 @@ function TournamentTableAction({
     <Button asChild type="button" variant="outline">
       <Link
         to="/tournaments/$tournamentId"
-        params={{ tournamentId: tournament._id }}
+        params={{ tournamentId: publicCode }}
       >
         View details
       </Link>

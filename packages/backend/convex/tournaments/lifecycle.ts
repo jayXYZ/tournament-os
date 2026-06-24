@@ -88,23 +88,26 @@ export const listUpcomingForOrganization = query({
   },
 });
 
-// Takes the id as a plain string because it arrives from a public URL; an
-// unrecognized or private id returns null instead of throwing.
+// Takes the code as a plain string because it arrives from a public URL; an
+// unrecognized, malformed, or private code returns null instead of throwing.
 export const getPublicTournament = query({
-  args: { tournamentId: v.string() },
+  args: { publicCode: v.string() },
   handler: async (ctx, args) => {
-    const tournamentId = ctx.db.normalizeId("tournaments", args.tournamentId);
-    if (!tournamentId) {
+    const publicCode = parsePublicCode(args.publicCode);
+    if (publicCode === null) {
       return null;
     }
 
-    const tournament = await ctx.db.get(tournamentId);
+    const tournament = await ctx.db
+      .query("tournaments")
+      .withIndex("by_publicCode", (q) => q.eq("publicCode", publicCode))
+      .unique();
     if (!tournament || tournament.status === "private") {
       return null;
     }
 
     const organization = await ctx.db.get(tournament.organizationId);
-    const registrations = await activeRegistrations(ctx, tournamentId);
+    const registrations = await activeRegistrations(ctx, tournament._id);
     return {
       tournament,
       organizationName: organization?.name ?? null,
@@ -112,6 +115,17 @@ export const getPublicTournament = query({
     };
   },
 });
+
+function parsePublicCode(value: string) {
+  if (!/^[1-9]\d*$/.test(value)) {
+    return null;
+  }
+  const publicCode = Number(value);
+  if (!Number.isSafeInteger(publicCode)) {
+    return null;
+  }
+  return publicCode;
+}
 
 export const getTournamentSetup = query({
   args: { tournamentId: v.id("tournaments") },

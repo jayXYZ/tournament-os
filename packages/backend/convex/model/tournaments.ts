@@ -4,6 +4,8 @@ import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { requireActiveMembership, requireCurrentUser } from "./access";
 
 export const SWISS_FORMAT = "swiss";
+export const TOURNAMENT_PUBLIC_CODE_COUNTER_KEY = "tournamentPublicCode";
+export const FIRST_TOURNAMENT_PUBLIC_CODE = 100_001;
 
 export type TournamentAccess = {
   tournament: Doc<"tournaments">;
@@ -219,8 +221,10 @@ export async function createTournament(
 ) {
   const { user } = await requireActiveMembership(ctx, args.organizationId);
   const now = Date.now();
+  const publicCode = await nextTournamentPublicCode(ctx, now);
   const tournamentId = await ctx.db.insert("tournaments", {
     name: cleanName(args.name, "Tournament name"),
+    publicCode,
     organizationId: args.organizationId,
     createdBy: user._id,
     status: "private",
@@ -233,6 +237,28 @@ export async function createTournament(
 
   await createSwissPhases(ctx, tournamentId, args.phases, now);
   return tournamentId;
+}
+
+export async function nextTournamentPublicCode(ctx: MutationCtx, now = Date.now()) {
+  const counter = await ctx.db
+    .query("appCounters")
+    .withIndex("by_key", (q) => q.eq("key", TOURNAMENT_PUBLIC_CODE_COUNTER_KEY))
+    .unique();
+
+  if (!counter) {
+    await ctx.db.insert("appCounters", {
+      key: TOURNAMENT_PUBLIC_CODE_COUNTER_KEY,
+      nextValue: FIRST_TOURNAMENT_PUBLIC_CODE + 1,
+      updatedAt: now,
+    });
+    return FIRST_TOURNAMENT_PUBLIC_CODE;
+  }
+
+  await ctx.db.patch(counter._id, {
+    nextValue: counter.nextValue + 1,
+    updatedAt: now,
+  });
+  return counter.nextValue;
 }
 
 export async function createSwissPhases(

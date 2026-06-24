@@ -20,6 +20,7 @@ import {
   requireSwissPhase,
   requireTestTournament,
   requireTournament,
+  nextTournamentPublicCode,
   validCapacity,
   validRoundCount,
 } from "../model/tournaments";
@@ -57,8 +58,10 @@ export const createTestTournament = mutation({
     const roundsToGenerate = validRoundCount(
       args.roundsToGenerate ?? defaultSwissRoundCount(dummyPlayerCount),
     );
+    const publicCode = await nextTournamentPublicCode(ctx, now);
     const tournamentId = await ctx.db.insert("tournaments", {
       name: cleanName(args.name ?? "Test Tournament", "Tournament name"),
+      publicCode,
       organizationId: args.organizationId,
       createdBy: user._id,
       status: "private",

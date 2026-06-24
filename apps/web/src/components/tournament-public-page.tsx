@@ -46,12 +46,12 @@ import { cn } from '@/lib/utils'
 type Tournament = Doc<'tournaments'>
 
 export function TournamentPublicPage({
-  tournamentId,
+  publicCode,
 }: {
-  tournamentId: string
+  publicCode: string
 }) {
   const event = useQuery(api.tournaments.lifecycle.getPublicTournament, {
-    tournamentId,
+    publicCode,
   })
 
   return (
@@ -306,7 +306,7 @@ function RegistrationPanel({
           <Button asChild type="button">
             <Link
               to="/tournaments/$tournamentId/play"
-              params={{ tournamentId: tournament._id }}
+              params={{ tournamentId: String(tournament.publicCode) }}
             >
               <Swords data-icon="inline-start" />
               Open player controller

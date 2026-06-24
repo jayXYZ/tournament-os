@@ -26,6 +26,7 @@ test("listUpcomingPublic returns future public tournaments in start date order",
     const base = {
       organizationId,
       createdBy: userId,
+      publicCode: 100_001,
       playerCapacity: 32,
       format: "standard" as const,
       isTestEvent: false,
@@ -106,12 +107,14 @@ test("getPublicTournament hides private events and reports registration counts",
     const publicId = await ctx.db.insert("tournaments", {
       ...base,
       name: "Open Event",
+      publicCode: 100_001,
       status: "public",
       startDate: now + 60_000,
     });
     const privateId = await ctx.db.insert("tournaments", {
       ...base,
       name: "Hidden Event",
+      publicCode: 100_002,
       status: "private",
       startDate: now + 60_000,
     });
@@ -121,7 +124,7 @@ test("getPublicTournament hides private events and reports registration counts",
   await seedActiveRegistrations(t, rows.publicId, 3);
 
   const visible = await t.query(api.tournaments.lifecycle.getPublicTournament, {
-    tournamentId: rows.publicId,
+    publicCode: "100001",
   });
   expect(visible?.tournament.name).toBe("Open Event");
   expect(visible?.organizationName).toBe("Test Org");
@@ -129,12 +132,17 @@ test("getPublicTournament hides private events and reports registration counts",
 
   expect(
     await t.query(api.tournaments.lifecycle.getPublicTournament, {
-      tournamentId: rows.privateId,
+      publicCode: "100002",
     }),
   ).toBeNull();
   expect(
     await t.query(api.tournaments.lifecycle.getPublicTournament, {
-      tournamentId: "not-a-real-id",
+      publicCode: rows.publicId,
+    }),
+  ).toBeNull();
+  expect(
+    await t.query(api.tournaments.lifecycle.getPublicTournament, {
+      publicCode: "not-a-real-id",
     }),
   ).toBeNull();
 });
@@ -161,6 +169,7 @@ test("listMyTournaments returns the player's active registrations for visible ev
     const base = {
       organizationId,
       createdBy: userId,
+      publicCode: 100_001,
       playerCapacity: 32,
       format: "standard" as const,
       isTestEvent: false,
@@ -254,6 +263,7 @@ test("listUpcomingForOrganization returns active future tournaments for one orga
     const base = {
       organizationId,
       createdBy: userId,
+      publicCode: 100_001,
       playerCapacity: 32,
       format: "standard" as const,
       isTestEvent: false,
@@ -346,6 +356,7 @@ test("createTournamentWithPhases creates a private tournament with one dynamic S
     .query(api.tournaments.lifecycle.getTournamentSetup, { tournamentId });
 
   expect(setup.tournament.name).toBe("Store Championship");
+  expect(setup.tournament.publicCode).toBe(100_001);
   expect(setup.tournament.status).toBe("private");
   expect(setup.tournament.format).toBe("modern");
   expect(setup.phases).toHaveLength(1);
@@ -353,6 +364,60 @@ test("createTournamentWithPhases creates a private tournament with one dynamic S
   expect(setup.phases[0].phaseOrder).toBe(1);
   expect(setup.phases[0].phaseRoundMode).toBe("dynamic");
   expect(setup.phases[0].phaseTotalRounds).toBeNull();
+});
+
+test("tournament creation assigns sequential public codes", async () => {
+  const t = convexTest(schema, modules);
+  const now = Date.now();
+  const { organizationId } = await seedOrganizer(t);
+  const authed = t.withIdentity(organizerIdentity);
+
+  const firstTournamentId = await authed.mutation(
+    api.tournaments.lifecycle.createTournamentWithPhases,
+    {
+      organizationId,
+      name: "First Public Code",
+      startDate: now + 86_400_000,
+      playerCapacity: 16,
+      format: "standard",
+      phases: [{ phaseOrder: 1, phaseRoundMode: "dynamic" }],
+    },
+  );
+  const secondTournamentId = await authed.mutation(
+    api.tournaments.lifecycle.createTournamentWithPhases,
+    {
+      organizationId,
+      name: "Second Public Code",
+      startDate: now + 172_800_000,
+      playerCapacity: 16,
+      format: "standard",
+      phases: [{ phaseOrder: 1, phaseRoundMode: "dynamic" }],
+    },
+  );
+  const testTournamentId = await authed.mutation(
+    api.tournaments.testing.createTestTournament,
+    {
+      organizationId,
+      name: "Test Public Code",
+      dummyPlayerCount: 4,
+    },
+  );
+
+  const [first, second, testTournament] = await Promise.all([
+    authed.query(api.tournaments.lifecycle.getTournamentSetup, {
+      tournamentId: firstTournamentId,
+    }),
+    authed.query(api.tournaments.lifecycle.getTournamentSetup, {
+      tournamentId: secondTournamentId,
+    }),
+    authed.query(api.tournaments.lifecycle.getTournamentSetup, {
+      tournamentId: testTournamentId,
+    }),
+  ]);
+
+  expect(first.tournament.publicCode).toBe(100_001);
+  expect(second.tournament.publicCode).toBe(100_002);
+  expect(testTournament.tournament.publicCode).toBe(100_003);
 });
 
 test("createTournamentWithPhases can mark a tournament as a test event", async () => {

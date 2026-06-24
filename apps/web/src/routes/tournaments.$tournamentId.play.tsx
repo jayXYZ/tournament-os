@@ -6,6 +6,6 @@ export const Route = createFileRoute('/tournaments/$tournamentId/play')({
 })
 
 function RouteComponent() {
-  const { tournamentId } = Route.useParams()
-  return <PlayerController tournamentId={tournamentId} />
+  const { tournamentId: publicCode } = Route.useParams()
+  return <PlayerController publicCode={publicCode} />
 }

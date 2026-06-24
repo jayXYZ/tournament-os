@@ -6,6 +6,7 @@ const allTables: TableNames[] = [
   "organizations",
   "organizationMemberships",
   "organizationInvitations",
+  "appCounters",
   "tournaments",
   "tournamentRegistrations",
   "tournamentPhases",

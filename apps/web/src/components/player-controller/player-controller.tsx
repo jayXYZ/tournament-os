@@ -2,12 +2,18 @@ import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { useMyCurrentMatch } from '@tournament-os/core'
 import { useQuery } from 'convex/react'
-import { ListOrdered, LogIn, Menu, Swords, UserRound } from 'lucide-react'
+import {
+  ListOrdered,
+  LogIn,
+  Menu,
+  SearchX,
+  Swords,
+  UserRound,
+} from 'lucide-react'
 import { api } from '@tournament-os/backend/convex/_generated/api'
 import { CurrentMatchCard } from './current-match-card'
 import { MoreTab } from './more-tab'
 import { StandingsList } from './standings-list'
-import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
 import { useAppAuth } from '@/lib/use-app-auth'
 
 import { Badge } from '@/components/ui/badge'
@@ -27,26 +33,50 @@ import { cn } from '@/lib/utils'
 
 type ControllerTab = 'match' | 'standings' | 'more'
 
-export function PlayerController({ tournamentId }: { tournamentId: string }) {
+export function PlayerController({ publicCode }: { publicCode: string }) {
   const { user, loading, refreshAuth } = useAppAuth()
-  const typedTournamentId = tournamentId as Id<'tournaments'>
+  const event = useQuery(api.tournaments.lifecycle.getPublicTournament, {
+    publicCode,
+  })
+  const typedTournamentId = event?.tournament._id ?? null
   // getMyRegistration returns null for signed-in users who never registered,
   // so it gates the player queries (which reject unregistered users).
   const registration = useQuery(
     api.tournaments.registrations.getMyRegistration,
-    user ? { tournamentId: typedTournamentId } : 'skip',
+    user && typedTournamentId ? { tournamentId: typedTournamentId } : 'skip',
   )
   const currentMatch = useMyCurrentMatch(
-    user && registration ? typedTournamentId : null,
+    user && registration && typedTournamentId ? typedTournamentId : null,
   )
   const [tab, setTab] = useState<ControllerTab>('match')
 
-  if (loading) {
+  if (loading || event === undefined) {
     return (
       <ControllerFrame>
         <div className="flex min-h-60 items-center justify-center">
           <Spinner className="size-6" />
         </div>
+      </ControllerFrame>
+    )
+  }
+
+  if (event === null || typedTournamentId === null) {
+    return (
+      <ControllerFrame>
+        <Empty className="min-h-80 border bg-card">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <SearchX aria-hidden="true" />
+            </EmptyMedia>
+            <EmptyTitle>Tournament not found</EmptyTitle>
+            <EmptyDescription>
+              This event does not exist or is not open to the public.
+            </EmptyDescription>
+          </EmptyHeader>
+          <Button asChild type="button" variant="outline">
+            <Link to="/">Browse upcoming tournaments</Link>
+          </Button>
+        </Empty>
       </ControllerFrame>
     )
   }
@@ -103,7 +133,10 @@ export function PlayerController({ tournamentId }: { tournamentId: string }) {
             </EmptyDescription>
           </EmptyHeader>
           <Button asChild type="button" variant="outline">
-            <Link to="/tournaments/$tournamentId" params={{ tournamentId }}>
+            <Link
+              to="/tournaments/$tournamentId"
+              params={{ tournamentId: publicCode }}
+            >
               View event page
             </Link>
           </Button>

@@ -65,6 +65,7 @@ export default defineSchema({
 
   tournaments: defineTable({
     name: v.string(),
+    publicCode: v.number(),
     organizationId: v.id("organizations"),
     createdBy: v.id("users"),
     status: tournamentStatusValidator,
@@ -75,12 +76,19 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_organizationId", ["organizationId"])
+    .index("by_publicCode", ["publicCode"])
     .index("by_status_and_startDate", ["status", "startDate"])
     .index("by_organizationId_and_status_and_startDate", [
       "organizationId",
       "status",
       "startDate",
     ]),
+
+  appCounters: defineTable({
+    key: v.string(),
+    nextValue: v.number(),
+    updatedAt: v.number(),
+  }).index("by_key", ["key"]),
 
   tournamentRegistrations: defineTable({
     tournamentId: v.id("tournaments"),
