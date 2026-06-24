@@ -105,7 +105,10 @@ export function RegistrationsView({ tournamentId }: { tournamentId: string }) {
             Review and manage the players signed up for this tournament.
           </CardDescription>
           <CardAction>
-            <RegistrationSettingsMenu tournament={setup?.tournament} />
+            <RegistrationSettingsMenu
+              tournament={setup?.tournament}
+              registrations={registrations}
+            />
           </CardAction>
         </CardHeader>
         <CardContent>
@@ -117,14 +120,24 @@ export function RegistrationsView({ tournamentId }: { tournamentId: string }) {
 }
 
 function RegistrationSettingsMenu({
+  registrations,
   tournament,
 }: {
+  registrations: Array<RegistrationRow> | undefined
   tournament: Doc<'tournaments'> | undefined
 }) {
   const seedTestPlayers = useMutation(api.tournaments.testing.seedTestPlayers)
   const [busy, setBusy] = useState(false)
 
-  const canGenerate = tournament !== undefined && tournament.isTestEvent
+  const activeRegistrations =
+    registrations?.filter((row) => row.registration.status === 'active')
+      .length ?? 0
+  const remainingSeats =
+    tournament === undefined
+      ? 0
+      : Math.max(tournament.playerCapacity - activeRegistrations, 0)
+  const canGenerate =
+    tournament !== undefined && tournament.isTestEvent && remainingSeats > 0
 
   async function handleGenerateTestUsers() {
     if (!tournament) {
@@ -133,11 +146,16 @@ function RegistrationSettingsMenu({
 
     setBusy(true)
     try {
-      await seedTestPlayers({
+      const result = await seedTestPlayers({
         tournamentId: tournament._id,
-        count: tournament.playerCapacity,
+        count: remainingSeats,
       })
-      toast.success('Test users generated.')
+      const { addedCount } = result
+      toast.success(
+        addedCount > 0
+          ? `${addedCount} test ${addedCount === 1 ? 'user' : 'users'} generated.`
+          : 'Tournament is already at capacity.',
+      )
     } catch (error) {
       toast.error(
         error instanceof Error

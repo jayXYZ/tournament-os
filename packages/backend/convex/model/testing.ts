@@ -8,7 +8,6 @@ import {
   requireTestTournament,
   requireTournament,
   roundMatches,
-  validCapacity,
 } from "./tournaments";
 
 export type SimulatedMatchResult = {
@@ -72,11 +71,16 @@ export async function seedTestPlayers(
 ) {
   const tournament = await requireTournament(ctx, tournamentId);
   requireTestTournament(tournament);
-  const targetCount = Math.min(validCapacity(count), tournament.playerCapacity);
+  const requestedCount = Math.trunc(count);
+  if (requestedCount <= 0) {
+    return 0;
+  }
+
   const active = await activeRegistrations(ctx, tournamentId);
-  const playersToCreate = targetCount - active.length;
+  const remainingCapacity = Math.max(tournament.playerCapacity - active.length, 0);
+  const playersToCreate = Math.min(requestedCount, remainingCapacity);
   if (playersToCreate <= 0) {
-    return;
+    return 0;
   }
 
   const now = Date.now();
@@ -135,6 +139,8 @@ export async function seedTestPlayers(
     created += 1;
     playerNumber += 1;
   }
+  await ctx.db.patch(tournamentId, { updatedAt: now });
+  return created;
 }
 
 export async function generateTestResults(

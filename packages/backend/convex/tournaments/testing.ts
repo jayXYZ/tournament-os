@@ -122,8 +122,12 @@ export const seedTestPlayers = mutation({
   handler: async (ctx, args) => {
     const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
     requireTestTournament(tournament);
-    await seedTestPlayersModel(ctx, args.tournamentId, args.count);
-    return args.tournamentId;
+    const addedCount = await seedTestPlayersModel(
+      ctx,
+      args.tournamentId,
+      args.count,
+    );
+    return { tournamentId: args.tournamentId, addedCount };
   },
 });
 

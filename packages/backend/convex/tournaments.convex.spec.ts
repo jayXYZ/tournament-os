@@ -414,16 +414,29 @@ test("seedTestPlayers fills only remaining active registration seats", async () 
     });
   });
 
-  await authed.mutation(api.tournaments.testing.seedTestPlayers, {
+  const firstSeed = await authed.mutation(api.tournaments.testing.seedTestPlayers, {
     tournamentId,
     count: 32,
   });
+  expect(firstSeed.addedCount).toBe(31);
 
   const registrations = await authed.query(
     api.tournaments.registrations.listRegistrations,
     { tournamentId },
   );
   expect(registrations).toHaveLength(32);
+
+  const secondSeed = await authed.mutation(api.tournaments.testing.seedTestPlayers, {
+    tournamentId,
+    count: 32,
+  });
+  expect(secondSeed.addedCount).toBe(0);
+
+  const afterSecondSeed = await authed.query(
+    api.tournaments.registrations.listRegistrations,
+    { tournamentId },
+  );
+  expect(afterSecondSeed).toHaveLength(32);
 
   const testPlayerCount = await t.run(async (ctx) => {
     return (
@@ -434,6 +447,80 @@ test("seedTestPlayers fills only remaining active registration seats", async () 
     ).length;
   });
   expect(testPlayerCount).toBe(31);
+});
+
+test("seedTestPlayers count is seats to add, not a target total", async () => {
+  const t = convexTest(schema, modules);
+  const now = Date.now();
+  const { organizationId } = await seedOrganizer(t);
+  const authed = t.withIdentity(organizerIdentity);
+
+  const tournamentId = await authed.mutation(
+    api.tournaments.lifecycle.createTournamentWithPhases,
+    {
+      organizationId,
+      name: "Incremental Seeding",
+      startDate: now + 86_400_000,
+      playerCapacity: 32,
+      format: "standard",
+      isTestEvent: true,
+      phases: [{ phaseOrder: 1, phaseRoundMode: "dynamic" }],
+    },
+  );
+
+  await t.run(async (ctx) => {
+    const userId = await ctx.db.insert("users", {
+      tokenIdentifier: "player:real",
+      email: "player@example.test",
+      name: "Real Player",
+      updatedAt: now,
+    });
+    await ctx.db.insert("tournamentRegistrations", {
+      tournamentId,
+      userId,
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+    });
+  });
+
+  // With one seat already taken, asking for 5 must add exactly 5 (seats to
+  // add). The old "target total" semantics would have added only 4 here.
+  const firstSeed = await authed.mutation(
+    api.tournaments.testing.seedTestPlayers,
+    { tournamentId, count: 5 },
+  );
+  expect(firstSeed.addedCount).toBe(5);
+  expect(
+    await authed.query(api.tournaments.registrations.listRegistrations, {
+      tournamentId,
+    }),
+  ).toHaveLength(6);
+
+  // A count of 1 must not throw (the old code routed count through
+  // validCapacity, which rejected anything below 2) and adds exactly one.
+  const secondSeed = await authed.mutation(
+    api.tournaments.testing.seedTestPlayers,
+    { tournamentId, count: 1 },
+  );
+  expect(secondSeed.addedCount).toBe(1);
+  expect(
+    await authed.query(api.tournaments.registrations.listRegistrations, {
+      tournamentId,
+    }),
+  ).toHaveLength(7);
+
+  // Requesting more than the remaining capacity is clamped to what fits.
+  const thirdSeed = await authed.mutation(
+    api.tournaments.testing.seedTestPlayers,
+    { tournamentId, count: 100 },
+  );
+  expect(thirdSeed.addedCount).toBe(25);
+  expect(
+    await authed.query(api.tournaments.registrations.listRegistrations, {
+      tournamentId,
+    }),
+  ).toHaveLength(32);
 });
 
 test("createTournamentWithPhases stores multiple Swiss phases in order", async () => {
@@ -649,16 +736,34 @@ test("test round simulation generates varied results after an existing report", 
     api.tournaments.rounds.listRoundPairings,
     { roundId: round!._id },
   );
-  const simulatedOutcomes = resolvedPairings
-    .filter((pairing) => pairing.match._id !== firstMatch.match._id)
-    .map((pairing) =>
-      pairing.players
-        .map((player) => `${player.gameWins ?? 0}-${player.gameLosses ?? 0}`)
-        .join("|"),
-    );
+  const simulatedMatches = resolvedPairings.filter(
+    (pairing) => pairing.match._id !== firstMatch.match._id,
+  );
+  const simulatedOutcomes = simulatedMatches.map((pairing) =>
+    pairing.players
+      .map((player) => `${player.gameWins ?? 0}-${player.gameLosses ?? 0}`)
+      .join("|"),
+  );
 
   expect(simulatedOutcomes).toHaveLength(15);
-  expect(simulatedOutcomes.some((outcome) => outcome !== "1-1|1-1")).toBe(true);
+
+  // Regression guard: the old implementation seeded a fresh PRNG per match
+  // from `seed + roundNumber * 1000 + tableNumber`. Adjacent tables differ by
+  // one in the seed, so their first PRNG outputs were nearly identical and
+  // almost every match collapsed into the same result branch (same winner
+  // direction). A per-round PRNG drawn sequentially must instead produce a
+  // genuine spread of outcomes, including wins for both seats.
+  const playerOneWins = simulatedMatches.filter(
+    (pairing) =>
+      (pairing.players[0].gameWins ?? 0) > (pairing.players[1].gameWins ?? 0),
+  ).length;
+  const playerTwoWins = simulatedMatches.filter(
+    (pairing) =>
+      (pairing.players[1].gameWins ?? 0) > (pairing.players[0].gameWins ?? 0),
+  ).length;
+  expect(playerOneWins).toBeGreaterThan(0);
+  expect(playerTwoWins).toBeGreaterThan(0);
+  expect(new Set(simulatedOutcomes).size).toBeGreaterThanOrEqual(3);
 });
 
 test("test simulation functions reject non-test tournaments", async () => {
