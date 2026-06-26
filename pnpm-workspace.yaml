@@ -24,3 +24,12 @@ overrides:
   "@clerk/clerk-react>react-dom": 19.2.3
   "@clerk/react>react-dom": 19.2.3
   "@clerk/shared>react-dom": 19.2.3
+allowBuilds:
+  '@clerk/shared': true
+  browser-tabs-lock: false
+  bufferutil: false
+  core-js: false
+  esbuild: true
+  msw: false
+  unrs-resolver: false
+  utf-8-validate: false
