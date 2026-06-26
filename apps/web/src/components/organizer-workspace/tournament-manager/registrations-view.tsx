@@ -10,6 +10,7 @@ import {
 
 import { api } from '@tournament-os/backend/convex/_generated/api'
 import { toast } from 'sonner'
+import type { ColumnDef } from '@tanstack/react-table'
 import type {
   Doc,
   Id,
@@ -38,6 +39,10 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import {
+  DataTable,
+  DataTableColumnHeader,
+} from '@/components/ui/data-table'
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuGroup,
@@ -51,15 +56,8 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@/components/ui/empty'
+import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 
 type RegistrationRow = {
   registration: Doc<'tournamentRegistrations'>
@@ -194,6 +192,41 @@ function RegistrationSettingsMenu({
   )
 }
 
+const registrationColumns: Array<ColumnDef<RegistrationRow>> = [
+  {
+    id: 'player',
+    accessorFn: (row) => playerName(row),
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Player" />
+    ),
+    cell: ({ row }) => (
+      <p className="font-medium text-foreground">{playerName(row.original)}</p>
+    ),
+  },
+  {
+    id: 'status',
+    accessorFn: (row) => row.registration.status,
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Status" />
+    ),
+    cell: ({ row }) => {
+      const { status } = row.original.registration
+      return (
+        <Badge variant={statusBadgeVariant[status]} className="capitalize">
+          {status}
+        </Badge>
+      )
+    },
+  },
+  {
+    id: 'actions',
+    header: 'Manage',
+    enableSorting: false,
+    meta: { className: 'text-right' },
+    cell: ({ row }) => <ManagePlayerMenu row={row.original} />,
+  },
+]
+
 function RegistrationsTable({
   registrations,
 }: {
@@ -220,43 +253,22 @@ function RegistrationsTable({
   }
 
   return (
-    <Table className="min-w-[480px]">
-      <TableHeader>
-        <TableRow>
-          <TableHead>Player</TableHead>
-          <TableHead>Status</TableHead>
-          <TableHead className="text-right">Manage</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {registrations.map((row) => (
-          <RegistrationRow key={row.registration._id} row={row} />
-        ))}
-      </TableBody>
-    </Table>
-  )
-}
-
-function RegistrationRow({ row }: { row: RegistrationRow }) {
-  const { registration } = row
-
-  return (
-    <TableRow>
-      <TableCell>
-        <p className="font-medium text-foreground">{playerName(row)}</p>
-      </TableCell>
-      <TableCell>
-        <Badge
-          variant={statusBadgeVariant[registration.status]}
-          className="capitalize"
-        >
-          {registration.status}
-        </Badge>
-      </TableCell>
-      <TableCell className="text-right">
-        <ManagePlayerMenu row={row} />
-      </TableCell>
-    </TableRow>
+    <DataTable
+      columns={registrationColumns}
+      data={registrations}
+      className="min-w-[480px]"
+      noResultsLabel="No players match your search."
+      toolbar={(table) => (
+        <Input
+          placeholder="Search players..."
+          value={String(table.getColumn('player')?.getFilterValue() ?? '')}
+          onChange={(event) =>
+            table.getColumn('player')?.setFilterValue(event.target.value)
+          }
+          className="max-w-xs"
+        />
+      )}
+    />
   )
 }
 
