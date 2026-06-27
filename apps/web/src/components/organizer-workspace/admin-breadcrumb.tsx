@@ -99,8 +99,10 @@ function TournamentBreadcrumb({
         </BreadcrumbItem>
         <BreadcrumbSeparator />
         <BreadcrumbItem>
-          {name === undefined ? (
+          {managed === undefined ? (
             <Skeleton className="h-4 w-28" />
+          ) : name === undefined ? (
+            <BreadcrumbPage>Not found</BreadcrumbPage>
           ) : pageLabel ? (
             <BreadcrumbLink asChild>
               <Link to={base} className="max-w-48 truncate">
