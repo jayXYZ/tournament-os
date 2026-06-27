@@ -16,6 +16,7 @@ export function TournamentAdminView() {
   )
   const items = tournaments?.map((tournament) => ({
     key: tournament._id,
+    registeredCount: tournament.registeredCount,
     tournament,
   }))
 

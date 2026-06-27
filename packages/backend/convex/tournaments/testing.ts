@@ -70,6 +70,7 @@ export const createTestTournament = mutation({
       playerCapacity,
       format: args.format ?? "standard",
       isTestEvent: true,
+      activeRegistrationCount: 0,
       // Mirror the test-config seed so pairings are reproducible across runs.
       seed,
       updatedAt: now,
@@ -254,8 +255,11 @@ export const resetTestTournament = mutation({
       roundsToGenerate: config.roundsToGenerate,
       seed: config.seed,
     };
+    // Every registration is deleted below and the player set is rebuilt by
+    // seedTestPlayers, so the denormalized count resets to zero here.
     await ctx.db.patch(args.tournamentId, {
       status: "private",
+      activeRegistrationCount: 0,
       updatedAt: Date.now(),
     });
 

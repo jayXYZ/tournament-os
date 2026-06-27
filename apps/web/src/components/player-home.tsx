@@ -21,11 +21,13 @@ export function PlayerHome() {
   const publicItems = tournaments?.map((tournament) => ({
     key: tournament._id,
     organizationName: tournament.organizationName,
+    registeredCount: tournament.registeredCount,
     tournament,
   }))
   const registeredItems = myTournaments?.map((entry) => ({
     key: entry.registration._id,
     organizationName: entry.organizationName,
+    registeredCount: entry.registeredCount,
     registration: entry.registration,
     tournament: entry.tournament,
   }))

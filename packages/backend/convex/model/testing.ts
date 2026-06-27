@@ -4,6 +4,7 @@ import { createSeededRandom } from "./random";
 import { matchPointsForResult } from "./standings";
 import {
   activeRegistrations,
+  adjustActiveRegistrationCount,
   matchPlayers,
   registrationForUser,
   requireTestTournament,
@@ -131,7 +132,7 @@ export async function seedTestPlayers(
     created += 1;
     playerNumber += 1;
   }
-  await ctx.db.patch(tournamentId, { updatedAt: now });
+  await adjustActiveRegistrationCount(ctx, tournament, created, now);
   return created;
 }
 

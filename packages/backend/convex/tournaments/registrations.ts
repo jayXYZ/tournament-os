@@ -5,6 +5,7 @@ import { mutation, query } from "../_generated/server";
 import { currentUserOrNull } from "../model/access";
 import { ensureCurrentUser } from "../model/users";
 import {
+  adjustActiveRegistrationCount,
   registrationForUser,
   requireCapacityAvailable,
   requireOrganizerAccess,
@@ -31,20 +32,23 @@ export const registerSelf = mutation({
       throw new Error("Already registered");
     }
 
-    await requireCapacityAvailable(ctx, tournament);
+    requireCapacityAvailable(tournament);
     const now = Date.now();
     if (existing) {
       await ctx.db.patch(existing._id, { status: "active", updatedAt: now });
+      await adjustActiveRegistrationCount(ctx, tournament, 1, now);
       return existing._id;
     }
 
-    return await ctx.db.insert("tournamentRegistrations", {
+    const registrationId = await ctx.db.insert("tournamentRegistrations", {
       tournamentId: args.tournamentId,
       userId: user._id,
       status: "active",
       createdAt: now,
       updatedAt: now,
     });
+    await adjustActiveRegistrationCount(ctx, tournament, 1, now);
+    return registrationId;
   },
 });
 
@@ -63,10 +67,12 @@ export const cancelMyRegistration = mutation({
       throw new Error("Active registration not found");
     }
 
+    const now = Date.now();
     await ctx.db.patch(registration._id, {
       status: "dropped",
-      updatedAt: Date.now(),
+      updatedAt: now,
     });
+    await adjustActiveRegistrationCount(ctx, tournament, -1, now);
     return registration._id;
   },
 });
@@ -112,6 +118,7 @@ export const listMyTournaments = query({
         registration,
         tournament,
         organizationName: organization?.name ?? null,
+        registeredCount: tournament.activeRegistrationCount,
       });
     }
 
@@ -144,11 +151,18 @@ export const dropRegistration = mutation({
   args: { registrationId: v.id("tournamentRegistrations") },
   handler: async (ctx, args) => {
     const registration = await requireRegistration(ctx, args.registrationId);
-    await requireOrganizerAccess(ctx, registration.tournamentId);
+    const { tournament } = await requireOrganizerAccess(
+      ctx,
+      registration.tournamentId,
+    );
+    const now = Date.now();
     await ctx.db.patch(args.registrationId, {
       status: "dropped",
-      updatedAt: Date.now(),
+      updatedAt: now,
     });
+    if (registration.status === "active") {
+      await adjustActiveRegistrationCount(ctx, tournament, -1, now);
+    }
     return args.registrationId;
   },
 });
@@ -161,11 +175,15 @@ export const reinstateRegistration = mutation({
       ctx,
       registration.tournamentId,
     );
-    await requireCapacityAvailable(ctx, tournament);
+    requireCapacityAvailable(tournament);
+    const now = Date.now();
     await ctx.db.patch(args.registrationId, {
       status: "active",
-      updatedAt: Date.now(),
+      updatedAt: now,
     });
+    if (registration.status !== "active") {
+      await adjustActiveRegistrationCount(ctx, tournament, 1, now);
+    }
     return args.registrationId;
   },
 });

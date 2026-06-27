@@ -73,6 +73,11 @@ export default defineSchema({
     playerCapacity: v.number(),
     format: tournamentFormatValidator,
     isTestEvent: v.boolean(),
+    // Denormalized count of registrations with status "active". List queries
+    // read this instead of scanning each tournament's registration rows, which
+    // would fan out into tens of thousands of reads across a full schedule.
+    // Maintained by every mutation that changes a registration's active state.
+    activeRegistrationCount: v.number(),
     // Deterministic seed for pairing's within-bracket shuffle, so pairings are
     // reproducible and auditable. Optional for rows created before it existed;
     // readers fall back to publicCode.

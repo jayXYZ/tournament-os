@@ -5,7 +5,6 @@ import { mutation, query } from "../_generated/server";
 import { requireActiveMembership } from "../model/access";
 import {
   SWISS_FORMAT,
-  activeRegistrations,
   cleanName,
   completeTournament as completeTournamentModel,
   createTournament as createTournamentModel,
@@ -55,6 +54,7 @@ export const listUpcomingPublic = query({
       rows.push({
         ...tournament,
         organizationName: organization?.name ?? null,
+        registeredCount: tournament.activeRegistrationCount,
       });
     }
 
@@ -84,7 +84,11 @@ export const listUpcomingForOrganization = query({
     }
 
     rows.sort((left, right) => left.startDate - right.startDate);
-    return rows.slice(0, 100);
+    const limited = rows.slice(0, 100);
+    return limited.map((tournament) => ({
+      ...tournament,
+      registeredCount: tournament.activeRegistrationCount,
+    }));
   },
 });
 
@@ -107,11 +111,10 @@ export const getPublicTournament = query({
     }
 
     const organization = await ctx.db.get(tournament.organizationId);
-    const registrations = await activeRegistrations(ctx, tournament._id);
     return {
       tournament,
       organizationName: organization?.name ?? null,
-      registeredCount: registrations.length,
+      registeredCount: tournament.activeRegistrationCount,
     };
   },
 });

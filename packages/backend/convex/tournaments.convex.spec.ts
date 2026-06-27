@@ -30,6 +30,7 @@ test("listUpcomingPublic returns future public tournaments in start date order",
       playerCapacity: 32,
       format: "standard" as const,
       isTestEvent: false,
+      activeRegistrationCount: 0,
       updatedAt: now,
     };
 
@@ -101,6 +102,7 @@ test("getPublicTournament hides private events and reports registration counts",
       playerCapacity: 32,
       format: "standard" as const,
       isTestEvent: false,
+      activeRegistrationCount: 0,
       updatedAt: now,
     };
 
@@ -173,6 +175,7 @@ test("listMyTournaments returns the player's active registrations for visible ev
       playerCapacity: 32,
       format: "standard" as const,
       isTestEvent: false,
+      activeRegistrationCount: 0,
       updatedAt: now,
     };
     const registrationBase = {
@@ -267,6 +270,7 @@ test("listUpcomingForOrganization returns active future tournaments for one orga
       playerCapacity: 32,
       format: "standard" as const,
       isTestEvent: false,
+      activeRegistrationCount: 0,
       updatedAt: now,
     };
 
@@ -903,6 +907,12 @@ async function seedActiveRegistrations(
         status: "active",
         createdAt: now + playerNumber,
         updatedAt: now,
+      });
+    }
+    const tournament = await ctx.db.get(tournamentId);
+    if (tournament) {
+      await ctx.db.patch(tournamentId, {
+        activeRegistrationCount: tournament.activeRegistrationCount + count,
       });
     }
   });

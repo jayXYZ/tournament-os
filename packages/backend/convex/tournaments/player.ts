@@ -5,6 +5,7 @@ import { mutation, query } from "../_generated/server";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { matchPointsForResult } from "../model/standings";
 import {
+  adjustActiveRegistrationCount,
   matchPlayers,
   registrationForUser,
   requireMatch,
@@ -291,10 +292,12 @@ export const dropSelf = mutation({
       throw new Error("Active registration not found");
     }
 
+    const now = Date.now();
     await ctx.db.patch(registration._id, {
       status: "dropped",
-      updatedAt: Date.now(),
+      updatedAt: now,
     });
+    await adjustActiveRegistrationCount(ctx, tournament, -1, now);
     return registration._id;
   },
 });

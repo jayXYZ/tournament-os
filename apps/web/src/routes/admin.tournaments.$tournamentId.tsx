@@ -3,7 +3,7 @@ import { useQuery } from 'convex/react'
 
 import { api } from '@tournament-os/backend/convex/_generated/api'
 import { ManagedTournamentProvider } from '@/components/organizer-workspace/tournament-manager/tournament-manager-context'
-import { TournamentManagerSidebar } from '@/components/organizer-workspace/tournament-manager/tournament-manager-sidebar'
+import { TournamentManagerSubnav } from '@/components/organizer-workspace/tournament-manager/tournament-manager-subnav'
 import { Skeleton } from '@/components/ui/skeleton'
 
 export const Route = createFileRoute('/admin/tournaments/$tournamentId')({
@@ -18,10 +18,10 @@ function TournamentManagerLayout() {
   })
 
   return (
-    <div className="flex min-h-0 flex-1">
-      <TournamentManagerSidebar publicCode={publicCode} />
+    <div className="flex flex-1 flex-col">
+      <TournamentManagerSubnav publicCode={publicCode} />
 
-      <div className="min-w-0 flex-1 overflow-auto">
+      <div className="min-w-0 flex-1">
         <div className="p-4 sm:p-6 lg:p-8">
           <div className="mx-auto grid max-w-6xl gap-6">
             {managed === undefined ? (

@@ -43,6 +43,7 @@ export type TournamentTableVariant = 'public' | 'registered' | 'manage'
 export type TournamentTableItem = {
   key: string
   organizationName?: string | null
+  registeredCount?: number
   registration?: Doc<'tournamentRegistrations'>
   tournament: Doc<'tournaments'>
 }
@@ -204,7 +205,7 @@ function TournamentTableHeader({
         {showOrganizer ? <TableHead>Organizer</TableHead> : null}
         <TableHead>Format</TableHead>
         <TableHead>Start date</TableHead>
-        <TableHead>Capacity</TableHead>
+        <TableHead>Players</TableHead>
         <TableHead>Status</TableHead>
         <TableHead className="text-right">Action</TableHead>
       </TableRow>
@@ -232,28 +233,25 @@ function TournamentTableRow({
       onClick={isManage ? () => navigate({ to: manageHref }) : undefined}
     >
       <TableCell>
-        {isManage ? (
-          <div className="flex min-w-0 items-center gap-2">
-            <p className="font-medium text-foreground">{tournament.name}</p>
-            {tournament.isTestEvent ? (
-              <Badge variant="outline">Test</Badge>
-            ) : null}
-          </div>
-        ) : (
-          <>
-            <p className="font-medium text-foreground">{tournament.name}</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {tournament.isTestEvent ? 'Test event' : 'Public event'}
-            </p>
-          </>
-        )}
+        <div className="flex min-w-0 items-center gap-2">
+          <p className="font-medium text-foreground">{tournament.name}</p>
+          {tournament.isTestEvent ? (
+            <Badge variant="outline">Test</Badge>
+          ) : null}
+        </div>
       </TableCell>
       {showOrganizer ? (
         <TableCell>{item.organizationName ?? '—'}</TableCell>
       ) : null}
       <TableCell className="capitalize">{tournament.format}</TableCell>
       <TableCell>{formatTournamentDateShort(tournament.startDate)}</TableCell>
-      <TableCell>{tournament.playerCapacity}</TableCell>
+      <TableCell className="tabular-nums">
+        {item.registeredCount ?? 0}
+        <span className="text-muted-foreground">
+          {' / '}
+          {tournament.playerCapacity}
+        </span>
+      </TableCell>
       <TableCell>
         <TournamentStatusBadge status={tournament.status} />
       </TableCell>

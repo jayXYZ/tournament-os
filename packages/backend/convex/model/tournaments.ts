@@ -173,14 +173,31 @@ export async function activeRegistrations(
     .take(512);
 }
 
-export async function requireCapacityAvailable(
-  ctx: QueryCtx,
-  tournament: Doc<"tournaments">,
-) {
-  const active = await activeRegistrations(ctx, tournament._id);
-  if (active.length >= tournament.playerCapacity) {
+export function requireCapacityAvailable(tournament: Doc<"tournaments">) {
+  if (tournament.activeRegistrationCount >= tournament.playerCapacity) {
     throw new Error("Tournament is at capacity");
   }
+}
+
+// Maintains the denormalized active-registration count on the tournament so
+// list queries never fan out into per-tournament registration scans. Callers
+// pass the signed delta for the status transition they just applied.
+export async function adjustActiveRegistrationCount(
+  ctx: MutationCtx,
+  tournament: Doc<"tournaments">,
+  delta: number,
+  now = Date.now(),
+) {
+  if (delta === 0) {
+    return;
+  }
+  await ctx.db.patch(tournament._id, {
+    activeRegistrationCount: Math.max(
+      0,
+      tournament.activeRegistrationCount + delta,
+    ),
+    updatedAt: now,
+  });
 }
 
 export async function roundMatches(
@@ -232,6 +249,7 @@ export async function createTournament(
     playerCapacity: validCapacity(args.playerCapacity),
     format: args.format,
     isTestEvent: args.isTestEvent,
+    activeRegistrationCount: 0,
     seed: Math.floor(Math.random() * 0x7fffffff),
     updatedAt: now,
   });
