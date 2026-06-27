@@ -232,6 +232,7 @@ export async function createTournament(
     playerCapacity: validCapacity(args.playerCapacity),
     format: args.format,
     isTestEvent: args.isTestEvent,
+    seed: Math.floor(Math.random() * 0x7fffffff),
     updatedAt: now,
   });
 
@@ -277,6 +278,7 @@ export async function createSwissPhases(
       phaseRoundMode: phase.phaseRoundMode,
       phaseTotalRounds: phase.phaseTotalRounds,
       phaseCutoff: null,
+      powerPairFinalRound: true,
       updatedAt: now,
     });
   }

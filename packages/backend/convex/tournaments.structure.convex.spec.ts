@@ -1,6 +1,7 @@
-import assert from "node:assert/strict";
+// @vitest-environment node
 import { existsSync, readFileSync } from "node:fs";
-import test from "node:test";
+
+import { expect, test } from "vitest";
 
 const schemaSource = readFileSync(new URL("./schema.ts", import.meta.url), "utf8");
 const validatorsSource = readFileSync(
@@ -19,45 +20,36 @@ const modelModules = {
   pairing: new URL("./model/pairing.ts", import.meta.url),
   standings: new URL("./model/standings.ts", import.meta.url),
   testing: new URL("./model/testing.ts", import.meta.url),
+  random: new URL("./model/random.ts", import.meta.url),
 };
 
 test("tournament schema includes operational indexes and test config tables", () => {
-  assert.match(
-    schemaSource,
+  expect(schemaSource).toMatch(
     /\.index\("by_tournamentId_and_userId", \["tournamentId", "userId"\]\)/,
   );
-  assert.match(
-    schemaSource,
+  expect(schemaSource).toMatch(
     /\.index\("by_tournamentId_and_status", \["tournamentId", "status"\]\)/,
   );
-  assert.match(
-    schemaSource,
+  expect(schemaSource).toMatch(
     /\.index\("by_userId_and_status", \["userId", "status"\]\)/,
   );
-  assert.match(schemaSource, /roundNumber: v\.number\(\)/);
-  assert.match(
-    schemaSource,
+  expect(schemaSource).toMatch(/roundNumber: v\.number\(\)/);
+  expect(schemaSource).toMatch(
     /\.index\("by_tournamentPhaseId_and_roundNumber", \[\s*"tournamentPhaseId",\s*"roundNumber",\s*\]\)/,
   );
-  assert.match(
-    schemaSource,
+  expect(schemaSource).toMatch(
     /\.index\("by_tournamentRoundId_and_tableNumber", \[\s*"tournamentRoundId",\s*"tableNumber",\s*\]\)/,
   );
-  assert.match(schemaSource, /phaseRoundMode: tournamentPhaseRoundModeValidator/);
-  assert.match(
-    schemaSource,
+  expect(schemaSource).toMatch(/phaseRoundMode: tournamentPhaseRoundModeValidator/);
+  expect(schemaSource).toMatch(
     /phaseTotalRounds: v\.union\(v\.number\(\), v\.null\(\)\)/,
   );
-  assert.match(
-    schemaSource,
-    /\.index\("by_playerId", \["playerId"\]\)/,
-  );
-  assert.match(
-    schemaSource,
+  expect(schemaSource).toMatch(/\.index\("by_playerId", \["playerId"\]\)/);
+  expect(schemaSource).toMatch(
     /\.index\("by_tournamentRoundId_and_rank", \[\s*"tournamentRoundId",\s*"rank",?\s*\]\)/,
   );
-  assert.match(schemaSource, /tournamentTestConfigs: defineTable/);
-  assert.match(schemaSource, /testTournamentPlayers: defineTable/);
+  expect(schemaSource).toMatch(/tournamentTestConfigs: defineTable/);
+  expect(schemaSource).toMatch(/testTournamentPlayers: defineTable/);
 });
 
 test("registration statuses exclude payment-only states", () => {
@@ -65,26 +57,28 @@ test("registration statuses exclude payment-only states", () => {
     /export const tournamentRegistrationStatusValidator = v\.union\(([\s\S]*?)\);/,
   );
 
-  assert.ok(registrationValidator);
-  assert.doesNotMatch(registrationValidator[1], /"paid"/);
-  assert.doesNotMatch(registrationValidator[1], /"unpaid"/);
+  expect(registrationValidator).not.toBeNull();
+  expect(registrationValidator![1]).not.toMatch(/"paid"/);
+  expect(registrationValidator![1]).not.toMatch(/"unpaid"/);
 });
 
 test("tournament domain helpers define Swiss MVP behavior", () => {
   for (const path of Object.values(modelModules)) {
-    assert.equal(existsSync(path), true);
+    expect(existsSync(path)).toBe(true);
   }
 
   const tournamentsModel = readFileSync(modelModules.tournaments, "utf8");
-  assert.match(tournamentsModel, /export const SWISS_FORMAT = "swiss"/);
-  assert.match(tournamentsModel, /export function defaultSwissRoundCount/);
+  expect(tournamentsModel).toMatch(/export const SWISS_FORMAT = "swiss"/);
+  expect(tournamentsModel).toMatch(/export function defaultSwissRoundCount/);
 
   const standingsModel = readFileSync(modelModules.standings, "utf8");
-  assert.match(standingsModel, /export function compareStandingRows/);
+  expect(standingsModel).toMatch(/export function compareStandingRows/);
+
+  const randomModel = readFileSync(modelModules.random, "utf8");
+  expect(randomModel).toMatch(/export function createSeededRandom/);
 
   const testingModel = readFileSync(modelModules.testing, "utf8");
-  assert.match(testingModel, /export function createSeededRandom/);
-  assert.match(testingModel, /export function simulatedMatchResult/);
+  expect(testingModel).toMatch(/export function simulatedMatchResult/);
 });
 
 test("tournament functions expose setup registration operation and test APIs", () => {
@@ -128,19 +122,19 @@ test("tournament functions expose setup registration operation and test APIs", (
 
   for (const [moduleName, functionNames] of Object.entries(expectedExports)) {
     const path = tournamentModules[moduleName as keyof typeof tournamentModules];
-    assert.equal(existsSync(path), true);
+    expect(existsSync(path)).toBe(true);
     const source = readFileSync(path, "utf8");
 
-    assert.doesNotMatch(source, /\.filter\(/);
-    assert.match(source, /requireOrganizerAccess|requireActiveMembership/);
+    expect(source).not.toMatch(/\.filter\(/);
+    expect(source).toMatch(/requireOrganizerAccess|requireActiveMembership/);
     for (const functionName of functionNames) {
-      assert.match(source, new RegExp(`export const ${functionName} =`));
+      expect(source).toMatch(new RegExp(`export const ${functionName} =`));
     }
   }
 
   const tournamentsModel = readFileSync(modelModules.tournaments, "utf8");
-  assert.match(tournamentsModel, /tournament\.isTestEvent !== true/);
+  expect(tournamentsModel).toMatch(/tournament\.isTestEvent !== true/);
 
   const testingModel = readFileSync(modelModules.testing, "utf8");
-  assert.match(testingModel, /test:\$\{tournamentId\}:player:\$\{playerNumber\}/);
+  expect(testingModel).toMatch(/test:\$\{tournamentId\}:player:\$\{playerNumber\}/);
 });

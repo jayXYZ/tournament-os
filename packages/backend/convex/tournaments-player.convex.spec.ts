@@ -72,11 +72,19 @@ test("reportMyMatchResult rejects outsiders, byes, re-reports, and bad scores", 
   // Five players: the lowest-seeded player gets the round-one bye.
   const { tournamentId, registrationIds } = await seedStartedTournament(t, 5);
   const match = await matchForPlayer(t, tournamentId, 1, registrationIds[0]);
+  // The lowest seed (player 5) takes the round-one bye regardless of shuffle.
   const byeMatch = await matchForPlayer(t, tournamentId, 1, registrationIds[4]);
+  const opponent = await opponentNumber(
+    t,
+    match._id,
+    registrationIds[0],
+    registrationIds,
+  );
+  const outsider = await outsiderNumber(t, match._id, registrationIds);
 
-  // Player 3 is registered but plays at another table.
+  // A player registered but seated at another table cannot report this match.
   await expect(
-    t.withIdentity(playerIdentity(3)).mutation(
+    t.withIdentity(playerIdentity(outsider)).mutation(
       api.tournaments.player.reportMyMatchResult,
       { matchId: match._id, myGameWins: 2, opponentGameWins: 0 },
     ),
@@ -111,7 +119,7 @@ test("reportMyMatchResult rejects outsiders, byes, re-reports, and bad scores", 
       opponentGameWins: 0,
     });
   await expect(
-    t.withIdentity(playerIdentity(2)).mutation(
+    t.withIdentity(playerIdentity(opponent)).mutation(
       api.tournaments.player.reportMyMatchResult,
       { matchId: match._id, myGameWins: 2, opponentGameWins: 0 },
     ),
@@ -122,9 +130,15 @@ test("confirmMatchResult requires the opponent; organizer override clears the re
   const t = convexTest(schema, modules);
   const { tournamentId, registrationIds } = await seedStartedTournament(t, 4);
   const match = await matchForPlayer(t, tournamentId, 1, registrationIds[0]);
+  const opponent = await opponentNumber(
+    t,
+    match._id,
+    registrationIds[0],
+    registrationIds,
+  );
 
   await expect(
-    t.withIdentity(playerIdentity(2)).mutation(
+    t.withIdentity(playerIdentity(opponent)).mutation(
       api.tournaments.player.confirmMatchResult,
       { matchId: match._id },
     ),
@@ -146,7 +160,7 @@ test("confirmMatchResult requires the opponent; organizer override clears the re
   ).rejects.toThrow("The reporting player cannot confirm their own result");
 
   await t
-    .withIdentity(playerIdentity(2))
+    .withIdentity(playerIdentity(opponent))
     .mutation(api.tournaments.player.confirmMatchResult, {
       matchId: match._id,
     });
@@ -161,7 +175,7 @@ test("confirmMatchResult requires the opponent; organizer override clears the re
     .mutation(api.tournaments.rounds.recordMatchResult, {
       matchId: match._id,
       playerOneRegistrationId: registrationIds[0],
-      playerTwoRegistrationId: registrationIds[1],
+      playerTwoRegistrationId: registrationIds[opponent - 1],
       playerOneGameWins: 0,
       playerTwoGameWins: 2,
     });
@@ -175,8 +189,22 @@ test("player-reported results complete rounds and feed standings", async () => {
   const { tournamentId, registrationIds } = await seedStartedTournament(t, 4);
   const round = await currentRound(t, tournamentId);
   const matchOne = await matchForPlayer(t, tournamentId, 1, registrationIds[0]);
-  const matchTwo = await matchForPlayer(t, tournamentId, 1, registrationIds[2]);
+  const opponentOne = await opponentNumber(
+    t,
+    matchOne._id,
+    registrationIds[0],
+    registrationIds,
+  );
+  // The other table is whichever match player 1 is not in.
+  const otherNumber = await outsiderNumber(t, matchOne._id, registrationIds);
+  const matchTwo = await matchForPlayer(
+    t,
+    tournamentId,
+    1,
+    registrationIds[otherNumber - 1],
+  );
 
+  // Player 1 wins and the opponent confirms.
   await t
     .withIdentity(playerIdentity(1))
     .mutation(api.tournaments.player.reportMyMatchResult, {
@@ -185,12 +213,13 @@ test("player-reported results complete rounds and feed standings", async () => {
       opponentGameWins: 0,
     });
   await t
-    .withIdentity(playerIdentity(2))
+    .withIdentity(playerIdentity(opponentOne))
     .mutation(api.tournaments.player.confirmMatchResult, {
       matchId: matchOne._id,
     });
+  // The other table reports but leaves it unconfirmed.
   await t
-    .withIdentity(playerIdentity(4))
+    .withIdentity(playerIdentity(otherNumber))
     .mutation(api.tournaments.player.reportMyMatchResult, {
       matchId: matchTwo._id,
       myGameWins: 2,
@@ -234,11 +263,17 @@ test("getMyCurrentMatch walks the tournament lifecycle", async () => {
   if (current.kind !== "match") {
     throw new Error("Expected an active match");
   }
+  const opponentOne = await opponentNumber(
+    t,
+    current.match._id,
+    registrationIds[0],
+    registrationIds,
+  );
   expect(current.round.roundNumber).toBe(1);
   expect(current.match.matchStatus).toBe("upcoming");
   expect(current.me.registrationId).toBe(registrationIds[0]);
-  expect(current.opponent?.name).toBe("Player 2");
-  expect(current.match.tableNumber).toBe(1);
+  expect(current.opponent?.name).toBe(`Player ${opponentOne}`);
+  expect(current.match.tableNumber).toBeGreaterThanOrEqual(1);
 
   await playerOne.mutation(api.tournaments.player.reportMyMatchResult, {
     matchId: current.match._id,
@@ -255,9 +290,15 @@ test("getMyCurrentMatch walks the tournament lifecycle", async () => {
   expect(current.match.reportedByRegistrationId).toBe(registrationIds[0]);
 
   const round = await currentRound(t, tournamentId);
-  const otherMatch = await matchForPlayer(t, tournamentId, 1, registrationIds[2]);
+  const otherNumber = await outsiderNumber(t, current.match._id, registrationIds);
+  const otherMatch = await matchForPlayer(
+    t,
+    tournamentId,
+    1,
+    registrationIds[otherNumber - 1],
+  );
   await t
-    .withIdentity(playerIdentity(3))
+    .withIdentity(playerIdentity(otherNumber))
     .mutation(api.tournaments.player.reportMyMatchResult, {
       matchId: otherMatch._id,
       myGameWins: 2,
@@ -277,6 +318,12 @@ test("getMyMatchHistory reports per-round outcomes", async () => {
   const t = convexTest(schema, modules);
   const { tournamentId, registrationIds } = await seedStartedTournament(t, 4);
   const match = await matchForPlayer(t, tournamentId, 1, registrationIds[0]);
+  const opponent = await opponentNumber(
+    t,
+    match._id,
+    registrationIds[0],
+    registrationIds,
+  );
 
   let history = await t
     .withIdentity(playerIdentity(1))
@@ -285,7 +332,7 @@ test("getMyMatchHistory reports per-round outcomes", async () => {
   expect(history[0].result).toBe("pending");
 
   await t
-    .withIdentity(playerIdentity(2))
+    .withIdentity(playerIdentity(opponent))
     .mutation(api.tournaments.player.reportMyMatchResult, {
       matchId: match._id,
       myGameWins: 2,
@@ -296,7 +343,7 @@ test("getMyMatchHistory reports per-round outcomes", async () => {
     .query(api.tournaments.player.getMyMatchHistory, { tournamentId });
   expect(history[0].result).toBe("loss");
   expect(history[0].roundNumber).toBe(1);
-  expect(history[0].opponentName).toBe("Player 2");
+  expect(history[0].opponentName).toBe(`Player ${opponent}`);
   expect(history[0].myGameWins).toBe(0);
   expect(history[0].myGameLosses).toBe(2);
 });
@@ -314,14 +361,24 @@ test("dropSelf removes the player from future rounds but keeps read access", asy
     .withIdentity(organizerIdentity)
     .mutation(api.tournaments.rounds.startTournament, { tournamentId });
   const round = await currentRound(t, tournamentId);
-  const matchOne = await matchForPlayer(t, tournamentId, 1, registrationIds[0]);
-  const matchTwo = await matchForPlayer(t, tournamentId, 1, registrationIds[2]);
+  const playerFourMatch = await matchForPlayer(
+    t,
+    tournamentId,
+    1,
+    registrationIds[3],
+  );
+  const playerFourOpponent = await opponentNumber(
+    t,
+    playerFourMatch._id,
+    registrationIds[3],
+    registrationIds,
+  );
 
-  // Player 4 loses their match, then drops.
+  // Player 4 loses their match (the opponent reports the win), then drops.
   await t
-    .withIdentity(playerIdentity(3))
+    .withIdentity(playerIdentity(playerFourOpponent))
     .mutation(api.tournaments.player.reportMyMatchResult, {
-      matchId: matchTwo._id,
+      matchId: playerFourMatch._id,
       myGameWins: 2,
       opponentGameWins: 0,
     });
@@ -330,10 +387,22 @@ test("dropSelf removes the player from future rounds but keeps read access", asy
     playerFour.mutation(api.tournaments.player.dropSelf, { tournamentId }),
   ).rejects.toThrow("Active registration not found");
 
+  // Report the other table so the round can complete.
+  const otherNumber = await outsiderNumber(
+    t,
+    playerFourMatch._id,
+    registrationIds,
+  );
+  const otherMatch = await matchForPlayer(
+    t,
+    tournamentId,
+    1,
+    registrationIds[otherNumber - 1],
+  );
   await t
-    .withIdentity(playerIdentity(1))
+    .withIdentity(playerIdentity(otherNumber))
     .mutation(api.tournaments.player.reportMyMatchResult, {
-      matchId: matchOne._id,
+      matchId: otherMatch._id,
       myGameWins: 2,
       opponentGameWins: 1,
     });
@@ -510,6 +579,56 @@ async function matchForPlayer(
     }
     throw new Error("Match not found in test setup");
   });
+}
+
+// Resolves the opponent's 1-based player number in a two-player match, so
+// player-flow tests don't depend on which pairing the seeded shuffle produced.
+async function opponentNumber(
+  t: TestConvex<typeof schema>,
+  matchId: Id<"tournamentMatches">,
+  myRegistrationId: Id<"tournamentRegistrations">,
+  registrationIds: Id<"tournamentRegistrations">[],
+) {
+  const opponentId = await t.run(async (ctx) => {
+    const players = await ctx.db
+      .query("tournamentMatchPlayers")
+      .withIndex("by_tournamentMatchId_and_playerId", (q) =>
+        q.eq("tournamentMatchId", matchId),
+      )
+      .take(2);
+    return (
+      players.find((player) => player.playerId !== myRegistrationId)
+        ?.playerId ?? null
+    );
+  });
+  const index = opponentId ? registrationIds.indexOf(opponentId) : -1;
+  if (index < 0) {
+    throw new Error("Opponent not found for match");
+  }
+  return index + 1;
+}
+
+// A registered player who is not in the given match (e.g. someone playing at
+// another table), for outsider-rejection checks.
+async function outsiderNumber(
+  t: TestConvex<typeof schema>,
+  matchId: Id<"tournamentMatches">,
+  registrationIds: Id<"tournamentRegistrations">[],
+) {
+  const participantIds = await t.run(async (ctx) => {
+    const players = await ctx.db
+      .query("tournamentMatchPlayers")
+      .withIndex("by_tournamentMatchId_and_playerId", (q) =>
+        q.eq("tournamentMatchId", matchId),
+      )
+      .take(2);
+    return players.map((player) => player.playerId);
+  });
+  const index = registrationIds.findIndex((id) => !participantIds.includes(id));
+  if (index < 0) {
+    throw new Error("No outsider available for match");
+  }
+  return index + 1;
 }
 
 async function seedOrganizer(t: TestConvex<typeof schema>) {

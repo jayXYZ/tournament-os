@@ -73,6 +73,10 @@ export default defineSchema({
     playerCapacity: v.number(),
     format: tournamentFormatValidator,
     isTestEvent: v.boolean(),
+    // Deterministic seed for pairing's within-bracket shuffle, so pairings are
+    // reproducible and auditable. Optional for rows created before it existed;
+    // readers fall back to publicCode.
+    seed: v.optional(v.number()),
     updatedAt: v.number(),
   })
     .index("by_organizationId", ["organizationId"])
@@ -114,6 +118,9 @@ export default defineSchema({
     phaseTotalRounds: v.union(v.number(), v.null()),
     phaseCurrentRound: v.optional(v.id("tournamentRounds")),
     phaseCutoff: tournamentPhaseCutoffValidator,
+    // When set, the final round power-pairs (orders brackets by tiebreakers)
+    // instead of random-within-bracket. Optional; readers default to true.
+    powerPairFinalRound: v.optional(v.boolean()),
     updatedAt: v.number(),
   })
     .index("by_tournamentId", ["tournamentId"])

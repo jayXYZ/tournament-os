@@ -58,6 +58,7 @@ export const createTestTournament = mutation({
     const roundsToGenerate = validRoundCount(
       args.roundsToGenerate ?? defaultSwissRoundCount(dummyPlayerCount),
     );
+    const seed = Math.trunc(args.seed ?? now);
     const publicCode = await nextTournamentPublicCode(ctx, now);
     const tournamentId = await ctx.db.insert("tournaments", {
       name: cleanName(args.name ?? "Test Tournament", "Tournament name"),
@@ -69,6 +70,8 @@ export const createTestTournament = mutation({
       playerCapacity,
       format: args.format ?? "standard",
       isTestEvent: true,
+      // Mirror the test-config seed so pairings are reproducible across runs.
+      seed,
       updatedAt: now,
     });
 
@@ -81,13 +84,14 @@ export const createTestTournament = mutation({
       phaseRoundMode: "fixed",
       phaseTotalRounds: roundsToGenerate,
       phaseCutoff: null,
+      powerPairFinalRound: true,
       updatedAt: now,
     });
     await ctx.db.insert("tournamentTestConfigs", {
       tournamentId,
       dummyPlayerCount,
       roundsToGenerate,
-      seed: Math.trunc(args.seed ?? now),
+      seed,
       updatedAt: now,
     });
 
@@ -225,6 +229,7 @@ async function finishTestTournamentReset(
     phaseRoundMode: "fixed",
     phaseTotalRounds: args.roundsToGenerate,
     phaseCutoff: null,
+    powerPairFinalRound: true,
     updatedAt: now,
   });
   await ctx.db.insert("tournamentTestConfigs", {

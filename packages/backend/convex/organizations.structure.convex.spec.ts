@@ -1,6 +1,7 @@
-import assert from "node:assert/strict";
+// @vitest-environment node
 import { readFileSync } from "node:fs";
-import test from "node:test";
+
+import { expect, test } from "vitest";
 
 const organizationsSource = readFileSync(
   new URL("./organizations.ts", import.meta.url),
@@ -13,48 +14,43 @@ const accessModelSource = readFileSync(
 const schemaSource = readFileSync(new URL("./schema.ts", import.meta.url), "utf8");
 
 test("membership authorization uses an organization-scoped active membership index", () => {
-  assert.match(
-    schemaSource,
+  expect(schemaSource).toMatch(
     /\.index\("by_organizationId_and_userId_and_status", \[[\s\S]*?"organizationId",[\s\S]*?"userId",[\s\S]*?"status",[\s\S]*?\]\)/,
   );
-  assert.doesNotMatch(organizationsSource, /\.filter\(/);
-  assert.doesNotMatch(accessModelSource, /\.filter\(/);
-  assert.match(
-    accessModelSource,
+  expect(organizationsSource).not.toMatch(/\.filter\(/);
+  expect(accessModelSource).not.toMatch(/\.filter\(/);
+  expect(accessModelSource).toMatch(
     /withIndex\("by_organizationId_and_userId_and_status"/,
   );
 });
 
 test("organizations store optional profile image storage ids", () => {
-  assert.match(
-    schemaSource,
+  expect(schemaSource).toMatch(
     /profileImageStorageId: v\.optional\(v\.id\("_storage"\)\)/,
   );
 });
 
 test("organization profile functions enforce owner or admin access without filters", () => {
-  assert.doesNotMatch(organizationsSource, /\.filter\(/);
-  assert.match(accessModelSource, /canManageOrganizationProfile/);
-  assert.match(organizationsSource, /requireProfilePermission/);
-  assert.match(organizationsSource, /generateProfileImageUploadUrl/);
-  assert.match(organizationsSource, /updateProfileImage/);
-  assert.match(organizationsSource, /updateProfile/);
-  assert.match(organizationsSource, /archiveOrganization/);
+  expect(organizationsSource).not.toMatch(/\.filter\(/);
+  expect(accessModelSource).toMatch(/canManageOrganizationProfile/);
+  expect(organizationsSource).toMatch(/requireProfilePermission/);
+  expect(organizationsSource).toMatch(/generateProfileImageUploadUrl/);
+  expect(organizationsSource).toMatch(/updateProfileImage/);
+  expect(organizationsSource).toMatch(/updateProfile/);
+  expect(organizationsSource).toMatch(/archiveOrganization/);
 });
 
 test("organization profile image metadata is validated before attachment", () => {
-  assert.match(
-    organizationsSource,
+  expect(organizationsSource).toMatch(
     /ctx\.db\.system\.get\("_storage", args\.profileImageStorageId\)/,
   );
-  assert.match(organizationsSource, /validateOrganizationProfileImageDetails/);
-  assert.match(
-    organizationsSource,
+  expect(organizationsSource).toMatch(/validateOrganizationProfileImageDetails/);
+  expect(organizationsSource).toMatch(
     /profileImageStorageId: args\.profileImageStorageId/,
   );
 });
 
 test("organization archive is a soft delete", () => {
-  assert.match(organizationsSource, /status: "archived"/);
-  assert.doesNotMatch(organizationsSource, /deleteOrganization/);
+  expect(organizationsSource).toMatch(/status: "archived"/);
+  expect(organizationsSource).not.toMatch(/deleteOrganization/);
 });

@@ -329,6 +329,87 @@ test("dropped players keep feeding their opponents' tiebreakers", async () => {
   await expectStandingsMatchOracle(t, tournamentId, roundTwoId, 2);
 });
 
+test("same seed reproduces identical pairings across runs", async () => {
+  const t = createTest();
+  const { organizationId } = await seedOrganizer(t);
+  const authed = t.withIdentity(organizerIdentity);
+
+  const runEvent = async () => {
+    const tournamentId = await authed.mutation(
+      api.tournaments.testing.createTestTournament,
+      {
+        organizationId,
+        name: "Reproducible Event",
+        dummyPlayerCount: 16,
+        roundsToGenerate: 4,
+        seed: 271828,
+        autoStart: true,
+      },
+    );
+    for (let roundNumber = 1; roundNumber <= 4; roundNumber += 1) {
+      await authed.mutation(api.tournaments.testing.advanceTestRound, {
+        tournamentId,
+      });
+    }
+    return pairingSignature(t, tournamentId);
+  };
+
+  // Express pairings as player seed-order indices so the comparison ignores the
+  // differing registration ids between the two independent runs.
+  const first = await runEvent();
+  const second = await runEvent();
+  expect(second).toEqual(first);
+});
+
+// Maps a tournament's pairings to a seed-order-indexed signature: per round, a
+// sorted list of "loIndex-hiIndex" pairs (byes become a single index).
+async function pairingSignature(t: Test, tournamentId: Id<"tournaments">) {
+  return await t.run(async (ctx) => {
+    const registrations = (
+      await ctx.db
+        .query("tournamentRegistrations")
+        .withIndex("by_tournamentId", (q) =>
+          q.eq("tournamentId", tournamentId),
+        )
+        .collect()
+    ).sort((left, right) => left.createdAt - right.createdAt);
+    const indexById = new Map(
+      registrations.map((registration, index) => [registration._id, index]),
+    );
+
+    const rounds = (await ctx.db.query("tournamentRounds").collect())
+      .filter((round) => round.tournamentId === tournamentId)
+      .sort((left, right) => left.roundNumber - right.roundNumber);
+
+    const signature: string[] = [];
+    for (const round of rounds) {
+      const matches = await ctx.db
+        .query("tournamentMatches")
+        .withIndex("by_tournamentRoundId", (q) =>
+          q.eq("tournamentRoundId", round._id),
+        )
+        .collect();
+      const pairs: string[] = [];
+      for (const match of matches) {
+        const players = await ctx.db
+          .query("tournamentMatchPlayers")
+          .withIndex("by_tournamentMatchId_and_playerId", (q) =>
+            q.eq("tournamentMatchId", match._id),
+          )
+          .collect();
+        pairs.push(
+          players
+            .map((player) => indexById.get(player.playerId) ?? -1)
+            .sort((a, b) => a - b)
+            .join("-"),
+        );
+      }
+      signature.push(pairs.sort().join(","));
+    }
+    return signature;
+  });
+}
+
 async function expectStandingsMatchOracle(
   t: Test,
   tournamentId: Id<"tournaments">,
