@@ -2,7 +2,6 @@ import { Link, useLocation  } from '@tanstack/react-router'
 import { useQuery } from 'convex/react'
 
 import { api } from '@tournament-os/backend/convex/_generated/api'
-import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
 import type { AdminView } from './types'
 import {
   Breadcrumb,
@@ -45,7 +44,7 @@ export function AdminBreadcrumb() {
   if (tournamentMatch) {
     return (
       <TournamentBreadcrumb
-        tournamentId={tournamentMatch[1]}
+        publicCode={tournamentMatch[1]}
         segment={tournamentMatch[2]}
       />
     )
@@ -71,18 +70,18 @@ export function AdminBreadcrumb() {
 }
 
 function TournamentBreadcrumb({
-  tournamentId,
+  publicCode,
   segment,
 }: {
-  tournamentId: string
+  publicCode: string
   segment?: string
 }) {
-  const setup = useQuery(api.tournaments.lifecycle.getTournamentSetup, {
-    tournamentId: tournamentId as Id<'tournaments'>,
+  const managed = useQuery(api.tournaments.lifecycle.getManagedTournament, {
+    publicCode,
   })
-  const name = setup?.tournament.name
+  const name = managed?.tournament.name
   const pageLabel = segment ? tournamentPageLabels[segment] : undefined
-  const base = `/admin/tournaments/${tournamentId}`
+  const base = `/admin/tournaments/${publicCode}`
 
   return (
     <Breadcrumb>

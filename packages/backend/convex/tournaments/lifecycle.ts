@@ -127,6 +127,32 @@ function parsePublicCode(value: string) {
   return publicCode;
 }
 
+// Resolves a public code to the tournament an organizer manages. The admin URLs
+// carry the public code (not the Convex id) so organizers and players see the
+// same identifier; this maps it back to the document for access-checked reads.
+// Returns null for malformed or unknown codes; throws if the caller lacks
+// organizer access, matching getTournamentSetup.
+export const getManagedTournament = query({
+  args: { publicCode: v.string() },
+  handler: async (ctx, args) => {
+    const publicCode = parsePublicCode(args.publicCode);
+    if (publicCode === null) {
+      return null;
+    }
+
+    const found = await ctx.db
+      .query("tournaments")
+      .withIndex("by_publicCode", (q) => q.eq("publicCode", publicCode))
+      .unique();
+    if (!found) {
+      return null;
+    }
+
+    const { tournament } = await requireOrganizerAccess(ctx, found._id);
+    return { tournament };
+  },
+});
+
 export const getTournamentSetup = query({
   args: { tournamentId: v.id("tournaments") },
   handler: async (ctx, args) => {

@@ -15,12 +15,12 @@ type NavItem = {
 }
 
 export function TournamentManagerSidebar({
-  tournamentId,
+  publicCode,
 }: {
-  tournamentId: string
+  publicCode: string
 }) {
   const pathname = useLocation().pathname
-  const base = `/admin/tournaments/${tournamentId}`
+  const base = `/admin/tournaments/${publicCode}`
   const items: Array<NavItem> = [
     {
       label: 'Overview',

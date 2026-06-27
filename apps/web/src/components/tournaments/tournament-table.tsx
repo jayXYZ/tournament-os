@@ -221,8 +221,8 @@ function TournamentTableRow({
 }) {
   const navigate = useNavigate()
   const { tournament } = item
-  const manageHref = `/admin/tournaments/${tournament._id}`
   const publicCode = String(tournament.publicCode)
+  const manageHref = `/admin/tournaments/${publicCode}`
   const isManage = variant === 'manage'
   const showOrganizer = !isManage
 
