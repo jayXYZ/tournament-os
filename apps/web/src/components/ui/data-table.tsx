@@ -20,6 +20,13 @@ import type {
 
 import { Button } from '@/components/ui/button'
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
   Table,
   TableBody,
   TableCell,
@@ -28,6 +35,8 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
+
+const DEFAULT_PAGE_SIZE_OPTIONS = [10, 25, 50, 100]
 
 // Columns may align their header and cells (e.g. `text-right`) by setting
 // `meta: { className }` on the column definition.
@@ -42,6 +51,7 @@ interface DataTableProps<TData, TValue> {
   data: Array<TData>
   className?: string
   pageSize?: number
+  pageSizeOptions?: Array<number>
   noResultsLabel?: string
   onRowClick?: (row: TData) => void
   toolbar?: (table: TanstackTable<TData>) => React.ReactNode
@@ -51,7 +61,8 @@ export function DataTable<TData, TValue>({
   columns,
   data,
   className,
-  pageSize = 10,
+  pageSize = 25,
+  pageSizeOptions = DEFAULT_PAGE_SIZE_OPTIONS,
   noResultsLabel = 'No results.',
   onRowClick,
   toolbar,
@@ -76,6 +87,10 @@ export function DataTable<TData, TValue>({
 
   const rows = table.getRowModel().rows
   const pageCount = table.getPageCount()
+  const currentPageSize = table.getState().pagination.pageSize
+  // Only surface pagination controls once there are more rows than the smallest
+  // page size — small tables shouldn't carry an empty footer.
+  const showFooter = data.length > pageSizeOptions[0]
 
   return (
     <div className="flex flex-col gap-4">
@@ -134,31 +149,51 @@ export function DataTable<TData, TValue>({
         </TableBody>
       </Table>
 
-      {pageCount > 1 ? (
+      {showFooter ? (
         <div className="flex items-center justify-between gap-2">
-          <p className="text-xs text-muted-foreground tabular-nums">
-            Page {table.getState().pagination.pageIndex + 1} of {pageCount}
-          </p>
           <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => table.previousPage()}
-              disabled={!table.getCanPreviousPage()}
+            <p className="text-xs text-muted-foreground">Rows per page</p>
+            <Select
+              value={String(currentPageSize)}
+              onValueChange={(value) => table.setPageSize(Number(value))}
             >
-              Previous
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => table.nextPage()}
-              disabled={!table.getCanNextPage()}
-            >
-              Next
-            </Button>
+              <SelectTrigger size="sm" className="w-16" aria-label="Rows per page">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {pageSizeOptions.map((size) => (
+                  <SelectItem key={size} value={String(size)}>
+                    {size}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
+          {pageCount > 1 ? (
+            <div className="flex items-center gap-2">
+              <p className="text-xs text-muted-foreground tabular-nums">
+                Page {table.getState().pagination.pageIndex + 1} of {pageCount}
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => table.previousPage()}
+                disabled={!table.getCanPreviousPage()}
+              >
+                Previous
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => table.nextPage()}
+                disabled={!table.getCanNextPage()}
+              >
+                Next
+              </Button>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>

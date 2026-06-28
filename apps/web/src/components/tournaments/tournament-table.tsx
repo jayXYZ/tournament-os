@@ -1,3 +1,4 @@
+import * as React from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
 import {
   ArrowRight,
@@ -10,6 +11,7 @@ import {
   TournamentStatusBadge,
   formatTournamentDateShort,
 } from './tournament-display'
+import type { ColumnDef } from '@tanstack/react-table'
 import type { Doc } from '@tournament-os/backend/convex/_generated/dataModel'
 
 import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'
@@ -23,20 +25,17 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import {
+  DataTable,
+  DataTableColumnHeader,
+} from '@/components/ui/data-table'
+import {
   Empty,
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
 } from '@/components/ui/empty'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
+import { Input } from '@/components/ui/input'
 
 export type TournamentTableVariant = 'public' | 'registered' | 'manage'
 
@@ -55,6 +54,12 @@ export function TournamentTable({
   items: Array<TournamentTableItem> | undefined
   variant: TournamentTableVariant
 }) {
+  const navigate = useNavigate()
+  const columns = React.useMemo(
+    () => buildTournamentColumns(variant),
+    [variant],
+  )
+
   if (items === undefined) {
     const copy = loadingCopy[variant]
     return (
@@ -75,6 +80,7 @@ export function TournamentTable({
   }
 
   const copy = populatedCopy[variant]
+  const isManage = variant === 'manage'
   return (
     <Card>
       <CardHeader>
@@ -82,20 +88,36 @@ export function TournamentTable({
         <CardDescription>{copy.description}</CardDescription>
       </CardHeader>
       <CardContent>
-        <Table
-          className={variant === 'manage' ? 'min-w-[760px]' : 'min-w-[900px]'}
-        >
-          <TournamentTableHeader variant={variant} />
-          <TableBody>
-            {items.map((item) => (
-              <TournamentTableRow
-                key={item.key}
-                item={item}
-                variant={variant}
-              />
-            ))}
-          </TableBody>
-        </Table>
+        <DataTable
+          columns={columns}
+          data={items}
+          className={isManage ? 'min-w-[760px]' : 'min-w-[900px]'}
+          noResultsLabel="No tournaments match your search."
+          onRowClick={
+            isManage
+              ? (item) =>
+                  navigate({
+                    to: `/admin/tournaments/${String(
+                      item.tournament.publicCode,
+                    )}`,
+                  })
+              : undefined
+          }
+          toolbar={(table) => (
+            <Input
+              placeholder="Search tournaments..."
+              value={String(
+                table.getColumn('tournament')?.getFilterValue() ?? '',
+              )}
+              onChange={(event) =>
+                table
+                  .getColumn('tournament')
+                  ?.setFilterValue(event.target.value)
+              }
+              className="max-w-xs"
+            />
+          )}
+        />
       </CardContent>
     </Card>
   )
@@ -191,80 +213,111 @@ function TournamentTableEmpty({
   )
 }
 
-function TournamentTableHeader({
-  variant,
-}: {
-  variant: TournamentTableVariant
-}) {
+function buildTournamentColumns(
+  variant: TournamentTableVariant,
+): Array<ColumnDef<TournamentTableItem>> {
   const showOrganizer = variant !== 'manage'
 
-  return (
-    <TableHeader>
-      <TableRow>
-        <TableHead>Tournament</TableHead>
-        {showOrganizer ? <TableHead>Organizer</TableHead> : null}
-        <TableHead>Format</TableHead>
-        <TableHead>Start date</TableHead>
-        <TableHead>Players</TableHead>
-        <TableHead>Status</TableHead>
-        <TableHead className="text-right">Action</TableHead>
-      </TableRow>
-    </TableHeader>
-  )
-}
+  const columns: Array<ColumnDef<TournamentTableItem>> = [
+    {
+      id: 'tournament',
+      accessorFn: (item) => item.tournament.name,
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Tournament" />
+      ),
+      // Greedy column absorbs name-length variance so later columns stay put.
+      meta: { className: 'w-full' },
+      cell: ({ row }) => {
+        const { tournament } = row.original
+        return (
+          <div className="flex min-w-0 items-center gap-2">
+            <p className="font-medium text-foreground">{tournament.name}</p>
+            {tournament.isTestEvent ? (
+              <Badge variant="outline">Test</Badge>
+            ) : null}
+          </div>
+        )
+      },
+    },
+  ]
 
-function TournamentTableRow({
-  item,
-  variant,
-}: {
-  item: TournamentTableItem
-  variant: TournamentTableVariant
-}) {
-  const navigate = useNavigate()
-  const { tournament } = item
-  const publicCode = String(tournament.publicCode)
-  const manageHref = `/admin/tournaments/${publicCode}`
-  const isManage = variant === 'manage'
-  const showOrganizer = !isManage
+  if (showOrganizer) {
+    columns.push({
+      id: 'organizer',
+      accessorFn: (item) => item.organizationName ?? '',
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Organizer" />
+      ),
+      cell: ({ row }) => row.original.organizationName ?? '—',
+    })
+  }
 
-  return (
-    <TableRow
-      className={isManage ? 'cursor-pointer' : undefined}
-      onClick={isManage ? () => navigate({ to: manageHref }) : undefined}
-    >
-      <TableCell>
-        <div className="flex min-w-0 items-center gap-2">
-          <p className="font-medium text-foreground">{tournament.name}</p>
-          {tournament.isTestEvent ? (
-            <Badge variant="outline">Test</Badge>
-          ) : null}
-        </div>
-      </TableCell>
-      {showOrganizer ? (
-        <TableCell>{item.organizationName ?? '—'}</TableCell>
-      ) : null}
-      <TableCell className="capitalize">{tournament.format}</TableCell>
-      <TableCell>{formatTournamentDateShort(tournament.startDate)}</TableCell>
-      <TableCell className="tabular-nums">
-        {item.registeredCount ?? 0}
-        <span className="text-muted-foreground">
-          {' / '}
-          {tournament.playerCapacity}
+  columns.push(
+    {
+      id: 'format',
+      accessorFn: (item) => item.tournament.format,
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Format" />
+      ),
+      meta: { className: 'capitalize' },
+      cell: ({ row }) => row.original.tournament.format,
+    },
+    {
+      id: 'startDate',
+      accessorFn: (item) => item.tournament.startDate,
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Start date" />
+      ),
+      cell: ({ row }) =>
+        formatTournamentDateShort(row.original.tournament.startDate),
+    },
+    {
+      id: 'players',
+      accessorFn: (item) => item.registeredCount ?? 0,
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Players" />
+      ),
+      cell: ({ row }) => (
+        <span className="tabular-nums">
+          {row.original.registeredCount ?? 0}
+          <span className="text-muted-foreground">
+            {' / '}
+            {row.original.tournament.playerCapacity}
+          </span>
         </span>
-      </TableCell>
-      <TableCell>
-        <TournamentStatusBadge status={tournament.status} />
-      </TableCell>
-      <TableCell className="text-right">
-        <TournamentTableAction
-          manageHref={manageHref}
-          publicCode={publicCode}
-          tournament={tournament}
-          variant={variant}
-        />
-      </TableCell>
-    </TableRow>
+      ),
+    },
+    {
+      id: 'status',
+      accessorFn: (item) => item.tournament.status,
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Status" />
+      ),
+      cell: ({ row }) => (
+        <TournamentStatusBadge status={row.original.tournament.status} />
+      ),
+    },
+    {
+      id: 'actions',
+      header: 'Action',
+      enableSorting: false,
+      meta: { className: 'text-right' },
+      cell: ({ row }) => {
+        const { tournament } = row.original
+        const publicCode = String(tournament.publicCode)
+        return (
+          <TournamentTableAction
+            manageHref={`/admin/tournaments/${publicCode}`}
+            publicCode={publicCode}
+            tournament={tournament}
+            variant={variant}
+          />
+        )
+      },
+    },
   )
+
+  return columns
 }
 
 function TournamentTableAction({
