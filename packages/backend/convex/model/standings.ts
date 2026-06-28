@@ -1,6 +1,11 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
-import { allRegistrations, matchPlayers, roundMatches } from "./tournaments";
+import {
+  MAX_TOURNAMENT_PLAYERS,
+  allRegistrations,
+  matchPlayers,
+  roundMatches,
+} from "./tournaments";
 
 export const MATCH_WIN_POINTS = 3;
 export const MATCH_DRAW_POINTS = 1;
@@ -78,7 +83,7 @@ export async function replaceStandingsForRound(
     .withIndex("by_tournamentRoundId_and_rank", (q) =>
       q.eq("tournamentRoundId", round._id),
     )
-    .take(512);
+    .take(MAX_TOURNAMENT_PLAYERS);
   for (const standing of existing) {
     await ctx.db.delete(standing._id);
   }
@@ -102,6 +107,7 @@ export async function replaceStandingsForRound(
       tournamentPhaseId: phase._id,
       tournamentRoundId: round._id,
       playerId: playerStats.registration._id,
+      playerName: playerStats.registration.playerName,
       rank: index + 1,
       matchPoints: playerStats.matchPoints,
       matchWins: playerStats.matchWins,
@@ -155,7 +161,7 @@ async function cumulativeStatsThroughRound(
           .withIndex("by_tournamentRoundId_and_rank", (q) =>
             q.eq("tournamentRoundId", previousRound._id),
           )
-          .take(512)
+          .take(MAX_TOURNAMENT_PLAYERS)
       : [];
     const standingByPlayer = new Map(
       previousStandings.map((standing) => [standing.playerId, standing]),

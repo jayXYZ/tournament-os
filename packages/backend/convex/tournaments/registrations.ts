@@ -5,7 +5,9 @@ import { mutation, query } from "../_generated/server";
 import { currentUserOrNull } from "../model/access";
 import { ensureCurrentUser } from "../model/users";
 import {
+  MAX_TOURNAMENT_PLAYERS,
   adjustActiveRegistrationCount,
+  playerDisplayName,
   registrationForUser,
   requireCapacityAvailable,
   requireOrganizerAccess,
@@ -34,8 +36,13 @@ export const registerSelf = mutation({
 
     requireCapacityAvailable(tournament);
     const now = Date.now();
+    const playerName = playerDisplayName(user);
     if (existing) {
-      await ctx.db.patch(existing._id, { status: "active", updatedAt: now });
+      await ctx.db.patch(existing._id, {
+        status: "active",
+        playerName,
+        updatedAt: now,
+      });
       await adjustActiveRegistrationCount(ctx, tournament, 1, now);
       return existing._id;
     }
@@ -44,6 +51,7 @@ export const registerSelf = mutation({
       tournamentId: args.tournamentId,
       userId: user._id,
       status: "active",
+      playerName,
       createdAt: now,
       updatedAt: now,
     });
@@ -136,12 +144,17 @@ export const listRegistrations = query({
       .withIndex("by_tournamentId", (q) =>
         q.eq("tournamentId", args.tournamentId),
       )
-      .take(512);
+      .take(MAX_TOURNAMENT_PLAYERS);
 
+    // Names come from the denormalized copy on the registration; only rows
+    // missing it (legacy data) fall back to a live user lookup, so the common
+    // path does zero per-row joins.
     return await Promise.all(
       registrations.map(async (registration) => ({
         registration,
-        user: await ctx.db.get(registration.userId),
+        playerName:
+          registration.playerName ??
+          playerDisplayName(await ctx.db.get(registration.userId)),
       })),
     );
   },

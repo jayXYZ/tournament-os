@@ -61,7 +61,7 @@ import { Spinner } from '@/components/ui/spinner'
 
 type RegistrationRow = {
   registration: Doc<'tournamentRegistrations'>
-  user: Doc<'users'> | null
+  playerName: string | undefined
 }
 
 type RegistrationStatus = Doc<'tournamentRegistrations'>['status']
@@ -78,7 +78,7 @@ const statusBadgeVariant: Record<
 }
 
 function playerName(row: RegistrationRow) {
-  return row.user?.name ?? row.user?.email ?? 'Unknown player'
+  return row.playerName ?? 'Unknown player'
 }
 
 export function RegistrationsView({ tournamentId }: { tournamentId: string }) {
@@ -199,6 +199,9 @@ const registrationColumns: Array<ColumnDef<RegistrationRow>> = [
     header: ({ column }) => (
       <DataTableColumnHeader column={column} title="Player" />
     ),
+    // Greedy column absorbs width variance so the columns after it stay put as
+    // names change length across pages.
+    meta: { className: 'w-full' },
     cell: ({ row }) => (
       <p className="font-medium text-foreground">{playerName(row.original)}</p>
     ),
@@ -209,6 +212,9 @@ const registrationColumns: Array<ColumnDef<RegistrationRow>> = [
     header: ({ column }) => (
       <DataTableColumnHeader column={column} title="Status" />
     ),
+    // Fixed width keeps the badge from shifting as the longest visible status
+    // label (e.g. "disqualified" vs "active") changes between pages.
+    meta: { className: 'w-32' },
     cell: ({ row }) => {
       const { status } = row.original.registration
       return (

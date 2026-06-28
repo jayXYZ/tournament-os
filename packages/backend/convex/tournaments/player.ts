@@ -5,8 +5,10 @@ import { mutation, query } from "../_generated/server";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { matchPointsForResult } from "../model/standings";
 import {
+  MAX_TOURNAMENT_PLAYERS,
   adjustActiveRegistrationCount,
   matchPlayers,
+  registrationDisplayName,
   registrationForUser,
   requireMatch,
   requireRegisteredPlayer,
@@ -184,16 +186,15 @@ export const getLatestStandings = query({
       .withIndex("by_tournamentRoundId_and_rank", (q) =>
         q.eq("tournamentRoundId", latestCompleted._id),
       )
-      .take(512);
+      .take(MAX_TOURNAMENT_PLAYERS);
     const rows = await Promise.all(
       standings.map(async (standing) => {
-        const standingRegistration = await ctx.db.get(standing.playerId);
-        const user = standingRegistration
-          ? await ctx.db.get(standingRegistration.userId)
-          : null;
+        const name =
+          standing.playerName ??
+          (await registrationDisplayName(ctx, standing.playerId));
         return {
           rank: standing.rank,
-          name: user?.name ?? null,
+          name: name ?? null,
           matchPoints: standing.matchPoints,
           matchWins: standing.matchWins,
           matchLosses: standing.matchLosses,

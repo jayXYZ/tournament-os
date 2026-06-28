@@ -125,6 +125,7 @@ export async function seedTestPlayers(
         tournamentId,
         userId,
         status: "active",
+        playerName: existingUser?.name ?? `Test Player ${playerNumber}`,
         createdAt: now + playerNumber,
         updatedAt: now,
       });

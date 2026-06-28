@@ -6,6 +6,7 @@ import {
   compareStandingRows,
   hasCumulativeTotals,
 } from "./standings";
+import { MAX_TOURNAMENT_PLAYERS } from "./tournaments";
 
 export type PairingOptions = {
   // Stored tournament seed driving the within-bracket shuffle.
@@ -82,6 +83,7 @@ export async function createRoundWithPairings(
       await ctx.db.insert("tournamentMatchPlayers", {
         tournamentMatchId: matchId,
         playerId: pairing.playerOne._id,
+        playerName: pairing.playerOne.playerName,
         matchPointsEarned: BYE_MATCH_POINTS,
         gameWins: 2,
         gameLosses: 0,
@@ -92,6 +94,7 @@ export async function createRoundWithPairings(
       await ctx.db.insert("tournamentMatchPlayers", {
         tournamentMatchId: matchId,
         playerId: pairing.playerOne._id,
+        playerName: pairing.playerOne.playerName,
         opponentPlayerId: pairing.playerTwo._id,
         isBye: false,
         updatedAt: now,
@@ -99,6 +102,7 @@ export async function createRoundWithPairings(
       await ctx.db.insert("tournamentMatchPlayers", {
         tournamentMatchId: matchId,
         playerId: pairing.playerTwo._id,
+        playerName: pairing.playerTwo.playerName,
         opponentPlayerId: pairing.playerOne._id,
         isBye: false,
         updatedAt: now,
@@ -141,7 +145,7 @@ export async function rankedRegistrationsForPairing(
     .withIndex("by_tournamentRoundId_and_rank", (q) =>
       q.eq("tournamentRoundId", previousRoundId),
     )
-    .take(512);
+    .take(MAX_TOURNAMENT_PLAYERS);
   const standingByPlayer = new Map(
     standings.map((standing) => [standing.playerId, standing]),
   );

@@ -8,9 +8,11 @@ import {
   replaceStandingsForRound,
 } from "../model/standings";
 import {
+  MAX_TOURNAMENT_PLAYERS,
   activeRegistrations,
   matchPlayers,
   pairingsNextStep,
+  registrationDisplayName,
   requireMatch,
   requireOrganizerAccess,
   requireResolvedPhaseTotalRounds,
@@ -205,16 +207,18 @@ export const listRoundPairings = query({
     await requireOrganizerAccess(ctx, round.tournamentId);
     const matches = await roundMatches(ctx, args.roundId);
 
+    // Names come from the denormalized copy on each match-player row; only rows
+    // missing it (legacy data) fall back to a live lookup, keeping this query
+    // off the per-row user join that would otherwise blow the read budget.
     return await Promise.all(
       matches.map(async (match) => {
         const players = await Promise.all(
-          (await matchPlayers(ctx, match._id)).map(async (player) => {
-            const registration = await ctx.db.get(player.playerId);
-            const user = registration
-              ? await ctx.db.get(registration.userId)
-              : null;
-            return { ...player, user };
-          }),
+          (await matchPlayers(ctx, match._id)).map(async (player) => ({
+            ...player,
+            playerName:
+              player.playerName ??
+              (await registrationDisplayName(ctx, player.playerId)),
+          })),
         );
         return { match, players };
       }),
@@ -263,7 +267,7 @@ export const getStandings = query({
       .withIndex("by_tournamentRoundId_and_rank", (q) =>
         q.eq("tournamentRoundId", args.roundId),
       )
-      .take(512);
+      .take(MAX_TOURNAMENT_PLAYERS);
   },
 });
 
@@ -277,16 +281,17 @@ export const listRoundStandings = query({
       .withIndex("by_tournamentRoundId_and_rank", (q) =>
         q.eq("tournamentRoundId", args.roundId),
       )
-      .take(512);
+      .take(MAX_TOURNAMENT_PLAYERS);
 
+    // Denormalized name on the standings row avoids the per-row user join;
+    // legacy rows without one fall back to a live lookup.
     return await Promise.all(
-      standings.map(async (standing) => {
-        const registration = await ctx.db.get(standing.playerId);
-        const user = registration
-          ? await ctx.db.get(registration.userId)
-          : null;
-        return { standing, user };
-      }),
+      standings.map(async (standing) => ({
+        standing,
+        playerName:
+          standing.playerName ??
+          (await registrationDisplayName(ctx, standing.playerId)),
+      })),
     );
   },
 });

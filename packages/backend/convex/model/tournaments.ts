@@ -7,6 +7,37 @@ export const SWISS_FORMAT = "swiss";
 export const TOURNAMENT_PUBLIC_CODE_COUNTER_KEY = "tournamentPublicCode";
 export const FIRST_TOURNAMENT_PUBLIC_CODE = 100_001;
 
+// Hard ceiling on players (and therefore matches) per tournament. Bounds every
+// per-tournament `.take(...)` so list and standings queries stay well under
+// Convex's 4,096 index-ranges-read-per-transaction limit. Raising this requires
+// re-checking that the read queries denormalize joins (see playerName fields).
+export const MAX_TOURNAMENT_PLAYERS = 2048;
+
+// Resolved display name for a user, mirroring the client's name fallback. Stored
+// on registrations/standings/match players so list queries skip the user join.
+export function playerDisplayName(
+  user: Doc<"users"> | null | undefined,
+): string | undefined {
+  return user?.name ?? user?.email ?? undefined;
+}
+
+// Name for a player, preferring the denormalized copy and only reading through
+// to the user document when a (legacy) registration lacks one. Used by readers
+// as the fallback path so a missing denormalized name never blocks correctness.
+export async function registrationDisplayName(
+  ctx: QueryCtx,
+  registrationId: Id<"tournamentRegistrations">,
+): Promise<string | undefined> {
+  const registration = await ctx.db.get(registrationId);
+  if (!registration) {
+    return undefined;
+  }
+  if (registration.playerName !== undefined) {
+    return registration.playerName;
+  }
+  return playerDisplayName(await ctx.db.get(registration.userId));
+}
+
 export type TournamentAccess = {
   tournament: Doc<"tournaments">;
   user: Doc<"users">;
@@ -158,7 +189,7 @@ export async function allRegistrations(
   return await ctx.db
     .query("tournamentRegistrations")
     .withIndex("by_tournamentId", (q) => q.eq("tournamentId", tournamentId))
-    .take(512);
+    .take(MAX_TOURNAMENT_PLAYERS);
 }
 
 export async function activeRegistrations(
@@ -170,7 +201,7 @@ export async function activeRegistrations(
     .withIndex("by_tournamentId_and_status", (q) =>
       q.eq("tournamentId", tournamentId).eq("status", "active"),
     )
-    .take(512);
+    .take(MAX_TOURNAMENT_PLAYERS);
 }
 
 export function requireCapacityAvailable(tournament: Doc<"tournaments">) {
@@ -209,7 +240,7 @@ export async function roundMatches(
     .withIndex("by_tournamentRoundId_and_tableNumber", (q) =>
       q.eq("tournamentRoundId", roundId),
     )
-    .take(512);
+    .take(MAX_TOURNAMENT_PLAYERS);
 }
 
 export async function matchPlayers(
@@ -462,8 +493,10 @@ export function cleanName(value: string, label: string) {
 
 export function validCapacity(value: number) {
   const capacity = Math.trunc(value);
-  if (capacity < 2 || capacity > 512) {
-    throw new Error("Player capacity must be between 2 and 512");
+  if (capacity < 2 || capacity > MAX_TOURNAMENT_PLAYERS) {
+    throw new Error(
+      `Player capacity must be between 2 and ${MAX_TOURNAMENT_PLAYERS}`,
+    );
   }
   return capacity;
 }

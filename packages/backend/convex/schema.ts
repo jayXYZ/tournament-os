@@ -103,6 +103,11 @@ export default defineSchema({
     tournamentId: v.id("tournaments"),
     userId: v.id("users"),
     status: tournamentRegistrationStatusValidator,
+    // Display name (user.name ?? user.email) denormalized at registration time
+    // so roster, standings, and pairings list queries never join through to the
+    // user document per row. Optional only for rows written before this field
+    // existed; readers fall back to a live user lookup when it is missing.
+    playerName: v.optional(v.string()),
     // Kept alongside _creationTime: pairing and standings tie-break on this,
     // and test seeding deliberately offsets it per player for determinism.
     createdAt: v.number(),
@@ -167,6 +172,9 @@ export default defineSchema({
   tournamentMatchPlayers: defineTable({
     tournamentMatchId: v.id("tournamentMatches"),
     playerId: v.id("tournamentRegistrations"),
+    // Denormalized from the registration at pairing time so the pairings list
+    // query renders names without a per-row user join. Optional for legacy rows.
+    playerName: v.optional(v.string()),
     opponentPlayerId: v.optional(v.id("tournamentRegistrations")),
     matchPointsEarned: v.optional(v.number()),
     gameWins: v.optional(v.number()),
@@ -185,6 +193,10 @@ export default defineSchema({
     tournamentPhaseId: v.id("tournamentPhases"),
     tournamentRoundId: v.id("tournamentRounds"),
     playerId: v.id("tournamentRegistrations"),
+    // Denormalized from the registration when the standings row is written, so
+    // the standings list query renders names without a per-row user join.
+    // Optional for legacy rows; readers fall back to a live user lookup.
+    playerName: v.optional(v.string()),
     rank: v.number(),
     matchPoints: v.number(),
     matchWins: v.number(),

@@ -3,6 +3,7 @@ import { Trophy } from 'lucide-react'
 
 import { api } from '@tournament-os/backend/convex/_generated/api'
 import { formatPercent, formatRecord } from '@tournament-os/core'
+import type { ColumnDef } from '@tanstack/react-table'
 import type { FunctionReturnType } from 'convex/server'
 import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
 import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'
@@ -20,20 +21,17 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import {
+  DataTable,
+  DataTableColumnHeader,
+} from '@/components/ui/data-table'
+import {
   Empty,
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
 } from '@/components/ui/empty'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
+import { Input } from '@/components/ui/input'
 
 type StandingRow = FunctionReturnType<
   typeof api.tournaments.rounds.listRoundStandings
@@ -106,8 +104,108 @@ export function StandingsView({ tournamentId }: { tournamentId: string }) {
 }
 
 function standingPlayerName(row: StandingRow) {
-  return row.user?.name ?? row.user?.email ?? 'Unknown player'
+  return row.playerName ?? 'Unknown player'
 }
+
+const standingColumns: Array<ColumnDef<StandingRow>> = [
+  {
+    id: 'rank',
+    accessorFn: (row) => row.standing.rank,
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Rank" />
+    ),
+    meta: { className: 'w-16' },
+    cell: ({ row }) => (
+      <span className="font-medium tabular-nums">
+        {row.original.standing.rank}
+      </span>
+    ),
+  },
+  {
+    id: 'player',
+    accessorFn: (row) => standingPlayerName(row),
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Player" />
+    ),
+    // Greedy column absorbs name-length variance so the stat columns stay put.
+    meta: { className: 'w-full' },
+    cell: ({ row }) => (
+      <p className="font-medium text-foreground">
+        {standingPlayerName(row.original)}
+      </p>
+    ),
+  },
+  {
+    id: 'points',
+    accessorFn: (row) => row.standing.matchPoints,
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Points" className="ml-auto" />
+    ),
+    meta: { className: 'text-right' },
+    cell: ({ row }) => (
+      <span className="font-medium tabular-nums">
+        {row.original.standing.matchPoints}
+      </span>
+    ),
+  },
+  {
+    id: 'record',
+    enableSorting: false,
+    header: 'Record',
+    meta: { className: 'text-right' },
+    cell: ({ row }) => {
+      const { standing } = row.original
+      return (
+        <span className="tabular-nums">
+          {formatRecord(
+            standing.matchWins,
+            standing.matchLosses,
+            standing.matchDraws,
+          )}
+        </span>
+      )
+    },
+  },
+  {
+    id: 'omw',
+    accessorFn: (row) => row.standing.opponentMatchWinPct,
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="OMW%" className="ml-auto" />
+    ),
+    meta: { className: 'text-right' },
+    cell: ({ row }) => (
+      <span className="tabular-nums text-muted-foreground">
+        {formatPercent(row.original.standing.opponentMatchWinPct)}
+      </span>
+    ),
+  },
+  {
+    id: 'gw',
+    accessorFn: (row) => row.standing.gameWinPct,
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="GW%" className="ml-auto" />
+    ),
+    meta: { className: 'text-right' },
+    cell: ({ row }) => (
+      <span className="tabular-nums text-muted-foreground">
+        {formatPercent(row.original.standing.gameWinPct)}
+      </span>
+    ),
+  },
+  {
+    id: 'ogw',
+    accessorFn: (row) => row.standing.opponentGameWinPct,
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="OGW%" className="ml-auto" />
+    ),
+    meta: { className: 'text-right' },
+    cell: ({ row }) => (
+      <span className="tabular-nums text-muted-foreground">
+        {formatPercent(row.original.standing.opponentGameWinPct)}
+      </span>
+    ),
+  },
+]
 
 function StandingsTable({ roundId }: { roundId: Id<'tournamentRounds'> }) {
   const standings = useQuery(api.tournaments.rounds.listRoundStandings, {
@@ -135,57 +233,21 @@ function StandingsTable({ roundId }: { roundId: Id<'tournamentRounds'> }) {
   }
 
   return (
-    <Table className="min-w-[640px]">
-      <TableHeader>
-        <TableRow>
-          <TableHead className="w-16">Rank</TableHead>
-          <TableHead>Player</TableHead>
-          <TableHead className="text-right">Points</TableHead>
-          <TableHead className="text-right">Record</TableHead>
-          <TableHead className="text-right">OMW%</TableHead>
-          <TableHead className="text-right">GW%</TableHead>
-          <TableHead className="text-right">OGW%</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {standings.map((row) => (
-          <StandingTableRow key={row.standing._id} row={row} />
-        ))}
-      </TableBody>
-    </Table>
-  )
-}
-
-function StandingTableRow({ row }: { row: StandingRow }) {
-  const { standing } = row
-
-  return (
-    <TableRow>
-      <TableCell className="font-medium tabular-nums">
-        {standing.rank}
-      </TableCell>
-      <TableCell>
-        <p className="font-medium text-foreground">{standingPlayerName(row)}</p>
-      </TableCell>
-      <TableCell className="text-right font-medium tabular-nums">
-        {standing.matchPoints}
-      </TableCell>
-      <TableCell className="text-right tabular-nums">
-        {formatRecord(
-          standing.matchWins,
-          standing.matchLosses,
-          standing.matchDraws,
-        )}
-      </TableCell>
-      <TableCell className="text-right tabular-nums text-muted-foreground">
-        {formatPercent(standing.opponentMatchWinPct)}
-      </TableCell>
-      <TableCell className="text-right tabular-nums text-muted-foreground">
-        {formatPercent(standing.gameWinPct)}
-      </TableCell>
-      <TableCell className="text-right tabular-nums text-muted-foreground">
-        {formatPercent(standing.opponentGameWinPct)}
-      </TableCell>
-    </TableRow>
+    <DataTable
+      columns={standingColumns}
+      data={standings}
+      className="min-w-[640px]"
+      noResultsLabel="No players match your search."
+      toolbar={(table) => (
+        <Input
+          placeholder="Search players..."
+          value={String(table.getColumn('player')?.getFilterValue() ?? '')}
+          onChange={(event) =>
+            table.getColumn('player')?.setFilterValue(event.target.value)
+          }
+          className="max-w-xs"
+        />
+      )}
+    />
   )
 }
