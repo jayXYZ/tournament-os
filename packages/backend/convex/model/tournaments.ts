@@ -2,6 +2,7 @@ import type { TournamentFormat } from "@tournament-os/shared/tournament-creation
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { requireActiveMembership, requireCurrentUser } from "./access";
+import { nextPublicCode } from "./publicCodes";
 
 export const SWISS_FORMAT = "swiss";
 export const TOURNAMENT_PUBLIC_CODE_COUNTER_KEY = "tournamentPublicCode";
@@ -295,26 +296,16 @@ export async function createTournament(
   return tournamentId;
 }
 
-export async function nextTournamentPublicCode(ctx: MutationCtx, now = Date.now()) {
-  const counter = await ctx.db
-    .query("appCounters")
-    .withIndex("by_key", (q) => q.eq("key", TOURNAMENT_PUBLIC_CODE_COUNTER_KEY))
-    .unique();
-
-  if (!counter) {
-    await ctx.db.insert("appCounters", {
-      key: TOURNAMENT_PUBLIC_CODE_COUNTER_KEY,
-      nextValue: FIRST_TOURNAMENT_PUBLIC_CODE + 1,
-      updatedAt: now,
-    });
-    return FIRST_TOURNAMENT_PUBLIC_CODE;
-  }
-
-  await ctx.db.patch(counter._id, {
-    nextValue: counter.nextValue + 1,
-    updatedAt: now,
-  });
-  return counter.nextValue;
+export async function nextTournamentPublicCode(
+  ctx: MutationCtx,
+  now = Date.now(),
+) {
+  return await nextPublicCode(
+    ctx,
+    TOURNAMENT_PUBLIC_CODE_COUNTER_KEY,
+    FIRST_TOURNAMENT_PUBLIC_CODE,
+    now,
+  );
 }
 
 export async function createSwissPhases(

@@ -509,6 +509,7 @@ async function seedOrganizer(t: Test) {
     const now = Date.now();
     const userId = await ctx.db.insert("users", {
       tokenIdentifier: organizerIdentity.tokenIdentifier,
+      publicCode: 1,
       email: organizerIdentity.email,
       name: organizerIdentity.name,
       updatedAt: now,

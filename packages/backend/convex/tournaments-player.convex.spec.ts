@@ -470,6 +470,7 @@ test("player queries reject users who never registered", async () => {
   await t.run(async (ctx) => {
     await ctx.db.insert("users", {
       tokenIdentifier: playerIdentity(99).tokenIdentifier,
+      publicCode: 99,
       email: playerIdentity(99).email,
       name: playerIdentity(99).name,
       updatedAt: Date.now(),
@@ -504,6 +505,7 @@ async function seedTournament(t: TestConvex<typeof schema>, playerCount: number)
       const identity = playerIdentity(playerNumber);
       const userId = await ctx.db.insert("users", {
         tokenIdentifier: identity.tokenIdentifier,
+        publicCode: playerNumber,
         email: identity.email,
         name: identity.name,
         updatedAt: now,
@@ -636,6 +638,7 @@ async function seedOrganizer(t: TestConvex<typeof schema>) {
     const now = Date.now();
     const userId = await ctx.db.insert("users", {
       tokenIdentifier: organizerIdentity.tokenIdentifier,
+      publicCode: 1,
       email: organizerIdentity.email,
       name: organizerIdentity.name,
       updatedAt: now,

@@ -164,6 +164,7 @@ test("listMyTournaments returns the player's active registrations for visible ev
   await t.run(async (ctx) => {
     const playerUserId = await ctx.db.insert("users", {
       tokenIdentifier: playerIdentity.tokenIdentifier,
+      publicCode: 1,
       email: playerIdentity.email,
       name: playerIdentity.name,
       updatedAt: now,
@@ -470,6 +471,7 @@ test("seedTestPlayers fills only remaining active registration seats", async () 
   await t.run(async (ctx) => {
     const userId = await ctx.db.insert("users", {
       tokenIdentifier: "player:real",
+      publicCode: 1,
       email: "player@example.test",
       name: "Real Player",
       updatedAt: now,
@@ -540,6 +542,7 @@ test("seedTestPlayers count is seats to add, not a target total", async () => {
   await t.run(async (ctx) => {
     const userId = await ctx.db.insert("users", {
       tokenIdentifier: "player:real",
+      publicCode: 1,
       email: "player@example.test",
       name: "Real Player",
       updatedAt: now,
@@ -674,6 +677,7 @@ test("test tournaments seed players, generate Swiss rounds, and complete", async
     const now = Date.now();
     const userId = await ctx.db.insert("users", {
       tokenIdentifier: organizerIdentity.tokenIdentifier,
+      publicCode: 1,
       email: organizerIdentity.email,
       name: organizerIdentity.name,
       updatedAt: now,
@@ -863,6 +867,7 @@ async function seedOrganizer(t: ReturnType<typeof convexTest>) {
     const now = Date.now();
     const userId = await ctx.db.insert("users", {
       tokenIdentifier: organizerIdentity.tokenIdentifier,
+      publicCode: 1,
       email: organizerIdentity.email,
       name: organizerIdentity.name,
       updatedAt: now,
@@ -897,6 +902,7 @@ async function seedActiveRegistrations(
     for (let playerNumber = 1; playerNumber <= count; playerNumber += 1) {
       const userId = await ctx.db.insert("users", {
         tokenIdentifier: `player:${playerNumber}`,
+        publicCode: playerNumber,
         email: `player${playerNumber}@example.test`,
         name: `Player ${playerNumber}`,
         updatedAt: now,

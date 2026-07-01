@@ -16,6 +16,11 @@ export {
   slugifyOrganizationName,
 } from "@tournament-os/shared/organizer-utils";
 
+export const userProfileVisibilityValidator = v.union(
+  v.literal("public"),
+  v.literal("private"),
+);
+
 export const organizerRoleValidator = v.union(
   v.literal(organizerRoles[0]),
   v.literal(organizerRoles[1]),

@@ -14,16 +14,27 @@ import {
   tournamentPhaseCutoffValidator,
   tournamentRoundStatusValidator,
   tournamentMatchStatusValidator,
+  userProfileVisibilityValidator,
 } from "./validators";
 
 export default defineSchema({
   users: defineTable({
     tokenIdentifier: v.string(),
+    // Human-facing, URL-safe player identifier so profile URLs never expose the
+    // Convex document id. Allocated from a counter at creation (see
+    // model/users.ts); mirrors the tournament publicCode pattern.
+    publicCode: v.number(),
+    // Whether the public profile page (users/$publicCode) is visible to anyone.
+    // Optional: readers treat a missing value as "public" (see getPublicPlayer),
+    // and upsertUser sets it explicitly for new users.
+    profileVisibility: v.optional(userProfileVisibilityValidator),
     email: v.optional(v.string()),
     name: v.optional(v.string()),
     avatarUrl: v.optional(v.string()),
     updatedAt: v.number(),
-  }).index("by_tokenIdentifier", ["tokenIdentifier"]),
+  })
+    .index("by_tokenIdentifier", ["tokenIdentifier"])
+    .index("by_publicCode", ["publicCode"]),
 
   organizations: defineTable({
     name: v.string(),

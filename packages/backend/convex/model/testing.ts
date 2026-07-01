@@ -2,6 +2,7 @@ import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { createSeededRandom } from "./random";
 import { matchPointsForResult } from "./standings";
+import { nextUserPublicCode } from "./users";
 import {
   activeRegistrations,
   adjustActiveRegistrationCount,
@@ -103,6 +104,7 @@ export async function seedTestPlayers(
       existingUser?._id ??
       (await ctx.db.insert("users", {
         tokenIdentifier,
+        publicCode: await nextUserPublicCode(ctx, now),
         email: `player${playerNumber}@test.tournament.local`,
         name: `Test Player ${playerNumber}`,
         updatedAt: now,

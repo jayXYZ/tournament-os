@@ -1,7 +1,22 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { requireIdentity } from "../auth";
+import { nextPublicCode } from "./publicCodes";
 import { normalizeEmail } from "../validators";
+
+export const USER_PUBLIC_CODE_COUNTER_KEY = "userPublicCode";
+// Player codes are purely cosmetic and namespaced by their own route/table, so
+// they start at 1 (no offset to hide the user count).
+export const FIRST_USER_PUBLIC_CODE = 1;
+
+export async function nextUserPublicCode(ctx: MutationCtx, now = Date.now()) {
+  return await nextPublicCode(
+    ctx,
+    USER_PUBLIC_CODE_COUNTER_KEY,
+    FIRST_USER_PUBLIC_CODE,
+    now,
+  );
+}
 
 export type UserIdentityFields = {
   tokenIdentifier: string;
@@ -39,6 +54,8 @@ export async function upsertUser(
     ? (await ctx.db.patch(existing._id, patch), existing._id)
     : await ctx.db.insert("users", {
         tokenIdentifier: fields.tokenIdentifier,
+        publicCode: await nextUserPublicCode(ctx, now),
+        profileVisibility: "public",
         ...patch,
       });
 

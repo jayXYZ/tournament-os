@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import { mutation, query } from "../_generated/server";
 import { requireActiveMembership } from "../model/access";
+import { parsePublicCode } from "../model/publicCodes";
 import {
   SWISS_FORMAT,
   cleanName,
@@ -118,17 +119,6 @@ export const getPublicTournament = query({
     };
   },
 });
-
-function parsePublicCode(value: string) {
-  if (!/^[1-9]\d*$/.test(value)) {
-    return null;
-  }
-  const publicCode = Number(value);
-  if (!Number.isSafeInteger(publicCode)) {
-    return null;
-  }
-  return publicCode;
-}
 
 // Resolves a public code to the tournament an organizer manages. The admin URLs
 // carry the public code (not the Convex id) so organizers and players see the
