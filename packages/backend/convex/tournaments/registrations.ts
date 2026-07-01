@@ -5,7 +5,6 @@ import { mutation, query } from "../_generated/server";
 import { currentUserOrNull } from "../model/access";
 import { ensureCurrentUser } from "../model/users";
 import {
-  MAX_TOURNAMENT_PLAYERS,
   adjustActiveRegistrationCount,
   playerDisplayName,
   registrationForUser,
@@ -139,12 +138,15 @@ export const listRegistrations = query({
   args: { tournamentId: v.id("tournaments") },
   handler: async (ctx, args) => {
     await requireOrganizerAccess(ctx, args.tournamentId);
+    // Collects all statuses: dropped rows persist and can push the total past
+    // capacity, so a MAX_TOURNAMENT_PLAYERS cap would hide the newest entrants
+    // from the organizer list. Scoped to one tournament via an equality index.
     const registrations = await ctx.db
       .query("tournamentRegistrations")
       .withIndex("by_tournamentId", (q) =>
         q.eq("tournamentId", args.tournamentId),
       )
-      .take(MAX_TOURNAMENT_PLAYERS);
+      .collect();
 
     // Names come from the denormalized copy on the registration; only rows
     // missing it (legacy data) fall back to a live user lookup, so the common

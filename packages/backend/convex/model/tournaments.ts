@@ -182,6 +182,12 @@ export async function requireRegisteredPlayer(
 
 // Includes dropped/eliminated/disqualified players: their match history must
 // still feed opponents' tiebreakers even though they are no longer ranked.
+// Collects every row rather than capping at MAX_TOURNAMENT_PLAYERS: capacity
+// only bounds *active* registrations, but dropped rows persist (one row per
+// user, reused on re-register), so churn can push the total past capacity. A
+// cap here would silently drop the newest rows — potentially active entrants —
+// from standings. The query is scoped to a single tournament via an equality
+// index, and Convex's read limit is the backstop against pathological churn.
 export async function allRegistrations(
   ctx: QueryCtx,
   tournamentId: Id<"tournaments">,
@@ -189,7 +195,7 @@ export async function allRegistrations(
   return await ctx.db
     .query("tournamentRegistrations")
     .withIndex("by_tournamentId", (q) => q.eq("tournamentId", tournamentId))
-    .take(MAX_TOURNAMENT_PLAYERS);
+    .collect();
 }
 
 export async function activeRegistrations(

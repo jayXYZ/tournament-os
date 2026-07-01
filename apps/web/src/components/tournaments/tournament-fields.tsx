@@ -67,7 +67,7 @@ export function TournamentBasicsFields({
           }
           type="number"
           min={2}
-          max={512}
+          max={2048}
           disabled={disabled}
           required
         />
