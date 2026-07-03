@@ -110,7 +110,6 @@ export function RegistrationsView({ tournamentId }: { tournamentId: string }) {
           <RegistrationsTable registrations={registrations} />
         </CardContent>
       </Card>
-      <SignupsCard />
     </section>
   )
 }
@@ -364,50 +363,5 @@ function ManagePlayerMenu({ row }: { row: RegistrationRow }) {
         </AlertDialogContent>
       </AlertDialog>
     </>
-  )
-}
-
-function SignupsCard() {
-  return (
-    <div className="rounded-2xl bg-black/15 py-2 px-1">
-      {/* Header lives on the frame */}
-      <div className="grid grid-cols-[1fr_120px_140px_140px_120px] px-6 py-4 text-sm text-muted-foreground">
-        <span className="text-foreground font-medium">Sign ups</span>
-        <span>Username</span>
-        <span>Phone number</span>
-        <span>Last signed in</span>
-        <span>Joined</span>
-      </div>
-
-      {/* Inset "plate" for data rows */}
-      <div className="rounded-xl bg-secondary ring-1 ring-white/5">
-        <div className="grid grid-cols-[1fr_120px_140px_140px_120px] items-center px-6 py-4 transition-colors hover:bg-white/[0.03] first:rounded-t-xl last:rounded-b-xl">
-          <div className="flex items-center gap-3">
-            <img
-              src="https://github.com/shadcn.png"
-              className="size-9 rounded-full"
-            />
-            <div>
-              <p className="font-medium">John Doe</p>
-              <p className="text-sm text-muted-foreground">
-                john.doe@example.com
-              </p>
-            </div>
-          </div>
-          <span className="text-muted-foreground">–</span>
-          <span className="text-muted-foreground">–</span>
-          <span className="tabular-nums">2026-01-01</span>
-          <span className="tabular-nums">2026-01-01</span>
-        </div>
-      </div>
-
-      {/* Footer on the frame */}
-      <div className="flex items-center justify-between px-6 py-4 text-sm text-muted-foreground">
-        <span>Updated just now</span>
-        <button className="hover:text-foreground transition-colors">
-          View all users →
-        </button>
-      </div>
-    </div>
   )
 }
