@@ -246,10 +246,24 @@ test("getPublicTournament keeps private events resolvable for registered players
       publicCode: "100001",
     }),
   ).toBeNull();
-  // Signed in without a registration is still not enough.
+  // Organizing-team members resolve private events too: the admin Overview
+  // previews the public page even before publish.
+  const asOrganizer = await t
+    .withIdentity(organizerIdentity)
+    .query(api.tournaments.lifecycle.getPublicTournament, {
+      publicCode: "100001",
+    });
+  expect(asOrganizer?.tournament.name).toBe("Private Live Event");
+  // Signed in without a registration or membership is still not enough.
   expect(
     await t
-      .withIdentity(organizerIdentity)
+      .withIdentity({
+        issuer: "https://convex.test",
+        subject: "stranger",
+        tokenIdentifier: "https://convex.test|stranger",
+        email: "stranger@example.test",
+        name: "Stranger",
+      })
       .query(api.tournaments.lifecycle.getPublicTournament, {
         publicCode: "100001",
       }),

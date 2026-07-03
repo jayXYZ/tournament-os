@@ -45,9 +45,10 @@ run end-to-end; 3–4 make the platform public-facing; 5–7 grow it into a prod
 The organizer needs everything for event day in one place: configuration,
 content, and live round operations.
 
-- [ ] Full tournament settings page in the event admin controller
-  - [ ] Surface existing setup mutations (name, date, capacity, format, rounds) in a proper settings view, with clear rules for what stays editable after the event starts
-  - [ ] Danger zone: cancel event (exists in backend) and hard-delete event + all child rows (new mutation)
+- [x] Full tournament settings page in the event admin controller
+  - [x] Surface existing setup mutations (name, date, capacity, format, rounds) in a proper settings view, with clear rules for what stays editable after the event starts
+  - [x] Danger zone: cancel event (exists in backend) and hard-delete event + all child rows (new mutation)
+  - [x] Admin Overview tab now previews the public event page (settings moved to the Settings tab)
 - [ ] Details page: description / prizing / logistics text with markdown editing, rendered on the public tournament page
 - [ ] Location data for paper tournaments (venue name, address; shown publicly, filterable later)
 - [ ] Round timer

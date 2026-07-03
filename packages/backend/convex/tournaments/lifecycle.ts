@@ -1,8 +1,13 @@
 import { v } from "convex/values";
 
+import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
-import { mutation, query } from "../_generated/server";
-import { currentUserOrNull, requireActiveMembership } from "../model/access";
+import { internalMutation, mutation, query } from "../_generated/server";
+import {
+  currentUserOrNull,
+  getActiveMembership,
+  requireActiveMembership,
+} from "../model/access";
 import { parsePublicCode } from "../model/publicCodes";
 import {
   SWISS_FORMAT,
@@ -10,6 +15,7 @@ import {
   completeTournament as completeTournamentModel,
   createTournament as createTournamentModel,
   defaultSwissRoundCount,
+  deleteTournamentOperationalDataBatch,
   isPubliclyViewable,
   registrationForUser,
   requireOrganizerAccess,
@@ -120,13 +126,18 @@ export const getPublicTournament = query({
     // Going private only removes the event from public discovery. Registered
     // players must still resolve the code, or flipping a live event to
     // private would lock them out of pairings and result reporting. Setup
-    // events stay hidden: registrations only exist after publish.
+    // events stay hidden from everyone except the organizing team, whose
+    // admin Overview previews the public page before publish.
     if (!isPubliclyViewable(tournament)) {
       const user = await currentUserOrNull(ctx);
       const registration = user
         ? await registrationForUser(ctx, tournament._id, user._id)
         : null;
-      if (!registration) {
+      const membership =
+        !registration && user
+          ? await getActiveMembership(ctx, tournament.organizationId, user._id)
+          : null;
+      if (!registration && !membership) {
         return null;
       }
     }
@@ -381,12 +392,68 @@ export const updateTournamentVisibility = mutation({
 export const cancelTournament = mutation({
   args: { tournamentId: v.id("tournaments") },
   handler: async (ctx, args) => {
-    await requireOrganizerAccess(ctx, args.tournamentId);
+    const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
+    if (tournament.lifecycle === "completed") {
+      throw new Error("Completed tournaments cannot be cancelled");
+    }
+    if (tournament.lifecycle === "cancelled") {
+      throw new Error("Tournament is already cancelled");
+    }
     await ctx.db.patch(args.tournamentId, {
       lifecycle: "cancelled",
       updatedAt: Date.now(),
     });
     return args.tournamentId;
+  },
+});
+
+// Permanently deletes a tournament and every child row (registrations, phases,
+// rounds, matches, match players, standings, test data). Allowed from any
+// lifecycle state — the client gates this behind a type-the-name confirmation.
+// The tournament is immediately cancelled and hidden so it disappears from all
+// public surfaces while large events drain in scheduled batches; the tournament
+// row itself is deleted last so live subscriptions resolve gracefully.
+export const deleteTournament = mutation({
+  args: { tournamentId: v.id("tournaments") },
+  handler: async (ctx, args) => {
+    await requireOrganizerAccess(ctx, args.tournamentId);
+    await ctx.db.patch(args.tournamentId, {
+      lifecycle: "cancelled",
+      visibility: "private",
+      updatedAt: Date.now(),
+    });
+
+    // Small tournaments clear within one transaction; larger ones continue in
+    // self-rescheduled batches to stay within transaction limits.
+    if (await deleteTournamentOperationalDataBatch(ctx, args.tournamentId)) {
+      await ctx.db.delete(args.tournamentId);
+    } else {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.tournaments.lifecycle.continueDeleteTournament,
+        { tournamentId: args.tournamentId },
+      );
+    }
+    return args.tournamentId;
+  },
+});
+
+export const continueDeleteTournament = internalMutation({
+  args: { tournamentId: v.id("tournaments") },
+  handler: async (ctx, args) => {
+    if (!(await ctx.db.get(args.tournamentId))) {
+      return null;
+    }
+    if (!(await deleteTournamentOperationalDataBatch(ctx, args.tournamentId))) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.tournaments.lifecycle.continueDeleteTournament,
+        args,
+      );
+      return null;
+    }
+    await ctx.db.delete(args.tournamentId);
+    return null;
   },
 });
 

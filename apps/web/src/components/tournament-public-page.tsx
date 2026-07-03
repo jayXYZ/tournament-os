@@ -50,10 +50,6 @@ export function TournamentPublicPage({
 }: {
   publicCode: string
 }) {
-  const event = useQuery(api.tournaments.lifecycle.getPublicTournament, {
-    publicCode,
-  })
-
   return (
     <main className="min-h-svh bg-background text-foreground">
       <PublicSiteHeader
@@ -70,20 +66,34 @@ export function TournamentPublicPage({
       />
 
       <section className="mx-auto grid max-w-4xl gap-6 px-4 py-8 sm:px-6 lg:px-8">
-        {event === undefined ? (
-          <LoadingCard />
-        ) : event === null ? (
-          <NotFound />
-        ) : (
-          <TournamentDetails
-            tournament={event.tournament}
-            organizationName={event.organizationName}
-            registeredCount={event.registeredCount}
-          />
-        )}
+        <TournamentPublicPageContent publicCode={publicCode} />
       </section>
       <Toaster />
     </main>
+  )
+}
+
+// The public event card without the page chrome, so the admin Overview can
+// embed the same view as an organizer preview of what players see.
+export function TournamentPublicPageContent({
+  publicCode,
+}: {
+  publicCode: string
+}) {
+  const event = useQuery(api.tournaments.lifecycle.getPublicTournament, {
+    publicCode,
+  })
+
+  return event === undefined ? (
+    <LoadingCard />
+  ) : event === null ? (
+    <NotFound />
+  ) : (
+    <TournamentDetails
+      tournament={event.tournament}
+      organizationName={event.organizationName}
+      registeredCount={event.registeredCount}
+    />
   )
 }
 

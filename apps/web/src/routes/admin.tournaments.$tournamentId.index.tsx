@@ -7,6 +7,11 @@ export const Route = createFileRoute('/admin/tournaments/$tournamentId/')({
 })
 
 function RouteComponent() {
-  const { tournamentId } = useManagedTournament()
-  return <TournamentOverviewView tournamentId={tournamentId} />
+  const { tournamentId, publicCode } = useManagedTournament()
+  return (
+    <TournamentOverviewView
+      tournamentId={tournamentId}
+      publicCode={publicCode}
+    />
+  )
 }

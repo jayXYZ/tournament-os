@@ -13,6 +13,7 @@ import {
   cleanName,
   completeTournament,
   defaultSwissRoundCount,
+  deleteTournamentOperationalDataBatch,
   requireOrganizerAccess,
   requirePhase,
   requireResolvedPhaseTotalRounds,
@@ -25,7 +26,6 @@ import {
   validRoundCount,
 } from "../model/tournaments";
 import {
-  deleteTestTournamentOperationalDataBatch,
   generateTestResults,
   requireTestConfig,
   seedTestPlayers as seedTestPlayersModel,
@@ -268,7 +268,7 @@ export const resetTestTournament = mutation({
 
     // Small tournaments clear within one transaction; larger ones continue in
     // self-rescheduled batches to stay within transaction limits.
-    if (await deleteTestTournamentOperationalDataBatch(ctx, args.tournamentId)) {
+    if (await deleteTournamentOperationalDataBatch(ctx, args.tournamentId)) {
       await finishTestTournamentReset(ctx, resetArgs);
     } else {
       await ctx.scheduler.runAfter(
@@ -289,7 +289,7 @@ export const continueResetTestTournament = internalMutation({
     seed: v.number(),
   },
   handler: async (ctx, args) => {
-    if (!(await deleteTestTournamentOperationalDataBatch(ctx, args.tournamentId))) {
+    if (!(await deleteTournamentOperationalDataBatch(ctx, args.tournamentId))) {
       await ctx.scheduler.runAfter(
         0,
         internal.tournaments.testing.continueResetTestTournament,

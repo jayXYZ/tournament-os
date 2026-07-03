@@ -22,6 +22,7 @@ import { Route as TournamentsTournamentIdPlayRouteImport } from './routes/tourna
 import { Route as AdminTournamentsTournamentIdRouteImport } from './routes/admin.tournaments.$tournamentId'
 import { Route as AdminTournamentsTournamentIdIndexRouteImport } from './routes/admin.tournaments.$tournamentId.index'
 import { Route as AdminTournamentsTournamentIdStandingsRouteImport } from './routes/admin.tournaments.$tournamentId.standings'
+import { Route as AdminTournamentsTournamentIdSettingsRouteImport } from './routes/admin.tournaments.$tournamentId.settings'
 import { Route as AdminTournamentsTournamentIdRegistrationsRouteImport } from './routes/admin.tournaments.$tournamentId.registrations'
 import { Route as AdminTournamentsTournamentIdPairingsRouteImport } from './routes/admin.tournaments.$tournamentId.pairings'
 
@@ -95,6 +96,12 @@ const AdminTournamentsTournamentIdStandingsRoute =
     path: '/standings',
     getParentRoute: () => AdminTournamentsTournamentIdRoute,
   } as any)
+const AdminTournamentsTournamentIdSettingsRoute =
+  AdminTournamentsTournamentIdSettingsRouteImport.update({
+    id: '/settings',
+    path: '/settings',
+    getParentRoute: () => AdminTournamentsTournamentIdRoute,
+  } as any)
 const AdminTournamentsTournamentIdRegistrationsRoute =
   AdminTournamentsTournamentIdRegistrationsRouteImport.update({
     id: '/registrations',
@@ -122,6 +129,7 @@ export interface FileRoutesByFullPath {
   '/tournaments/$tournamentId/': typeof TournamentsTournamentIdIndexRoute
   '/admin/tournaments/$tournamentId/pairings': typeof AdminTournamentsTournamentIdPairingsRoute
   '/admin/tournaments/$tournamentId/registrations': typeof AdminTournamentsTournamentIdRegistrationsRoute
+  '/admin/tournaments/$tournamentId/settings': typeof AdminTournamentsTournamentIdSettingsRoute
   '/admin/tournaments/$tournamentId/standings': typeof AdminTournamentsTournamentIdStandingsRoute
   '/admin/tournaments/$tournamentId/': typeof AdminTournamentsTournamentIdIndexRoute
 }
@@ -137,6 +145,7 @@ export interface FileRoutesByTo {
   '/tournaments/$tournamentId': typeof TournamentsTournamentIdIndexRoute
   '/admin/tournaments/$tournamentId/pairings': typeof AdminTournamentsTournamentIdPairingsRoute
   '/admin/tournaments/$tournamentId/registrations': typeof AdminTournamentsTournamentIdRegistrationsRoute
+  '/admin/tournaments/$tournamentId/settings': typeof AdminTournamentsTournamentIdSettingsRoute
   '/admin/tournaments/$tournamentId/standings': typeof AdminTournamentsTournamentIdStandingsRoute
   '/admin/tournaments/$tournamentId': typeof AdminTournamentsTournamentIdIndexRoute
 }
@@ -155,6 +164,7 @@ export interface FileRoutesById {
   '/tournaments/$tournamentId/': typeof TournamentsTournamentIdIndexRoute
   '/admin/tournaments/$tournamentId/pairings': typeof AdminTournamentsTournamentIdPairingsRoute
   '/admin/tournaments/$tournamentId/registrations': typeof AdminTournamentsTournamentIdRegistrationsRoute
+  '/admin/tournaments/$tournamentId/settings': typeof AdminTournamentsTournamentIdSettingsRoute
   '/admin/tournaments/$tournamentId/standings': typeof AdminTournamentsTournamentIdStandingsRoute
   '/admin/tournaments/$tournamentId/': typeof AdminTournamentsTournamentIdIndexRoute
 }
@@ -174,6 +184,7 @@ export interface FileRouteTypes {
     | '/tournaments/$tournamentId/'
     | '/admin/tournaments/$tournamentId/pairings'
     | '/admin/tournaments/$tournamentId/registrations'
+    | '/admin/tournaments/$tournamentId/settings'
     | '/admin/tournaments/$tournamentId/standings'
     | '/admin/tournaments/$tournamentId/'
   fileRoutesByTo: FileRoutesByTo
@@ -189,6 +200,7 @@ export interface FileRouteTypes {
     | '/tournaments/$tournamentId'
     | '/admin/tournaments/$tournamentId/pairings'
     | '/admin/tournaments/$tournamentId/registrations'
+    | '/admin/tournaments/$tournamentId/settings'
     | '/admin/tournaments/$tournamentId/standings'
     | '/admin/tournaments/$tournamentId'
   id:
@@ -206,6 +218,7 @@ export interface FileRouteTypes {
     | '/tournaments/$tournamentId/'
     | '/admin/tournaments/$tournamentId/pairings'
     | '/admin/tournaments/$tournamentId/registrations'
+    | '/admin/tournaments/$tournamentId/settings'
     | '/admin/tournaments/$tournamentId/standings'
     | '/admin/tournaments/$tournamentId/'
   fileRoutesById: FileRoutesById
@@ -313,6 +326,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminTournamentsTournamentIdStandingsRouteImport
       parentRoute: typeof AdminTournamentsTournamentIdRoute
     }
+    '/admin/tournaments/$tournamentId/settings': {
+      id: '/admin/tournaments/$tournamentId/settings'
+      path: '/settings'
+      fullPath: '/admin/tournaments/$tournamentId/settings'
+      preLoaderRoute: typeof AdminTournamentsTournamentIdSettingsRouteImport
+      parentRoute: typeof AdminTournamentsTournamentIdRoute
+    }
     '/admin/tournaments/$tournamentId/registrations': {
       id: '/admin/tournaments/$tournamentId/registrations'
       path: '/registrations'
@@ -333,6 +353,7 @@ declare module '@tanstack/react-router' {
 interface AdminTournamentsTournamentIdRouteChildren {
   AdminTournamentsTournamentIdPairingsRoute: typeof AdminTournamentsTournamentIdPairingsRoute
   AdminTournamentsTournamentIdRegistrationsRoute: typeof AdminTournamentsTournamentIdRegistrationsRoute
+  AdminTournamentsTournamentIdSettingsRoute: typeof AdminTournamentsTournamentIdSettingsRoute
   AdminTournamentsTournamentIdStandingsRoute: typeof AdminTournamentsTournamentIdStandingsRoute
   AdminTournamentsTournamentIdIndexRoute: typeof AdminTournamentsTournamentIdIndexRoute
 }
@@ -343,6 +364,8 @@ const AdminTournamentsTournamentIdRouteChildren: AdminTournamentsTournamentIdRou
       AdminTournamentsTournamentIdPairingsRoute,
     AdminTournamentsTournamentIdRegistrationsRoute:
       AdminTournamentsTournamentIdRegistrationsRoute,
+    AdminTournamentsTournamentIdSettingsRoute:
+      AdminTournamentsTournamentIdSettingsRoute,
     AdminTournamentsTournamentIdStandingsRoute:
       AdminTournamentsTournamentIdStandingsRoute,
     AdminTournamentsTournamentIdIndexRoute:
