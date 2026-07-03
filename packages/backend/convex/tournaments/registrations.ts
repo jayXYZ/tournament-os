@@ -20,7 +20,10 @@ export const registerSelf = mutation({
   handler: async (ctx, args): Promise<Id<"tournamentRegistrations">> => {
     const user = await ensureCurrentUser(ctx);
     const tournament = await requireTournament(ctx, args.tournamentId);
-    if (tournament.status !== "public") {
+    if (
+      tournament.lifecycle !== "registration" ||
+      tournament.visibility === "private"
+    ) {
       throw new Error("Tournament is not open for registration");
     }
 
@@ -116,7 +119,8 @@ export const listMyTournaments = query({
       const tournament = await ctx.db.get(registration.tournamentId);
       if (
         !tournament ||
-        (tournament.status !== "public" && tournament.status !== "in_progress")
+        (tournament.lifecycle !== "registration" &&
+          tournament.lifecycle !== "in_progress")
       ) {
         continue;
       }

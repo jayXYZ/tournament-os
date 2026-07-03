@@ -66,7 +66,7 @@ test("Swiss pairings and fold-forward standings hold at player capacity", async 
   const setup = await authed.query(api.tournaments.lifecycle.getTournamentSetup, {
     tournamentId,
   });
-  expect(setup.tournament.status).toBe("completed");
+  expect(setup.tournament.lifecycle).toBe("completed");
 
   // Even field: no byes, and the pairing engine never repeats a pairing.
   const { pairKeys, byePlayerIds } = await collectPairingFacts(t, tournamentId);
@@ -125,7 +125,7 @@ test("odd-sized Swiss events give byes to distinct players and stay consistent",
   const setup = await authed.query(api.tournaments.lifecycle.getTournamentSetup, {
     tournamentId,
   });
-  expect(setup.tournament.status).toBe("completed");
+  expect(setup.tournament.lifecycle).toBe("completed");
 
   // One bye per round, and never the same player twice while others are
   // still without one (9 players, 4 rounds).

@@ -7,7 +7,8 @@ import {
   organizationStatusValidator,
   organizerRoleValidator,
   tournamentFormatValidator,
-  tournamentStatusValidator,
+  tournamentVisibilityValidator,
+  tournamentLifecycleValidator,
   tournamentRegistrationStatusValidator,
   tournamentPhaseStatusValidator,
   tournamentPhaseRoundModeValidator,
@@ -79,7 +80,10 @@ export default defineSchema({
     publicCode: v.number(),
     organizationId: v.id("organizations"),
     createdBy: v.id("users"),
-    status: tournamentStatusValidator,
+    // Visibility (who can see it) and lifecycle (where it is in its run) are
+    // independent axes; see validators.ts for the semantics of each value.
+    visibility: tournamentVisibilityValidator,
+    lifecycle: tournamentLifecycleValidator,
     startDate: v.number(),
     playerCapacity: v.number(),
     format: tournamentFormatValidator,
@@ -97,10 +101,14 @@ export default defineSchema({
   })
     .index("by_organizationId", ["organizationId"])
     .index("by_publicCode", ["publicCode"])
-    .index("by_status_and_startDate", ["status", "startDate"])
-    .index("by_organizationId_and_status_and_startDate", [
+    .index("by_visibility_and_lifecycle_and_startDate", [
+      "visibility",
+      "lifecycle",
+      "startDate",
+    ])
+    .index("by_organizationId_and_lifecycle_and_startDate", [
       "organizationId",
-      "status",
+      "lifecycle",
       "startDate",
     ]),
 

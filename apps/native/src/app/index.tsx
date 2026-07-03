@@ -105,7 +105,7 @@ export default function HomeScreen() {
                 <Text style={styles.cardOrg}>{item.organizationName}</Text>
               ) : null}
               <Text style={styles.cardStatus}>
-                {item.tournament.status === "in_progress"
+                {item.tournament.lifecycle === "in_progress"
                   ? "In progress"
                   : "Upcoming"}
               </Text>

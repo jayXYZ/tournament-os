@@ -37,37 +37,50 @@ test("listUpcomingPublic returns future public tournaments in start date order",
     await ctx.db.insert("tournaments", {
       ...base,
       name: "Past Public",
-      status: "public",
+      visibility: "public",
+      lifecycle: "registration",
       startDate: now - 60_000,
     });
     await ctx.db.insert("tournaments", {
       ...base,
-      name: "Future Private",
-      status: "private",
+      name: "Future Setup",
+      visibility: "public",
+      lifecycle: "setup",
       startDate: now + 30_000,
     });
     await ctx.db.insert("tournaments", {
       ...base,
       name: "Future Cancelled",
-      status: "cancelled",
+      visibility: "public",
+      lifecycle: "cancelled",
       startDate: now + 45_000,
     });
     await ctx.db.insert("tournaments", {
       ...base,
       name: "Future In Progress",
-      status: "in_progress",
+      visibility: "public",
+      lifecycle: "in_progress",
       startDate: now + 50_000,
+    });
+    await ctx.db.insert("tournaments", {
+      ...base,
+      name: "Future Unlisted",
+      visibility: "unlisted",
+      lifecycle: "registration",
+      startDate: now + 60_000,
     });
     const later = await ctx.db.insert("tournaments", {
       ...base,
       name: "Later Public",
-      status: "public",
+      visibility: "public",
+      lifecycle: "registration",
       startDate: now + 120_000,
     });
     const earlier = await ctx.db.insert("tournaments", {
       ...base,
       name: "Earlier Public",
-      status: "public",
+      visibility: "public",
+      lifecycle: "registration",
       startDate: now + 90_000,
     });
 
@@ -90,7 +103,7 @@ test("listUpcomingPublic returns future public tournaments in start date order",
   ]);
 });
 
-test("getPublicTournament hides private events and reports registration counts", async () => {
+test("getPublicTournament hides private and unpublished events and reports registration counts", async () => {
   const t = convexTest(schema, modules);
   const now = Date.now();
   const { organizationId, userId } = await seedOrganizer(t);
@@ -110,18 +123,36 @@ test("getPublicTournament hides private events and reports registration counts",
       ...base,
       name: "Open Event",
       publicCode: 100_001,
-      status: "public",
+      visibility: "public",
+      lifecycle: "registration",
       startDate: now + 60_000,
     });
     const privateId = await ctx.db.insert("tournaments", {
       ...base,
       name: "Hidden Event",
       publicCode: 100_002,
-      status: "private",
+      visibility: "private",
+      lifecycle: "registration",
+      startDate: now + 60_000,
+    });
+    const unlistedId = await ctx.db.insert("tournaments", {
+      ...base,
+      name: "Unlisted Event",
+      publicCode: 100_003,
+      visibility: "unlisted",
+      lifecycle: "registration",
+      startDate: now + 60_000,
+    });
+    const setupId = await ctx.db.insert("tournaments", {
+      ...base,
+      name: "Setup Event",
+      publicCode: 100_004,
+      visibility: "public",
+      lifecycle: "setup",
       startDate: now + 60_000,
     });
 
-    return { publicId, privateId };
+    return { publicId, privateId, unlistedId, setupId };
   });
   await seedActiveRegistrations(t, rows.publicId, 3);
 
@@ -137,6 +168,17 @@ test("getPublicTournament hides private events and reports registration counts",
       publicCode: "100002",
     }),
   ).toBeNull();
+  // Unlisted events stay reachable by code; setup-stage events are hidden even when public.
+  const unlisted = await t.query(
+    api.tournaments.lifecycle.getPublicTournament,
+    { publicCode: "100003" },
+  );
+  expect(unlisted?.tournament.name).toBe("Unlisted Event");
+  expect(
+    await t.query(api.tournaments.lifecycle.getPublicTournament, {
+      publicCode: "100004",
+    }),
+  ).toBeNull();
   expect(
     await t.query(api.tournaments.lifecycle.getPublicTournament, {
       publicCode: rows.publicId,
@@ -146,6 +188,71 @@ test("getPublicTournament hides private events and reports registration counts",
     await t.query(api.tournaments.lifecycle.getPublicTournament, {
       publicCode: "not-a-real-id",
     }),
+  ).toBeNull();
+});
+
+test("getPublicTournament keeps private events resolvable for registered players", async () => {
+  const t = convexTest(schema, modules);
+  const now = Date.now();
+  const { organizationId, userId } = await seedOrganizer(t);
+  const playerIdentity = {
+    issuer: "https://convex.test",
+    subject: "player",
+    tokenIdentifier: "https://convex.test|player",
+    email: "player@example.test",
+    name: "Player",
+  };
+
+  await t.run(async (ctx) => {
+    const playerUserId = await ctx.db.insert("users", {
+      tokenIdentifier: playerIdentity.tokenIdentifier,
+      publicCode: 1,
+      email: playerIdentity.email,
+      name: playerIdentity.name,
+      updatedAt: now,
+    });
+    const tournamentId = await ctx.db.insert("tournaments", {
+      organizationId,
+      createdBy: userId,
+      publicCode: 100_001,
+      playerCapacity: 32,
+      format: "standard",
+      isTestEvent: false,
+      activeRegistrationCount: 1,
+      updatedAt: now,
+      name: "Private Live Event",
+      visibility: "private",
+      lifecycle: "in_progress",
+      startDate: now - 60_000,
+    });
+    await ctx.db.insert("tournamentRegistrations", {
+      tournamentId,
+      userId: playerUserId,
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+    });
+  });
+
+  const asPlayer = await t
+    .withIdentity(playerIdentity)
+    .query(api.tournaments.lifecycle.getPublicTournament, {
+      publicCode: "100001",
+    });
+  expect(asPlayer?.tournament.name).toBe("Private Live Event");
+
+  expect(
+    await t.query(api.tournaments.lifecycle.getPublicTournament, {
+      publicCode: "100001",
+    }),
+  ).toBeNull();
+  // Signed in without a registration is still not enough.
+  expect(
+    await t
+      .withIdentity(organizerIdentity)
+      .query(api.tournaments.lifecycle.getPublicTournament, {
+        publicCode: "100001",
+      }),
   ).toBeNull();
 });
 
@@ -188,25 +295,29 @@ test("listMyTournaments returns the player's active registrations for visible ev
     const laterPublic = await ctx.db.insert("tournaments", {
       ...base,
       name: "Later Public Event",
-      status: "public",
+      visibility: "public",
+      lifecycle: "registration",
       startDate: now + 120_000,
     });
     const inProgress = await ctx.db.insert("tournaments", {
       ...base,
       name: "In Progress Event",
-      status: "in_progress",
+      visibility: "public",
+      lifecycle: "in_progress",
       startDate: now + 60_000,
     });
     const completed = await ctx.db.insert("tournaments", {
       ...base,
       name: "Completed Event",
-      status: "completed",
+      visibility: "public",
+      lifecycle: "completed",
       startDate: now - 60_000,
     });
     const droppedFrom = await ctx.db.insert("tournaments", {
       ...base,
       name: "Dropped Event",
-      status: "public",
+      visibility: "public",
+      lifecycle: "registration",
       startDate: now + 90_000,
     });
 
@@ -277,49 +388,56 @@ test("listUpcomingForOrganization returns active future tournaments for one orga
 
     await ctx.db.insert("tournaments", {
       ...base,
-      name: "Past Private",
-      status: "private",
+      name: "Past Setup",
+      visibility: "public",
+      lifecycle: "setup",
       startDate: now - 60_000,
     });
     await ctx.db.insert("tournaments", {
       ...base,
       name: "Future Cancelled",
-      status: "cancelled",
+      visibility: "public",
+      lifecycle: "cancelled",
       startDate: now + 45_000,
     });
     await ctx.db.insert("tournaments", {
       ...base,
       name: "Future Completed",
-      status: "completed",
+      visibility: "public",
+      lifecycle: "completed",
       startDate: now + 50_000,
     });
     await ctx.db.insert("tournaments", {
       ...base,
       organizationId: otherOrganizationId,
       name: "Other Organization Public",
-      status: "public",
+      visibility: "public",
+      lifecycle: "registration",
       startDate: now + 75_000,
     });
     const publicTournament = await ctx.db.insert("tournaments", {
       ...base,
       name: "Public Event",
-      status: "public",
+      visibility: "public",
+      lifecycle: "registration",
       startDate: now + 90_000,
     });
-    const privateTournament = await ctx.db.insert("tournaments", {
+    const setupTournament = await ctx.db.insert("tournaments", {
       ...base,
-      name: "Private Setup",
-      status: "private",
+      name: "Unpublished Setup",
+      visibility: "public",
+      lifecycle: "setup",
       startDate: now + 120_000,
     });
     const inProgressTournament = await ctx.db.insert("tournaments", {
       ...base,
       name: "In Progress Event",
-      status: "in_progress",
+      visibility: "public",
+      lifecycle: "in_progress",
       startDate: now + 150_000,
     });
 
-    return { publicTournament, privateTournament, inProgressTournament };
+    return { publicTournament, setupTournament, inProgressTournament };
   });
 
   const tournaments = await t
@@ -330,17 +448,17 @@ test("listUpcomingForOrganization returns active future tournaments for one orga
 
   expect(tournaments.map((tournament) => tournament._id)).toEqual([
     rows.publicTournament,
-    rows.privateTournament,
+    rows.setupTournament,
     rows.inProgressTournament,
   ]);
   expect(tournaments.map((tournament) => tournament.name)).toEqual([
     "Public Event",
-    "Private Setup",
+    "Unpublished Setup",
     "In Progress Event",
   ]);
 });
 
-test("createTournamentWithPhases creates a private tournament with one dynamic Swiss phase", async () => {
+test("createTournamentWithPhases creates an unpublished public tournament with one dynamic Swiss phase", async () => {
   const t = convexTest(schema, modules);
   const now = Date.now();
   const { organizationId } = await seedOrganizer(t);
@@ -362,7 +480,8 @@ test("createTournamentWithPhases creates a private tournament with one dynamic S
 
   expect(setup.tournament.name).toBe("Store Championship");
   expect(setup.tournament.publicCode).toBe(100_001);
-  expect(setup.tournament.status).toBe("private");
+  expect(setup.tournament.visibility).toBe("public");
+  expect(setup.tournament.lifecycle).toBe("setup");
   expect(setup.tournament.format).toBe("modern");
   expect(setup.phases).toHaveLength(1);
   expect(setup.phases[0].phaseType).toBe("swiss");
@@ -744,7 +863,7 @@ test("test tournaments seed players, generate Swiss rounds, and complete", async
   const setup = await authed.query(api.tournaments.lifecycle.getTournamentSetup, {
     tournamentId,
   });
-  expect(setup.tournament.status).toBe("completed");
+  expect(setup.tournament.lifecycle).toBe("completed");
   expect(setup.testConfig?.seed).toBe(4242);
 
   await authed.mutation(api.tournaments.testing.resetTestTournament, { tournamentId });
@@ -758,7 +877,7 @@ test("test tournaments seed players, generate Swiss rounds, and complete", async
   const resetCurrentRound = await authed.query(api.tournaments.rounds.getCurrentRound, {
     tournamentId,
   });
-  expect(resetSetup.tournament.status).toBe("private");
+  expect(resetSetup.tournament.lifecycle).toBe("setup");
   expect(resetSetup.testConfig?.seed).toBe(4242);
   expect(resetRegistrations).toHaveLength(5);
   expect(resetCurrentRound).toBeNull();

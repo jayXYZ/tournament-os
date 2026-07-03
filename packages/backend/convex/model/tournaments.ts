@@ -282,7 +282,8 @@ export async function createTournament(
     publicCode,
     organizationId: args.organizationId,
     createdBy: user._id,
-    status: "private",
+    visibility: "public",
+    lifecycle: "setup",
     startDate: args.startDate,
     playerCapacity: validCapacity(args.playerCapacity),
     format: args.format,
@@ -346,7 +347,10 @@ export async function completeTournament(
 
   const now = Date.now();
   await ctx.db.patch(phase._id, { phaseStatus: "completed", updatedAt: now });
-  await ctx.db.patch(tournament._id, { status: "completed", updatedAt: now });
+  await ctx.db.patch(tournament._id, {
+    lifecycle: "completed",
+    updatedAt: now,
+  });
 }
 
 export type PairingsNextStep =
@@ -366,15 +370,15 @@ export async function pairingsNextStep(
   ctx: QueryCtx,
   tournament: Doc<"tournaments">,
 ): Promise<PairingsNextStep> {
-  if (tournament.status === "cancelled") {
+  if (tournament.lifecycle === "cancelled") {
     return { kind: "tournamentCancelled" };
   }
-  if (tournament.status === "completed") {
+  if (tournament.lifecycle === "completed") {
     return { kind: "tournamentCompleted" };
   }
 
   const phase = await swissPhaseOrNull(ctx, tournament._id);
-  if (tournament.status !== "in_progress") {
+  if (tournament.lifecycle !== "in_progress") {
     if (!phase) {
       return {
         kind: "startTournament",
@@ -464,14 +468,23 @@ export function requireResolvedPhaseTotalRounds(
 
 export function requireSetupEditable(tournament: Doc<"tournaments">) {
   if (
-    tournament.status === "in_progress" ||
-    tournament.status === "completed"
+    tournament.lifecycle === "in_progress" ||
+    tournament.lifecycle === "completed"
   ) {
     throw new Error("Tournament setup is locked");
   }
-  if (tournament.status === "cancelled") {
+  if (tournament.lifecycle === "cancelled") {
     throw new Error("Tournament has been cancelled");
   }
+}
+
+// A tournament is publicly viewable (by public code) once it has been
+// published, unless the organizer has made it private. Unlisted events pass:
+// they are link-only but still viewable by anyone who has the code.
+export function isPubliclyViewable(tournament: Doc<"tournaments">) {
+  return (
+    tournament.visibility !== "private" && tournament.lifecycle !== "setup"
+  );
 }
 
 export function requireTestTournament(tournament: Doc<"tournaments">) {

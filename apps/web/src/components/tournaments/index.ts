@@ -19,7 +19,9 @@ export {
   formatTournamentDateLong,
   formatTournamentDateShort,
   toDatetimeLocalValue,
-  TournamentStatusBadge,
+  TournamentLifecycleBadge,
+  TournamentVisibilityBadge,
+  tournamentVisibilities,
 } from './tournament-display'
 export { TournamentTable } from './tournament-table'
 export type {

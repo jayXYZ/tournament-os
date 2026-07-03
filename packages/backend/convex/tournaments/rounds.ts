@@ -48,7 +48,7 @@ export const startTournament = mutation({
     });
     const now = Date.now();
     await ctx.db.patch(tournament._id, {
-      status: "in_progress",
+      lifecycle: "in_progress",
       updatedAt: now,
     });
     await ctx.db.patch(playablePhase._id, {
@@ -66,7 +66,7 @@ export const generateNextRound = mutation({
   handler: async (ctx, args): Promise<Id<"tournamentRounds">> => {
     const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
     const phase = await requireSwissPhase(ctx, args.tournamentId);
-    if (tournament.status !== "in_progress") {
+    if (tournament.lifecycle !== "in_progress") {
       throw new Error("Tournament is not in progress");
     }
     if (!phase.phaseCurrentRound) {

@@ -36,15 +36,15 @@ export const getMyCurrentMatch = query({
       args.tournamentId,
     );
     const base = {
-      tournament: { name: tournament.name, status: tournament.status },
+      tournament: { name: tournament.name, lifecycle: tournament.lifecycle },
       myRegistrationStatus: registration.status,
       myRegistrationId: registration._id,
     };
 
     const phase = await swissPhaseOrNull(ctx, args.tournamentId);
     if (
-      tournament.status === "private" ||
-      tournament.status === "public" ||
+      tournament.lifecycle === "setup" ||
+      tournament.lifecycle === "registration" ||
       !phase?.phaseCurrentRound
     ) {
       return { kind: "not_started" as const, ...base };
@@ -281,7 +281,7 @@ export const dropSelf = mutation({
   handler: async (ctx, args) => {
     const user = await ensureCurrentUser(ctx);
     const tournament = await requireTournament(ctx, args.tournamentId);
-    if (tournament.status !== "in_progress") {
+    if (tournament.lifecycle !== "in_progress") {
       throw new Error("Tournament is not in progress");
     }
     const registration = await registrationForUser(
@@ -327,7 +327,7 @@ async function requireMatchParticipant(ctx: MutationCtx, matchId: Id<"tournament
   const user = await ensureCurrentUser(ctx);
   const match = await requireMatch(ctx, matchId);
   const tournament = await requireTournament(ctx, match.tournamentId);
-  if (tournament.status !== "in_progress") {
+  if (tournament.lifecycle !== "in_progress") {
     throw new Error("Tournament is not in progress");
   }
   const registration = await registrationForUser(

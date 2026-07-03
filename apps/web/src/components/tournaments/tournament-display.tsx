@@ -2,7 +2,8 @@ import type { Doc } from '@tournament-os/backend/convex/_generated/dataModel'
 
 import { Badge } from '@/components/ui/badge'
 
-type TournamentStatus = Doc<'tournaments'>['status']
+type TournamentLifecycle = Doc<'tournaments'>['lifecycle']
+type TournamentVisibility = Doc<'tournaments'>['visibility']
 type BadgeVariant = 'default' | 'secondary' | 'outline' | 'destructive'
 
 const shortDateFormatter = new Intl.DateTimeFormat('en-US', {
@@ -22,12 +23,12 @@ const longDateFormatter = new Intl.DateTimeFormat('en-US', {
   minute: '2-digit',
 })
 
-const tournamentStatuses: Record<
-  TournamentStatus,
+const tournamentLifecycles: Record<
+  TournamentLifecycle,
   { label: string; variant: BadgeVariant }
 > = {
-  private: { label: 'Private', variant: 'outline' },
-  public: { label: 'Open for registration', variant: 'secondary' },
+  setup: { label: 'Setup', variant: 'outline' },
+  registration: { label: 'Open for registration', variant: 'secondary' },
   in_progress: { label: 'In progress', variant: 'default' },
   completed: { label: 'Completed', variant: 'outline' },
   cancelled: { label: 'Cancelled', variant: 'destructive' },
@@ -46,11 +47,30 @@ export function toDatetimeLocalValue(timestamp: number) {
   return new Date(timestamp - offsetMs).toISOString().slice(0, 16)
 }
 
-export function TournamentStatusBadge({
-  status,
+export function TournamentLifecycleBadge({
+  lifecycle,
 }: {
-  status: TournamentStatus
+  lifecycle: TournamentLifecycle
 }) {
-  const badge = tournamentStatuses[status]
+  const badge = tournamentLifecycles[lifecycle]
   return <Badge variant={badge.variant}>{badge.label}</Badge>
+}
+
+export const tournamentVisibilities: Record<
+  TournamentVisibility,
+  { label: string; description: string }
+> = {
+  public: { label: 'Public', description: 'Shown in public listings' },
+  unlisted: { label: 'Unlisted', description: 'Anyone with the link' },
+  private: { label: 'Private', description: 'Organizers only' },
+}
+
+export function TournamentVisibilityBadge({
+  visibility,
+}: {
+  visibility: TournamentVisibility
+}) {
+  return (
+    <Badge variant="outline">{tournamentVisibilities[visibility].label}</Badge>
+  )
 }

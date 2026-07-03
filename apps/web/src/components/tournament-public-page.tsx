@@ -16,7 +16,7 @@ import type { Doc } from '@tournament-os/backend/convex/_generated/dataModel'
 import { PublicSiteHeader } from '@/components/shared/public-site-header'
 import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'
 import {
-  TournamentStatusBadge,
+  TournamentLifecycleBadge,
   formatTournamentDateLong,
 } from '@/components/tournaments'
 import { useAppAuth } from '@/lib/use-app-auth'
@@ -136,7 +136,7 @@ function TournamentDetails({
       <CardHeader>
         <div className="flex flex-wrap items-center gap-3">
           <CardTitle className="text-2xl">{tournament.name}</CardTitle>
-          <TournamentStatusBadge status={tournament.status} />
+          <TournamentLifecycleBadge lifecycle={tournament.lifecycle} />
         </div>
         <CardDescription>
           {tournament.isTestEvent ? 'Test event' : 'Public event'}
@@ -251,7 +251,7 @@ function RegistrationPanel({
   }
 
   if (!user) {
-    if (tournament.status !== 'public') {
+    if (tournament.lifecycle !== 'registration') {
       return (
         <p className="text-sm text-muted-foreground">
           Registration is closed for this event.
@@ -287,7 +287,7 @@ function RegistrationPanel({
     return (
       <div className="flex flex-wrap items-center gap-3">
         <Badge>You&apos;re registered</Badge>
-        {tournament.status === 'public' ? (
+        {tournament.lifecycle === 'registration' ? (
           <Button
             type="button"
             variant="outline"
@@ -302,7 +302,7 @@ function RegistrationPanel({
             {pending ? <Spinner /> : null}
             Cancel registration
           </Button>
-        ) : tournament.status === 'in_progress' ? (
+        ) : tournament.lifecycle === 'in_progress' ? (
           <Button asChild type="button">
             <Link
               to="/tournaments/$tournamentId/play"
@@ -321,7 +321,7 @@ function RegistrationPanel({
     )
   }
 
-  if (tournament.status !== 'public') {
+  if (tournament.lifecycle !== 'registration') {
     return (
       <p className="text-sm text-muted-foreground">
         Registration is closed for this event.

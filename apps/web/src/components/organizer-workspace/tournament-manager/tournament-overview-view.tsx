@@ -17,8 +17,10 @@ import { WorkspacePageHeader } from '@/components/shared/workspace-page-header'
 import {
   RoundConfigurationFields,
   TournamentBasicsFields,
-  TournamentStatusBadge,
+  TournamentLifecycleBadge,
+  TournamentVisibilityBadge,
   toDatetimeLocalValue,
+  tournamentVisibilities,
 } from '@/components/tournaments'
 import {
   AlertDialog,
@@ -77,9 +79,9 @@ const phaseStatusBadgeVariant: Record<
 
 function isSetupLocked(tournament: Doc<'tournaments'>) {
   return (
-    tournament.status === 'in_progress' ||
-    tournament.status === 'completed' ||
-    tournament.status === 'cancelled'
+    tournament.lifecycle === 'in_progress' ||
+    tournament.lifecycle === 'completed' ||
+    tournament.lifecycle === 'cancelled'
   )
 }
 
@@ -99,7 +101,14 @@ export function TournamentOverviewView({
         title="Overview"
         metadata={
           setup ? (
-            <TournamentStatusBadge status={setup.tournament.status} />
+            <div className="flex items-center gap-2">
+              <TournamentLifecycleBadge
+                lifecycle={setup.tournament.lifecycle}
+              />
+              <TournamentVisibilityBadge
+                visibility={setup.tournament.visibility}
+              />
+            </div>
           ) : null
         }
       />
@@ -183,7 +192,10 @@ function TournamentSettingsCard({
             : 'Update the basic details for this tournament.'}
         </CardDescription>
         <CardAction>
-          <PublishTournamentButton tournament={tournament} />
+          <div className="flex items-center gap-2">
+            <VisibilitySelect tournament={tournament} />
+            <PublishTournamentButton tournament={tournament} />
+          </div>
         </CardAction>
       </CardHeader>
       <CardContent>
@@ -259,6 +271,69 @@ function TournamentSettingsCard({
   )
 }
 
+function VisibilitySelect({
+  tournament,
+}: {
+  tournament: Doc<'tournaments'>
+}) {
+  const updateVisibility = useMutation(
+    api.tournaments.lifecycle.updateTournamentVisibility,
+  )
+  const [busy, setBusy] = useState(false)
+
+  async function handleChange(visibility: Doc<'tournaments'>['visibility']) {
+    if (visibility === tournament.visibility) {
+      return
+    }
+    setBusy(true)
+    try {
+      await updateVisibility({ tournamentId: tournament._id, visibility })
+      toast.success(
+        `Visibility set to ${tournamentVisibilities[visibility].label.toLowerCase()}.`,
+      )
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : 'Could not update visibility.',
+      )
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Select
+      disabled={busy}
+      value={tournament.visibility}
+      onValueChange={(value) =>
+        void handleChange(value as Doc<'tournaments'>['visibility'])
+      }
+    >
+      <SelectTrigger aria-label="Tournament visibility">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectGroup>
+          {(
+            Object.entries(tournamentVisibilities) as Array<
+              [
+                Doc<'tournaments'>['visibility'],
+                (typeof tournamentVisibilities)[keyof typeof tournamentVisibilities],
+              ]
+            >
+          ).map(([value, { label, description }]) => (
+            <SelectItem key={value} value={value}>
+              {label}
+              <span className="text-muted-foreground"> — {description}</span>
+            </SelectItem>
+          ))}
+        </SelectGroup>
+      </SelectContent>
+    </Select>
+  )
+}
+
 function PublishTournamentButton({
   tournament,
 }: {
@@ -270,7 +345,7 @@ function PublishTournamentButton({
   const [confirming, setConfirming] = useState(false)
   const [busy, setBusy] = useState(false)
 
-  if (tournament.status !== 'private') {
+  if (tournament.lifecycle !== 'setup') {
     return null
   }
 
@@ -317,8 +392,10 @@ function PublishTournamentButton({
             </AlertDialogMedia>
             <AlertDialogTitle>Publish {tournament.name}?</AlertDialogTitle>
             <AlertDialogDescription>
-              Publishing lists this tournament publicly so players can find it
-              and register.
+              Publishing opens registration. Who can see the event is
+              controlled by its visibility setting: public events appear in
+              listings, unlisted events are reachable by link, and private
+              events stay hidden.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

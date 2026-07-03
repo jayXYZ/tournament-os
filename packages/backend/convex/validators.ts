@@ -61,9 +61,22 @@ export const tournamentFormatValidator = v.union(
   v.literal(tournamentFormats[7]),
 );
 
-export const tournamentStatusValidator = v.union(
-  v.literal("private"),
+// Who can see the tournament. Independent of lifecycle: "public" events appear
+// in listings, "unlisted" events are reachable by link/code only, and
+// "private" events are visible only to organizers and registered players.
+export const tournamentVisibilityValidator = v.union(
   v.literal("public"),
+  v.literal("unlisted"),
+  v.literal("private"),
+);
+
+// Where the tournament is in its run. "setup" is pre-publish configuration
+// (never publicly viewable regardless of visibility; named to avoid clashing
+// with the Magic "draft" format); "registration" means published and open for
+// registration.
+export const tournamentLifecycleValidator = v.union(
+  v.literal("setup"),
+  v.literal("registration"),
   v.literal("in_progress"),
   v.literal("completed"),
   v.literal("cancelled"),

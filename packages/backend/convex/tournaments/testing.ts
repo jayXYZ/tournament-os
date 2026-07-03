@@ -65,7 +65,10 @@ export const createTestTournament = mutation({
       publicCode,
       organizationId: args.organizationId,
       createdBy: user._id,
-      status: "private",
+      // Unlisted so a running test event is reachable by its public code (the
+      // player controller uses it) without ever appearing in public listings.
+      visibility: "unlisted",
+      lifecycle: "setup",
       startDate: args.startDate ?? now,
       playerCapacity,
       format: args.format ?? "standard",
@@ -108,7 +111,7 @@ export const createTestTournament = mutation({
         registrations: await activeRegistrations(ctx, tournamentId),
       });
       await ctx.db.patch(tournamentId, {
-        status: "in_progress",
+        lifecycle: "in_progress",
         updatedAt: now,
       });
       await ctx.db.patch(phaseId, {
@@ -258,7 +261,7 @@ export const resetTestTournament = mutation({
     // Every registration is deleted below and the player set is rebuilt by
     // seedTestPlayers, so the denormalized count resets to zero here.
     await ctx.db.patch(args.tournamentId, {
-      status: "private",
+      lifecycle: "setup",
       activeRegistrationCount: 0,
       updatedAt: Date.now(),
     });

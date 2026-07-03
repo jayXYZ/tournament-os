@@ -8,7 +8,7 @@ import {
   UserRound,
 } from 'lucide-react'
 import {
-  TournamentStatusBadge,
+  TournamentLifecycleBadge,
   formatTournamentDateShort,
 } from './tournament-display'
 import type { ColumnDef } from '@tanstack/react-table'
@@ -289,12 +289,14 @@ function buildTournamentColumns(
     },
     {
       id: 'status',
-      accessorFn: (item) => item.tournament.status,
+      accessorFn: (item) => item.tournament.lifecycle,
       header: ({ column }) => (
         <DataTableColumnHeader column={column} title="Status" />
       ),
       cell: ({ row }) => (
-        <TournamentStatusBadge status={row.original.tournament.status} />
+        <TournamentLifecycleBadge
+          lifecycle={row.original.tournament.lifecycle}
+        />
       ),
     },
     {
@@ -348,7 +350,7 @@ function TournamentTableAction({
   }
 
   if (variant === 'registered') {
-    if (tournament.status === 'in_progress') {
+    if (tournament.lifecycle === 'in_progress') {
       return (
         <Button asChild type="button">
           <Link

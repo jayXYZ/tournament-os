@@ -241,7 +241,7 @@ function HeaderBadge({
   if (currentMatch.myRegistrationStatus === 'dropped') {
     return <Badge variant="destructive">Dropped</Badge>
   }
-  if (currentMatch.tournament.status === 'completed') {
+  if (currentMatch.tournament.lifecycle === 'completed') {
     return <Badge variant="secondary">Completed</Badge>
   }
   if (currentMatch.kind === 'not_started') {

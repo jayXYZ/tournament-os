@@ -2,7 +2,7 @@ import { v } from "convex/values";
 
 import type { Doc, Id } from "../_generated/dataModel";
 import { mutation, query } from "../_generated/server";
-import { requireActiveMembership } from "../model/access";
+import { currentUserOrNull, requireActiveMembership } from "../model/access";
 import { parsePublicCode } from "../model/publicCodes";
 import {
   SWISS_FORMAT,
@@ -10,6 +10,8 @@ import {
   completeTournament as completeTournamentModel,
   createTournament as createTournamentModel,
   defaultSwissRoundCount,
+  isPubliclyViewable,
+  registrationForUser,
   requireOrganizerAccess,
   requirePhase,
   requireSetupEditable,
@@ -21,6 +23,7 @@ import {
 import {
   tournamentFormatValidator,
   tournamentPhaseRoundModeValidator,
+  tournamentVisibilityValidator,
 } from "../validators";
 
 export const listForOrganization = query({
@@ -43,8 +46,11 @@ export const listUpcomingPublic = query({
   handler: async (ctx) => {
     const tournaments = await ctx.db
       .query("tournaments")
-      .withIndex("by_status_and_startDate", (q) =>
-        q.eq("status", "public").gte("startDate", Date.now()),
+      .withIndex("by_visibility_and_lifecycle_and_startDate", (q) =>
+        q
+          .eq("visibility", "public")
+          .eq("lifecycle", "registration")
+          .gte("startDate", Date.now()),
       )
       .order("asc")
       .take(100);
@@ -70,13 +76,13 @@ export const listUpcomingForOrganization = query({
 
     const now = Date.now();
     const rows = [];
-    for (const status of ["private", "public", "in_progress"] as const) {
+    for (const lifecycle of ["setup", "registration", "in_progress"] as const) {
       const tournaments = await ctx.db
         .query("tournaments")
-        .withIndex("by_organizationId_and_status_and_startDate", (q) =>
+        .withIndex("by_organizationId_and_lifecycle_and_startDate", (q) =>
           q
             .eq("organizationId", args.organizationId)
-            .eq("status", status)
+            .eq("lifecycle", lifecycle)
             .gte("startDate", now),
         )
         .order("asc")
@@ -94,7 +100,8 @@ export const listUpcomingForOrganization = query({
 });
 
 // Takes the code as a plain string because it arrives from a public URL; an
-// unrecognized, malformed, or private code returns null instead of throwing.
+// unrecognized or malformed code returns null instead of throwing, as does a
+// private event unless the caller is registered for it.
 export const getPublicTournament = query({
   args: { publicCode: v.string() },
   handler: async (ctx, args) => {
@@ -107,8 +114,21 @@ export const getPublicTournament = query({
       .query("tournaments")
       .withIndex("by_publicCode", (q) => q.eq("publicCode", publicCode))
       .unique();
-    if (!tournament || tournament.status === "private") {
+    if (!tournament) {
       return null;
+    }
+    // Going private only removes the event from public discovery. Registered
+    // players must still resolve the code, or flipping a live event to
+    // private would lock them out of pairings and result reporting. Setup
+    // events stay hidden: registrations only exist after publish.
+    if (!isPubliclyViewable(tournament)) {
+      const user = await currentUserOrNull(ctx);
+      const registration = user
+        ? await registrationForUser(ctx, tournament._id, user._id)
+        : null;
+      if (!registration) {
+        return null;
+      }
     }
 
     const organization = await ctx.db.get(tournament.organizationId);
@@ -334,7 +354,24 @@ export const publishTournament = mutation({
     await requireSwissPhase(ctx, args.tournamentId);
 
     await ctx.db.patch(args.tournamentId, {
-      status: "public",
+      lifecycle: "registration",
+      updatedAt: Date.now(),
+    });
+    return args.tournamentId;
+  },
+});
+
+// Visibility can change at any point in the lifecycle: an organizer may hide a
+// finished event or take a live one off the public listings.
+export const updateTournamentVisibility = mutation({
+  args: {
+    tournamentId: v.id("tournaments"),
+    visibility: tournamentVisibilityValidator,
+  },
+  handler: async (ctx, args) => {
+    await requireOrganizerAccess(ctx, args.tournamentId);
+    await ctx.db.patch(args.tournamentId, {
+      visibility: args.visibility,
       updatedAt: Date.now(),
     });
     return args.tournamentId;
@@ -346,7 +383,7 @@ export const cancelTournament = mutation({
   handler: async (ctx, args) => {
     await requireOrganizerAccess(ctx, args.tournamentId);
     await ctx.db.patch(args.tournamentId, {
-      status: "cancelled",
+      lifecycle: "cancelled",
       updatedAt: Date.now(),
     });
     return args.tournamentId;
