@@ -25,7 +25,7 @@ export function WorkspaceSubnav({
     // The wrapper clips the bar so it appears to lower out from beneath the
     // workspace header rather than slide over it. Only animates on mount (route
     // entry), not on tab switches within the section.
-    <div className="sticky top-14 z-20 shrink-0 overflow-hidden">
+    <div className="shrink-0 overflow-hidden">
       <nav
         aria-label={ariaLabel}
         className="border-b border-border bg-background duration-300 ease-out animate-in slide-in-from-top motion-reduce:animate-none"

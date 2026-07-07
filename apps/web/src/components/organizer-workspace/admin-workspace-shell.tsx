@@ -24,9 +24,9 @@ export function AdminWorkspaceShell({
           <SidebarProvider defaultOpen={defaultSidebarOpen}>
             <UpsertCurrentUser />
             <AdminSidebar />
-            <SidebarInset>
+            <SidebarInset className="h-svh overflow-hidden md:peer-data-[variant=inset]:h-[calc(100svh-1rem)]">
               <AdminHeader />
-              {children}
+              <div className="flex min-h-0 flex-1 flex-col">{children}</div>
             </SidebarInset>
             <Toaster />
           </SidebarProvider>

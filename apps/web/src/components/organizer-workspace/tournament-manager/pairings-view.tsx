@@ -3,11 +3,9 @@ import { useMutation, useQuery } from 'convex/react'
 import {
   ClipboardPen,
   FlaskConical,
-  ListOrdered,
   MoreHorizontal,
   Settings2,
   Swords,
-  Trophy,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -16,6 +14,7 @@ import type { FormEvent } from 'react'
 import type { ColumnDef } from '@tanstack/react-table'
 import type { FunctionReturnType } from 'convex/server'
 import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
+import type { RoundSelection } from '@/components/tournaments'
 import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'
 import { WorkspacePageHeader } from '@/components/shared/workspace-page-header'
 import {
@@ -61,7 +60,6 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@/components/ui/empty'
-import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
 
 type PairingsBoard = FunctionReturnType<
@@ -71,31 +69,31 @@ type PairingRow = FunctionReturnType<
   typeof api.tournaments.rounds.listRoundPairings
 >[number]
 type PairedPlayer = PairingRow['players'][number]
-type AdvanceStep = Exclude<
-  PairingsBoard['nextStep'],
-  { kind: 'tournamentCompleted' } | { kind: 'tournamentCancelled' }
->
 
-export function PairingsView({ tournamentId }: { tournamentId: string }) {
+export function PairingsView({
+  tournamentId,
+  roundSelection,
+  onRoundSelectionChange,
+}: {
+  tournamentId: string
+  roundSelection: RoundSelection
+  onRoundSelectionChange: (selection: RoundSelection) => void
+}) {
   const board = useQuery(api.tournaments.rounds.getPairingsBoard, {
     tournamentId: tournamentId as Id<'tournaments'>,
   })
 
   const phases = board?.phases ?? []
-  const navigation = useTournamentRoundNavigation(phases, 'all')
+  const navigation = useTournamentRoundNavigation(
+    phases,
+    'all',
+    roundSelection,
+    onRoundSelectionChange,
+  )
 
   return (
     <section className="flex flex-col gap-4">
-      <WorkspacePageHeader
-        eyebrow="Tournament manager"
-        title="Pairings"
-        actions={
-          <AdvanceStepButton
-            board={board}
-            onAdvanced={navigation.resetRoundSelection}
-          />
-        }
-      />
+      <WorkspacePageHeader eyebrow="Tournament manager" title="Pairings" />
 
       <Card>
         <CardHeader>
@@ -144,6 +142,7 @@ export function PairingsView({ tournamentId }: { tournamentId: string }) {
                     availableRoundNumbers={navigation.availableRounds.map(
                       (round) => round.roundNumber,
                     )}
+                    firstRoundNumber={navigation.firstRoundNumber}
                     onValueChange={navigation.selectRound}
                     roundCount={navigation.roundTabCount}
                   />
@@ -221,131 +220,6 @@ function PairingsSettingsMenu({
       </DropdownMenuContent>
     </DropdownMenu>
   )
-}
-
-function AdvanceStepButton({
-  board,
-  onAdvanced,
-}: {
-  board: PairingsBoard | undefined
-  onAdvanced: () => void
-}) {
-  const startTournament = useMutation(api.tournaments.rounds.startTournament)
-  const generateNextRound = useMutation(
-    api.tournaments.rounds.generateNextRound,
-  )
-  const completeRound = useMutation(api.tournaments.rounds.completeRound)
-  const completeTournament = useMutation(
-    api.tournaments.lifecycle.completeTournament,
-  )
-  const [busy, setBusy] = useState(false)
-
-  if (board === undefined) {
-    return <Skeleton className="h-8 w-44" />
-  }
-
-  const step = board.nextStep
-  if (step.kind === 'tournamentCancelled') {
-    return <Badge variant="destructive">Tournament cancelled</Badge>
-  }
-  if (step.kind === 'tournamentCompleted') {
-    return (
-      <Button type="button" disabled>
-        <Trophy />
-        Tournament complete
-      </Button>
-    )
-  }
-
-  const action = advanceAction(step, board.tournament._id, {
-    startTournament,
-    generateNextRound,
-    completeRound,
-    completeTournament,
-  })
-
-  async function handleAdvance() {
-    setBusy(true)
-    try {
-      await action.run()
-      toast.success(action.success)
-      onAdvanced()
-    } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : 'Could not advance the tournament.',
-      )
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <div className="flex flex-col items-end gap-1">
-      <Button
-        type="button"
-        disabled={!step.ready || busy}
-        onClick={() => void handleAdvance()}
-      >
-        {busy ? <Spinner /> : action.icon}
-        {action.label}
-      </Button>
-      {!step.ready && step.reason ? (
-        <p className="text-xs text-muted-foreground">{step.reason}</p>
-      ) : null}
-    </div>
-  )
-}
-
-function advanceAction(
-  step: AdvanceStep,
-  tournamentId: Id<'tournaments'>,
-  mutations: {
-    startTournament: (args: {
-      tournamentId: Id<'tournaments'>
-    }) => Promise<unknown>
-    generateNextRound: (args: {
-      tournamentId: Id<'tournaments'>
-    }) => Promise<unknown>
-    completeRound: (args: {
-      roundId: Id<'tournamentRounds'>
-    }) => Promise<unknown>
-    completeTournament: (args: {
-      tournamentId: Id<'tournaments'>
-    }) => Promise<unknown>
-  },
-) {
-  switch (step.kind) {
-    case 'startTournament':
-      return {
-        label: 'Generate pairings',
-        icon: <Swords />,
-        success: 'Round 1 pairings generated.',
-        run: () => mutations.startTournament({ tournamentId }),
-      }
-    case 'generateStandings':
-      return {
-        label: 'Generate standings',
-        icon: <ListOrdered />,
-        success: 'Standings generated and round completed.',
-        run: () => mutations.completeRound({ roundId: step.roundId }),
-      }
-    case 'generateNextRound':
-      return {
-        label: 'Generate pairings',
-        icon: <Swords />,
-        success: 'Next round pairings generated.',
-        run: () => mutations.generateNextRound({ tournamentId }),
-      }
-    case 'completeTournament':
-      return {
-        label: 'Complete tournament',
-        icon: <Trophy />,
-        success: 'Tournament completed.',
-        run: () => mutations.completeTournament({ tournamentId }),
-      }
-  }
 }
 
 function pairedPlayerName(player: PairedPlayer | undefined) {

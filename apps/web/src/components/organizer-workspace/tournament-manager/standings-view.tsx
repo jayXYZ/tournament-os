@@ -6,6 +6,7 @@ import { formatPercent, formatRecord } from '@tournament-os/core'
 import type { ColumnDef } from '@tanstack/react-table'
 import type { FunctionReturnType } from 'convex/server'
 import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
+import type { RoundSelection } from '@/components/tournaments'
 import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'
 import { WorkspacePageHeader } from '@/components/shared/workspace-page-header'
 import {
@@ -37,13 +38,26 @@ type StandingRow = FunctionReturnType<
   typeof api.tournaments.rounds.listRoundStandings
 >[number]
 
-export function StandingsView({ tournamentId }: { tournamentId: string }) {
+export function StandingsView({
+  tournamentId,
+  roundSelection,
+  onRoundSelectionChange,
+}: {
+  tournamentId: string
+  roundSelection: RoundSelection
+  onRoundSelectionChange: (selection: RoundSelection) => void
+}) {
   const board = useQuery(api.tournaments.rounds.getPairingsBoard, {
     tournamentId: tournamentId as Id<'tournaments'>,
   })
 
   const phases = board?.phases ?? []
-  const navigation = useTournamentRoundNavigation(phases, 'completed')
+  const navigation = useTournamentRoundNavigation(
+    phases,
+    'completed',
+    roundSelection,
+    onRoundSelectionChange,
+  )
 
   return (
     <section className="flex flex-col gap-4">
@@ -89,6 +103,7 @@ export function StandingsView({ tournamentId }: { tournamentId: string }) {
                     availableRoundNumbers={navigation.availableRounds.map(
                       (round) => round.roundNumber,
                     )}
+                    firstRoundNumber={navigation.firstRoundNumber}
                     onValueChange={navigation.selectRound}
                     roundCount={navigation.roundTabCount}
                   />

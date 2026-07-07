@@ -1,10 +1,12 @@
 export {
+  parseRoundSelectionSearch,
   TournamentPhaseTabs,
   TournamentRoundTabs,
   useTournamentRoundNavigation,
 } from './round-navigation'
 export type {
   RoundNavigationMode,
+  RoundSelection,
   TournamentRoundNavigationPhase,
 } from './round-navigation'
 export {
