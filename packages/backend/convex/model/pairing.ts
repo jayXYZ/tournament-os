@@ -6,7 +6,11 @@ import {
   compareStandingRows,
   hasCumulativeTotals,
 } from "./standings";
-import { MAX_TOURNAMENT_PLAYERS } from "./tournaments";
+import {
+  MAX_TOURNAMENT_PLAYERS,
+  requireResolvedPhaseTotalRounds,
+  roundNumberInPhase,
+} from "./tournaments";
 
 export type PairingOptions = {
   // Stored tournament seed driving the within-bracket shuffle.
@@ -40,12 +44,26 @@ export async function createRoundWithPairings(
   ctx: MutationCtx,
   args: {
     tournament: Doc<"tournaments">;
+    // The phase's phaseTotalRounds must already be resolved (non-null).
     phase: Doc<"tournamentPhases">;
+    // Global across the tournament (Magic-style): a later phase continues
+    // the numbering.
     roundNumber: number;
     registrations: Doc<"tournamentRegistrations">[];
     previousRoundId?: Id<"tournamentRounds">;
   },
 ) {
+  // Whether this is the phase's configured final round (which optionally
+  // power-pairs), derived here from the new round's position within the
+  // phase so every caller gets the same answer. Computed before the insert
+  // so the phase's first existing round is still the true first round.
+  const phaseTotalRounds = requireResolvedPhaseTotalRounds(args.phase);
+  const finalRound =
+    (await roundNumberInPhase(ctx, {
+      tournamentPhaseId: args.phase._id,
+      roundNumber: args.roundNumber,
+    })) >= phaseTotalRounds;
+
   const now = Date.now();
   const roundId = await ctx.db.insert("tournamentRounds", {
     tournamentId: args.tournament._id,
@@ -62,9 +80,7 @@ export async function createRoundWithPairings(
   const pairings = buildSwissPairings(ranked, {
     seed: args.tournament.seed ?? args.tournament.publicCode,
     roundNumber: args.roundNumber,
-    finalRound:
-      args.roundNumber >=
-      (args.phase.phaseTotalRounds ?? Number.POSITIVE_INFINITY),
+    finalRound,
     powerPairFinalRound: args.phase.powerPairFinalRound ?? true,
   });
 
@@ -367,6 +383,9 @@ function withoutIndex<T>(items: T[], index: number): T[] {
 
 // Fallback for registrations whose previous-round standings row predates the
 // denormalized history fields (or who have no row, e.g. after reinstatement).
+// Reads the player's whole tournament history: records and rematch avoidance
+// carry across Swiss phases, and rows are bounded by the round cap (16) times
+// the phase cap (16).
 async function playerPairingHistory(
   ctx: QueryCtx,
   playerId: Id<"tournamentRegistrations">,
@@ -374,7 +393,7 @@ async function playerPairingHistory(
   const rows = await ctx.db
     .query("tournamentMatchPlayers")
     .withIndex("by_playerId", (q) => q.eq("playerId", playerId))
-    .take(64);
+    .take(256);
 
   const opponentIds = new Set<Id<"tournamentRegistrations">>();
   for (const row of rows) {

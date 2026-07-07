@@ -126,20 +126,51 @@ export async function requireRegistration(
   return registration;
 }
 
-export async function swissPhaseOrNull(
+// All of a tournament's Swiss phases in play order (bounded by the 16-phase cap).
+export async function swissPhasesInOrder(
   ctx: QueryCtx,
   tournamentId: Id<"tournaments">,
+) {
+  const phases = await ctx.db
+    .query("tournamentPhases")
+    .withIndex("by_tournamentId_and_phaseOrder", (q) =>
+      q.eq("tournamentId", tournamentId),
+    )
+    .take(16);
+  return phases.filter((phase) => phase.phaseType === SWISS_FORMAT);
+}
+
+export async function swissPhaseByOrder(
+  ctx: QueryCtx,
+  tournamentId: Id<"tournaments">,
+  phaseOrder: number,
 ) {
   const phase = await ctx.db
     .query("tournamentPhases")
     .withIndex("by_tournamentId_and_phaseOrder", (q) =>
-      q.eq("tournamentId", tournamentId).eq("phaseOrder", 1),
+      q.eq("tournamentId", tournamentId).eq("phaseOrder", phaseOrder),
     )
     .unique();
   if (!phase || phase.phaseType !== SWISS_FORMAT) {
     return null;
   }
   return phase;
+}
+
+// The phase play is currently anchored to: the in-progress phase if one
+// exists, otherwise the most recently completed phase (its final round stays
+// "current" until the next phase starts), otherwise the first upcoming phase.
+export async function swissPhaseOrNull(
+  ctx: QueryCtx,
+  tournamentId: Id<"tournaments">,
+) {
+  const phases = await swissPhasesInOrder(ctx, tournamentId);
+  return (
+    phases.find((phase) => phase.phaseStatus === "in_progress") ??
+    [...phases].reverse().find((phase) => phase.phaseStatus === "completed") ??
+    phases.find((phase) => phase.phaseStatus === "upcoming") ??
+    null
+  );
 }
 
 export async function requireSwissPhase(
@@ -151,6 +182,24 @@ export async function requireSwissPhase(
     throw new Error("Swiss phase is not configured");
   }
   return phase;
+}
+
+// A round's 1-based position within its phase. Round numbers are global
+// across the tournament (Magic-style: an 8-round day 1 makes day 2 start at
+// round 9), so comparisons against a phase's configured round count must use
+// the offset from the phase's first round. Accepts a plain shape so it also
+// works for a round that hasn't been inserted yet.
+export async function roundNumberInPhase(
+  ctx: QueryCtx,
+  round: Pick<Doc<"tournamentRounds">, "tournamentPhaseId" | "roundNumber">,
+) {
+  const firstRound = await ctx.db
+    .query("tournamentRounds")
+    .withIndex("by_tournamentPhaseId_and_roundNumber", (q) =>
+      q.eq("tournamentPhaseId", round.tournamentPhaseId),
+    )
+    .first();
+  return round.roundNumber - (firstRound?.roundNumber ?? round.roundNumber) + 1;
 }
 
 export async function registrationForUser(
@@ -344,6 +393,21 @@ export async function completeTournament(
   if (currentRound.roundStatus !== "completed") {
     throw new Error("Current round must be completed first");
   }
+  // Between phases the current phase is already "completed" and its final
+  // round has been played, so the checks above pass. Without this guard the
+  // tournament could be marked completed while a later phase is still
+  // upcoming, permanently stranding it (mirrors pairingsNextStep, which only
+  // offers completion once no upcoming phase remains).
+  const nextPhase = await swissPhaseByOrder(
+    ctx,
+    tournament._id,
+    phase.phaseOrder + 1,
+  );
+  if (nextPhase && nextPhase.phaseStatus === "upcoming") {
+    throw new Error(
+      "The next phase has not been played; generate its first round instead",
+    );
+  }
 
   const now = Date.now();
   await ctx.db.patch(phase._id, { phaseStatus: "completed", updatedAt: now });
@@ -366,9 +430,18 @@ export type PairingsNextStep =
   | { kind: "tournamentCompleted" }
   | { kind: "tournamentCancelled" };
 
+export type PhaseBoard = {
+  phase: Doc<"tournamentPhases">;
+  rounds: Doc<"tournamentRounds">[];
+};
+
+// `phaseBoards` must hold every phase in phaseOrder with each phase's full
+// round list in roundNumber order (the caller already loads exactly that);
+// working off it keeps this from re-reading documents the query has in hand.
 export async function pairingsNextStep(
   ctx: QueryCtx,
   tournament: Doc<"tournaments">,
+  phaseBoards: PhaseBoard[],
 ): Promise<PairingsNextStep> {
   if (tournament.lifecycle === "cancelled") {
     return { kind: "tournamentCancelled" };
@@ -377,7 +450,19 @@ export async function pairingsNextStep(
     return { kind: "tournamentCompleted" };
   }
 
-  const phase = await swissPhaseOrNull(ctx, tournament._id);
+  const swissBoards = phaseBoards.filter(
+    (board) => board.phase.phaseType === SWISS_FORMAT,
+  );
+  // Same anchoring as swissPhaseOrNull: the in-progress phase, else the most
+  // recently completed one, else the first upcoming one.
+  const board =
+    swissBoards.find((board) => board.phase.phaseStatus === "in_progress") ??
+    [...swissBoards]
+      .reverse()
+      .find((board) => board.phase.phaseStatus === "completed") ??
+    swissBoards.find((board) => board.phase.phaseStatus === "upcoming") ??
+    null;
+  const phase = board?.phase ?? null;
   if (tournament.lifecycle !== "in_progress") {
     if (!phase) {
       return {
@@ -397,7 +482,7 @@ export async function pairingsNextStep(
     return { kind: "startTournament", ready: true, reason: null };
   }
 
-  if (!phase || !phase.phaseCurrentRound) {
+  if (!board || !phase || !phase.phaseCurrentRound) {
     return {
       kind: "startTournament",
       ready: false,
@@ -405,7 +490,12 @@ export async function pairingsNextStep(
     };
   }
 
-  const round = await requireRound(ctx, phase.phaseCurrentRound);
+  const round = board.rounds.find(
+    (candidate) => candidate._id === phase.phaseCurrentRound,
+  );
+  if (!round) {
+    throw new Error("Round not found");
+  }
   if (round.roundStatus !== "completed") {
     const matches = await roundMatches(ctx, round._id);
     const unreported = matches.reduce(
@@ -426,11 +516,25 @@ export async function pairingsNextStep(
     };
   }
 
+  // The round's 1-based position within its phase, as in roundNumberInPhase:
+  // round numbers are global across the tournament, so offset from the
+  // phase's first round.
+  const roundInPhase = round.roundNumber - board.rounds[0].roundNumber + 1;
   const phaseTotalRounds = phase.phaseTotalRounds;
-  if (phaseTotalRounds !== null && round.roundNumber >= phaseTotalRounds) {
-    return { kind: "completeTournament", ready: true, reason: null };
+  if (phaseTotalRounds === null || roundInPhase < phaseTotalRounds) {
+    return { kind: "generateNextRound", ready: true, reason: null };
   }
-  return { kind: "generateNextRound", ready: true, reason: null };
+
+  // The phase's configured rounds are done: the next round (if any) belongs to
+  // the next phase, which generateNextRound starts.
+  const nextPhase =
+    swissBoards.find(
+      (candidate) => candidate.phase.phaseOrder === phase.phaseOrder + 1,
+    )?.phase ?? null;
+  if (nextPhase && nextPhase.phaseStatus === "upcoming") {
+    return { kind: "generateNextRound", ready: true, reason: null };
+  }
+  return { kind: "completeTournament", ready: true, reason: null };
 }
 
 export async function resolvePhaseTotalRounds(

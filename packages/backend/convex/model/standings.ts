@@ -72,6 +72,7 @@ export function hasCumulativeTotals(standing: Doc<"roundStandings">) {
   );
 }
 
+
 export async function replaceStandingsForRound(
   ctx: MutationCtx,
   tournament: Doc<"tournaments">,
@@ -146,15 +147,10 @@ async function cumulativeStatsThroughRound(
     ]),
   );
 
+  // Round numbers are global across phases, so round 1 is the tournament's
+  // very first round and every later round folds from the one before it.
   if (round.roundNumber > 1) {
-    const previousRound = await ctx.db
-      .query("tournamentRounds")
-      .withIndex("by_tournamentPhaseId_and_roundNumber", (q) =>
-        q
-          .eq("tournamentPhaseId", phase._id)
-          .eq("roundNumber", round.roundNumber - 1),
-      )
-      .unique();
+    const previousRound = await previousRoundForStandings(ctx, phase, round);
     const previousStandings = previousRound
       ? await ctx.db
           .query("roundStandings")
@@ -213,9 +209,45 @@ async function cumulativeStatsThroughRound(
   return stats;
 }
 
-// Full-history recompute for a single player. Used as the fallback when
-// cumulative totals are unavailable, and by tests as an oracle for the
-// fold-forward path.
+// The round whose standings feed the given round's fold. Within a phase that
+// is the prior round number; for the first round of a later phase (numbering
+// is global, so its number continues the previous phase's) it is the previous
+// phase's final round, so records carry across Swiss phases.
+async function previousRoundForStandings(
+  ctx: QueryCtx,
+  phase: Doc<"tournamentPhases">,
+  round: Doc<"tournamentRounds">,
+): Promise<Doc<"tournamentRounds"> | null> {
+  const samePhaseRound = await ctx.db
+    .query("tournamentRounds")
+    .withIndex("by_tournamentPhaseId_and_roundNumber", (q) =>
+      q
+        .eq("tournamentPhaseId", phase._id)
+        .eq("roundNumber", round.roundNumber - 1),
+    )
+    .unique();
+  if (samePhaseRound || phase.phaseOrder <= 1) {
+    return samePhaseRound;
+  }
+
+  const previousPhase = await ctx.db
+    .query("tournamentPhases")
+    .withIndex("by_tournamentId_and_phaseOrder", (q) =>
+      q
+        .eq("tournamentId", round.tournamentId)
+        .eq("phaseOrder", phase.phaseOrder - 1),
+    )
+    .unique();
+  // A phase's phaseCurrentRound is its final round once the phase completes.
+  return previousPhase?.phaseCurrentRound
+    ? await ctx.db.get(previousPhase.phaseCurrentRound)
+    : null;
+}
+
+// Full-history recompute for a single player. Round numbers are global across
+// phases, so a plain number bounds history anywhere in the tournament. Used as
+// the fallback when cumulative totals are unavailable, and by tests as an
+// oracle for the fold-forward path.
 export async function accumulatePlayerHistory(
   ctx: QueryCtx,
   tournamentId: Id<"tournaments">,
@@ -227,7 +259,7 @@ export async function accumulatePlayerHistory(
     .withIndex("by_playerId", (q) =>
       q.eq("playerId", playerStats.registration._id),
     )
-    .take(64);
+    .take(256);
 
   for (const playerRow of playerRows) {
     const match = await ctx.db.get(playerRow.tournamentMatchId);
@@ -252,7 +284,7 @@ export async function accumulatePlayerHistory(
 export async function recomputeStatsThroughRound(
   ctx: QueryCtx,
   tournamentId: Id<"tournaments">,
-  roundNumber: number,
+  throughRoundNumber: number,
 ) {
   const registrations = await allRegistrations(ctx, tournamentId);
   const stats = new Map<Id<"tournamentRegistrations">, PlayerStats>(
@@ -265,7 +297,12 @@ export async function recomputeStatsThroughRound(
   for (const registration of registrations) {
     const playerStats = stats.get(registration._id);
     if (playerStats) {
-      await accumulatePlayerHistory(ctx, tournamentId, playerStats, roundNumber);
+      await accumulatePlayerHistory(
+        ctx,
+        tournamentId,
+        playerStats,
+        throughRoundNumber,
+      );
     }
   }
 

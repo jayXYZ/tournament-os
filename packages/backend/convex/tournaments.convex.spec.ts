@@ -804,6 +804,108 @@ test("startTournament resolves dynamic Swiss rounds from active player count", a
   expect(setup.phases[0].phaseTotalRounds).toBe(3);
 });
 
+test("multi-phase tournaments advance into the next phase and carry records", async () => {
+  const t = convexTest(schema, modules);
+  const { organizationId } = await seedOrganizer(t);
+  const authed = t.withIdentity(organizerIdentity);
+  const tournamentId = await authed.mutation(
+    api.tournaments.lifecycle.createTournamentWithPhases,
+    {
+      organizationId,
+      name: "Two Phase Event",
+      startDate: Date.now(),
+      playerCapacity: 8,
+      format: "standard",
+      phases: [
+        { phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 2 },
+        { phaseOrder: 2, phaseRoundMode: "fixed", phaseTotalRounds: 1 },
+      ],
+    },
+  );
+  await seedActiveRegistrations(t, tournamentId, 4);
+  await authed.mutation(api.tournaments.rounds.startTournament, { tournamentId });
+
+  // Phase 1: two rounds.
+  const roundOne = await playOutCurrentRound(authed, tournamentId);
+  await authed.mutation(api.tournaments.rounds.generateNextRound, { tournamentId });
+  const roundTwo = await playOutCurrentRound(authed, tournamentId);
+
+  // Phase 1 is finished, but a phase remains: the next step is another round,
+  // not tournament completion.
+  let board = await authed.query(api.tournaments.rounds.getPairingsBoard, {
+    tournamentId,
+  });
+  expect(board.nextStep).toMatchObject({
+    kind: "generateNextRound",
+    ready: true,
+  });
+
+  // Completing the tournament between phases would strand phase 2 forever,
+  // so the mutation must refuse even though phase 1's final round is done.
+  await expect(
+    authed.mutation(api.tournaments.lifecycle.completeTournament, {
+      tournamentId,
+    }),
+  ).rejects.toThrow(/next phase has not been played/);
+
+  await authed.mutation(api.tournaments.rounds.generateNextRound, { tournamentId });
+  board = await authed.query(api.tournaments.rounds.getPairingsBoard, {
+    tournamentId,
+  });
+  expect(board.phases.map(({ phase }) => phase.phaseStatus)).toEqual([
+    "completed",
+    "in_progress",
+  ]);
+  // Round numbering is global: after two phase-1 rounds, phase 2 opens with
+  // round 3, not round 1.
+  const phaseTwoRound = await authed.query(
+    api.tournaments.rounds.getCurrentRound,
+    { tournamentId },
+  );
+  expect(phaseTwoRound?.roundNumber).toBe(3);
+  expect(phaseTwoRound?.roundName).toBe("Round 3");
+  expect(phaseTwoRound?.tournamentPhaseId).toBe(board.phases[1].phase._id);
+
+  const roundThree = await playOutCurrentRound(authed, tournamentId);
+
+  // Pairing history carries across the boundary: with four players over three
+  // rounds, rematch avoidance forces all six distinct pairings.
+  const allPairs = [
+    ...roundOne.pairKeys,
+    ...roundTwo.pairKeys,
+    ...roundThree.pairKeys,
+  ];
+  expect(new Set(allPairs).size).toBe(6);
+
+  // Records carry too: after the phase-2 round every player has three rounds
+  // of results.
+  const standings = await authed.query(api.tournaments.rounds.getStandings, {
+    roundId: roundThree.round._id,
+  });
+  expect(standings).toHaveLength(4);
+  for (const standing of standings) {
+    expect(
+      standing.matchWins + standing.matchLosses + standing.matchDraws,
+    ).toBe(3);
+  }
+
+  board = await authed.query(api.tournaments.rounds.getPairingsBoard, {
+    tournamentId,
+  });
+  expect(board.nextStep).toMatchObject({
+    kind: "completeTournament",
+    ready: true,
+  });
+  await authed.mutation(api.tournaments.lifecycle.completeTournament, {
+    tournamentId,
+  });
+  board = await authed.query(api.tournaments.rounds.getPairingsBoard, {
+    tournamentId,
+  });
+  expect(board.tournament.lifecycle).toBe("completed");
+  expect(board.nextStep).toEqual({ kind: "tournamentCompleted" });
+});
+
 test("test tournaments seed players, generate Swiss rounds, and complete", async () => {
   const t = convexTest(schema, modules);
   const { organizationId } = await t.run(async (ctx) => {
@@ -1023,6 +1125,47 @@ async function seedOrganizer(t: ReturnType<typeof convexTest>) {
 
     return { organizationId, userId };
   });
+}
+
+// Records a 2-0 win for the listed player one in every non-bye match of the
+// current round, then completes the round. Returns the round and the unordered
+// registration-id pair of each match for rematch assertions.
+async function playOutCurrentRound(
+  authed: ReturnType<ReturnType<typeof convexTest>["withIdentity"]>,
+  tournamentId: Id<"tournaments">,
+) {
+  const round = await authed.query(api.tournaments.rounds.getCurrentRound, {
+    tournamentId,
+  });
+  if (!round) {
+    throw new Error("No current round to play out");
+  }
+  const pairings = await authed.query(api.tournaments.rounds.listRoundPairings, {
+    roundId: round._id,
+  });
+  const pairKeys: string[] = [];
+  for (const { match, players } of pairings) {
+    if (players.length !== 2) {
+      continue;
+    }
+    pairKeys.push(
+      players
+        .map((player) => player.playerId)
+        .sort()
+        .join("+"),
+    );
+    await authed.mutation(api.tournaments.rounds.recordMatchResult, {
+      matchId: match._id,
+      playerOneRegistrationId: players[0].playerId,
+      playerTwoRegistrationId: players[1].playerId,
+      playerOneGameWins: 2,
+      playerTwoGameWins: 0,
+    });
+  }
+  await authed.mutation(api.tournaments.rounds.completeRound, {
+    roundId: round._id,
+  });
+  return { round, pairKeys };
 }
 
 async function seedActiveRegistrations(

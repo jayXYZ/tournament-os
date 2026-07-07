@@ -314,6 +314,54 @@ test("getMyCurrentMatch walks the tournament lifecycle", async () => {
   expect(current.kind).toBe("between_rounds");
 });
 
+test("isFinalRound is only true in the tournament's last phase", async () => {
+  const t = convexTest(schema, modules);
+  const { tournamentId } = await seedTournament(t, 4, [
+    { phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 1 },
+    { phaseOrder: 2, phaseRoundMode: "fixed", phaseTotalRounds: 1 },
+  ]);
+  const organizer = t.withIdentity(organizerIdentity);
+  const playerOne = t.withIdentity(playerIdentity(1));
+  await organizer.mutation(api.tournaments.rounds.startTournament, {
+    tournamentId,
+  });
+
+  // Phase 1's last round is not the tournament's final round: phase 2 still
+  // has rounds to play.
+  let current = await playerOne.query(api.tournaments.player.getMyCurrentMatch, {
+    tournamentId,
+  });
+  if (current.kind === "not_started") {
+    throw new Error("Expected the tournament to have started");
+  }
+  expect(current.kind).toBe("match");
+  expect(current.round.isFinalRound).toBe(false);
+
+  // Between phases the player is waiting on the next phase, not done.
+  await playOutCurrentRound(t, tournamentId);
+  current = await playerOne.query(api.tournaments.player.getMyCurrentMatch, {
+    tournamentId,
+  });
+  if (current.kind === "not_started") {
+    throw new Error("Expected the tournament to have started");
+  }
+  expect(current.kind).toBe("between_rounds");
+  expect(current.round.isFinalRound).toBe(false);
+
+  // Phase 2's only round is the tournament's final round.
+  await organizer.mutation(api.tournaments.rounds.generateNextRound, {
+    tournamentId,
+  });
+  current = await playerOne.query(api.tournaments.player.getMyCurrentMatch, {
+    tournamentId,
+  });
+  if (current.kind === "not_started") {
+    throw new Error("Expected the tournament to have started");
+  }
+  expect(current.kind).toBe("match");
+  expect(current.round.isFinalRound).toBe(true);
+});
+
 test("getMyMatchHistory reports per-round outcomes", async () => {
   const t = convexTest(schema, modules);
   const { tournamentId, registrationIds } = await seedStartedTournament(t, 4);
@@ -485,7 +533,15 @@ test("player queries reject users who never registered", async () => {
   ).rejects.toThrow("Not registered for this tournament");
 });
 
-async function seedTournament(t: TestConvex<typeof schema>, playerCount: number) {
+async function seedTournament(
+  t: TestConvex<typeof schema>,
+  playerCount: number,
+  phases: {
+    phaseOrder: number;
+    phaseRoundMode: "fixed" | "dynamic";
+    phaseTotalRounds?: number;
+  }[] = [{ phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 3 }],
+) {
   const { organizationId } = await seedOrganizer(t);
   const tournamentId: Id<"tournaments"> = await t
     .withIdentity(organizerIdentity)
@@ -495,7 +551,7 @@ async function seedTournament(t: TestConvex<typeof schema>, playerCount: number)
       startDate: Date.now(),
       playerCapacity: 16,
       format: "standard",
-      phases: [{ phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 3 }],
+      phases,
     });
 
   const registrationIds = await t.run(async (ctx) => {
@@ -555,6 +611,40 @@ async function currentRound(
       throw new Error("Current round missing in test setup");
     }
     return round;
+  });
+}
+
+// Records an organizer result for every two-player match in the current round
+// and completes it, so tests can advance rounds without player reports.
+async function playOutCurrentRound(
+  t: TestConvex<typeof schema>,
+  tournamentId: Id<"tournaments">,
+) {
+  const organizer = t.withIdentity(organizerIdentity);
+  const round = await organizer.query(api.tournaments.rounds.getCurrentRound, {
+    tournamentId,
+  });
+  if (!round) {
+    throw new Error("No current round to play out");
+  }
+  const pairings = await organizer.query(
+    api.tournaments.rounds.listRoundPairings,
+    { roundId: round._id },
+  );
+  for (const { match, players } of pairings) {
+    if (players.length !== 2) {
+      continue;
+    }
+    await organizer.mutation(api.tournaments.rounds.recordMatchResult, {
+      matchId: match._id,
+      playerOneRegistrationId: players[0].playerId,
+      playerTwoRegistrationId: players[1].playerId,
+      playerOneGameWins: 2,
+      playerTwoGameWins: 0,
+    });
+  }
+  await organizer.mutation(api.tournaments.rounds.completeRound, {
+    roundId: round._id,
   });
 }
 

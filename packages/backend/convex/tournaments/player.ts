@@ -14,13 +14,20 @@ import {
   requireRegisteredPlayer,
   requireRound,
   requireTournament,
+  roundNumberInPhase,
+  swissPhaseByOrder,
   swissPhaseOrNull,
+  swissPhasesInOrder,
 } from "../model/tournaments";
 import { ensureCurrentUser } from "../model/users";
 
-// A registration plays at most one match per round, so a player's
-// tournamentMatchPlayers rows are bounded by the round cap (16).
+// Rounds are capped at 16 per phase.
 const MAX_ROUNDS = 16;
+
+// A registration plays at most one match per round, so a player's
+// tournamentMatchPlayers rows are bounded by the round cap (16) times the
+// phase cap (16).
+const MAX_MATCHES_PER_PLAYER = 256;
 
 type OpponentSummary = {
   registrationId: Id<"tournamentRegistrations">;
@@ -51,13 +58,21 @@ export const getMyCurrentMatch = query({
     }
 
     const round = await requireRound(ctx, phase.phaseCurrentRound);
+    // Round numbers are global across phases, so the phase's round count is
+    // compared against the round's position within the phase.
+    const isFinalRoundOfPhase =
+      phase.phaseTotalRounds !== null &&
+      (await roundNumberInPhase(ctx, round)) >= phase.phaseTotalRounds;
+    // The tournament's final round is the last round of the last phase: a
+    // later phase means more rounds follow even after this phase ends.
+    const nextPhase = isFinalRoundOfPhase
+      ? await swissPhaseByOrder(ctx, args.tournamentId, phase.phaseOrder + 1)
+      : null;
     const roundSummary = {
       roundNumber: round.roundNumber,
       roundName: round.roundName,
       roundStatus: round.roundStatus,
-      isFinalRound:
-        phase.phaseTotalRounds !== null &&
-        round.roundNumber >= phase.phaseTotalRounds,
+      isFinalRound: isFinalRoundOfPhase && nextPhase === null,
     };
     if (round.roundStatus === "completed") {
       return { kind: "between_rounds" as const, ...base, round: roundSummary };
@@ -115,7 +130,7 @@ export const getMyMatchHistory = query({
     const playerRows = await ctx.db
       .query("tournamentMatchPlayers")
       .withIndex("by_playerId", (q) => q.eq("playerId", registration._id))
-      .take(MAX_ROUNDS);
+      .take(MAX_MATCHES_PER_PLAYER);
 
     const history = [];
     for (const playerRow of playerRows) {
@@ -150,6 +165,8 @@ export const getMyMatchHistory = query({
       });
     }
 
+    // Round numbers are global across phases, so this orders the whole
+    // tournament's history.
     history.sort((left, right) => left.roundNumber - right.roundNumber);
     return history;
   },
@@ -162,21 +179,27 @@ export const getLatestStandings = query({
       ctx,
       args.tournamentId,
     );
-    const phase = await swissPhaseOrNull(ctx, args.tournamentId);
-    if (!phase) {
-      return null;
+    // Later phases only have rounds once earlier ones finish, so walking the
+    // phases newest-first finds the tournament's latest completed round —
+    // including the previous phase's final round while a new phase's first
+    // round is still being played.
+    let latestCompleted: Doc<"tournamentRounds"> | undefined;
+    const phases = await swissPhasesInOrder(ctx, args.tournamentId);
+    for (const phase of [...phases].reverse()) {
+      const rounds = await ctx.db
+        .query("tournamentRounds")
+        .withIndex("by_tournamentPhaseId_and_roundNumber", (q) =>
+          q.eq("tournamentPhaseId", phase._id),
+        )
+        .order("desc")
+        .take(MAX_ROUNDS);
+      latestCompleted = rounds.find(
+        (round) => round.roundStatus === "completed",
+      );
+      if (latestCompleted) {
+        break;
+      }
     }
-
-    const rounds = await ctx.db
-      .query("tournamentRounds")
-      .withIndex("by_tournamentPhaseId_and_roundNumber", (q) =>
-        q.eq("tournamentPhaseId", phase._id),
-      )
-      .order("desc")
-      .take(MAX_ROUNDS);
-    const latestCompleted = rounds.find(
-      (round) => round.roundStatus === "completed",
-    );
     if (!latestCompleted) {
       return null;
     }
@@ -311,7 +334,7 @@ async function playerMatchInRound(
   const playerRows = await ctx.db
     .query("tournamentMatchPlayers")
     .withIndex("by_playerId", (q) => q.eq("playerId", registrationId))
-    .take(MAX_ROUNDS);
+    .take(MAX_MATCHES_PER_PLAYER);
   for (const myRow of playerRows) {
     const match = await ctx.db.get(myRow.tournamentMatchId);
     if (match && match.tournamentRoundId === roundId) {

@@ -15,12 +15,15 @@ import {
   registrationDisplayName,
   requireMatch,
   requireOrganizerAccess,
+  requirePhase,
   requireResolvedPhaseTotalRounds,
   requireRound,
   requireSetupEditable,
   requireSwissPhase,
   resolvePhaseTotalRounds,
   roundMatches,
+  roundNumberInPhase,
+  swissPhaseByOrder,
 } from "../model/tournaments";
 
 export const startTournament = mutation({
@@ -78,18 +81,54 @@ export const generateNextRound = mutation({
       throw new Error("Current round must be completed first");
     }
     const phaseTotalRounds = requireResolvedPhaseTotalRounds(phase);
-    if (currentRound.roundNumber >= phaseTotalRounds) {
+    const playedInPhase = await roundNumberInPhase(ctx, currentRound);
+    if (playedInPhase < phaseTotalRounds) {
+      const roundId = await createRoundWithPairings(ctx, {
+        tournament,
+        phase,
+        roundNumber: currentRound.roundNumber + 1,
+        registrations: await activeRegistrations(ctx, args.tournamentId),
+        previousRoundId: currentRound._id,
+      });
+      await ctx.db.patch(phase._id, {
+        phaseCurrentRound: roundId,
+        updatedAt: Date.now(),
+      });
+      return roundId;
+    }
+
+    // The phase's configured rounds are done: start the next phase. Round
+    // numbering continues across the boundary (day 2 of an 8-round day 1
+    // starts at round 9), and passing the finished phase's final round as
+    // previousRoundId carries match points, tiebreakers, and pairing history.
+    const nextPhase = await swissPhaseByOrder(
+      ctx,
+      args.tournamentId,
+      phase.phaseOrder + 1,
+    );
+    if (!nextPhase || nextPhase.phaseStatus !== "upcoming") {
       throw new Error("All configured rounds have been generated");
     }
+    const registrations = await activeRegistrations(ctx, args.tournamentId);
+    if (registrations.length < 2) {
+      throw new Error("At least two active players are required");
+    }
+    const nextPhaseTotalRounds = await resolvePhaseTotalRounds(
+      ctx,
+      nextPhase,
+      registrations.length,
+    );
+    const playablePhase = { ...nextPhase, phaseTotalRounds: nextPhaseTotalRounds };
 
     const roundId = await createRoundWithPairings(ctx, {
       tournament,
-      phase,
+      phase: playablePhase,
       roundNumber: currentRound.roundNumber + 1,
-      registrations: await activeRegistrations(ctx, args.tournamentId),
+      registrations,
       previousRoundId: currentRound._id,
     });
-    await ctx.db.patch(phase._id, {
+    await ctx.db.patch(nextPhase._id, {
+      phaseStatus: "in_progress",
       phaseCurrentRound: roundId,
       updatedAt: Date.now(),
     });
@@ -159,7 +198,9 @@ export const completeRound = mutation({
       ctx,
       round.tournamentId,
     );
-    const phase = await requireSwissPhase(ctx, round.tournamentId);
+    // The round's own phase, not the tournament's current one — the two can
+    // differ, and standings must be computed against the phase being played.
+    const phase = await requirePhase(ctx, round.tournamentPhaseId);
     const matches = await roundMatches(ctx, args.roundId);
     for (const match of matches) {
       if (
@@ -177,7 +218,7 @@ export const completeRound = mutation({
       updatedAt: now,
     });
     const phaseTotalRounds = requireResolvedPhaseTotalRounds(phase);
-    if (round.roundNumber >= phaseTotalRounds) {
+    if ((await roundNumberInPhase(ctx, round)) >= phaseTotalRounds) {
       await ctx.db.patch(phase._id, {
         phaseStatus: "completed",
         updatedAt: now,
@@ -252,7 +293,7 @@ export const getPairingsBoard = query({
     return {
       tournament,
       phases: phaseBoards,
-      nextStep: await pairingsNextStep(ctx, tournament),
+      nextStep: await pairingsNextStep(ctx, tournament, phaseBoards),
     };
   },
 });

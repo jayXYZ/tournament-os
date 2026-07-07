@@ -184,11 +184,11 @@ export const advanceTestRound = mutation({
     });
 
     const config = await requireTestConfig(ctx, args.tournamentId);
-    const finalRound = Math.min(
+    const lastRoundNumber = Math.min(
       config.roundsToGenerate,
       requireResolvedPhaseTotalRounds(phase),
     );
-    if (round.roundNumber >= finalRound) {
+    if (round.roundNumber >= lastRoundNumber) {
       await completeTournament(ctx, args.tournamentId);
       return { tournamentId: args.tournamentId, roundId: round._id };
     }
