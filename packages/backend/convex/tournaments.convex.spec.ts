@@ -504,6 +504,75 @@ test("createTournamentWithPhases creates an unpublished public tournament with o
   expect(setup.phases[0].phaseTotalRounds).toBeNull();
 });
 
+test("updateTournamentDetails stores trimmed markdown and clears it when emptied", async () => {
+  const t = convexTest(schema, modules);
+  const now = Date.now();
+  const { organizationId } = await seedOrganizer(t);
+  const authed = t.withIdentity(organizerIdentity);
+
+  const tournamentId = await authed.mutation(
+    api.tournaments.lifecycle.createTournamentWithPhases,
+    {
+      organizationId,
+      name: "Detailed Event",
+      startDate: now + 86_400_000,
+      playerCapacity: 16,
+      format: "standard",
+      phases: [{ phaseOrder: 1, phaseRoundMode: "dynamic" }],
+    },
+  );
+
+  await authed.mutation(api.tournaments.lifecycle.updateTournamentDetails, {
+    tournamentId,
+    detailsMarkdown: "## Prizes\n\n- 1st: booster box\n",
+  });
+
+  const withDetails = await authed.query(
+    api.tournaments.lifecycle.getTournamentSetup,
+    { tournamentId },
+  );
+  expect(withDetails.tournament.detailsMarkdown).toBe(
+    "## Prizes\n\n- 1st: booster box",
+  );
+
+  // Details stay editable after the tournament starts, unlike core setup.
+  await authed.mutation(api.tournaments.lifecycle.publishTournament, {
+    tournamentId,
+  });
+  await authed.mutation(api.tournaments.lifecycle.updateTournamentDetails, {
+    tournamentId,
+    detailsMarkdown: "Updated during registration",
+  });
+
+  await authed.mutation(api.tournaments.lifecycle.updateTournamentDetails, {
+    tournamentId,
+    detailsMarkdown: "   \n\n  ",
+  });
+  const cleared = await authed.query(
+    api.tournaments.lifecycle.getTournamentSetup,
+    { tournamentId },
+  );
+  expect(cleared.tournament.detailsMarkdown).toBeUndefined();
+
+  await expect(
+    t.mutation(api.tournaments.lifecycle.updateTournamentDetails, {
+      tournamentId,
+      detailsMarkdown: "anonymous edit",
+    }),
+  ).rejects.toThrow();
+
+  // Cancelled events are read-only, even for organizers.
+  await authed.mutation(api.tournaments.lifecycle.cancelTournament, {
+    tournamentId,
+  });
+  await expect(
+    authed.mutation(api.tournaments.lifecycle.updateTournamentDetails, {
+      tournamentId,
+      detailsMarkdown: "edit after cancellation",
+    }),
+  ).rejects.toThrow("Tournament has been cancelled");
+});
+
 test("tournament creation assigns sequential public codes", async () => {
   const t = convexTest(schema, modules);
   const now = Date.now();

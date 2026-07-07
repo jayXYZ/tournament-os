@@ -88,6 +88,10 @@ export default defineSchema({
     playerCapacity: v.number(),
     format: tournamentFormatValidator,
     isTestEvent: v.boolean(),
+    // Organizer-authored event details (description, prizes, logistics) as
+    // markdown, rendered on the public tournament page. Absent means the
+    // organizer has not written any.
+    detailsMarkdown: v.optional(v.string()),
     // Denormalized count of registrations with status "active". List queries
     // read this instead of scanning each tournament's registration rows, which
     // would fan out into tens of thousands of reads across a full schedule.

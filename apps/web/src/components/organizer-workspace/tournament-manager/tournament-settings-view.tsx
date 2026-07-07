@@ -55,6 +55,7 @@ import {
   FieldSet,
 } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
+import { MarkdownEditor } from '@/components/ui/markdown-editor'
 import {
   Select,
   SelectContent,
@@ -67,7 +68,6 @@ import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Textarea } from '@/components/ui/textarea'
 
 type PhaseStatus = Doc<'tournamentPhases'>['phaseStatus']
 
@@ -130,6 +130,10 @@ export function TournamentSettingsView({
           ) : null}
           <TournamentSettingsCard
             key={setup.tournament._id}
+            tournament={setup.tournament}
+          />
+          <EventDetailsCard
+            key={`${setup.tournament._id}-details`}
             tournament={setup.tournament}
           />
           <PhaseSettingsCard
@@ -289,16 +293,6 @@ function TournamentSettingsCard({
                     />
                   </Field>
                 </div>
-                <Field>
-                  <FieldLabel htmlFor="settings-description">
-                    Event description
-                  </FieldLabel>
-                  <Textarea
-                    id="settings-description"
-                    placeholder="Tell players what to expect at this event."
-                    disabled
-                  />
-                </Field>
               </FieldGroup>
             </FieldSet>
 
@@ -306,6 +300,68 @@ function TournamentSettingsCard({
               <Button type="submit" disabled={disabled}>
                 {busy ? <Spinner data-icon="inline-start" /> : null}
                 Save settings
+              </Button>
+            </div>
+          </FieldGroup>
+        </form>
+      </CardContent>
+    </Card>
+  )
+}
+
+function EventDetailsCard({ tournament }: { tournament: Doc<'tournaments'> }) {
+  const updateTournamentDetails = useMutation(
+    api.tournaments.lifecycle.updateTournamentDetails,
+  )
+
+  const [details, setDetails] = useState(tournament.detailsMarkdown ?? '')
+  const [busy, setBusy] = useState(false)
+
+  // Details stay editable after the event starts (prize and logistics info
+  // legitimately changes mid-event); only cancelled events are read-only.
+  const disabled = tournament.lifecycle === 'cancelled' || busy
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+
+    setBusy(true)
+    try {
+      await updateTournamentDetails({
+        tournamentId: tournament._id,
+        detailsMarkdown: details,
+      })
+      toast.success('Event details saved.')
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : 'Could not save event details.',
+      )
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Event details</CardTitle>
+        <CardDescription>
+          Description, prizes, and logistics shown on the public event page.
+          Editable at any time, even after the event starts.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={handleSubmit}>
+          <FieldGroup>
+            <MarkdownEditor
+              value={tournament.detailsMarkdown ?? ''}
+              onChange={setDetails}
+              disabled={disabled}
+              placeholder="Tell players what to expect: schedule, prizes, entry requirements, venue details…"
+            />
+            <div className="flex justify-end">
+              <Button type="submit" disabled={disabled}>
+                {busy ? <Spinner data-icon="inline-start" /> : null}
+                Save details
               </Button>
             </div>
           </FieldGroup>

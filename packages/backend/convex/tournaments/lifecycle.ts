@@ -23,6 +23,7 @@ import {
   requireSetupEditable,
   requireSwissPhase,
   validCapacity,
+  validDetailsMarkdown,
   validPhaseInputs,
   validRoundCount,
 } from "../model/tournaments";
@@ -275,6 +276,28 @@ export const updateTournamentSetup = mutation({
     }
 
     await ctx.db.patch(args.tournamentId, patch);
+    return args.tournamentId;
+  },
+});
+
+// Unlike updateTournamentSetup, details stay editable through the whole
+// lifecycle: organizers legitimately update prize or logistics info while an
+// event is in registration or already running. Cancelled events are the one
+// exception — they are read-only, matching the settings UI.
+export const updateTournamentDetails = mutation({
+  args: {
+    tournamentId: v.id("tournaments"),
+    detailsMarkdown: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
+    if (tournament.lifecycle === "cancelled") {
+      throw new Error("Tournament has been cancelled");
+    }
+    await ctx.db.patch(args.tournamentId, {
+      detailsMarkdown: validDetailsMarkdown(args.detailsMarkdown),
+      updatedAt: Date.now(),
+    });
     return args.tournamentId;
   },
 });

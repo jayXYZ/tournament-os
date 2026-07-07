@@ -13,6 +13,7 @@ import {
 import { toast } from 'sonner'
 import { api } from '@tournament-os/backend/convex/_generated/api'
 import type { Doc } from '@tournament-os/backend/convex/_generated/dataModel'
+import { MarkdownContent } from '@/components/shared/markdown-content'
 import { PublicSiteHeader } from '@/components/shared/public-site-header'
 import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'
 import {
@@ -181,6 +182,12 @@ function TournamentDetails({
         </div>
         <Separator />
         <RegistrationPanel tournament={tournament} spotsLeft={spotsLeft} />
+        {tournament.detailsMarkdown ? (
+          <>
+            <Separator />
+            <MarkdownContent markdown={tournament.detailsMarkdown} />
+          </>
+        ) : null}
       </CardContent>
       <CardFooter>
         <p className="text-xs text-muted-foreground">

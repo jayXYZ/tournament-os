@@ -49,7 +49,7 @@ content, and live round operations.
   - [x] Surface existing setup mutations (name, date, capacity, format, rounds) in a proper settings view, with clear rules for what stays editable after the event starts
   - [x] Danger zone: cancel event (exists in backend) and hard-delete event + all child rows (new mutation)
   - [x] Admin Overview tab now previews the public event page (settings moved to the Settings tab)
-- [ ] Details page: description / prizing / logistics text with markdown editing, rendered on the public tournament page
+- [x] Details page: description / prizing / logistics text with markdown editing, rendered on the public tournament page (Tiptap WYSIWYG in Settings, markdown stored on the tournament, rendered on the public page)
 - [ ] Location data for paper tournaments (venue name, address; shown publicly, filterable later)
 - [ ] Round timer
   - [ ] Timer state on rounds (duration, startedAt, pause/extend) synced via Convex

@@ -716,6 +716,22 @@ export function requireTestTournament(tournament: Doc<"tournaments">) {
   }
 }
 
+// Well below the 1MB document limit, but far more than any reasonable event
+// write-up; the editor enforces the same cap client-side.
+export const MAX_DETAILS_MARKDOWN_LENGTH = 20_000;
+
+// Returns the markdown to store, or undefined when the (trimmed) text is
+// empty so callers clear the field instead of storing an empty string.
+export function validDetailsMarkdown(value: string) {
+  if (value.length > MAX_DETAILS_MARKDOWN_LENGTH) {
+    throw new Error(
+      `Event details must be at most ${MAX_DETAILS_MARKDOWN_LENGTH} characters`,
+    );
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
 export function cleanName(value: string, label: string) {
   const trimmed = value.trim();
   if (trimmed.length < 2) {
