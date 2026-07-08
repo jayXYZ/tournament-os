@@ -80,6 +80,14 @@ export const generateNextRound = mutation({
     if (currentRound.roundStatus !== "completed") {
       throw new Error("Current round must be completed first");
     }
+    // Defensive: completeRound clears the finished round's timer, so this only
+    // fires if a stale timer somehow survived; the new round starts without one.
+    if (tournament.roundTimer) {
+      await ctx.db.patch(tournament._id, {
+        roundTimer: undefined,
+        updatedAt: Date.now(),
+      });
+    }
     const phaseTotalRounds = requireResolvedPhaseTotalRounds(phase);
     const playedInPhase = await roundNumberInPhase(ctx, currentRound);
     if (playedInPhase < phaseTotalRounds) {
@@ -217,6 +225,13 @@ export const completeRound = mutation({
       roundStatus: "completed",
       updatedAt: now,
     });
+    // The round is over, so its timer is too (patching undefined removes it).
+    if (tournament.roundTimer?.roundId === args.roundId) {
+      await ctx.db.patch(tournament._id, {
+        roundTimer: undefined,
+        updatedAt: now,
+      });
+    }
     const phaseTotalRounds = requireResolvedPhaseTotalRounds(phase);
     if ((await roundNumberInPhase(ctx, round)) >= phaseTotalRounds) {
       await ctx.db.patch(phase._id, {

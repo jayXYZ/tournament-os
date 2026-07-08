@@ -25,6 +25,7 @@ import type * as tournaments_player from "../tournaments/player.js";
 import type * as tournaments_registrations from "../tournaments/registrations.js";
 import type * as tournaments_rounds from "../tournaments/rounds.js";
 import type * as tournaments_testing from "../tournaments/testing.js";
+import type * as tournaments_timer from "../tournaments/timer.js";
 import type * as users from "../users.js";
 import type * as validators from "../validators.js";
 
@@ -52,6 +53,7 @@ declare const fullApi: ApiFromModules<{
   "tournaments/registrations": typeof tournaments_registrations;
   "tournaments/rounds": typeof tournaments_rounds;
   "tournaments/testing": typeof tournaments_testing;
+  "tournaments/timer": typeof tournaments_timer;
   users: typeof users;
   validators: typeof validators;
 }>;

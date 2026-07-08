@@ -122,3 +122,27 @@ export const tournamentMatchStatusValidator = v.union(
   v.literal("confirmed"),
   v.literal("cancelled"),
 );
+
+// The tournament's single live round timer. Server-side writes happen only on
+// organizer actions; clients derive the ticking countdown (and overtime, which
+// is never stored) from these anchors locally. Mirrored structurally by
+// RoundTimerState in @tournament-os/shared/timer-utils.
+export const tournamentRoundTimerValidator = v.union(
+  v.object({
+    kind: v.literal("running"),
+    roundId: v.id("tournamentRounds"),
+    // Epoch ms when remaining time hits zero; clients tick against this.
+    endsAt: v.number(),
+    // Configured length including adjustments, for "12:34 of 50:00" displays.
+    durationMs: v.number(),
+    startedAt: v.number(),
+  }),
+  v.object({
+    kind: v.literal("paused"),
+    roundId: v.id("tournamentRounds"),
+    // Frozen remainder; negative when paused while already in overtime.
+    remainingMs: v.number(),
+    durationMs: v.number(),
+    startedAt: v.number(),
+  }),
+);

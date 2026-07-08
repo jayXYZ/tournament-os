@@ -9,6 +9,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./organizer-utils": "./src/organizer-utils.ts",
+    "./timer-utils": "./src/timer-utils.ts",
     "./tournament-creation-utils": "./src/tournament-creation-utils.ts",
     "./organization-profile-image": "./src/organization-profile-image.ts"
   }

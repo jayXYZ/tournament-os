@@ -43,7 +43,11 @@ export const getMyCurrentMatch = query({
       args.tournamentId,
     );
     const base = {
-      tournament: { name: tournament.name, lifecycle: tournament.lifecycle },
+      tournament: {
+        name: tournament.name,
+        lifecycle: tournament.lifecycle,
+        roundTimer: tournament.roundTimer ?? null,
+      },
       myRegistrationStatus: registration.status,
       myRegistrationId: registration._id,
     };

@@ -419,6 +419,7 @@ export async function completeTournament(
 
 export type PairingsNextStep =
   | { kind: "startTournament"; ready: boolean; reason: string | null }
+  | { kind: "startTimer"; ready: boolean; reason: string | null }
   | {
       kind: "generateStandings";
       ready: boolean;
@@ -505,13 +506,26 @@ export async function pairingsNextStep(
           : count + 1,
       0,
     );
+    // Once every match has a result, standings are the next step regardless
+    // of the timer (a round can finish without one ever being started).
+    if (unreported === 0) {
+      return {
+        kind: "generateStandings",
+        ready: true,
+        reason: null,
+        roundId: round._id,
+      };
+    }
+    // The round is being played but its timer was never started (or was
+    // reset): starting it is the next step, so the organizer can do it from
+    // anywhere and is reminded it exists.
+    if (tournament.roundTimer?.roundId !== round._id) {
+      return { kind: "startTimer", ready: true, reason: null };
+    }
     return {
       kind: "generateStandings",
-      ready: unreported === 0,
-      reason:
-        unreported === 0
-          ? null
-          : `${unreported} ${unreported === 1 ? "match still needs" : "matches still need"} a result`,
+      ready: false,
+      reason: `${unreported} ${unreported === 1 ? "match still needs" : "matches still need"} a result`,
       roundId: round._id,
     };
   }

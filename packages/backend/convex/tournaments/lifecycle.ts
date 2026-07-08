@@ -424,6 +424,8 @@ export const cancelTournament = mutation({
     }
     await ctx.db.patch(args.tournamentId, {
       lifecycle: "cancelled",
+      // A cancelled event has no live round, so any running timer dies with it.
+      roundTimer: undefined,
       updatedAt: Date.now(),
     });
     return args.tournamentId;

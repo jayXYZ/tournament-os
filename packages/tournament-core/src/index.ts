@@ -7,10 +7,12 @@ export {
   useReportResult,
 } from "./hooks";
 export { formatPercent, formatRecord } from "./format";
+export { useRoundTimer } from "./use-round-timer";
 export type {
   LatestStandings,
   MyActiveMatch,
   MyCurrentMatch,
   MyMatchHistory,
+  RoundTimer,
   StandingRow,
 } from "./types";

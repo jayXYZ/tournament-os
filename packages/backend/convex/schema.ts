@@ -14,6 +14,7 @@ import {
   tournamentPhaseRoundModeValidator,
   tournamentPhaseCutoffValidator,
   tournamentRoundStatusValidator,
+  tournamentRoundTimerValidator,
   tournamentMatchStatusValidator,
   userProfileVisibilityValidator,
 } from "./validators";
@@ -101,6 +102,14 @@ export default defineSchema({
     // reproducible and auditable. Optional for rows created before it existed;
     // readers fall back to publicCode.
     seed: v.optional(v.number()),
+    // Live timer for the current round; absent = no timer running. Lives here
+    // rather than on the round because only one timer can be live per
+    // tournament and every surface already subscribes to this doc. Cleared
+    // when its round completes.
+    roundTimer: v.optional(tournamentRoundTimerValidator),
+    // Organizer default round length in ms, pre-filling the timer start
+    // control. Absent means the app default (see timer-utils).
+    roundDurationMs: v.optional(v.number()),
     updatedAt: v.number(),
   })
     .index("by_organizationId", ["organizationId"])

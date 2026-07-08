@@ -10,7 +10,8 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@tournament-os/backend": "workspace:*"
+    "@tournament-os/backend": "workspace:*",
+    "@tournament-os/shared": "workspace:*"
   },
   "peerDependencies": {
     "convex": "^1.39.1",
