@@ -3,6 +3,7 @@ import {
   LayoutDashboard,
   Settings,
   Swords,
+  Timer,
   Trophy,
 } from 'lucide-react'
 
@@ -23,6 +24,7 @@ export function TournamentManagerSubnav({
       icon: ClipboardList,
     },
     { label: 'Pairings', href: `${base}/pairings`, icon: Swords },
+    { label: 'Timer', href: `${base}/timer`, icon: Timer },
     { label: 'Standings', href: `${base}/standings`, icon: Trophy },
     { label: 'Settings', href: `${base}/settings`, icon: Settings },
   ]

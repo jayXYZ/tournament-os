@@ -3,6 +3,7 @@ import {
   formatRecord,
   useLatestStandings,
   useMyCurrentMatch,
+  useRoundTimer,
 } from "@tournament-os/core";
 import { useLocalSearchParams, useNavigation } from "expo-router";
 import { useEffect } from "react";
@@ -32,12 +33,36 @@ export default function TournamentScreen() {
     <SafeAreaView style={styles.container} edges={["bottom"]}>
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.sectionTitle}>Current round</Text>
+        <RoundCountdown current={current} />
         <CurrentMatch current={current} />
 
         <Text style={[styles.sectionTitle, styles.sectionGap]}>Standings</Text>
         <Standings standings={standings} />
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+// Live round timer, ticked locally against the Convex-synced anchors carried
+// on getMyCurrentMatch. Hidden while no timer is set; overtime counts up in red.
+function RoundCountdown({
+  current,
+}: {
+  current: ReturnType<typeof useMyCurrentMatch>;
+}) {
+  const { phase, remainingMs, formatted } = useRoundTimer(
+    current?.tournament.roundTimer,
+  );
+  if (phase === "idle") {
+    return null;
+  }
+
+  const overtime = remainingMs < 0;
+  return (
+    <Text style={[styles.countdown, overtime && styles.countdownOvertime]}>
+      {phase === "paused" ? "Timer paused · " : ""}
+      {formatted}
+    </Text>
   );
 }
 
@@ -148,6 +173,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     marginHorizontal: -8,
   },
+  countdown: {
+    color: "#cfcfd6",
+    fontSize: 17,
+    fontWeight: "600",
+    fontVariant: ["tabular-nums"],
+  },
+  countdownOvertime: { color: "#ff6b6b" },
   rank: { color: "#8b8b96", fontSize: 15, width: 28 },
   name: { color: "#fff", fontSize: 15, flex: 1 },
   record: { color: "#cfcfd6", fontSize: 15, fontVariant: ["tabular-nums"] },

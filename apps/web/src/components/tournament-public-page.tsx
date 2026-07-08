@@ -15,6 +15,7 @@ import { api } from '@tournament-os/backend/convex/_generated/api'
 import type { Doc } from '@tournament-os/backend/convex/_generated/dataModel'
 import { MarkdownContent } from '@/components/shared/markdown-content'
 import { PublicSiteHeader } from '@/components/shared/public-site-header'
+import { RoundTimerIndicator } from '@/components/shared/round-timer-indicator'
 import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'
 import {
   TournamentLifecycleBadge,
@@ -148,6 +149,7 @@ function TournamentDetails({
         <div className="flex flex-wrap items-center gap-3">
           <CardTitle className="text-2xl">{tournament.name}</CardTitle>
           <TournamentLifecycleBadge lifecycle={tournament.lifecycle} />
+          <RoundTimerIndicator timer={tournament.roundTimer} />
         </div>
         <CardDescription>
           {tournament.isTestEvent ? 'Test event' : 'Public event'}

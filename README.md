@@ -51,11 +51,11 @@ content, and live round operations.
   - [x] Admin Overview tab now previews the public event page (settings moved to the Settings tab)
 - [x] Details page: description / prizing / logistics text with markdown editing, rendered on the public tournament page (Tiptap WYSIWYG in Settings, markdown stored on the tournament, rendered on the public page)
 - [ ] Location data for paper tournaments (venue name, address; shown publicly, filterable later)
-- [ ] Round timer
-  - [ ] Timer state on rounds (duration, startedAt, pause/extend) synced via Convex
-  - [ ] Timer controller page in the admin panel (start / pause / add time)
-  - [ ] Timer + "current state" (round, phase, outstanding matches) component in the admin header
-  - [ ] Show the live timer in the player controller and public views
+- [x] Round timer
+  - [x] Timer state on the tournament (running/paused anchors + default round length) synced via Convex; clients tick locally, cleared when the round completes
+  - [x] Timer tab in the tournament manager (start / pause / resume / ±minutes / hold-to-reset, plus the default round length setting)
+  - [x] Live countdown chip in the tournament progress bar, linking to the Timer tab
+  - [x] Show the live timer in the player controller, public event page, and native app (overtime counts up in red; no automation at zero)
 - [ ] `player meeting` setting on phases (seat-all-players step before round 1, with printable/displayable seating)
 - [ ] Organizer result corrections: edit a match result after the round (or event) has completed, with standings recomputation for affected rounds
 - [ ] Printable outputs: pairings by table / by name, result slips, standings

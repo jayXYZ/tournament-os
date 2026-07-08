@@ -1,9 +1,10 @@
 import { Link, useLocation, useNavigate, useSearch } from '@tanstack/react-router'
 import { useMutation, useQuery } from 'convex/react'
-import { ListOrdered, Swords, Trophy } from 'lucide-react'
+import { ListOrdered, Swords, TimerIcon, Trophy } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { api } from '@tournament-os/backend/convex/_generated/api'
+import { RoundTimerChip } from './round-timer-chip'
 import type { FunctionReturnType } from 'convex/server'
 import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
 import { Badge } from '@/components/ui/badge'
@@ -178,14 +179,17 @@ export function TournamentProgressBar({
               />
             ))}
           </div>
-          <AdvanceStepButton
-            board={board}
-            // Clearing the search params lets the pairings/standings views
-            // fall back to the newly current phase and round.
-            onAdvanced={() =>
-              void navigate({ to: '.', search: {}, replace: true })
-            }
-          />
+          <div className="flex shrink-0 items-center gap-3">
+            <RoundTimerChip board={board} publicCode={publicCode} />
+            <AdvanceStepButton
+              board={board}
+              // Clearing the search params lets the pairings/standings views
+              // fall back to the newly current phase and round.
+              onAdvanced={() =>
+                void navigate({ to: '.', search: {}, replace: true })
+              }
+            />
+          </div>
         </div>
       </nav>
     </TooltipProvider>
@@ -200,6 +204,7 @@ function AdvanceStepButton({
   onAdvanced: () => void
 }) {
   const startTournament = useMutation(api.tournaments.rounds.startTournament)
+  const startTimer = useMutation(api.tournaments.timer.startTimer)
   const generateNextRound = useMutation(
     api.tournaments.rounds.generateNextRound,
   )
@@ -223,6 +228,7 @@ function AdvanceStepButton({
 
   const action = advanceAction(step, board.tournament._id, {
     startTournament,
+    startTimer,
     generateNextRound,
     completeRound,
     completeTournament,
@@ -233,7 +239,11 @@ function AdvanceStepButton({
   async function handleAdvance() {
     try {
       await action.run()
-      onAdvanced()
+      // Starting the timer doesn't change which round is current, so keep
+      // whatever round the organizer is viewing instead of resetting it.
+      if (step.kind !== 'startTimer') {
+        onAdvanced()
+      }
     } catch (error) {
       toast.error(
         error instanceof Error
@@ -244,20 +254,18 @@ function AdvanceStepButton({
     }
   }
 
+  // While blocked, the button face carries the reason ("16 matches still
+  // need a result") instead of a "Hold to ..." label it can't act on; the
+  // action's icon stays as a hint of what the gate is holding back.
   return (
-    <div className="flex shrink-0 flex-col items-end gap-1">
-      <HoldButton
-        disabled={!step.ready}
-        onConfirm={handleAdvance}
-        successLabel={action.success}
-      >
-        {action.icon}
-        {action.label}
-      </HoldButton>
-      {!step.ready && step.reason ? (
-        <p className="text-xs text-muted-foreground">{step.reason}</p>
-      ) : null}
-    </div>
+    <HoldButton
+      disabled={!step.ready}
+      onConfirm={handleAdvance}
+      successLabel={action.success}
+    >
+      {action.icon}
+      {step.ready ? action.label : (step.reason ?? action.label)}
+    </HoldButton>
   )
 }
 
@@ -266,6 +274,9 @@ function advanceAction(
   tournamentId: Id<'tournaments'>,
   mutations: {
     startTournament: (args: {
+      tournamentId: Id<'tournaments'>
+    }) => Promise<unknown>
+    startTimer: (args: {
       tournamentId: Id<'tournaments'>
     }) => Promise<unknown>
     generateNextRound: (args: {
@@ -288,6 +299,13 @@ function advanceAction(
         icon: <Swords />,
         success: 'Pairings generated',
         run: () => mutations.startTournament({ tournamentId }),
+      }
+    case 'startTimer':
+      return {
+        label: 'Hold to start round timer',
+        icon: <TimerIcon />,
+        success: 'Timer started',
+        run: () => mutations.startTimer({ tournamentId }),
       }
     case 'generateStandings':
       return {

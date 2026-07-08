@@ -14,6 +14,7 @@ import { api } from '@tournament-os/backend/convex/_generated/api'
 import { CurrentMatchCard } from './current-match-card'
 import { MoreTab } from './more-tab'
 import { StandingsList } from './standings-list'
+import { RoundTimerIndicator } from '@/components/shared/round-timer-indicator'
 import { useAppAuth } from '@/lib/use-app-auth'
 
 import { Badge } from '@/components/ui/badge'
@@ -158,7 +159,12 @@ export function PlayerController({ publicCode }: { publicCode: string }) {
                 Player controller
               </p>
             </div>
-            <HeaderBadge currentMatch={currentMatch} />
+            <div className="flex shrink-0 items-center gap-2">
+              <RoundTimerIndicator
+                timer={currentMatch.tournament.roundTimer}
+              />
+              <HeaderBadge currentMatch={currentMatch} />
+            </div>
           </div>
         ) : (
           <Skeleton className="h-9" />
