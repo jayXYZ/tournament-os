@@ -123,6 +123,90 @@ export const tournamentMatchStatusValidator = v.union(
   v.literal("cancelled"),
 );
 
+// Who performed an audited action: an organizer acting on the event, or a
+// player acting on their own registration/match.
+export const auditActorRoleValidator = v.union(
+  v.literal("organizer"),
+  v.literal("player"),
+);
+
+// A player referenced by an audit event. The name is denormalized at write
+// time so the log stays readable without per-row joins, even if the roster
+// changes later.
+const auditPlayerRefValidator = v.object({
+  registrationId: v.id("tournamentRegistrations"),
+  playerName: v.union(v.string(), v.null()),
+});
+
+// One side of a match result as captured in the log.
+const auditMatchResultLineValidator = v.object({
+  registrationId: v.id("tournamentRegistrations"),
+  playerName: v.union(v.string(), v.null()),
+  gameWins: v.number(),
+  gameLosses: v.number(),
+});
+
+// What happened, as a discriminated union so the log view renders each kind
+// with full type safety. Events carry enough denormalized context (names,
+// round/table numbers, prior results) to reconstruct a dispute without
+// joining back to rows that may since have changed.
+export const tournamentAuditEventValidator = v.union(
+  v.object({
+    type: v.literal("match_result_recorded"),
+    matchId: v.id("tournamentMatches"),
+    roundNumber: v.number(),
+    tableNumber: v.union(v.number(), v.null()),
+    result: v.array(auditMatchResultLineValidator),
+    // The result this one replaced, when the match already had one
+    // (player-reported or previously recorded) — the "result edit" case.
+    previousResult: v.union(v.array(auditMatchResultLineValidator), v.null()),
+  }),
+  v.object({
+    type: v.literal("match_result_reported"),
+    matchId: v.id("tournamentMatches"),
+    roundNumber: v.number(),
+    tableNumber: v.union(v.number(), v.null()),
+    result: v.array(auditMatchResultLineValidator),
+  }),
+  v.object({
+    type: v.literal("match_result_confirmed"),
+    matchId: v.id("tournamentMatches"),
+    roundNumber: v.number(),
+    tableNumber: v.union(v.number(), v.null()),
+  }),
+  v.object({
+    type: v.literal("player_registered"),
+    player: auditPlayerRefValidator,
+  }),
+  v.object({
+    type: v.literal("registration_cancelled"),
+    player: auditPlayerRefValidator,
+  }),
+  v.object({
+    type: v.literal("player_dropped"),
+    player: auditPlayerRefValidator,
+  }),
+  v.object({
+    type: v.literal("player_reinstated"),
+    player: auditPlayerRefValidator,
+  }),
+  v.object({ type: v.literal("tournament_published") }),
+  v.object({ type: v.literal("tournament_started"), playerCount: v.number() }),
+  v.object({
+    type: v.literal("round_started"),
+    roundId: v.id("tournamentRounds"),
+    roundNumber: v.number(),
+    playerCount: v.number(),
+  }),
+  v.object({
+    type: v.literal("round_completed"),
+    roundId: v.id("tournamentRounds"),
+    roundNumber: v.number(),
+  }),
+  v.object({ type: v.literal("tournament_completed") }),
+  v.object({ type: v.literal("tournament_cancelled") }),
+);
+
 // The tournament's single live round timer. Server-side writes happen only on
 // organizer actions; clients derive the ticking countdown (and overtime, which
 // is never stored) from these anchors locally. Mirrored structurally by

@@ -56,11 +56,13 @@ content, and live round operations.
   - [x] Timer tab in the tournament manager (start / pause / resume / ±minutes / hold-to-reset, plus the default round length setting)
   - [x] Live countdown chip in the tournament progress bar, linking to the Timer tab
   - [x] Show the live timer in the player controller, public event page, and native app (overtime counts up in red; no automation at zero)
-- [ ] `player meeting` setting on phases (seat-all-players step before round 1, with printable/displayable seating)
+- [ ] `player meeting` setting on phases (seat-all-players step before round 1, players seated alphabetically)
 - [ ] Organizer result corrections: edit a match result after the round (or event) has completed, with standings recomputation for affected rounds
 - [ ] Printable outputs: pairings by table / by name, result slips, standings
 - [ ] Organizer "favorite" players persisted across tournaments; filter pairings/standings by favorites
-- [ ] Audit log of organizer actions (result edits, drops, DQs) for dispute resolution
+- [x] Audit log of organizer actions (result edits, drops, DQs) for dispute resolution
+  - [x] Append-only `tournamentAuditEvents` table capturing actor + typed event payloads (result entries/edits with the replaced result, player and organizer drops, reinstates, registrations, round/tournament lifecycle)
+  - [x] Log tab in the tournament manager with a paginated, human-readable feed
 
 ### 2. Tournament engine — phases, playoffs, edge cases
 
@@ -81,7 +83,7 @@ structure and playoff support.
 ### 3. Visibility, access & publishing
 
 - [x] Decouple visibility from lifecycle in tournament status: `visibility: public | unlisted | private` is now separate from `lifecycle: setup | registration | in_progress | completed | cancelled` (requires a DB reset; "setup" not "draft" to avoid clashing with the Magic draft format)
-- [ ] Publishing settings per tournament: whether standings, pairings, and (eventually) decklists are publicly visible, during and after the event
+- [ ] Publishing settings per tournament: whether standings, pairings, and (eventually) decklists are publicly visible, during and/or after the event
 - [ ] Invite-only tournaments (join via link/code, or organizer approval of pending registrations)
 - [ ] Enroll players as guests or by email (guest registrations without accounts; claimable later via the public player code)
 - [ ] Player profiles with past public/published tournament results

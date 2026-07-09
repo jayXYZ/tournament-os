@@ -8,6 +8,7 @@ import {
   getActiveMembership,
   requireActiveMembership,
 } from "../model/access";
+import { logAuditEvent } from "../model/auditLog";
 import { parsePublicCode } from "../model/publicCodes";
 import {
   SWISS_FORMAT,
@@ -383,13 +384,22 @@ export const updatePhaseSetup = mutation({
 export const publishTournament = mutation({
   args: { tournamentId: v.id("tournaments") },
   handler: async (ctx, args) => {
-    const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
+    const { tournament, user } = await requireOrganizerAccess(
+      ctx,
+      args.tournamentId,
+    );
     requireSetupEditable(tournament);
     await requireSwissPhase(ctx, args.tournamentId);
 
     await ctx.db.patch(args.tournamentId, {
       lifecycle: "registration",
       updatedAt: Date.now(),
+    });
+    await logAuditEvent(ctx, {
+      tournamentId: args.tournamentId,
+      actor: user,
+      actorRole: "organizer",
+      event: { type: "tournament_published" },
     });
     return args.tournamentId;
   },
@@ -415,7 +425,10 @@ export const updateTournamentVisibility = mutation({
 export const cancelTournament = mutation({
   args: { tournamentId: v.id("tournaments") },
   handler: async (ctx, args) => {
-    const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
+    const { tournament, user } = await requireOrganizerAccess(
+      ctx,
+      args.tournamentId,
+    );
     if (tournament.lifecycle === "completed") {
       throw new Error("Completed tournaments cannot be cancelled");
     }
@@ -427,6 +440,12 @@ export const cancelTournament = mutation({
       // A cancelled event has no live round, so any running timer dies with it.
       roundTimer: undefined,
       updatedAt: Date.now(),
+    });
+    await logAuditEvent(ctx, {
+      tournamentId: args.tournamentId,
+      actor: user,
+      actorRole: "organizer",
+      event: { type: "tournament_cancelled" },
     });
     return args.tournamentId;
   },

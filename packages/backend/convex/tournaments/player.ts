@@ -3,6 +3,11 @@ import { v } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import { mutation, query } from "../_generated/server";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
+import {
+  auditPlayerRef,
+  auditResultLine,
+  logAuditEvent,
+} from "../model/auditLog";
 import { matchPointsForResult } from "../model/standings";
 import {
   MAX_TOURNAMENT_PLAYERS,
@@ -245,7 +250,7 @@ export const reportMyMatchResult = mutation({
     opponentGameWins: v.number(),
   },
   handler: async (ctx, args) => {
-    const { match, myRow, opponentRow } = await requireMatchParticipant(
+    const { match, myRow, opponentRow, user } = await requireMatchParticipant(
       ctx,
       args.matchId,
     );
@@ -277,6 +282,22 @@ export const reportMyMatchResult = mutation({
       reportedByRegistrationId: myRow.playerId,
       updatedAt: now,
     });
+    const round = await requireRound(ctx, match.tournamentRoundId);
+    await logAuditEvent(ctx, {
+      tournamentId: match.tournamentId,
+      actor: user,
+      actorRole: "player",
+      event: {
+        type: "match_result_reported",
+        matchId: match._id,
+        roundNumber: round.roundNumber,
+        tableNumber: match.tableNumber ?? null,
+        result: [
+          auditResultLine(myRow, myGameWins, opponentGameWins),
+          auditResultLine(opponentRow, opponentGameWins, myGameWins),
+        ],
+      },
+    });
     return match._id;
   },
 });
@@ -284,7 +305,10 @@ export const reportMyMatchResult = mutation({
 export const confirmMatchResult = mutation({
   args: { matchId: v.id("tournamentMatches") },
   handler: async (ctx, args) => {
-    const { match, myRow } = await requireMatchParticipant(ctx, args.matchId);
+    const { match, myRow, user } = await requireMatchParticipant(
+      ctx,
+      args.matchId,
+    );
     if (
       match.matchStatus !== "completed" ||
       !match.reportedByRegistrationId
@@ -298,6 +322,18 @@ export const confirmMatchResult = mutation({
     await ctx.db.patch(match._id, {
       matchStatus: "confirmed",
       updatedAt: Date.now(),
+    });
+    const round = await requireRound(ctx, match.tournamentRoundId);
+    await logAuditEvent(ctx, {
+      tournamentId: match.tournamentId,
+      actor: user,
+      actorRole: "player",
+      event: {
+        type: "match_result_confirmed",
+        matchId: match._id,
+        roundNumber: round.roundNumber,
+        tableNumber: match.tableNumber ?? null,
+      },
     });
     return match._id;
   },
@@ -326,6 +362,12 @@ export const dropSelf = mutation({
       updatedAt: now,
     });
     await adjustActiveRegistrationCount(ctx, tournament, -1, now);
+    await logAuditEvent(ctx, {
+      tournamentId: tournament._id,
+      actor: user,
+      actorRole: "player",
+      event: { type: "player_dropped", player: auditPlayerRef(registration) },
+    });
     return registration._id;
   },
 });
@@ -379,7 +421,7 @@ async function requireMatchParticipant(ctx: MutationCtx, matchId: Id<"tournament
     throw new Error("Opponent not found for this match");
   }
 
-  return { match, tournament, registration, players, myRow, opponentRow };
+  return { match, tournament, registration, players, myRow, opponentRow, user };
 }
 
 function matchResultForRow(

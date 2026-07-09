@@ -2,6 +2,11 @@ import { v } from "convex/values";
 
 import type { Id } from "../_generated/dataModel";
 import { mutation, query } from "../_generated/server";
+import {
+  auditResultLine,
+  existingResultLines,
+  logAuditEvent,
+} from "../model/auditLog";
 import { createRoundWithPairings } from "../model/pairing";
 import {
   matchPointsForResult,
@@ -29,7 +34,10 @@ import {
 export const startTournament = mutation({
   args: { tournamentId: v.id("tournaments") },
   handler: async (ctx, args): Promise<Id<"tournamentRounds">> => {
-    const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
+    const { tournament, user } = await requireOrganizerAccess(
+      ctx,
+      args.tournamentId,
+    );
     requireSetupEditable(tournament);
     const phase = await requireSwissPhase(ctx, args.tournamentId);
     const registrations = await activeRegistrations(ctx, args.tournamentId);
@@ -59,6 +67,15 @@ export const startTournament = mutation({
       phaseCurrentRound: roundId,
       updatedAt: now,
     });
+    await logAuditEvent(ctx, {
+      tournamentId: tournament._id,
+      actor: user,
+      actorRole: "organizer",
+      event: {
+        type: "tournament_started",
+        playerCount: registrations.length,
+      },
+    });
 
     return roundId;
   },
@@ -67,7 +84,10 @@ export const startTournament = mutation({
 export const generateNextRound = mutation({
   args: { tournamentId: v.id("tournaments") },
   handler: async (ctx, args): Promise<Id<"tournamentRounds">> => {
-    const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
+    const { tournament, user } = await requireOrganizerAccess(
+      ctx,
+      args.tournamentId,
+    );
     const phase = await requireSwissPhase(ctx, args.tournamentId);
     if (tournament.lifecycle !== "in_progress") {
       throw new Error("Tournament is not in progress");
@@ -91,16 +111,28 @@ export const generateNextRound = mutation({
     const phaseTotalRounds = requireResolvedPhaseTotalRounds(phase);
     const playedInPhase = await roundNumberInPhase(ctx, currentRound);
     if (playedInPhase < phaseTotalRounds) {
+      const registrations = await activeRegistrations(ctx, args.tournamentId);
       const roundId = await createRoundWithPairings(ctx, {
         tournament,
         phase,
         roundNumber: currentRound.roundNumber + 1,
-        registrations: await activeRegistrations(ctx, args.tournamentId),
+        registrations,
         previousRoundId: currentRound._id,
       });
       await ctx.db.patch(phase._id, {
         phaseCurrentRound: roundId,
         updatedAt: Date.now(),
+      });
+      await logAuditEvent(ctx, {
+        tournamentId: tournament._id,
+        actor: user,
+        actorRole: "organizer",
+        event: {
+          type: "round_started",
+          roundId,
+          roundNumber: currentRound.roundNumber + 1,
+          playerCount: registrations.length,
+        },
       });
       return roundId;
     }
@@ -140,6 +172,17 @@ export const generateNextRound = mutation({
       phaseCurrentRound: roundId,
       updatedAt: Date.now(),
     });
+    await logAuditEvent(ctx, {
+      tournamentId: tournament._id,
+      actor: user,
+      actorRole: "organizer",
+      event: {
+        type: "round_started",
+        roundId,
+        roundNumber: currentRound.roundNumber + 1,
+        playerCount: registrations.length,
+      },
+    });
     return roundId;
   },
 });
@@ -154,7 +197,7 @@ export const recordMatchResult = mutation({
   },
   handler: async (ctx, args) => {
     const match = await requireMatch(ctx, args.matchId);
-    await requireOrganizerAccess(ctx, match.tournamentId);
+    const { user } = await requireOrganizerAccess(ctx, match.tournamentId);
     const players = await matchPlayers(ctx, args.matchId);
     if (players.length !== 2) {
       throw new Error("Match result requires exactly two players");
@@ -174,6 +217,9 @@ export const recordMatchResult = mutation({
       playerOneGameWins: args.playerOneGameWins,
       playerTwoGameWins: args.playerTwoGameWins,
     });
+    // Captured before the patches below overwrite the rows: a non-null value
+    // means this call edited an existing result, which the log must preserve.
+    const previousResult = existingResultLines(match, players);
     const now = Date.now();
     await ctx.db.patch(playerOne._id, {
       matchPointsEarned: playerOnePoints,
@@ -194,6 +240,31 @@ export const recordMatchResult = mutation({
       reportedByRegistrationId: undefined,
       updatedAt: now,
     });
+    const round = await requireRound(ctx, match.tournamentRoundId);
+    await logAuditEvent(ctx, {
+      tournamentId: match.tournamentId,
+      actor: user,
+      actorRole: "organizer",
+      event: {
+        type: "match_result_recorded",
+        matchId: args.matchId,
+        roundNumber: round.roundNumber,
+        tableNumber: match.tableNumber ?? null,
+        result: [
+          auditResultLine(
+            playerOne,
+            args.playerOneGameWins,
+            args.playerTwoGameWins,
+          ),
+          auditResultLine(
+            playerTwo,
+            args.playerTwoGameWins,
+            args.playerOneGameWins,
+          ),
+        ],
+        previousResult,
+      },
+    });
     return args.matchId;
   },
 });
@@ -202,7 +273,7 @@ export const completeRound = mutation({
   args: { roundId: v.id("tournamentRounds") },
   handler: async (ctx, args) => {
     const round = await requireRound(ctx, args.roundId);
-    const { tournament } = await requireOrganizerAccess(
+    const { tournament, user } = await requireOrganizerAccess(
       ctx,
       round.tournamentId,
     );
@@ -239,6 +310,16 @@ export const completeRound = mutation({
         updatedAt: now,
       });
     }
+    await logAuditEvent(ctx, {
+      tournamentId: tournament._id,
+      actor: user,
+      actorRole: "organizer",
+      event: {
+        type: "round_completed",
+        roundId: args.roundId,
+        roundNumber: round.roundNumber,
+      },
+    });
     return args.roundId;
   },
 });

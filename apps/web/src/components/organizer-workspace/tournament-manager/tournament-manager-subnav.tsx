@@ -1,6 +1,7 @@
 import {
   ClipboardList,
   LayoutDashboard,
+  ScrollText,
   Settings,
   Swords,
   Timer,
@@ -26,6 +27,7 @@ export function TournamentManagerSubnav({
     { label: 'Pairings', href: `${base}/pairings`, icon: Swords },
     { label: 'Timer', href: `${base}/timer`, icon: Timer },
     { label: 'Standings', href: `${base}/standings`, icon: Trophy },
+    { label: 'Log', href: `${base}/log`, icon: ScrollText },
     { label: 'Settings', href: `${base}/settings`, icon: Settings },
   ]
 

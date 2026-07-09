@@ -2,6 +2,7 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 import {
+  auditActorRoleValidator,
   invitationStatusValidator,
   membershipStatusValidator,
   organizationStatusValidator,
@@ -13,6 +14,7 @@ import {
   tournamentPhaseStatusValidator,
   tournamentPhaseRoundModeValidator,
   tournamentPhaseCutoffValidator,
+  tournamentAuditEventValidator,
   tournamentRoundStatusValidator,
   tournamentRoundTimerValidator,
   tournamentMatchStatusValidator,
@@ -253,6 +255,20 @@ export default defineSchema({
       "playerId",
     ])
     .index("by_tournamentRoundId_and_rank", ["tournamentRoundId", "rank"]),
+
+  // Append-only audit trail of tournament actions (result entries and edits,
+  // drops, lifecycle changes) for dispute resolution. Rows are immutable — no
+  // updatedAt; _creationTime is the event timestamp. Deleted only when the
+  // whole tournament is deleted.
+  tournamentAuditEvents: defineTable({
+    tournamentId: v.id("tournaments"),
+    actorUserId: v.id("users"),
+    // Denormalized at write time so the log renders without per-row user
+    // joins and reflects the actor's name as of the action.
+    actorName: v.union(v.string(), v.null()),
+    actorRole: auditActorRoleValidator,
+    event: tournamentAuditEventValidator,
+  }).index("by_tournamentId", ["tournamentId"]),
 
   tournamentTestConfigs: defineTable({
     tournamentId: v.id("tournaments"),

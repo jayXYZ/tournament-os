@@ -2,6 +2,7 @@ import type { TournamentFormat } from "@tournament-os/shared/tournament-creation
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { requireActiveMembership, requireCurrentUser } from "./access";
+import { logAuditEvent } from "./auditLog";
 import { nextPublicCode } from "./publicCodes";
 
 export const SWISS_FORMAT = "swiss";
@@ -384,7 +385,7 @@ export async function completeTournament(
   ctx: MutationCtx,
   tournamentId: Id<"tournaments">,
 ) {
-  const { tournament } = await requireOrganizerAccess(ctx, tournamentId);
+  const { tournament, user } = await requireOrganizerAccess(ctx, tournamentId);
   const phase = await requireSwissPhase(ctx, tournament._id);
   if (!phase.phaseCurrentRound) {
     throw new Error("Current round not found");
@@ -414,6 +415,12 @@ export async function completeTournament(
   await ctx.db.patch(tournament._id, {
     lifecycle: "completed",
     updatedAt: now,
+  });
+  await logAuditEvent(ctx, {
+    tournamentId: tournament._id,
+    actor: user,
+    actorRole: "organizer",
+    event: { type: "tournament_completed" },
   });
 }
 
@@ -591,7 +598,8 @@ const DELETE_BATCH_SIZE = 512;
 
 // Deletes up to DELETE_BATCH_SIZE operational documents for a tournament:
 // phases with their rounds, matches, match players, and standings, then
-// registrations, test players (and their synthetic users), and test configs.
+// registrations, test players (and their synthetic users), audit events, and
+// test configs.
 // Returns true once everything is cleared; false means more data remains and
 // the caller should run another batch (e.g. by rescheduling itself via
 // ctx.scheduler.runAfter).
@@ -685,6 +693,19 @@ export async function deleteTournamentOperationalDataBatch(
     await ctx.db.delete(testPlayer._id);
     await ctx.db.delete(testPlayer.userId);
     budget -= 2;
+  }
+
+  const auditEvents = await ctx.db
+    .query("tournamentAuditEvents")
+    .withIndex("by_tournamentId", (q) => q.eq("tournamentId", tournamentId))
+    .take(512);
+  sawFullPage ||= auditEvents.length === 512;
+  for (const auditEvent of auditEvents) {
+    if (budget < 1) {
+      return false;
+    }
+    await ctx.db.delete(auditEvent._id);
+    budget -= 1;
   }
 
   const configs = await ctx.db

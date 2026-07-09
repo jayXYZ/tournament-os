@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import { mutation, query } from "../_generated/server";
 import { currentUserOrNull } from "../model/access";
+import { auditPlayerRef, logAuditEvent } from "../model/auditLog";
 import { ensureCurrentUser } from "../model/users";
 import {
   adjustActiveRegistrationCount,
@@ -39,25 +40,33 @@ export const registerSelf = mutation({
     requireCapacityAvailable(tournament);
     const now = Date.now();
     const playerName = playerDisplayName(user);
+    const registrationId =
+      existing?._id ??
+      (await ctx.db.insert("tournamentRegistrations", {
+        tournamentId: args.tournamentId,
+        userId: user._id,
+        status: "active",
+        playerName,
+        createdAt: now,
+        updatedAt: now,
+      }));
     if (existing) {
       await ctx.db.patch(existing._id, {
         status: "active",
         playerName,
         updatedAt: now,
       });
-      await adjustActiveRegistrationCount(ctx, tournament, 1, now);
-      return existing._id;
     }
-
-    const registrationId = await ctx.db.insert("tournamentRegistrations", {
-      tournamentId: args.tournamentId,
-      userId: user._id,
-      status: "active",
-      playerName,
-      createdAt: now,
-      updatedAt: now,
-    });
     await adjustActiveRegistrationCount(ctx, tournament, 1, now);
+    await logAuditEvent(ctx, {
+      tournamentId: tournament._id,
+      actor: user,
+      actorRole: "player",
+      event: {
+        type: "player_registered",
+        player: { registrationId, playerName: playerName ?? null },
+      },
+    });
     return registrationId;
   },
 });
@@ -83,6 +92,15 @@ export const cancelMyRegistration = mutation({
       updatedAt: now,
     });
     await adjustActiveRegistrationCount(ctx, tournament, -1, now);
+    await logAuditEvent(ctx, {
+      tournamentId: tournament._id,
+      actor: user,
+      actorRole: "player",
+      event: {
+        type: "registration_cancelled",
+        player: auditPlayerRef(registration),
+      },
+    });
     return registration._id;
   },
 });
@@ -170,7 +188,7 @@ export const dropRegistration = mutation({
   args: { registrationId: v.id("tournamentRegistrations") },
   handler: async (ctx, args) => {
     const registration = await requireRegistration(ctx, args.registrationId);
-    const { tournament } = await requireOrganizerAccess(
+    const { tournament, user } = await requireOrganizerAccess(
       ctx,
       registration.tournamentId,
     );
@@ -182,6 +200,12 @@ export const dropRegistration = mutation({
     if (registration.status === "active") {
       await adjustActiveRegistrationCount(ctx, tournament, -1, now);
     }
+    await logAuditEvent(ctx, {
+      tournamentId: tournament._id,
+      actor: user,
+      actorRole: "organizer",
+      event: { type: "player_dropped", player: auditPlayerRef(registration) },
+    });
     return args.registrationId;
   },
 });
@@ -190,7 +214,7 @@ export const reinstateRegistration = mutation({
   args: { registrationId: v.id("tournamentRegistrations") },
   handler: async (ctx, args) => {
     const registration = await requireRegistration(ctx, args.registrationId);
-    const { tournament } = await requireOrganizerAccess(
+    const { tournament, user } = await requireOrganizerAccess(
       ctx,
       registration.tournamentId,
     );
@@ -203,6 +227,15 @@ export const reinstateRegistration = mutation({
     if (registration.status !== "active") {
       await adjustActiveRegistrationCount(ctx, tournament, 1, now);
     }
+    await logAuditEvent(ctx, {
+      tournamentId: tournament._id,
+      actor: user,
+      actorRole: "organizer",
+      event: {
+        type: "player_reinstated",
+        player: auditPlayerRef(registration),
+      },
+    });
     return args.registrationId;
   },
 });
