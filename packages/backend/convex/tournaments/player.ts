@@ -20,8 +20,8 @@ import {
   requireRound,
   requireTournament,
   roundNumberInPhase,
+  selectCurrentSwissPhase,
   swissPhaseByOrder,
-  swissPhaseOrNull,
   swissPhasesInOrder,
 } from "../model/tournaments";
 import { ensureCurrentUser } from "../model/users";
@@ -57,7 +57,57 @@ export const getMyCurrentMatch = query({
       myRegistrationId: registration._id,
     };
 
-    const phase = await swissPhaseOrNull(ctx, args.tournamentId);
+    const phases = await swissPhasesInOrder(ctx, args.tournamentId);
+    const phase = selectCurrentSwissPhase(phases);
+
+    // A live player meeting takes over the play surface: until the phase's
+    // first round is paired, the player's "match" is their alphabetical seat.
+    // Covers a phase-1 meeting (lifecycle "setup"/"registration", matching
+    // where startPlayerMeeting allows one) and a later-phase meeting held
+    // between phases (lifecycle "in_progress").
+    const meetingPhase =
+      tournament.lifecycle !== "completed" &&
+      tournament.lifecycle !== "cancelled"
+        ? phases.find(
+            (candidate) => candidate.playerMeetingStatus === "in_progress",
+          )
+        : undefined;
+    if (meetingPhase) {
+      const seat = await ctx.db
+        .query("playerMeetingSeats")
+        .withIndex("by_tournamentPhaseId_and_registrationId", (q) =>
+          q
+            .eq("tournamentPhaseId", meetingPhase._id)
+            .eq("registrationId", registration._id),
+        )
+        .unique();
+      let seatmateName: string | null = null;
+      if (seat) {
+        const tableSeats = await ctx.db
+          .query("playerMeetingSeats")
+          .withIndex("by_tournamentPhaseId_and_tableNumber", (q) =>
+            q
+              .eq("tournamentPhaseId", meetingPhase._id)
+              .eq("tableNumber", seat.tableNumber),
+          )
+          .take(2);
+        seatmateName =
+          tableSeats.find((other) => other._id !== seat._id)?.playerName ??
+          null;
+      }
+      return {
+        kind: "player_meeting" as const,
+        ...base,
+        meeting: {
+          phaseName:
+            meetingPhase.phaseName ?? `Phase ${meetingPhase.phaseOrder}`,
+          // null: registered after the seating snapshot — see the organizer.
+          tableNumber: seat?.tableNumber ?? null,
+          seatmateName,
+        },
+      };
+    }
+
     if (
       tournament.lifecycle === "setup" ||
       tournament.lifecycle === "registration" ||

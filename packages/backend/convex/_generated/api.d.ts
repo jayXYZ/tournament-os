@@ -24,6 +24,7 @@ import type * as organizations from "../organizations.js";
 import type * as tournaments_auditLog from "../tournaments/auditLog.js";
 import type * as tournaments_lifecycle from "../tournaments/lifecycle.js";
 import type * as tournaments_player from "../tournaments/player.js";
+import type * as tournaments_playerMeeting from "../tournaments/playerMeeting.js";
 import type * as tournaments_registrations from "../tournaments/registrations.js";
 import type * as tournaments_rounds from "../tournaments/rounds.js";
 import type * as tournaments_testing from "../tournaments/testing.js";
@@ -54,6 +55,7 @@ declare const fullApi: ApiFromModules<{
   "tournaments/auditLog": typeof tournaments_auditLog;
   "tournaments/lifecycle": typeof tournaments_lifecycle;
   "tournaments/player": typeof tournaments_player;
+  "tournaments/playerMeeting": typeof tournaments_playerMeeting;
   "tournaments/registrations": typeof tournaments_registrations;
   "tournaments/rounds": typeof tournaments_rounds;
   "tournaments/testing": typeof tournaments_testing;

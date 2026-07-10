@@ -50,7 +50,22 @@ export type TournamentPhaseInput = {
   phaseOrder: number;
   phaseRoundMode: "dynamic" | "fixed";
   phaseTotalRounds?: number;
+  playerMeeting?: boolean;
 };
+
+// Seating order for player meetings: alphabetical by display name (case-
+// insensitive, locale-aware), tie-broken by registration createdAt so players
+// with identical names still seat deterministically (the same tie-break
+// pairing and standings use).
+export function comparePlayersAlphabetically(
+  a: { playerName: string | null; createdAt: number },
+  b: { playerName: string | null; createdAt: number },
+) {
+  const byName = (a.playerName ?? "").localeCompare(b.playerName ?? "", undefined, {
+    sensitivity: "base",
+  });
+  return byName !== 0 ? byName : a.createdAt - b.createdAt;
+}
 
 export function defaultSwissRoundCount(playerCount: number) {
   if (playerCount <= 1) {
@@ -161,17 +176,21 @@ export async function swissPhaseByOrder(
 // The phase play is currently anchored to: the in-progress phase if one
 // exists, otherwise the most recently completed phase (its final round stays
 // "current" until the next phase starts), otherwise the first upcoming phase.
-export async function swissPhaseOrNull(
-  ctx: QueryCtx,
-  tournamentId: Id<"tournaments">,
-) {
-  const phases = await swissPhasesInOrder(ctx, tournamentId);
+// Takes phases already in phaseOrder (as swissPhasesInOrder returns them).
+export function selectCurrentSwissPhase(phases: Doc<"tournamentPhases">[]) {
   return (
     phases.find((phase) => phase.phaseStatus === "in_progress") ??
     [...phases].reverse().find((phase) => phase.phaseStatus === "completed") ??
     phases.find((phase) => phase.phaseStatus === "upcoming") ??
     null
   );
+}
+
+export async function swissPhaseOrNull(
+  ctx: QueryCtx,
+  tournamentId: Id<"tournaments">,
+) {
+  return selectCurrentSwissPhase(await swissPhasesInOrder(ctx, tournamentId));
 }
 
 export async function requireSwissPhase(
@@ -312,6 +331,20 @@ export async function matchPlayers(
     .take(2);
 }
 
+// A phase's player-meeting seats in table order (the index sorts by
+// tableNumber). Empty when the phase never held a meeting.
+export async function meetingSeats(
+  ctx: QueryCtx,
+  phaseId: Id<"tournamentPhases">,
+) {
+  return await ctx.db
+    .query("playerMeetingSeats")
+    .withIndex("by_tournamentPhaseId_and_tableNumber", (q) =>
+      q.eq("tournamentPhaseId", phaseId),
+    )
+    .take(MAX_TOURNAMENT_PLAYERS);
+}
+
 export async function createTournament(
   ctx: MutationCtx,
   args: {
@@ -376,6 +409,7 @@ export async function createSwissPhases(
       phaseTotalRounds: phase.phaseTotalRounds,
       phaseCutoff: null,
       powerPairFinalRound: true,
+      playerMeeting: phase.playerMeeting,
       updatedAt: now,
     });
   }
@@ -425,6 +459,12 @@ export async function completeTournament(
 }
 
 export type PairingsNextStep =
+  | {
+      kind: "startPlayerMeeting";
+      ready: boolean;
+      reason: string | null;
+      phaseId: Id<"tournamentPhases">;
+    }
   | { kind: "startTournament"; ready: boolean; reason: string | null }
   | { kind: "startTimer"; ready: boolean; reason: string | null }
   | {
@@ -480,6 +520,25 @@ export async function pairingsNextStep(
       };
     }
     const registrations = await activeRegistrations(ctx, tournament._id);
+    // The meeting is offered exactly once: after it starts (or completes) the
+    // flag no longer matters and play falls through to startTournament, which
+    // closes an in-progress meeting itself.
+    if (phase.playerMeeting && phase.playerMeetingStatus === undefined) {
+      if (registrations.length < 2) {
+        return {
+          kind: "startPlayerMeeting",
+          ready: false,
+          reason: "At least two active players are required",
+          phaseId: phase._id,
+        };
+      }
+      return {
+        kind: "startPlayerMeeting",
+        ready: true,
+        reason: null,
+        phaseId: phase._id,
+      };
+    }
     if (registrations.length < 2) {
       return {
         kind: "startTournament",
@@ -553,6 +612,26 @@ export async function pairingsNextStep(
       (candidate) => candidate.phase.phaseOrder === phase.phaseOrder + 1,
     )?.phase ?? null;
   if (nextPhase && nextPhase.phaseStatus === "upcoming") {
+    // A later phase can hold its own meeting (e.g. a day-2 seating) before its
+    // first round is paired. Same player-count gate as the pre-start branch:
+    // startPlayerMeeting rejects a pool of fewer than two players.
+    if (nextPhase.playerMeeting && nextPhase.playerMeetingStatus === undefined) {
+      const registrations = await activeRegistrations(ctx, tournament._id);
+      if (registrations.length < 2) {
+        return {
+          kind: "startPlayerMeeting",
+          ready: false,
+          reason: "At least two active players are required",
+          phaseId: nextPhase._id,
+        };
+      }
+      return {
+        kind: "startPlayerMeeting",
+        ready: true,
+        reason: null,
+        phaseId: nextPhase._id,
+      };
+    }
     return { kind: "generateNextRound", ready: true, reason: null };
   }
   return { kind: "completeTournament", ready: true, reason: null };
@@ -659,6 +738,20 @@ export async function deleteTournamentOperationalDataBatch(
         return false;
       }
       await ctx.db.delete(round._id);
+      budget -= 1;
+    }
+    const seats = await ctx.db
+      .query("playerMeetingSeats")
+      .withIndex("by_tournamentPhaseId_and_tableNumber", (q) =>
+        q.eq("tournamentPhaseId", phase._id),
+      )
+      .take(512);
+    sawFullPage ||= seats.length === 512;
+    for (const seat of seats) {
+      if (budget < 1) {
+        return false;
+      }
+      await ctx.db.delete(seat._id);
       budget -= 1;
     }
     if (budget < 1) {
@@ -806,11 +899,14 @@ export function validPhaseInputs(phases: TournamentPhaseInput[]) {
     if (Math.trunc(phase.phaseOrder) !== expectedOrder) {
       throw new Error("Swiss phases must be ordered starting at 1");
     }
+    // Absent-default convention: store true or leave the field off entirely.
+    const playerMeeting = phase.playerMeeting === true ? true : undefined;
     if (phase.phaseRoundMode === "dynamic") {
       return {
         phaseOrder: expectedOrder,
         phaseRoundMode: "dynamic" as const,
         phaseTotalRounds: null,
+        playerMeeting,
       };
     }
 
@@ -818,6 +914,7 @@ export function validPhaseInputs(phases: TournamentPhaseInput[]) {
       phaseOrder: expectedOrder,
       phaseRoundMode: "fixed" as const,
       phaseTotalRounds: validRoundCount(phase.phaseTotalRounds ?? 0),
+      playerMeeting,
     };
   });
 }

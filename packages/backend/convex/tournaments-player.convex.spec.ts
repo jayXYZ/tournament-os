@@ -331,7 +331,7 @@ test("isFinalRound is only true in the tournament's last phase", async () => {
   let current = await playerOne.query(api.tournaments.player.getMyCurrentMatch, {
     tournamentId,
   });
-  if (current.kind === "not_started") {
+  if (current.kind === "not_started" || current.kind === "player_meeting") {
     throw new Error("Expected the tournament to have started");
   }
   expect(current.kind).toBe("match");
@@ -342,7 +342,7 @@ test("isFinalRound is only true in the tournament's last phase", async () => {
   current = await playerOne.query(api.tournaments.player.getMyCurrentMatch, {
     tournamentId,
   });
-  if (current.kind === "not_started") {
+  if (current.kind === "not_started" || current.kind === "player_meeting") {
     throw new Error("Expected the tournament to have started");
   }
   expect(current.kind).toBe("between_rounds");
@@ -355,7 +355,7 @@ test("isFinalRound is only true in the tournament's last phase", async () => {
   current = await playerOne.query(api.tournaments.player.getMyCurrentMatch, {
     tournamentId,
   });
-  if (current.kind === "not_started") {
+  if (current.kind === "not_started" || current.kind === "player_meeting") {
     throw new Error("Expected the tournament to have started");
   }
   expect(current.kind).toBe("match");

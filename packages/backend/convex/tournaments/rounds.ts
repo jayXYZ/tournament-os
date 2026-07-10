@@ -65,6 +65,12 @@ export const startTournament = mutation({
     await ctx.db.patch(playablePhase._id, {
       phaseStatus: "in_progress",
       phaseCurrentRound: roundId,
+      // Pairing round 1 ends any live player meeting. Keyed on the status, not
+      // the setting, so a meeting started before the flag was frozen still
+      // closes cleanly.
+      ...(phase.playerMeetingStatus === "in_progress"
+        ? { playerMeetingStatus: "completed" as const }
+        : {}),
       updatedAt: now,
     });
     await logAuditEvent(ctx, {
@@ -170,6 +176,10 @@ export const generateNextRound = mutation({
     await ctx.db.patch(nextPhase._id, {
       phaseStatus: "in_progress",
       phaseCurrentRound: roundId,
+      // Pairing the phase's first round ends any live player meeting.
+      ...(nextPhase.playerMeetingStatus === "in_progress"
+        ? { playerMeetingStatus: "completed" as const }
+        : {}),
       updatedAt: Date.now(),
     });
     await logAuditEvent(ctx, {

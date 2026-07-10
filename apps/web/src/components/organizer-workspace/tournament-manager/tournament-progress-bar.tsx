@@ -1,6 +1,11 @@
-import { Link, useLocation, useNavigate, useSearch } from '@tanstack/react-router'
+import {
+  Link,
+  useLocation,
+  useNavigate,
+  useSearch,
+} from '@tanstack/react-router'
 import { useMutation, useQuery } from 'convex/react'
-import { ListOrdered, Swords, TimerIcon, Trophy } from 'lucide-react'
+import { ListOrdered, Swords, TimerIcon, Trophy, Users } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { api } from '@tournament-os/backend/convex/_generated/api'
@@ -203,6 +208,9 @@ function AdvanceStepButton({
   board: PairingsBoard
   onAdvanced: () => void
 }) {
+  const startPlayerMeeting = useMutation(
+    api.tournaments.playerMeeting.startPlayerMeeting,
+  )
   const startTournament = useMutation(api.tournaments.rounds.startTournament)
   const startTimer = useMutation(api.tournaments.timer.startTimer)
   const generateNextRound = useMutation(
@@ -227,6 +235,7 @@ function AdvanceStepButton({
   }
 
   const action = advanceAction(step, board.tournament._id, {
+    startPlayerMeeting,
     startTournament,
     startTimer,
     generateNextRound,
@@ -273,12 +282,13 @@ function advanceAction(
   step: AdvanceStep,
   tournamentId: Id<'tournaments'>,
   mutations: {
+    startPlayerMeeting: (args: {
+      phaseId: Id<'tournamentPhases'>
+    }) => Promise<unknown>
     startTournament: (args: {
       tournamentId: Id<'tournaments'>
     }) => Promise<unknown>
-    startTimer: (args: {
-      tournamentId: Id<'tournaments'>
-    }) => Promise<unknown>
+    startTimer: (args: { tournamentId: Id<'tournaments'> }) => Promise<unknown>
     generateNextRound: (args: {
       tournamentId: Id<'tournaments'>
     }) => Promise<unknown>
@@ -293,6 +303,13 @@ function advanceAction(
   // Success copy is shown on the button itself while it is still sized for
   // the idle label, so keep it shorter than the matching "Hold to" label.
   switch (step.kind) {
+    case 'startPlayerMeeting':
+      return {
+        label: 'Hold to start player meeting',
+        icon: <Users />,
+        success: 'Meeting started',
+        run: () => mutations.startPlayerMeeting({ phaseId: step.phaseId }),
+      }
     case 'startTournament':
       return {
         label: 'Hold to generate pairings',
@@ -421,7 +438,10 @@ function RoundNode({
   if (slot.kind !== 'round') {
     if (slot.kind === 'unknown') {
       return (
-        <InertNode label="?" tooltip={`${phaseName} · More rounds may follow`} />
+        <InertNode
+          label="?"
+          tooltip={`${phaseName} · More rounds may follow`}
+        />
       )
     }
     return (
@@ -492,7 +512,9 @@ function RoundNode({
       </TooltipTrigger>
       <TooltipContent>
         {phaseName} · {round.roundName} ·{' '}
-        {completed ? 'Completed — view standings' : 'In progress — view pairings'}
+        {completed
+          ? 'Completed — view standings'
+          : 'In progress — view pairings'}
       </TooltipContent>
     </Tooltip>
   )

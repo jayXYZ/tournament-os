@@ -80,6 +80,31 @@ function CurrentMatch({
       return (
         <Text style={styles.muted}>The tournament hasn’t started yet.</Text>
       );
+    case "player_meeting":
+      if (current.myRegistrationStatus === "dropped") {
+        return (
+          <Text style={styles.muted}>
+            You have dropped from this tournament, so you are no longer seated.
+          </Text>
+        );
+      }
+      return (
+        <View style={styles.card}>
+          <Text style={styles.cardLabel}>Player meeting</Text>
+          <Text style={styles.cardTitle}>
+            {current.meeting.tableNumber === null
+              ? "See the organizer for your seat"
+              : `Table ${current.meeting.tableNumber}`}
+          </Text>
+          <Text style={styles.muted}>
+            {current.meeting.seatmateName
+              ? `Seated with ${current.meeting.seatmateName}. `
+              : ""}
+            Take your seat and check in with the organizer. Pairings will
+            appear here once the meeting wraps up.
+          </Text>
+        </View>
+      );
     case "between_rounds":
       return (
         <Text style={styles.muted}>

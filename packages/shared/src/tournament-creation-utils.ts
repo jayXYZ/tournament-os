@@ -17,12 +17,14 @@ export type TournamentCreationPhaseForm = {
   id: string;
   phaseRoundMode: TournamentCreationPhaseRoundMode;
   phaseTotalRounds: string;
+  playerMeeting: boolean;
 };
 
 export type TournamentCreationPhasePayload = {
   phaseOrder: number;
   phaseRoundMode: TournamentCreationPhaseRoundMode;
   phaseTotalRounds?: number;
+  playerMeeting?: boolean;
 };
 
 export function createDefaultTournamentCreationPhase(
@@ -32,6 +34,7 @@ export function createDefaultTournamentCreationPhase(
     id,
     phaseRoundMode: "dynamic",
     phaseTotalRounds: "3",
+    playerMeeting: false,
   };
 }
 
@@ -57,14 +60,19 @@ export function toTournamentCreationPhasePayload(
 ): TournamentCreationPhasePayload[] {
   return phases.map((phase, index) => {
     const phaseOrder = index + 1;
+    // Emitted only when true, matching the backend's absent-default field.
+    const playerMeeting = phase.playerMeeting
+      ? { playerMeeting: true as const }
+      : {};
     if (phase.phaseRoundMode === "dynamic") {
-      return { phaseOrder, phaseRoundMode: "dynamic" };
+      return { phaseOrder, phaseRoundMode: "dynamic", ...playerMeeting };
     }
 
     return {
       phaseOrder,
       phaseRoundMode: "fixed",
       phaseTotalRounds: Number.parseInt(phase.phaseTotalRounds, 10),
+      ...playerMeeting,
     };
   });
 }

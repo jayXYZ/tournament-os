@@ -48,6 +48,45 @@ export function CurrentMatchCard({
     )
   }
 
+  if (currentMatch.kind === 'player_meeting') {
+    if (currentMatch.myRegistrationStatus === 'dropped') {
+      return (
+        <StatusEmpty
+          icon={Swords}
+          title="No seat for the player meeting"
+          description="You have dropped from this tournament, so you are no longer seated."
+        />
+      )
+    }
+    return (
+      <Card>
+        <CardHeader>
+          <CardDescription>Player meeting</CardDescription>
+          <CardTitle className="text-2xl">
+            {currentMatch.meeting.tableNumber === null ? (
+              'See the organizer for your seat'
+            ) : (
+              <>
+                Table {currentMatch.meeting.tableNumber}
+                {currentMatch.meeting.seatmateName ? (
+                  <span className="block text-base font-normal text-muted-foreground">
+                    with {currentMatch.meeting.seatmateName}
+                  </span>
+                ) : null}
+              </>
+            )}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">
+            Take your seat and check in with the organizer. Pairings will
+            appear here once the meeting wraps up.
+          </p>
+        </CardContent>
+      </Card>
+    )
+  }
+
   if (currentMatch.kind === 'between_rounds') {
     return (
       <StatusEmpty

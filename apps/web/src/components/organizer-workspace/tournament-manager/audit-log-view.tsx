@@ -151,6 +151,8 @@ function describeEvent(row: AuditEventRow): string {
       return `Reinstated ${lineName(event.player.playerName)}`
     case 'tournament_published':
       return 'Published the tournament and opened registration'
+    case 'player_meeting_started':
+      return `Started the phase ${event.phaseOrder} player meeting with ${event.playerCount} players seated`
     case 'tournament_started':
       return `Started the tournament with ${event.playerCount} players and paired round 1`
     case 'round_started':
@@ -174,7 +176,8 @@ function matchLocation(event: {
 }
 
 function formatScoreline(lines: Array<ResultLine>) {
-  const [first, second] = lines
+  const first = lines.at(0)
+  const second = lines.at(1)
   if (!first || !second) {
     return 'a match result'
   }

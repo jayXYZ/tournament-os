@@ -108,6 +108,13 @@ export const tournamentPhaseCutoffValidator = v.union(
   v.null(),
 );
 
+// Lifecycle of a phase's player meeting. Absent on the phase = not started;
+// "in_progress" is the only state in which seats are shown to players.
+export const playerMeetingStatusValidator = v.union(
+  v.literal("in_progress"),
+  v.literal("completed"),
+);
+
 export const tournamentRoundStatusValidator = v.union(
   v.literal("upcoming"),
   v.literal("in_progress"),
@@ -191,6 +198,11 @@ export const tournamentAuditEventValidator = v.union(
     player: auditPlayerRefValidator,
   }),
   v.object({ type: v.literal("tournament_published") }),
+  v.object({
+    type: v.literal("player_meeting_started"),
+    phaseOrder: v.number(),
+    playerCount: v.number(),
+  }),
   v.object({ type: v.literal("tournament_started"), playerCount: v.number() }),
   v.object({
     type: v.literal("round_started"),

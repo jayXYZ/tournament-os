@@ -10,6 +10,7 @@ import {
 import { toast } from 'sonner'
 
 import { api } from '@tournament-os/backend/convex/_generated/api'
+import { PlayerMeetingCard } from './player-meeting-card'
 import type { FormEvent } from 'react'
 import type { ColumnDef } from '@tanstack/react-table'
 import type { FunctionReturnType } from 'convex/server'
@@ -40,10 +41,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import {
-  DataTable,
-  DataTableColumnHeader,
-} from '@/components/ui/data-table'
+import { DataTable, DataTableColumnHeader } from '@/components/ui/data-table'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -91,9 +89,18 @@ export function PairingsView({
     onRoundSelectionChange,
   )
 
+  const activePhase = navigation.activePhase?.phase
+
   return (
     <section className="flex flex-col gap-4">
       <WorkspacePageHeader eyebrow="Tournament manager" title="Pairings" />
+
+      {activePhase?.playerMeetingStatus !== undefined ? (
+        <PlayerMeetingCard
+          phaseId={activePhase._id}
+          meetingStatus={activePhase.playerMeetingStatus}
+        />
+      ) : null}
 
       <Card>
         <CardHeader>

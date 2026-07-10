@@ -13,6 +13,7 @@ test("createDefaultTournamentCreationPhase creates a dynamic Swiss phase", () =>
     id: "phase-1",
     phaseRoundMode: "dynamic",
     phaseTotalRounds: "3",
+    playerMeeting: false,
   });
 });
 
@@ -42,11 +43,24 @@ test("toTournamentCreationPhasePayload sends contiguous phase orders", () => {
       id: "phase-2",
       phaseRoundMode: "fixed" as const,
       phaseTotalRounds: "5",
+      playerMeeting: false,
     },
   ];
 
+  // playerMeeting stays absent when false, matching the backend's
+  // absent-default field.
   assert.deepEqual(toTournamentCreationPhasePayload(phases), [
     { phaseOrder: 1, phaseRoundMode: "dynamic" },
     { phaseOrder: 2, phaseRoundMode: "fixed", phaseTotalRounds: 5 },
+  ]);
+});
+
+test("toTournamentCreationPhasePayload emits playerMeeting only when enabled", () => {
+  const phases = [
+    { ...createDefaultTournamentCreationPhase("phase-1"), playerMeeting: true },
+  ];
+
+  assert.deepEqual(toTournamentCreationPhasePayload(phases), [
+    { phaseOrder: 1, phaseRoundMode: "dynamic", playerMeeting: true },
   ]);
 });

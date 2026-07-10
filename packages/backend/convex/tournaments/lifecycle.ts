@@ -234,6 +234,7 @@ export const createTournamentWithPhases = mutation({
         phaseOrder: v.number(),
         phaseRoundMode: tournamentPhaseRoundModeValidator,
         phaseTotalRounds: v.optional(v.number()),
+        playerMeeting: v.optional(v.boolean()),
       }),
     ),
   },
@@ -354,6 +355,7 @@ export const updatePhaseSetup = mutation({
     phaseId: v.id("tournamentPhases"),
     phaseRoundMode: tournamentPhaseRoundModeValidator,
     phaseTotalRounds: v.optional(v.number()),
+    playerMeeting: v.optional(v.boolean()),
   },
   handler: async (ctx, args): Promise<Id<"tournamentPhases">> => {
     const phase = await requirePhase(ctx, args.phaseId);
@@ -372,9 +374,19 @@ export const updatePhaseSetup = mutation({
           )
         : null;
 
+    const changesMeeting =
+      args.playerMeeting !== undefined &&
+      args.playerMeeting !== (phase.playerMeeting ?? false);
+    if (changesMeeting && phase.playerMeetingStatus !== undefined) {
+      throw new Error("Player meeting has already started");
+    }
+
     await ctx.db.patch(args.phaseId, {
       phaseRoundMode: args.phaseRoundMode,
       phaseTotalRounds,
+      ...(changesMeeting
+        ? { playerMeeting: args.playerMeeting || undefined }
+        : {}),
       updatedAt: Date.now(),
     });
     return args.phaseId;

@@ -14,6 +14,7 @@ import {
   tournamentPhaseStatusValidator,
   tournamentPhaseRoundModeValidator,
   tournamentPhaseCutoffValidator,
+  playerMeetingStatusValidator,
   tournamentAuditEventValidator,
   tournamentRoundStatusValidator,
   tournamentRoundTimerValidator,
@@ -165,10 +166,38 @@ export default defineSchema({
     // When set, the final round power-pairs (orders brackets by tiebreakers)
     // instead of random-within-bracket. Optional; readers default to true.
     powerPairFinalRound: v.optional(v.boolean()),
+    // When set, the organizer holds a seated player meeting (attendance,
+    // announcements) before this phase's first round is paired. Optional;
+    // readers default to false. Only decides whether the start-meeting step is
+    // offered — playerMeetingStatus alone says whether a meeting is live.
+    playerMeeting: v.optional(v.boolean()),
+    playerMeetingStatus: v.optional(playerMeetingStatusValidator),
     updatedAt: v.number(),
   })
     .index("by_tournamentId", ["tournamentId"])
     .index("by_tournamentId_and_phaseOrder", ["tournamentId", "phaseOrder"]),
+
+  // One row per player seated at a phase's player meeting, snapshotted when
+  // the meeting starts. Rows are immutable and never deleted on drop — readers
+  // live-join registration status to strike dropped players. Players who
+  // register after the snapshot simply have no row.
+  playerMeetingSeats: defineTable({
+    tournamentId: v.id("tournaments"),
+    tournamentPhaseId: v.id("tournamentPhases"),
+    registrationId: v.id("tournamentRegistrations"),
+    // Denormalized at snapshot time so the seating list renders without joins.
+    playerName: v.union(v.string(), v.null()),
+    tableNumber: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_tournamentPhaseId_and_tableNumber", [
+      "tournamentPhaseId",
+      "tableNumber",
+    ])
+    .index("by_tournamentPhaseId_and_registrationId", [
+      "tournamentPhaseId",
+      "registrationId",
+    ]),
 
   tournamentRounds: defineTable({
     tournamentId: v.id("tournaments"),

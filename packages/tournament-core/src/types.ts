@@ -9,6 +9,10 @@ export type MyCurrentMatch = FunctionReturnType<
   typeof api.tournaments.player.getMyCurrentMatch
 >;
 export type MyActiveMatch = Extract<MyCurrentMatch, { kind: "match" }>;
+export type MyPlayerMeeting = Extract<
+  MyCurrentMatch,
+  { kind: "player_meeting" }
+>;
 export type MyMatchHistory = FunctionReturnType<
   typeof api.tournaments.player.getMyMatchHistory
 >;

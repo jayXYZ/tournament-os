@@ -48,6 +48,7 @@ import {
 } from '@/components/ui/card'
 import {
   Field,
+  FieldContent,
   FieldDescription,
   FieldGroup,
   FieldLabel,
@@ -67,6 +68,7 @@ import {
 import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
+import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 type PhaseStatus = Doc<'tournamentPhases'>['phaseStatus']
@@ -333,7 +335,9 @@ function EventDetailsCard({ tournament }: { tournament: Doc<'tournaments'> }) {
       toast.success('Event details saved.')
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : 'Could not save event details.',
+        error instanceof Error
+          ? error.message
+          : 'Could not save event details.',
       )
     } finally {
       setBusy(false)
@@ -371,11 +375,7 @@ function EventDetailsCard({ tournament }: { tournament: Doc<'tournaments'> }) {
   )
 }
 
-function VisibilitySelect({
-  tournament,
-}: {
-  tournament: Doc<'tournaments'>
-}) {
+function VisibilitySelect({ tournament }: { tournament: Doc<'tournaments'> }) {
   const updateVisibility = useMutation(
     api.tournaments.lifecycle.updateTournamentVisibility,
   )
@@ -393,9 +393,7 @@ function VisibilitySelect({
       )
     } catch (error) {
       toast.error(
-        error instanceof Error
-          ? error.message
-          : 'Could not update visibility.',
+        error instanceof Error ? error.message : 'Could not update visibility.',
       )
     } finally {
       setBusy(false)
@@ -492,10 +490,10 @@ function PublishTournamentButton({
             </AlertDialogMedia>
             <AlertDialogTitle>Publish {tournament.name}?</AlertDialogTitle>
             <AlertDialogDescription>
-              Publishing opens registration. Who can see the event is
-              controlled by its visibility setting: public events appear in
-              listings, unlisted events are reachable by link, and private
-              events stay hidden.
+              Publishing opens registration. Who can see the event is controlled
+              by its visibility setting: public events appear in listings,
+              unlisted events are reachable by link, and private events stay
+              hidden.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -575,10 +573,16 @@ function PhaseSettingsForm({
       totalRounds:
         phase.phaseTotalRounds === null ? '' : String(phase.phaseTotalRounds),
     })
+  const [playerMeeting, setPlayerMeeting] = useState(
+    phase.playerMeeting ?? false,
+  )
   const [busy, setBusy] = useState(false)
 
   const locked = isSetupLocked(tournament)
   const disabled = locked || busy
+  // Once the meeting has started its seating snapshot exists, so the setting
+  // is frozen (the backend rejects changes too).
+  const meetingStarted = phase.playerMeetingStatus !== undefined
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -592,6 +596,7 @@ function PhaseSettingsForm({
           roundConfiguration.roundMode === 'fixed'
             ? Number.parseInt(roundConfiguration.totalRounds, 10)
             : undefined,
+        ...(meetingStarted ? {} : { playerMeeting }),
       })
       toast.success('Phase settings saved.')
     } catch (error) {
@@ -627,6 +632,31 @@ function PhaseSettingsForm({
           onChange={setRoundConfiguration}
           showDynamicDescription
         />
+
+        <Field
+          orientation="horizontal"
+          data-disabled={disabled || meetingStarted}
+        >
+          <Switch
+            id={`${phase._id}-player-meeting`}
+            checked={playerMeeting}
+            onCheckedChange={(checked) => setPlayerMeeting(checked === true)}
+            disabled={disabled || meetingStarted}
+          />
+          <FieldContent>
+            <FieldLabel htmlFor={`${phase._id}-player-meeting`}>
+              Player meeting
+            </FieldLabel>
+            <FieldDescription>
+              Seat all players alphabetically before this phase&apos;s first
+              round so you can take attendance, drop no-shows, and make
+              announcements.
+              {meetingStarted
+                ? ' The meeting has already been held, so this can no longer change.'
+                : ''}
+            </FieldDescription>
+          </FieldContent>
+        </Field>
 
         <FieldSet>
           <FieldLegend>Coming soon</FieldLegend>
@@ -674,11 +704,7 @@ function PhaseSettingsForm({
   )
 }
 
-function DangerZoneCard({
-  tournament,
-}: {
-  tournament: Doc<'tournaments'>
-}) {
+function DangerZoneCard({ tournament }: { tournament: Doc<'tournaments'> }) {
   const cancellable =
     tournament.lifecycle !== 'completed' && tournament.lifecycle !== 'cancelled'
 
@@ -697,8 +723,8 @@ function DangerZoneCard({
               <div className="grid gap-1 text-sm">
                 <p className="font-medium">Cancel this event</p>
                 <p className="text-muted-foreground">
-                  Ends the event immediately. Players keep their results, but
-                  no further rounds can be played.
+                  Ends the event immediately. Players keep their results, but no
+                  further rounds can be played.
                 </p>
               </div>
               <CancelTournamentButton tournament={tournament} />
@@ -740,9 +766,7 @@ function CancelTournamentButton({
       toast.success('Tournament cancelled.')
     } catch (error) {
       toast.error(
-        error instanceof Error
-          ? error.message
-          : 'Could not cancel tournament.',
+        error instanceof Error ? error.message : 'Could not cancel tournament.',
       )
     } finally {
       setBusy(false)
@@ -776,8 +800,8 @@ function CancelTournamentButton({
             <AlertDialogTitle>Cancel {tournament.name}?</AlertDialogTitle>
             <AlertDialogDescription>
               The event ends immediately and no further rounds can be played.
-              Registered players will see the event as cancelled. This cannot
-              be undone.
+              Registered players will see the event as cancelled. This cannot be
+              undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -823,9 +847,7 @@ function DeleteTournamentButton({
       void navigate({ to: '/admin' })
     } catch (error) {
       toast.error(
-        error instanceof Error
-          ? error.message
-          : 'Could not delete tournament.',
+        error instanceof Error ? error.message : 'Could not delete tournament.',
       )
       setBusy(false)
     }
@@ -860,8 +882,8 @@ function DeleteTournamentButton({
             </AlertDialogMedia>
             <AlertDialogTitle>Delete {tournament.name}?</AlertDialogTitle>
             <AlertDialogDescription>
-              This permanently deletes the event along with every
-              registration, pairing, and standing. This cannot be undone.
+              This permanently deletes the event along with every registration,
+              pairing, and standing. This cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <Field>

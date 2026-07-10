@@ -293,6 +293,31 @@ function TournamentPhaseField({
           <Trash2 />
         </Button>
       </div>
+      <Field orientation="horizontal" data-disabled={disabled}>
+        <Checkbox
+          id={`${phase.id}-player-meeting`}
+          checked={phase.playerMeeting}
+          onCheckedChange={(checked) =>
+            onPhasesChange(
+              phases.map((current) =>
+                current.id === phase.id
+                  ? { ...current, playerMeeting: checked === true }
+                  : current,
+              ),
+            )
+          }
+          disabled={disabled}
+        />
+        <FieldContent>
+          <FieldLabel htmlFor={`${phase.id}-player-meeting`}>
+            Hold a player meeting
+          </FieldLabel>
+          <FieldDescription>
+            Seat players alphabetically before this phase&apos;s first round
+            for attendance and announcements.
+          </FieldDescription>
+        </FieldContent>
+      </Field>
     </Field>
   )
 }

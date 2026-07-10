@@ -27,7 +27,12 @@ export function parseRoundSelectionSearch(
 export type TournamentRoundNavigationPhase = {
   phase: Pick<
     Doc<'tournamentPhases'>,
-    '_id' | 'phaseName' | 'phaseOrder' | 'phaseStatus' | 'phaseTotalRounds'
+    | '_id'
+    | 'phaseName'
+    | 'phaseOrder'
+    | 'phaseStatus'
+    | 'phaseTotalRounds'
+    | 'playerMeetingStatus'
   >
   rounds: Array<
     Pick<Doc<'tournamentRounds'>, '_id' | 'roundNumber' | 'roundStatus'>
@@ -54,8 +59,15 @@ export function useTournamentRoundNavigation(
   // Default to the latest phase with rounds this mode can show. An
   // in-progress phase without them (e.g. standings right after a new phase's
   // first round is paired) or a fully completed tournament should land on the
-  // last phase that has content, not an empty phase or phase 1.
+  // last phase that has content, not an empty phase or phase 1. In 'all' mode
+  // a live player meeting wins: its phase has no rounds yet, but its meeting
+  // seating is the content the organizer needs.
   const defaultPhase =
+    (mode === 'all'
+      ? phases.find(
+          ({ phase }) => phase.playerMeetingStatus === 'in_progress',
+        )
+      : undefined) ??
     [...phases]
       .reverse()
       .find(({ rounds }) => roundsForMode(rounds).length > 0) ??
@@ -116,7 +128,13 @@ export function TournamentPhaseTabs({
           <TabsTrigger
             key={phase._id}
             value={phase._id}
-            disabled={phase.phaseStatus === 'upcoming'}
+            // An upcoming phase becomes selectable once its player meeting
+            // starts, so the meeting seating stays reachable before the
+            // phase's first round is paired.
+            disabled={
+              phase.phaseStatus === 'upcoming' &&
+              phase.playerMeetingStatus === undefined
+            }
           >
             {phase.phaseName ?? `Phase ${phase.phaseOrder}`}
           </TabsTrigger>

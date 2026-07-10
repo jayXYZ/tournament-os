@@ -13,6 +13,7 @@ export type {
   MyActiveMatch,
   MyCurrentMatch,
   MyMatchHistory,
+  MyPlayerMeeting,
   RoundTimer,
   StandingRow,
 } from "./types";
