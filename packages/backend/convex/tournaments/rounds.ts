@@ -1,34 +1,47 @@
 import { v } from "convex/values";
 
-import type { Id } from "../_generated/dataModel";
+import type { Doc, Id } from "../_generated/dataModel";
+import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { mutation, query } from "../_generated/server";
 import {
   auditResultLine,
   existingResultLines,
   logAuditEvent,
 } from "../model/auditLog";
-import { createRoundWithPairings } from "../model/pairing";
+import {
+  createRoundWithPairings,
+  createSingleEliminationRoundWithPairings,
+} from "../model/pairing";
 import {
   matchPointsForResult,
   replaceStandingsForRound,
+  type RoundMatchWithPlayers,
 } from "../model/standings";
 import {
   MAX_TOURNAMENT_PLAYERS,
+  SINGLE_ELIMINATION_FORMAT,
+  SINGLE_ELIMINATION_PLAYERS,
+  SWISS_FORMAT,
   activeRegistrations,
+  adjustActiveRegistrationCount,
   matchPlayers,
   pairingsNextStep,
+  phaseByOrder,
+  phasesInOrder,
   registrationDisplayName,
   requireMatch,
+  requireCurrentPhase,
+  requireDecisiveEliminationResult,
   requireOrganizerAccess,
   requirePhase,
+  requirePlayerMeetingStarted,
   requireResolvedPhaseTotalRounds,
   requireRound,
   requireSetupEditable,
-  requireSwissPhase,
   resolvePhaseTotalRounds,
   roundMatches,
+  roundMatchesWithPlayers,
   roundNumberInPhase,
-  swissPhaseByOrder,
 } from "../model/tournaments";
 
 export const startTournament = mutation({
@@ -39,10 +52,23 @@ export const startTournament = mutation({
       args.tournamentId,
     );
     requireSetupEditable(tournament);
-    const phase = await requireSwissPhase(ctx, args.tournamentId);
+    const phase = await requireCurrentPhase(ctx, args.tournamentId);
+    if (phase.phaseType !== SWISS_FORMAT || phase.phaseOrder !== 1) {
+      throw new Error("A tournament must start with a Swiss phase");
+    }
+    requirePlayerMeetingStarted(phase);
     const registrations = await activeRegistrations(ctx, args.tournamentId);
     if (registrations.length < 2) {
       throw new Error("At least two active players are required");
+    }
+    const hasTopEightPlayoff = (
+      await phasesInOrder(ctx, args.tournamentId)
+    ).some((candidate) => candidate.phaseType === SINGLE_ELIMINATION_FORMAT);
+    if (
+      hasTopEightPlayoff &&
+      registrations.length < SINGLE_ELIMINATION_PLAYERS
+    ) {
+      throw new Error("A top-8 playoff requires at least eight active players");
     }
     const phaseTotalRounds = await resolvePhaseTotalRounds(
       ctx,
@@ -94,7 +120,7 @@ export const generateNextRound = mutation({
       ctx,
       args.tournamentId,
     );
-    const phase = await requireSwissPhase(ctx, args.tournamentId);
+    const phase = await requireCurrentPhase(ctx, args.tournamentId);
     if (tournament.lifecycle !== "in_progress") {
       throw new Error("Tournament is not in progress");
     }
@@ -117,14 +143,27 @@ export const generateNextRound = mutation({
     const phaseTotalRounds = requireResolvedPhaseTotalRounds(phase);
     const playedInPhase = await roundNumberInPhase(ctx, currentRound);
     if (playedInPhase < phaseTotalRounds) {
-      const registrations = await activeRegistrations(ctx, args.tournamentId);
-      const roundId = await createRoundWithPairings(ctx, {
-        tournament,
-        phase,
-        roundNumber: currentRound.roundNumber + 1,
-        registrations,
-        previousRoundId: currentRound._id,
-      });
+      const registrations =
+        phase.phaseType === SINGLE_ELIMINATION_FORMAT
+          ? await singleEliminationAdvancers(ctx, currentRound._id)
+          : await activeRegistrations(ctx, args.tournamentId);
+      const roundId =
+        phase.phaseType === SINGLE_ELIMINATION_FORMAT
+          ? await createSingleEliminationRoundWithPairings(ctx, {
+              tournament,
+              phase,
+              roundNumber: currentRound.roundNumber + 1,
+              roundName: singleEliminationRoundName(registrations.length),
+              registrations,
+              seededFirstRound: false,
+            })
+          : await createRoundWithPairings(ctx, {
+              tournament,
+              phase,
+              roundNumber: currentRound.roundNumber + 1,
+              registrations,
+              previousRoundId: currentRound._id,
+            });
       await ctx.db.patch(phase._id, {
         phaseCurrentRound: roundId,
         updatedAt: Date.now(),
@@ -147,7 +186,7 @@ export const generateNextRound = mutation({
     // numbering continues across the boundary (day 2 of an 8-round day 1
     // starts at round 9), and passing the finished phase's final round as
     // previousRoundId carries match points, tiebreakers, and pairing history.
-    const nextPhase = await swissPhaseByOrder(
+    const nextPhase = await phaseByOrder(
       ctx,
       args.tournamentId,
       phase.phaseOrder + 1,
@@ -155,24 +194,42 @@ export const generateNextRound = mutation({
     if (!nextPhase || nextPhase.phaseStatus !== "upcoming") {
       throw new Error("All configured rounds have been generated");
     }
-    const registrations = await activeRegistrations(ctx, args.tournamentId);
-    if (registrations.length < 2) {
-      throw new Error("At least two active players are required");
-    }
+    requirePlayerMeetingStarted(nextPhase);
+    let registrations = await activeRegistrations(ctx, args.tournamentId);
     const nextPhaseTotalRounds = await resolvePhaseTotalRounds(
       ctx,
       nextPhase,
       registrations.length,
     );
-    const playablePhase = { ...nextPhase, phaseTotalRounds: nextPhaseTotalRounds };
+    const playablePhase = {
+      ...nextPhase,
+      phaseTotalRounds: nextPhaseTotalRounds,
+    };
 
-    const roundId = await createRoundWithPairings(ctx, {
-      tournament,
-      phase: playablePhase,
-      roundNumber: currentRound.roundNumber + 1,
-      registrations,
-      previousRoundId: currentRound._id,
-    });
+    let roundId: Id<"tournamentRounds">;
+    if (nextPhase.phaseType === SINGLE_ELIMINATION_FORMAT) {
+      registrations = await topEightFromStandings(ctx, currentRound._id);
+      await eliminateNonQualifiers(ctx, tournament, registrations);
+      roundId = await createSingleEliminationRoundWithPairings(ctx, {
+        tournament,
+        phase: playablePhase,
+        roundNumber: currentRound.roundNumber + 1,
+        roundName: "Quarterfinals",
+        registrations,
+        seededFirstRound: true,
+      });
+    } else {
+      if (registrations.length < 2) {
+        throw new Error("At least two active players are required");
+      }
+      roundId = await createRoundWithPairings(ctx, {
+        tournament,
+        phase: playablePhase,
+        roundNumber: currentRound.roundNumber + 1,
+        registrations,
+        previousRoundId: currentRound._id,
+      });
+    }
     await ctx.db.patch(nextPhase._id, {
       phaseStatus: "in_progress",
       phaseCurrentRound: roundId,
@@ -208,6 +265,18 @@ export const recordMatchResult = mutation({
   handler: async (ctx, args) => {
     const match = await requireMatch(ctx, args.matchId);
     const { user } = await requireOrganizerAccess(ctx, match.tournamentId);
+    const round = await requireRound(ctx, match.tournamentRoundId);
+    if (round.roundStatus !== "in_progress") {
+      throw new Error(
+        "Match results can only be recorded during an active round",
+      );
+    }
+    const phase = await requirePhase(ctx, match.tournamentPhaseId);
+    requireDecisiveEliminationResult(
+      phase,
+      args.playerOneGameWins,
+      args.playerTwoGameWins,
+    );
     const players = await matchPlayers(ctx, args.matchId);
     if (players.length !== 2) {
       throw new Error("Match result requires exactly two players");
@@ -250,7 +319,6 @@ export const recordMatchResult = mutation({
       reportedByRegistrationId: undefined,
       updatedAt: now,
     });
-    const round = await requireRound(ctx, match.tournamentRoundId);
     await logAuditEvent(ctx, {
       tournamentId: match.tournamentId,
       actor: user,
@@ -290,8 +358,8 @@ export const completeRound = mutation({
     // The round's own phase, not the tournament's current one — the two can
     // differ, and standings must be computed against the phase being played.
     const phase = await requirePhase(ctx, round.tournamentPhaseId);
-    const matches = await roundMatches(ctx, args.roundId);
-    for (const match of matches) {
+    const matchesWithPlayers = await roundMatchesWithPlayers(ctx, args.roundId);
+    for (const { match } of matchesWithPlayers) {
       if (
         match.matchStatus !== "completed" &&
         match.matchStatus !== "confirmed"
@@ -300,7 +368,20 @@ export const completeRound = mutation({
       }
     }
 
-    await replaceStandingsForRound(ctx, tournament, phase, round);
+    await replaceStandingsForRound(
+      ctx,
+      tournament,
+      phase,
+      round,
+      matchesWithPlayers,
+    );
+    if (phase.phaseType === SINGLE_ELIMINATION_FORMAT) {
+      await eliminateSingleEliminationLosers(
+        ctx,
+        tournament,
+        matchesWithPlayers,
+      );
+    }
     const now = Date.now();
     await ctx.db.patch(args.roundId, {
       roundStatus: "completed",
@@ -338,7 +419,7 @@ export const getCurrentRound = query({
   args: { tournamentId: v.id("tournaments") },
   handler: async (ctx, args) => {
     const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
-    const phase = await requireSwissPhase(ctx, tournament._id);
+    const phase = await requireCurrentPhase(ctx, tournament._id);
     if (!phase.phaseCurrentRound) {
       return null;
     }
@@ -442,3 +523,175 @@ export const listRoundStandings = query({
     );
   },
 });
+
+async function topEightFromStandings(
+  ctx: QueryCtx,
+  roundId: Id<"tournamentRounds">,
+) {
+  const standings = await ctx.db
+    .query("roundStandings")
+    .withIndex("by_tournamentRoundId_and_rank", (q) =>
+      q.eq("tournamentRoundId", roundId),
+    )
+    .take(MAX_TOURNAMENT_PLAYERS);
+
+  const loadedRegistrations = await Promise.all(
+    standings.map((standing) => ctx.db.get(standing.playerId)),
+  );
+  const registrations: Doc<"tournamentRegistrations">[] = [];
+  for (const registration of loadedRegistrations) {
+    if (
+      registration?.status === "active" &&
+      registrations.length < SINGLE_ELIMINATION_PLAYERS
+    ) {
+      registrations.push(registration);
+    }
+  }
+  if (registrations.length === SINGLE_ELIMINATION_PLAYERS) {
+    return registrations;
+  }
+  throw new Error("A top-8 playoff requires at least eight active players");
+}
+
+async function eliminateNonQualifiers(
+  ctx: MutationCtx,
+  tournament: Doc<"tournaments">,
+  qualifiers: Doc<"tournamentRegistrations">[],
+) {
+  const qualifierIds = new Set(
+    qualifiers.map((registration) => registration._id),
+  );
+  const active = await activeRegistrations(ctx, tournament._id);
+  const eliminated: Doc<"tournamentRegistrations">[] = [];
+  for (const registration of active) {
+    if (!qualifierIds.has(registration._id)) {
+      eliminated.push(registration);
+    }
+  }
+  const now = Date.now();
+  await Promise.all([
+    ...eliminated.map((registration) =>
+      ctx.db.patch(registration._id, {
+        status: "eliminated",
+        updatedAt: now,
+      }),
+    ),
+    adjustActiveRegistrationCount(ctx, tournament, -eliminated.length, now),
+  ]);
+}
+
+async function singleEliminationAdvancers(
+  ctx: QueryCtx,
+  roundId: Id<"tournamentRounds">,
+) {
+  const matchesWithPlayers = await roundMatchesWithPlayers(ctx, roundId);
+  return (await singleEliminationOutcome(ctx, matchesWithPlayers)).advancers;
+}
+
+async function singleEliminationOutcome(
+  ctx: QueryCtx,
+  matchesWithPlayers: RoundMatchWithPlayers[],
+) {
+  const resultRows: Array<{
+    winner: Doc<"tournamentMatchPlayers">;
+    loser: Doc<"tournamentMatchPlayers">;
+  }> = [];
+  const playerIds = new Set<Id<"tournamentRegistrations">>();
+
+  for (const { players } of matchesWithPlayers) {
+    if (players.length !== 2) {
+      throw new Error("Single-elimination matches require exactly two players");
+    }
+    const [first, second] = players;
+    const firstWins = first.gameWins ?? 0;
+    const secondWins = second.gameWins ?? 0;
+    if (firstWins === secondWins) {
+      throw new Error("Single-elimination matches must have a winner");
+    }
+    const winner = firstWins > secondWins ? first : second;
+    resultRows.push({ winner, loser: winner === first ? second : first });
+    playerIds.add(first.playerId);
+    playerIds.add(second.playerId);
+  }
+
+  const ids = [...playerIds];
+  const registrations = await Promise.all(ids.map((id) => ctx.db.get(id)));
+  const registrationsById = new Map<
+    Id<"tournamentRegistrations">,
+    Doc<"tournamentRegistrations">
+  >();
+  ids.forEach((id, index) => {
+    const registration = registrations[index];
+    if (registration) {
+      registrationsById.set(id, registration);
+    }
+  });
+
+  const advancers: Doc<"tournamentRegistrations">[] = [];
+  for (const { winner: winnerRow, loser: loserRow } of resultRows) {
+    const winner = registrationsById.get(winnerRow.playerId);
+    if (winner?.status === "active") {
+      advancers.push(winner);
+      continue;
+    }
+
+    // A drop after recording the result is a withdrawal from the bracket, so
+    // the opponent advances in that player's place. This also lets the round
+    // complete and keeps the next-round field aligned with active players.
+    const opponent = registrationsById.get(loserRow.playerId);
+    if (opponent?.status !== "active") {
+      throw new Error(
+        "Single-elimination match has no active player to advance",
+      );
+    }
+    advancers.push(opponent);
+  }
+  return { advancers, registrationsById };
+}
+
+async function eliminateSingleEliminationLosers(
+  ctx: MutationCtx,
+  tournament: Doc<"tournaments">,
+  matchesWithPlayers: RoundMatchWithPlayers[],
+) {
+  const { advancers, registrationsById } = await singleEliminationOutcome(
+    ctx,
+    matchesWithPlayers,
+  );
+  const winnerIds = new Set(advancers.map((registration) => registration._id));
+  const eliminatedIds = new Set<Id<"tournamentRegistrations">>();
+  for (const { players } of matchesWithPlayers) {
+    for (const player of players) {
+      if (!winnerIds.has(player.playerId)) {
+        eliminatedIds.add(player.playerId);
+      }
+    }
+  }
+  const eliminated: Doc<"tournamentRegistrations">[] = [];
+  for (const id of eliminatedIds) {
+    const registration = registrationsById.get(id);
+    if (registration?.status === "active") {
+      eliminated.push(registration);
+    }
+  }
+  const now = Date.now();
+  await Promise.all([
+    ...eliminated.map((registration) =>
+      ctx.db.patch(registration._id, {
+        status: "eliminated",
+        updatedAt: now,
+      }),
+    ),
+    adjustActiveRegistrationCount(ctx, tournament, -eliminated.length, now),
+  ]);
+}
+
+function singleEliminationRoundName(playerCount: number) {
+  if (playerCount === 4) {
+    return "Semifinals";
+  }
+  if (playerCount === 2) {
+    return "Finals";
+  }
+  throw new Error("Unexpected single-elimination bracket size");
+}

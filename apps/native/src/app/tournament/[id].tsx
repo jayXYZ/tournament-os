@@ -162,6 +162,17 @@ function Standings({
           <Text style={styles.name} numberOfLines={1}>
             {row.name ?? "Unknown player"}
           </Text>
+          {row.playoffStatus !== "not_started" ? (
+            <Text style={styles.playoffStatus}>
+              {row.playoffStatus === "active"
+                ? "Still active"
+                : row.playoffStatus === "cut"
+                  ? "Missed cut"
+                  : row.eliminatedInRoundNumber === null
+                    ? "Eliminated"
+                    : `Eliminated R${row.eliminatedInRoundNumber}`}
+            </Text>
+          ) : null}
           <Text style={styles.record}>
             {formatRecord(row.matchWins, row.matchLosses, row.matchDraws)}
           </Text>
@@ -207,5 +218,6 @@ const styles = StyleSheet.create({
   countdownOvertime: { color: "#ff6b6b" },
   rank: { color: "#8b8b96", fontSize: 15, width: 28 },
   name: { color: "#fff", fontSize: 15, flex: 1 },
+  playoffStatus: { color: "#8b8b96", fontSize: 12 },
   record: { color: "#cfcfd6", fontSize: 15, fontVariant: ["tabular-nums"] },
 });

@@ -40,6 +40,102 @@ export type Pairing = {
   isBye: boolean;
 };
 
+const TOP_EIGHT_BRACKET_ORDER = [0, 7, 3, 4, 1, 6, 2, 5] as const;
+
+// Seeds occupy a fixed bracket: 1v8, 4v5, 2v7, 3v6. Keeping matches in this
+// table order makes later rounds a simple adjacent-winner pairing without a
+// reseed, preserving the two halves of the bracket through the final.
+export function buildTopEightSingleEliminationPairings(
+  registrationsBySeed: Doc<"tournamentRegistrations">[],
+): Pairing[] {
+  if (registrationsBySeed.length !== 8) {
+    throw new Error("Single elimination requires exactly eight seeded players");
+  }
+  const bracket = TOP_EIGHT_BRACKET_ORDER.map(
+    (seedIndex) => registrationsBySeed[seedIndex],
+  );
+  return pairAdjacentRegistrations(bracket);
+}
+
+export function buildSingleEliminationAdvancementPairings(
+  winnersInTableOrder: Doc<"tournamentRegistrations">[],
+): Pairing[] {
+  if (winnersInTableOrder.length < 2 || winnersInTableOrder.length % 2 !== 0) {
+    throw new Error("Single-elimination advancement requires an even field");
+  }
+  return pairAdjacentRegistrations(winnersInTableOrder);
+}
+
+function pairAdjacentRegistrations(
+  registrations: Doc<"tournamentRegistrations">[],
+): Pairing[] {
+  const pairings: Pairing[] = [];
+  for (let index = 0; index < registrations.length; index += 2) {
+    pairings.push({
+      playerOne: registrations[index],
+      playerTwo: registrations[index + 1],
+      isBye: false,
+    });
+  }
+  return pairings;
+}
+
+export async function createSingleEliminationRoundWithPairings(
+  ctx: MutationCtx,
+  args: {
+    tournament: Doc<"tournaments">;
+    phase: Doc<"tournamentPhases">;
+    roundNumber: number;
+    roundName: string;
+    registrations: Doc<"tournamentRegistrations">[];
+    seededFirstRound: boolean;
+  },
+) {
+  const pairings = args.seededFirstRound
+    ? buildTopEightSingleEliminationPairings(args.registrations)
+    : buildSingleEliminationAdvancementPairings(args.registrations);
+  const now = Date.now();
+  const roundId = await ctx.db.insert("tournamentRounds", {
+    tournamentId: args.tournament._id,
+    tournamentPhaseId: args.phase._id,
+    roundNumber: args.roundNumber,
+    roundName: args.roundName,
+    roundStatus: "in_progress",
+    updatedAt: now,
+  });
+
+  for (const [index, pairing] of pairings.entries()) {
+    const matchId = await ctx.db.insert("tournamentMatches", {
+      tournamentId: args.tournament._id,
+      tournamentPhaseId: args.phase._id,
+      tournamentRoundId: roundId,
+      tableNumber: index + 1,
+      matchStatus: "upcoming",
+      updatedAt: now,
+    });
+    if (!pairing.playerTwo) {
+      throw new Error("Single-elimination match is missing an opponent");
+    }
+    await ctx.db.insert("tournamentMatchPlayers", {
+      tournamentMatchId: matchId,
+      playerId: pairing.playerOne._id,
+      playerName: pairing.playerOne.playerName,
+      opponentPlayerId: pairing.playerTwo._id,
+      isBye: false,
+      updatedAt: now,
+    });
+    await ctx.db.insert("tournamentMatchPlayers", {
+      tournamentMatchId: matchId,
+      playerId: pairing.playerTwo._id,
+      playerName: pairing.playerTwo.playerName,
+      opponentPlayerId: pairing.playerOne._id,
+      isBye: false,
+      updatedAt: now,
+    });
+  }
+  return roundId;
+}
+
 export async function createRoundWithPairings(
   ctx: MutationCtx,
   args: {
@@ -345,7 +441,11 @@ function minimizeRematches(players: RankedRegistration[]): RankedMatch[] {
         continue;
       }
       current.push({ playerOne: first, playerTwo: rest[candidate.index] });
-      recurse(withoutIndex(rest, candidate.index), current, cost + candidate.rematch);
+      recurse(
+        withoutIndex(rest, candidate.index),
+        current,
+        cost + candidate.rematch,
+      );
       current.pop();
     }
   };

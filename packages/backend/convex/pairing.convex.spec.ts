@@ -5,10 +5,33 @@ import { expect, test } from "vitest";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
   buildSwissPairings,
+  buildTopEightSingleEliminationPairings,
   type PairingOptions,
   type Pairing,
   type RankedRegistration,
 } from "./model/pairing";
+
+test("top-eight bracket uses tournament seeding order", () => {
+  const registrations = Array.from(
+    { length: 8 },
+    (_, index) =>
+      ({
+        _id: `seed-${index + 1}` as unknown as Id<"tournamentRegistrations">,
+      }) as Doc<"tournamentRegistrations">,
+  );
+
+  expect(
+    buildTopEightSingleEliminationPairings(registrations).map((pairing) => [
+      pairing.playerOne._id,
+      pairing.playerTwo?._id,
+    ]),
+  ).toEqual([
+    ["seed-1", "seed-8"],
+    ["seed-4", "seed-5"],
+    ["seed-2", "seed-7"],
+    ["seed-3", "seed-6"],
+  ]);
+});
 
 // Minimal RankedRegistration factory: only _id/createdAt on the registration
 // and the standings/history fields the matcher reads actually matter.

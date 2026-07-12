@@ -8,6 +8,8 @@ import {
   adjustActiveRegistrationCount,
   matchPlayers,
   registrationForUser,
+  requireDecisiveEliminationResult,
+  requirePhase,
   requireTestTournament,
   requireTournament,
   roundMatches,
@@ -19,11 +21,19 @@ export type SimulatedMatchResult = {
   draws: number;
 };
 
-export function simulatedMatchResult(random: () => number): SimulatedMatchResult {
+export function simulatedMatchResult(
+  random: () => number,
+  allowDraws = true,
+): SimulatedMatchResult {
   const roll = random();
 
   if (roll < 0.08) {
-    return { playerOneGameWins: 1, playerTwoGameWins: 1, draws: 1 };
+    if (allowDraws) {
+      return { playerOneGameWins: 1, playerTwoGameWins: 1, draws: 1 };
+    }
+    return random() < 0.5
+      ? { playerOneGameWins: 2, playerTwoGameWins: 0, draws: 0 }
+      : { playerOneGameWins: 0, playerTwoGameWins: 2, draws: 0 };
   }
 
   if (roll < 0.54) {
@@ -149,6 +159,7 @@ export async function generateTestResults(
   // events merely flagged as test events fall back to a deterministic seed.
   const config = await getTestConfig(ctx, tournament._id);
   const seed = config?.seed ?? Math.trunc(tournament._creationTime);
+  const phase = await requirePhase(ctx, round.tournamentPhaseId);
   const matches = await roundMatches(ctx, round._id);
   const random = createSeededRandom(seed + round.roundNumber * 1000);
 
@@ -157,13 +168,21 @@ export async function generateTestResults(
     if (players.length !== 2) {
       continue;
     }
-    const result = simulatedMatchResult(random);
+    const result = simulatedMatchResult(
+      random,
+      phase.phaseType !== "single_elimination",
+    );
     if (
       match.matchStatus === "completed" ||
       match.matchStatus === "confirmed"
     ) {
       continue;
     }
+    requireDecisiveEliminationResult(
+      phase,
+      result.playerOneGameWins,
+      result.playerTwoGameWins,
+    );
 
     const [playerOnePoints, playerTwoPoints] = matchPointsForResult(result);
     const now = Date.now();

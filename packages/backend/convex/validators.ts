@@ -97,6 +97,11 @@ export const tournamentPhaseStatusValidator = v.union(
   v.literal("cancelled"),
 );
 
+export const tournamentPhaseTypeValidator = v.union(
+  v.literal("swiss"),
+  v.literal("single_elimination"),
+);
+
 export const tournamentPhaseRoundModeValidator = v.union(
   v.literal("dynamic"),
   v.literal("fixed"),

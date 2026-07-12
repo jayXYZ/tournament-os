@@ -79,6 +79,7 @@ export function StandingsList({
 
 function StandingsRow({ row }: { row: StandingRow }) {
   const [expanded, setExpanded] = useState(false)
+  const statusLabel = playoffStatusLabel(row)
 
   return (
     <button
@@ -100,6 +101,11 @@ function StandingsRow({ row }: { row: StandingRow }) {
             <span className="text-muted-foreground"> (you)</span>
           ) : null}
         </span>
+        {statusLabel ? (
+          <span className="text-xs text-muted-foreground">
+            {statusLabel}
+          </span>
+        ) : null}
         <span className="text-sm tabular-nums text-muted-foreground">
           {formatRecord(row.matchWins, row.matchLosses, row.matchDraws)}
         </span>
@@ -116,6 +122,21 @@ function StandingsRow({ row }: { row: StandingRow }) {
       ) : null}
     </button>
   )
+}
+
+function playoffStatusLabel(row: StandingRow) {
+  if (row.playoffStatus === 'active') {
+    return 'Still active'
+  }
+  if (row.playoffStatus === 'eliminated') {
+    return row.eliminatedInRoundNumber === null
+      ? 'Eliminated'
+      : `Eliminated R${row.eliminatedInRoundNumber}`
+  }
+  if (row.playoffStatus === 'cut') {
+    return 'Missed cut'
+  }
+  return null
 }
 
 function ordinal(value: number) {

@@ -5,6 +5,7 @@ import { expect, test } from "vitest";
 
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import { generateTestResults } from "./model/testing";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
@@ -87,7 +88,9 @@ test("listUpcomingPublic returns future public tournaments in start date order",
     return { earlier, later };
   });
 
-  const tournaments = await t.query(api.tournaments.lifecycle.listUpcomingPublic);
+  const tournaments = await t.query(
+    api.tournaments.lifecycle.listUpcomingPublic,
+  );
 
   expect(tournaments.map((tournament) => tournament._id)).toEqual([
     rows.earlier,
@@ -687,10 +690,13 @@ test("seedTestPlayers fills only remaining active registration seats", async () 
     });
   });
 
-  const firstSeed = await authed.mutation(api.tournaments.testing.seedTestPlayers, {
-    tournamentId,
-    count: 32,
-  });
+  const firstSeed = await authed.mutation(
+    api.tournaments.testing.seedTestPlayers,
+    {
+      tournamentId,
+      count: 32,
+    },
+  );
   expect(firstSeed.addedCount).toBe(31);
 
   const registrations = await authed.query(
@@ -699,10 +705,13 @@ test("seedTestPlayers fills only remaining active registration seats", async () 
   );
   expect(registrations).toHaveLength(32);
 
-  const secondSeed = await authed.mutation(api.tournaments.testing.seedTestPlayers, {
-    tournamentId,
-    count: 32,
-  });
+  const secondSeed = await authed.mutation(
+    api.tournaments.testing.seedTestPlayers,
+    {
+      tournamentId,
+      count: 32,
+    },
+  );
   expect(secondSeed.addedCount).toBe(0);
 
   const afterSecondSeed = await authed.query(
@@ -825,7 +834,10 @@ test("createTournamentWithPhases stores multiple Swiss phases in order", async (
     "fixed",
     "dynamic",
   ]);
-  expect(setup.phases.map((phase) => phase.phaseTotalRounds)).toEqual([6, null]);
+  expect(setup.phases.map((phase) => phase.phaseTotalRounds)).toEqual([
+    6,
+    null,
+  ]);
 });
 
 test("createTournamentWithPhases rejects an empty phase list", async () => {
@@ -833,17 +845,16 @@ test("createTournamentWithPhases rejects an empty phase list", async () => {
   const { organizationId } = await seedOrganizer(t);
 
   await expect(
-    t.withIdentity(organizerIdentity).mutation(
-      api.tournaments.lifecycle.createTournamentWithPhases,
-      {
+    t
+      .withIdentity(organizerIdentity)
+      .mutation(api.tournaments.lifecycle.createTournamentWithPhases, {
         organizationId,
         name: "No Phase Event",
         startDate: Date.now() + 86_400_000,
         playerCapacity: 16,
         format: "standard",
         phases: [],
-      },
-    ),
+      }),
   ).rejects.toThrow("At least one Swiss phase is required");
 });
 
@@ -864,10 +875,15 @@ test("startTournament resolves dynamic Swiss rounds from active player count", a
   );
   await seedActiveRegistrations(t, tournamentId, 5);
 
-  await authed.mutation(api.tournaments.rounds.startTournament, { tournamentId });
-  const setup = await authed.query(api.tournaments.lifecycle.getTournamentSetup, {
+  await authed.mutation(api.tournaments.rounds.startTournament, {
     tournamentId,
   });
+  const setup = await authed.query(
+    api.tournaments.lifecycle.getTournamentSetup,
+    {
+      tournamentId,
+    },
+  );
 
   expect(setup.phases[0].phaseRoundMode).toBe("dynamic");
   expect(setup.phases[0].phaseTotalRounds).toBe(3);
@@ -892,11 +908,15 @@ test("multi-phase tournaments advance into the next phase and carry records", as
     },
   );
   await seedActiveRegistrations(t, tournamentId, 4);
-  await authed.mutation(api.tournaments.rounds.startTournament, { tournamentId });
+  await authed.mutation(api.tournaments.rounds.startTournament, {
+    tournamentId,
+  });
 
   // Phase 1: two rounds.
   const roundOne = await playOutCurrentRound(authed, tournamentId);
-  await authed.mutation(api.tournaments.rounds.generateNextRound, { tournamentId });
+  await authed.mutation(api.tournaments.rounds.generateNextRound, {
+    tournamentId,
+  });
   const roundTwo = await playOutCurrentRound(authed, tournamentId);
 
   // Phase 1 is finished, but a phase remains: the next step is another round,
@@ -917,7 +937,9 @@ test("multi-phase tournaments advance into the next phase and carry records", as
     }),
   ).rejects.toThrow(/next phase has not been played/);
 
-  await authed.mutation(api.tournaments.rounds.generateNextRound, { tournamentId });
+  await authed.mutation(api.tournaments.rounds.generateNextRound, {
+    tournamentId,
+  });
   board = await authed.query(api.tournaments.rounds.getPairingsBoard, {
     tournamentId,
   });
@@ -975,6 +997,383 @@ test("multi-phase tournaments advance into the next phase and carry records", as
   expect(board.nextStep).toEqual({ kind: "tournamentCompleted" });
 });
 
+test("top-8 single elimination advances active players without reseeding", async () => {
+  const t = convexTest(schema, modules);
+  const { organizationId } = await seedOrganizer(t);
+  const authed = t.withIdentity(organizerIdentity);
+  const tournamentId = await authed.mutation(
+    api.tournaments.lifecycle.createTournamentWithPhases,
+    {
+      organizationId,
+      name: "Top 8 Playoff",
+      startDate: Date.now(),
+      playerCapacity: 12,
+      format: "standard",
+      phases: [
+        {
+          phaseOrder: 1,
+          phaseType: "swiss",
+          phaseRoundMode: "fixed",
+          phaseTotalRounds: 1,
+        },
+        {
+          phaseOrder: 2,
+          phaseType: "single_elimination",
+          phaseRoundMode: "fixed",
+        },
+      ],
+    },
+  );
+  await seedActiveRegistrations(t, tournamentId, 12);
+  await authed.mutation(api.tournaments.rounds.startTournament, {
+    tournamentId,
+  });
+  const swiss = await playOutCurrentRound(authed, tournamentId);
+  const swissStandings = await authed.query(
+    api.tournaments.rounds.getStandings,
+    { roundId: swiss.round._id },
+  );
+  const seeds = swissStandings.slice(0, 8).map((row) => row.playerId);
+
+  const quarterfinalId = await authed.mutation(
+    api.tournaments.rounds.generateNextRound,
+    { tournamentId },
+  );
+  const quarterfinal = await authed.query(
+    api.tournaments.rounds.listRoundPairings,
+    { roundId: quarterfinalId },
+  );
+  expect(quarterfinal.map(({ match }) => match.tableNumber)).toEqual([
+    1, 2, 3, 4,
+  ]);
+  expect(
+    quarterfinal.map(({ players }) => new Set(players.map((p) => p.playerId))),
+  ).toEqual([
+    new Set([seeds[0], seeds[7]]),
+    new Set([seeds[3], seeds[4]]),
+    new Set([seeds[1], seeds[6]]),
+    new Set([seeds[2], seeds[5]]),
+  ]);
+
+  const setupAfterCut = await authed.query(
+    api.tournaments.lifecycle.getTournamentSetup,
+    { tournamentId },
+  );
+  expect(setupAfterCut.phases[1]).toMatchObject({
+    phaseType: "single_elimination",
+    phaseRoundMode: "fixed",
+    phaseTotalRounds: 3,
+  });
+  expect(setupAfterCut.tournament.activeRegistrationCount).toBe(8);
+
+  const firstQuarterfinal = quarterfinal[0];
+  await expect(
+    authed.mutation(api.tournaments.rounds.recordMatchResult, {
+      matchId: firstQuarterfinal.match._id,
+      playerOneRegistrationId: firstQuarterfinal.players[0].playerId,
+      playerTwoRegistrationId: firstQuarterfinal.players[1].playerId,
+      playerOneGameWins: 1,
+      playerTwoGameWins: 1,
+    }),
+  ).rejects.toThrow("Single-elimination matches cannot end in a draw");
+
+  const quarterfinalWinners = await recordFirstPlayerWins(authed, quarterfinal);
+  const withdrawnWinner = quarterfinalWinners[0];
+  const replacement = quarterfinal[0].players.find(
+    (player) => player.playerId !== withdrawnWinner,
+  );
+  if (!replacement) {
+    throw new Error("Expected a quarterfinal opponent to advance");
+  }
+  const replacementAdvancer = replacement.playerId;
+  await authed.mutation(api.tournaments.registrations.dropRegistration, {
+    registrationId: withdrawnWinner,
+  });
+  await authed.mutation(api.tournaments.rounds.completeRound, {
+    roundId: quarterfinalId,
+  });
+  expect(
+    (
+      await authed.query(api.tournaments.lifecycle.getTournamentSetup, {
+        tournamentId,
+      })
+    ).tournament.activeRegistrationCount,
+  ).toBe(4);
+
+  const lockedQuarterfinal = quarterfinal[1];
+  const lockedWinner = lockedQuarterfinal.players[0].playerId;
+  const lockedLoser = lockedQuarterfinal.players[1].playerId;
+  await expect(
+    authed.mutation(api.tournaments.rounds.recordMatchResult, {
+      matchId: lockedQuarterfinal.match._id,
+      playerOneRegistrationId: lockedWinner,
+      playerTwoRegistrationId: lockedLoser,
+      playerOneGameWins: 0,
+      playerTwoGameWins: 2,
+    }),
+  ).rejects.toThrow(
+    "Match results can only be recorded during an active round",
+  );
+
+  const registrationsAfterRejectedCorrection = await authed.query(
+    api.tournaments.registrations.listRegistrations,
+    { tournamentId },
+  );
+  const statusByRegistrationId = new Map(
+    registrationsAfterRejectedCorrection.map(({ registration }) => [
+      registration._id,
+      registration.status,
+    ]),
+  );
+  expect(statusByRegistrationId.get(lockedWinner)).toBe("active");
+  expect(statusByRegistrationId.get(lockedLoser)).toBe("eliminated");
+
+  const semifinalId = await authed.mutation(
+    api.tournaments.rounds.generateNextRound,
+    { tournamentId },
+  );
+  const semifinal = await authed.query(
+    api.tournaments.rounds.listRoundPairings,
+    { roundId: semifinalId },
+  );
+  expect(
+    semifinal.map(({ players }) => new Set(players.map((p) => p.playerId))),
+  ).toEqual([
+    new Set([replacementAdvancer, quarterfinalWinners[1]]),
+    new Set(quarterfinalWinners.slice(2, 4)),
+  ]);
+  expect(
+    semifinal.flatMap(({ players }) =>
+      players.map((player) => player.playerId),
+    ),
+  ).toContain(lockedWinner);
+  expect(
+    semifinal.flatMap(({ players }) =>
+      players.map((player) => player.playerId),
+    ),
+  ).not.toContain(lockedLoser);
+  expect(
+    (
+      await authed.query(api.tournaments.rounds.getCurrentRound, {
+        tournamentId,
+      })
+    )?.roundName,
+  ).toBe("Semifinals");
+
+  const semifinalWinners = await recordFirstPlayerWins(authed, semifinal);
+  await authed.mutation(api.tournaments.rounds.completeRound, {
+    roundId: semifinalId,
+  });
+  const finalId = await authed.mutation(
+    api.tournaments.rounds.generateNextRound,
+    { tournamentId },
+  );
+  const finalPairings = await authed.query(
+    api.tournaments.rounds.listRoundPairings,
+    { roundId: finalId },
+  );
+  expect(new Set(finalPairings[0].players.map((p) => p.playerId))).toEqual(
+    new Set(semifinalWinners),
+  );
+  expect(
+    (
+      await authed.query(api.tournaments.rounds.getCurrentRound, {
+        tournamentId,
+      })
+    )?.roundName,
+  ).toBe("Finals");
+
+  await recordFirstPlayerWins(authed, finalPairings);
+  await authed.mutation(api.tournaments.rounds.completeRound, {
+    roundId: finalId,
+  });
+  const finishedSetup = await authed.query(
+    api.tournaments.lifecycle.getTournamentSetup,
+    { tournamentId },
+  );
+  expect(finishedSetup.tournament.activeRegistrationCount).toBe(1);
+  expect(
+    await authed.query(api.tournaments.rounds.getPairingsBoard, {
+      tournamentId,
+    }),
+  ).toMatchObject({ nextStep: { kind: "completeTournament", ready: true } });
+});
+
+test("top-8 cut promotes the next-ranked active player when a qualifier drops", async () => {
+  const t = convexTest(schema, modules);
+  const { organizationId } = await seedOrganizer(t);
+  const authed = t.withIdentity(organizerIdentity);
+  const tournamentId = await authed.mutation(
+    api.tournaments.lifecycle.createTournamentWithPhases,
+    {
+      organizationId,
+      name: "Top 8 With Drop",
+      startDate: Date.now(),
+      playerCapacity: 12,
+      format: "standard",
+      phases: [
+        {
+          phaseOrder: 1,
+          phaseType: "swiss",
+          phaseRoundMode: "fixed",
+          phaseTotalRounds: 1,
+        },
+        {
+          phaseOrder: 2,
+          phaseType: "single_elimination",
+          phaseRoundMode: "fixed",
+        },
+      ],
+    },
+  );
+  await seedActiveRegistrations(t, tournamentId, 12);
+  await authed.mutation(api.tournaments.rounds.startTournament, {
+    tournamentId,
+  });
+  const swiss = await playOutCurrentRound(authed, tournamentId);
+  const swissStandings = await authed.query(
+    api.tournaments.rounds.getStandings,
+    { roundId: swiss.round._id },
+  );
+  const droppedQualifier = swissStandings[0].playerId;
+  await authed.mutation(api.tournaments.registrations.dropRegistration, {
+    registrationId: droppedQualifier,
+  });
+
+  const expectedSeeds = swissStandings
+    .filter((standing) => standing.playerId !== droppedQualifier)
+    .slice(0, 8)
+    .map((standing) => standing.playerId);
+  const quarterfinalId = await authed.mutation(
+    api.tournaments.rounds.generateNextRound,
+    { tournamentId },
+  );
+  const quarterfinal = await authed.query(
+    api.tournaments.rounds.listRoundPairings,
+    { roundId: quarterfinalId },
+  );
+  const cutPlayers = quarterfinal.flatMap(({ players }) =>
+    players.map((player) => player.playerId),
+  );
+
+  expect(new Set(cutPlayers)).toEqual(new Set(expectedSeeds));
+  expect(cutPlayers).not.toContain(droppedQualifier);
+  expect(cutPlayers).toContain(swissStandings[8].playerId);
+  expect(
+    (
+      await authed.query(api.tournaments.lifecycle.getTournamentSetup, {
+        tournamentId,
+      })
+    ).tournament.activeRegistrationCount,
+  ).toBe(8);
+});
+
+test("top-8 tournaments cannot start with fewer than eight active players", async () => {
+  const t = convexTest(schema, modules);
+  const { organizationId } = await seedOrganizer(t);
+  const authed = t.withIdentity(organizerIdentity);
+  const tournamentId = await authed.mutation(
+    api.tournaments.lifecycle.createTournamentWithPhases,
+    {
+      organizationId,
+      name: "Undersized Top 8",
+      startDate: Date.now(),
+      playerCapacity: 8,
+      format: "standard",
+      phases: [
+        {
+          phaseOrder: 1,
+          phaseType: "swiss",
+          phaseRoundMode: "fixed",
+          phaseTotalRounds: 1,
+        },
+        {
+          phaseOrder: 2,
+          phaseType: "single_elimination",
+          phaseRoundMode: "fixed",
+        },
+      ],
+    },
+  );
+  await seedActiveRegistrations(t, tournamentId, 7);
+
+  const board = await authed.query(api.tournaments.rounds.getPairingsBoard, {
+    tournamentId,
+  });
+  expect(board.nextStep).toEqual({
+    kind: "startTournament",
+    ready: false,
+    reason: "A top-8 playoff requires at least eight active players",
+  });
+  await expect(
+    authed.mutation(api.tournaments.rounds.startTournament, { tournamentId }),
+  ).rejects.toThrow("A top-8 playoff requires at least eight active players");
+});
+
+test("an unplayable top-8 phase can be cancelled after Swiss", async () => {
+  const t = convexTest(schema, modules);
+  const { organizationId } = await seedOrganizer(t);
+  const authed = t.withIdentity(organizerIdentity);
+  const tournamentId = await authed.mutation(
+    api.tournaments.lifecycle.createTournamentWithPhases,
+    {
+      organizationId,
+      name: "Top 8 With A Drop",
+      startDate: Date.now(),
+      playerCapacity: 8,
+      format: "standard",
+      phases: [
+        {
+          phaseOrder: 1,
+          phaseType: "swiss",
+          phaseRoundMode: "fixed",
+          phaseTotalRounds: 1,
+        },
+        {
+          phaseOrder: 2,
+          phaseType: "single_elimination",
+          phaseRoundMode: "fixed",
+        },
+      ],
+    },
+  );
+  await seedActiveRegistrations(t, tournamentId, 8);
+  await authed.mutation(api.tournaments.rounds.startTournament, {
+    tournamentId,
+  });
+  await playOutCurrentRound(authed, tournamentId);
+
+  const registrations = await authed.query(
+    api.tournaments.registrations.listRegistrations,
+    { tournamentId },
+  );
+  await authed.mutation(api.tournaments.registrations.dropRegistration, {
+    registrationId: registrations[0].registration._id,
+  });
+
+  const board = await authed.query(api.tournaments.rounds.getPairingsBoard, {
+    tournamentId,
+  });
+  expect(board.nextStep).toEqual({
+    kind: "completeTournament",
+    ready: true,
+    reason: null,
+  });
+
+  await authed.mutation(api.tournaments.lifecycle.completeTournament, {
+    tournamentId,
+  });
+  const setup = await authed.query(
+    api.tournaments.lifecycle.getTournamentSetup,
+    { tournamentId },
+  );
+  expect(setup.tournament.lifecycle).toBe("completed");
+  expect(setup.phases.map((phase) => phase.phaseStatus)).toEqual([
+    "completed",
+    "cancelled",
+  ]);
+});
+
 test("test tournaments seed players, generate Swiss rounds, and complete", async () => {
   const t = convexTest(schema, modules);
   const { organizationId } = await t.run(async (ctx) => {
@@ -1006,26 +1405,35 @@ test("test tournaments seed players, generate Swiss rounds, and complete", async
   });
   const authed = t.withIdentity(organizerIdentity);
 
-  const tournamentId = await authed.mutation(api.tournaments.testing.createTestTournament, {
-    organizationId,
-    name: "Simulation Check",
-    dummyPlayerCount: 5,
-    roundsToGenerate: 2,
-    seed: 4242,
-    autoStart: true,
-  });
-  const registrations = await authed.query(api.tournaments.registrations.listRegistrations, {
-    tournamentId,
-  });
+  const tournamentId = await authed.mutation(
+    api.tournaments.testing.createTestTournament,
+    {
+      organizationId,
+      name: "Simulation Check",
+      dummyPlayerCount: 5,
+      roundsToGenerate: 2,
+      seed: 4242,
+      autoStart: true,
+    },
+  );
+  const registrations = await authed.query(
+    api.tournaments.registrations.listRegistrations,
+    {
+      tournamentId,
+    },
+  );
   expect(registrations).toHaveLength(5);
 
   const roundOne = await authed.query(api.tournaments.rounds.getCurrentRound, {
     tournamentId,
   });
   expect(roundOne?.roundNumber).toBe(1);
-  const roundOnePairings = await authed.query(api.tournaments.rounds.listRoundPairings, {
-    roundId: roundOne!._id,
-  });
+  const roundOnePairings = await authed.query(
+    api.tournaments.rounds.listRoundPairings,
+    {
+      roundId: roundOne!._id,
+    },
+  );
   expect(roundOnePairings).toHaveLength(3);
   expect(
     roundOnePairings.some((pairing) =>
@@ -1033,35 +1441,53 @@ test("test tournaments seed players, generate Swiss rounds, and complete", async
     ),
   ).toBe(true);
 
-  await authed.mutation(api.tournaments.testing.advanceTestRound, { tournamentId });
-  const roundOneStandings = await authed.query(api.tournaments.rounds.getStandings, {
-    roundId: roundOne!._id,
+  await authed.mutation(api.tournaments.testing.advanceTestRound, {
+    tournamentId,
   });
+  const roundOneStandings = await authed.query(
+    api.tournaments.rounds.getStandings,
+    {
+      roundId: roundOne!._id,
+    },
+  );
   expect(roundOneStandings).toHaveLength(5);
 
   const roundTwo = await authed.query(api.tournaments.rounds.getCurrentRound, {
     tournamentId,
   });
   expect(roundTwo?.roundNumber).toBe(2);
-  await authed.mutation(api.tournaments.testing.advanceTestRound, { tournamentId });
-
-  const setup = await authed.query(api.tournaments.lifecycle.getTournamentSetup, {
+  await authed.mutation(api.tournaments.testing.advanceTestRound, {
     tournamentId,
   });
+
+  const setup = await authed.query(
+    api.tournaments.lifecycle.getTournamentSetup,
+    {
+      tournamentId,
+    },
+  );
   expect(setup.tournament.lifecycle).toBe("completed");
   expect(setup.testConfig?.seed).toBe(4242);
 
-  await authed.mutation(api.tournaments.testing.resetTestTournament, { tournamentId });
-  const resetSetup = await authed.query(api.tournaments.lifecycle.getTournamentSetup, {
+  await authed.mutation(api.tournaments.testing.resetTestTournament, {
     tournamentId,
   });
+  const resetSetup = await authed.query(
+    api.tournaments.lifecycle.getTournamentSetup,
+    {
+      tournamentId,
+    },
+  );
   const resetRegistrations = await authed.query(
     api.tournaments.registrations.listRegistrations,
     { tournamentId },
   );
-  const resetCurrentRound = await authed.query(api.tournaments.rounds.getCurrentRound, {
-    tournamentId,
-  });
+  const resetCurrentRound = await authed.query(
+    api.tournaments.rounds.getCurrentRound,
+    {
+      tournamentId,
+    },
+  );
   expect(resetSetup.tournament.lifecycle).toBe("setup");
   expect(resetSetup.testConfig?.seed).toBe(4242);
   expect(resetRegistrations).toHaveLength(5);
@@ -1143,6 +1569,60 @@ test("test round simulation generates varied results after an existing report", 
   expect(new Set(simulatedOutcomes).size).toBeGreaterThanOrEqual(3);
 });
 
+test("test round simulation converts draws into decisive elimination results", async () => {
+  const t = convexTest(schema, modules);
+  const { organizationId } = await seedOrganizer(t);
+  const authed = t.withIdentity(organizerIdentity);
+
+  const tournamentId = await authed.mutation(
+    api.tournaments.testing.createTestTournament,
+    {
+      organizationId,
+      name: "Elimination Simulation Guard",
+      dummyPlayerCount: 2,
+      roundsToGenerate: 1,
+      // The simulator's first result roll is below its draw threshold.
+      seed: 972,
+      autoStart: true,
+    },
+  );
+
+  const round = await authed.query(api.tournaments.rounds.getCurrentRound, {
+    tournamentId,
+  });
+  if (!round) {
+    throw new Error("Expected a current round");
+  }
+
+  await t.run(async (ctx) => {
+    await ctx.db.patch(round.tournamentPhaseId, {
+      phaseType: "single_elimination",
+    });
+  });
+
+  await t.run(async (ctx) => {
+    const tournament = await ctx.db.get(tournamentId);
+    const currentRound = await ctx.db.get(round._id);
+    if (!tournament || !currentRound) {
+      throw new Error("Expected tournament and round");
+    }
+    await generateTestResults(ctx, tournament, currentRound);
+  });
+
+  const pairings = await authed.query(
+    api.tournaments.rounds.listRoundPairings,
+    { roundId: round._id },
+  );
+  expect(pairings[0].match.matchStatus).toBe("completed");
+  expect(pairings[0].players).toHaveLength(2);
+  const wins = pairings[0].players.map((player) => player.gameWins ?? 0);
+  expect(wins[0]).not.toBe(wins[1]);
+  for (const player of pairings[0].players) {
+    expect(player.gameWins).toBeDefined();
+    expect(player.gameLosses).toBeDefined();
+  }
+});
+
 test("test simulation functions reject non-test tournaments", async () => {
   const t = convexTest(schema, modules);
   const { organizationId } = await seedOrganizer(t);
@@ -1209,9 +1689,12 @@ async function playOutCurrentRound(
   if (!round) {
     throw new Error("No current round to play out");
   }
-  const pairings = await authed.query(api.tournaments.rounds.listRoundPairings, {
-    roundId: round._id,
-  });
+  const pairings = await authed.query(
+    api.tournaments.rounds.listRoundPairings,
+    {
+      roundId: round._id,
+    },
+  );
   const pairKeys: string[] = [];
   for (const { match, players } of pairings) {
     if (players.length !== 2) {
@@ -1235,6 +1718,30 @@ async function playOutCurrentRound(
     roundId: round._id,
   });
   return { round, pairKeys };
+}
+
+async function recordFirstPlayerWins(
+  authed: ReturnType<ReturnType<typeof convexTest>["withIdentity"]>,
+  pairings: Array<{
+    match: { _id: Id<"tournamentMatches"> };
+    players: Array<{ playerId: Id<"tournamentRegistrations"> }>;
+  }>,
+) {
+  const winners: Id<"tournamentRegistrations">[] = [];
+  for (const { match, players } of pairings) {
+    if (players.length !== 2) {
+      throw new Error("Expected a two-player elimination match");
+    }
+    winners.push(players[0].playerId);
+    await authed.mutation(api.tournaments.rounds.recordMatchResult, {
+      matchId: match._id,
+      playerOneRegistrationId: players[0].playerId,
+      playerTwoRegistrationId: players[1].playerId,
+      playerOneGameWins: 2,
+      playerTwoGameWins: 0,
+    });
+  }
+  return winners;
 }
 
 async function seedActiveRegistrations(

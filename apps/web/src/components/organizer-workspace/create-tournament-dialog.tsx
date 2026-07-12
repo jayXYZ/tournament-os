@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { api } from '@tournament-os/backend/convex/_generated/api'
 import {
   addTournamentCreationPhase,
+  canRemoveTournamentCreationPhase,
   createDefaultTournamentCreationPhase,
   removeTournamentCreationPhase,
   toTournamentCreationPhasePayload,
@@ -136,7 +137,8 @@ export function CreateTournamentDialog() {
           <DialogHeader>
             <DialogTitle>Create tournament</DialogTitle>
             <DialogDescription>
-              Add the tournament details and Swiss phases.
+              Add the tournament details, Swiss rounds, and an optional top-8
+              playoff.
             </DialogDescription>
           </DialogHeader>
 
@@ -195,7 +197,7 @@ export function CreateTournamentDialog() {
             </Field>
 
             <FieldSet>
-              <FieldLegend>Swiss phases</FieldLegend>
+              <FieldLegend>Tournament phases</FieldLegend>
               <FieldGroup>
                 {phases.map((phase, index) => (
                   <TournamentPhaseField
@@ -213,10 +215,12 @@ export function CreateTournamentDialog() {
                 type="button"
                 variant="outline"
                 onClick={handleAddPhase}
-                disabled={disabled}
+                disabled={
+                  disabled || phases.at(-1)?.phaseType === 'single_elimination'
+                }
               >
                 <Plus data-icon="inline-start" />
-                Add Swiss phase
+                Add phase
               </Button>
             </FieldSet>
 
@@ -256,13 +260,51 @@ function TournamentPhaseField({
 }) {
   return (
     <Field className="rounded-md border border-border p-3">
-      <div className="grid gap-3 md:grid-cols-[90px_1fr_32px] md:items-end">
-        <div className="flex flex-col gap-1">
+      <div className="grid gap-3 md:grid-cols-[180px_1fr_32px] md:items-end">
+        <Field data-disabled={disabled || undefined}>
           <FieldLabel>Phase {index + 1}</FieldLabel>
-          <FieldDescription>Swiss</FieldDescription>
-        </div>
+          <Select
+            value={phase.phaseType}
+            onValueChange={(phaseType) =>
+              onPhasesChange(
+                phases.map((current) =>
+                  current.id === phase.id
+                    ? {
+                        ...current,
+                        phaseType:
+                          phaseType as TournamentCreationPhaseForm['phaseType'],
+                        ...(phaseType === 'single_elimination'
+                          ? {
+                              phaseRoundMode: 'fixed' as const,
+                              phaseTotalRounds: '3',
+                              playerMeeting: false,
+                            }
+                          : {}),
+                      }
+                    : current,
+                ),
+              )
+            }
+            disabled={disabled}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                <SelectItem value="swiss">Swiss</SelectItem>
+                <SelectItem
+                  value="single_elimination"
+                  disabled={index === 0 || index !== phases.length - 1}
+                >
+                  Top 8 playoff
+                </SelectItem>
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        </Field>
         <RoundConfigurationFields
-          disabled={disabled}
+          disabled={disabled || phase.phaseType === 'single_elimination'}
           idPrefix={phase.id}
           value={{
             roundMode: phase.phaseRoundMode,
@@ -287,13 +329,18 @@ function TournamentPhaseField({
           variant="outline"
           size="icon"
           onClick={() => onRemovePhase(phase.id)}
-          disabled={disabled || phases.length === 1}
+          disabled={
+            disabled || !canRemoveTournamentCreationPhase(phases, phase.id)
+          }
           aria-label={`Remove phase ${index + 1}`}
         >
           <Trash2 />
         </Button>
       </div>
-      <Field orientation="horizontal" data-disabled={disabled}>
+      <Field
+        orientation="horizontal"
+        data-disabled={disabled || phase.phaseType === 'single_elimination'}
+      >
         <Checkbox
           id={`${phase.id}-player-meeting`}
           checked={phase.playerMeeting}
@@ -306,15 +353,16 @@ function TournamentPhaseField({
               ),
             )
           }
-          disabled={disabled}
+          disabled={disabled || phase.phaseType === 'single_elimination'}
         />
         <FieldContent>
           <FieldLabel htmlFor={`${phase.id}-player-meeting`}>
             Hold a player meeting
           </FieldLabel>
           <FieldDescription>
-            Seat players alphabetically before this phase&apos;s first round
-            for attendance and announcements.
+            {phase.phaseType === 'single_elimination'
+              ? 'The playoff begins directly from the final Swiss standings.'
+              : "Seat players alphabetically before this phase's first round for attendance and announcements."}
           </FieldDescription>
         </FieldContent>
       </Field>

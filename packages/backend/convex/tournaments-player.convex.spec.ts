@@ -5,6 +5,7 @@ import { expect, test } from "vitest";
 
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import { compareStandingRows } from "./model/standings";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
@@ -241,6 +242,154 @@ test("player-reported results complete rounds and feed standings", async () => {
   expect(myRow?.name).toBe("Player 1");
   expect(myRow?.matchPoints).toBe(3);
   expect(myRow?.matchWins).toBe(1);
+});
+
+test("playoff standings lock placements by elimination round", async () => {
+  const t = convexTest(schema, modules);
+  const { tournamentId, registrationIds } = await seedTournament(t, 12, [
+    {
+      phaseOrder: 1,
+      phaseType: "swiss",
+      phaseRoundMode: "fixed",
+      phaseTotalRounds: 1,
+    },
+    {
+      phaseOrder: 2,
+      phaseType: "single_elimination",
+      phaseRoundMode: "fixed",
+    },
+  ]);
+  const organizer = t.withIdentity(organizerIdentity);
+  await organizer.mutation(api.tournaments.rounds.startTournament, {
+    tournamentId,
+  });
+  await playOutCurrentRound(t, tournamentId);
+
+  const swissRound = await currentRound(t, tournamentId);
+  const swissStandings = await organizer.query(
+    api.tournaments.rounds.getStandings,
+    { roundId: swissRound._id },
+  );
+  expect(swissStandings).toHaveLength(12);
+  const cutPlayerIds = swissStandings.slice(8).map((row) => row.playerId);
+  const cutPlayerNumber = registrationIds.indexOf(cutPlayerIds[0]) + 1;
+
+  const quarterfinalId = await organizer.mutation(
+    api.tournaments.rounds.generateNextRound,
+    { tournamentId },
+  );
+  const quarterfinals = await organizer.query(
+    api.tournaments.rounds.listRoundPairings,
+    { roundId: quarterfinalId },
+  );
+  const quarterfinalWinnerIds = quarterfinals.map(
+    ({ players }) => players[0].playerId,
+  );
+  const quarterfinalLoserIds = quarterfinals.map(
+    ({ players }) => players[1].playerId,
+  );
+  await playOutCurrentRound(t, tournamentId);
+
+  let standings = await t
+    .withIdentity(playerIdentity(cutPlayerNumber))
+    .query(api.tournaments.player.getLatestStandings, { tournamentId });
+  expect(standings?.roundNumber).toBe(2);
+  expect(standings?.rows).toHaveLength(12);
+  expect(standings?.rows.some((row) => row.isMe)).toBe(true);
+  expect(standings?.rows.slice(0, 4).map((row) => row.playoffStatus)).toEqual([
+    "active",
+    "active",
+    "active",
+    "active",
+  ]);
+  expect(new Set(standings?.rows.slice(0, 4).map((row) => row.name))).toEqual(
+    new Set(
+      quarterfinalWinnerIds.map(
+        (id) => `Player ${registrationIds.indexOf(id) + 1}`,
+      ),
+    ),
+  );
+  expect(standings?.rows.slice(4, 8).map((row) => row.playoffStatus)).toEqual([
+    "eliminated",
+    "eliminated",
+    "eliminated",
+    "eliminated",
+  ]);
+  expect(
+    standings?.rows.slice(4, 8).map((row) => row.eliminatedInRoundNumber),
+  ).toEqual([2, 2, 2, 2]);
+  const quarterfinalLoserRows = standings?.rows.slice(4, 8) ?? [];
+  expect(quarterfinalLoserRows).toEqual(
+    [...quarterfinalLoserRows].sort((left, right) =>
+      compareStandingRows(
+        {
+          ...left,
+          createdAt: Number(left.name?.replace("Player ", "")),
+        },
+        {
+          ...right,
+          createdAt: Number(right.name?.replace("Player ", "")),
+        },
+      ),
+    ),
+  );
+  expect(standings?.rows.slice(8).map((row) => row.playoffStatus)).toEqual([
+    "cut",
+    "cut",
+    "cut",
+    "cut",
+  ]);
+
+  const semifinalId = await organizer.mutation(
+    api.tournaments.rounds.generateNextRound,
+    { tournamentId },
+  );
+  const semifinals = await organizer.query(
+    api.tournaments.rounds.listRoundPairings,
+    { roundId: semifinalId },
+  );
+  const semifinalWinnerIds = semifinals.map(
+    ({ players }) => players[0].playerId,
+  );
+  const semifinalLoserIds = semifinals.map(
+    ({ players }) => players[1].playerId,
+  );
+  await playOutCurrentRound(t, tournamentId);
+
+  const quarterfinalLoserNumber =
+    registrationIds.indexOf(quarterfinalLoserIds[0]) + 1;
+  standings = await t
+    .withIdentity(playerIdentity(quarterfinalLoserNumber))
+    .query(api.tournaments.player.getLatestStandings, { tournamentId });
+  expect(standings?.roundNumber).toBe(3);
+  expect(standings?.rows).toHaveLength(12);
+  expect(standings?.rows.some((row) => row.isMe)).toBe(true);
+  expect(new Set(standings?.rows.slice(0, 2).map((row) => row.name))).toEqual(
+    new Set(
+      semifinalWinnerIds.map(
+        (id) => `Player ${registrationIds.indexOf(id) + 1}`,
+      ),
+    ),
+  );
+  expect(new Set(standings?.rows.slice(2, 4).map((row) => row.name))).toEqual(
+    new Set(
+      semifinalLoserIds.map(
+        (id) => `Player ${registrationIds.indexOf(id) + 1}`,
+      ),
+    ),
+  );
+  expect(
+    standings?.rows.slice(2, 4).map((row) => row.eliminatedInRoundNumber),
+  ).toEqual([3, 3]);
+  expect(
+    standings?.rows.slice(4, 8).map((row) => row.eliminatedInRoundNumber),
+  ).toEqual([2, 2, 2, 2]);
+  expect(standings?.rows.slice(8).map((row) => row.playoffStatus)).toEqual([
+    "cut",
+    "cut",
+    "cut",
+    "cut",
+  ]);
 });
 
 test("getMyCurrentMatch walks the tournament lifecycle", async () => {
@@ -538,6 +687,7 @@ async function seedTournament(
   playerCount: number,
   phases: {
     phaseOrder: number;
+    phaseType?: "swiss" | "single_elimination";
     phaseRoundMode: "fixed" | "dynamic";
     phaseTotalRounds?: number;
   }[] = [{ phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 3 }],

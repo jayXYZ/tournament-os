@@ -12,6 +12,7 @@ import {
   tournamentLifecycleValidator,
   tournamentRegistrationStatusValidator,
   tournamentPhaseStatusValidator,
+  tournamentPhaseTypeValidator,
   tournamentPhaseRoundModeValidator,
   tournamentPhaseCutoffValidator,
   playerMeetingStatusValidator,
@@ -156,7 +157,7 @@ export default defineSchema({
   tournamentPhases: defineTable({
     tournamentId: v.id("tournaments"),
     phaseName: v.optional(v.string()),
-    phaseType: v.string(),
+    phaseType: tournamentPhaseTypeValidator,
     phaseOrder: v.number(),
     phaseStatus: tournamentPhaseStatusValidator,
     phaseRoundMode: tournamentPhaseRoundModeValidator,
@@ -276,6 +277,16 @@ export default defineSchema({
     opponentMatchWinPct: v.number(),
     gameWinPct: v.number(),
     opponentGameWinPct: v.number(),
+    // Swiss standings use "not_started". Once single elimination begins,
+    // this snapshots whether the player is still advancing, was eliminated
+    // in a played round, or missed the playoff cut.
+    playoffStatus: v.union(
+      v.literal("not_started"),
+      v.literal("active"),
+      v.literal("eliminated"),
+      v.literal("cut"),
+    ),
+    eliminatedInRoundNumber: v.optional(v.number()),
     sortKey: v.number(),
     updatedAt: v.number(),
   })

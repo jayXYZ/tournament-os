@@ -31,6 +31,7 @@ import {
 import {
   tournamentFormatValidator,
   tournamentPhaseRoundModeValidator,
+  tournamentPhaseTypeValidator,
   tournamentVisibilityValidator,
 } from "../validators";
 
@@ -232,6 +233,7 @@ export const createTournamentWithPhases = mutation({
     phases: v.array(
       v.object({
         phaseOrder: v.number(),
+        phaseType: v.optional(tournamentPhaseTypeValidator),
         phaseRoundMode: tournamentPhaseRoundModeValidator,
         phaseTotalRounds: v.optional(v.number()),
         playerMeeting: v.optional(v.boolean()),
@@ -364,6 +366,10 @@ export const updatePhaseSetup = mutation({
       phase.tournamentId,
     );
     requireSetupEditable(tournament);
+
+    if (phase.phaseType === "single_elimination") {
+      throw new Error("Single-elimination rounds are fixed by the bracket");
+    }
 
     const phaseTotalRounds =
       args.phaseRoundMode === "fixed"

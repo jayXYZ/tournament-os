@@ -11,8 +11,8 @@ import { mutation } from "../_generated/server";
 import type { QueryCtx } from "../_generated/server";
 import {
   requireOrganizerAccess,
+  requireCurrentPhase,
   requireRound,
-  requireSwissPhase,
 } from "../model/tournaments";
 
 // Organizer controls for the tournament's single live round timer (stored on
@@ -47,7 +47,9 @@ export const startTimer = mutation({
     const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
     const round = await requireTimableCurrentRound(ctx, tournament);
     const durationMs = validDurationMs(
-      args.durationMs ?? tournament.roundDurationMs ?? DEFAULT_ROUND_DURATION_MS,
+      args.durationMs ??
+        tournament.roundDurationMs ??
+        DEFAULT_ROUND_DURATION_MS,
     );
     const now = Date.now();
     await ctx.db.patch(tournament._id, {
@@ -131,7 +133,11 @@ export const adjustTimer = mutation({
       roundTimer:
         timer.kind === "running"
           ? { ...timer, endsAt: timer.endsAt + args.deltaMs, durationMs }
-          : { ...timer, remainingMs: timer.remainingMs + args.deltaMs, durationMs },
+          : {
+              ...timer,
+              remainingMs: timer.remainingMs + args.deltaMs,
+              durationMs,
+            },
       updatedAt: Date.now(),
     });
     return tournament._id;
@@ -167,7 +173,7 @@ async function requireTimableCurrentRound(
   if (tournament.lifecycle !== "in_progress") {
     throw new Error("Tournament is not in progress");
   }
-  const phase = await requireSwissPhase(ctx, tournament._id);
+  const phase = await requireCurrentPhase(ctx, tournament._id);
   if (!phase.phaseCurrentRound) {
     throw new Error("No round is in progress");
   }

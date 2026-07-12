@@ -3,9 +3,12 @@ import type { MutationCtx, QueryCtx } from "../_generated/server";
 import {
   MAX_TOURNAMENT_PLAYERS,
   allRegistrations,
-  matchPlayers,
-  roundMatches,
+  roundMatchesWithPlayers,
 } from "./tournaments";
+
+export type RoundMatchWithPlayers = Awaited<
+  ReturnType<typeof roundMatchesWithPlayers>
+>[number];
 
 export const MATCH_WIN_POINTS = 3;
 export const MATCH_DRAW_POINTS = 1;
@@ -36,6 +39,14 @@ export type PlayerStats = {
   opponentIds: Id<"tournamentRegistrations">[];
   hasHadBye: boolean;
   createdAt: number;
+};
+
+type PlayoffStandingStatus = "not_started" | "active" | "eliminated" | "cut";
+
+type RankedPlayerStats = {
+  playerStats: PlayerStats;
+  playoffStatus: PlayoffStandingStatus;
+  eliminatedInRoundNumber?: number;
 };
 
 export function compareStandingRows(
@@ -72,12 +83,12 @@ export function hasCumulativeTotals(standing: Doc<"roundStandings">) {
   );
 }
 
-
 export async function replaceStandingsForRound(
   ctx: MutationCtx,
   tournament: Doc<"tournaments">,
   phase: Doc<"tournamentPhases">,
   round: Doc<"tournamentRounds">,
+  prefetchedMatches?: RoundMatchWithPlayers[],
 ) {
   const existing = await ctx.db
     .query("roundStandings")
@@ -89,19 +100,27 @@ export async function replaceStandingsForRound(
     await ctx.db.delete(standing._id);
   }
 
-  const stats = await cumulativeStatsThroughRound(ctx, tournament._id, phase, round);
-  const ranked = [...stats.values()]
-    .filter((playerStats) => playerStats.registration.status === "active")
-    .sort((left, right) =>
-      compareStandingRows(
-        comparableFromStats(left, stats),
-        comparableFromStats(right, stats),
-      ),
-    );
+  const matchesWithPlayers =
+    prefetchedMatches ?? (await roundMatchesWithPlayers(ctx, round._id));
+  const stats = await cumulativeStatsThroughRound(
+    ctx,
+    tournament._id,
+    phase,
+    round,
+    matchesWithPlayers,
+  );
+  const ranked = await rankedStatsForRound(
+    ctx,
+    stats,
+    phase,
+    round,
+    matchesWithPlayers,
+  );
   const now = Date.now();
 
   for (let index = 0; index < ranked.length; index += 1) {
-    const playerStats = ranked[index];
+    const { playerStats, playoffStatus, eliminatedInRoundNumber } =
+      ranked[index];
     const comparable = comparableFromStats(playerStats, stats);
     await ctx.db.insert("roundStandings", {
       tournamentId: tournament._id,
@@ -121,10 +140,133 @@ export async function replaceStandingsForRound(
       opponentMatchWinPct: comparable.opponentMatchWinPct,
       gameWinPct: comparable.gameWinPct,
       opponentGameWinPct: comparable.opponentGameWinPct,
+      playoffStatus,
+      eliminatedInRoundNumber,
       sortKey: index + 1,
       updatedAt: now,
     });
   }
+}
+
+async function rankedStatsForRound(
+  ctx: QueryCtx,
+  stats: Map<Id<"tournamentRegistrations">, PlayerStats>,
+  phase: Doc<"tournamentPhases">,
+  round: Doc<"tournamentRounds">,
+  matchesWithPlayers: RoundMatchWithPlayers[],
+): Promise<RankedPlayerStats[]> {
+  if (phase.phaseType !== "single_elimination") {
+    return [...stats.values()]
+      .filter((playerStats) => playerStats.registration.status === "active")
+      .sort((left, right) => comparePlayerStats(left, right, stats))
+      .map((playerStats) => ({
+        playerStats,
+        playoffStatus: "not_started",
+      }));
+  }
+
+  const previousRound = await previousRoundForStandings(ctx, phase, round);
+  const previousStandings = previousRound
+    ? await ctx.db
+        .query("roundStandings")
+        .withIndex("by_tournamentRoundId_and_rank", (q) =>
+          q.eq("tournamentRoundId", previousRound._id),
+        )
+        .take(MAX_TOURNAMENT_PLAYERS)
+    : [];
+  const previousByPlayer = new Map(
+    previousStandings.map((standing) => [standing.playerId, standing]),
+  );
+
+  const currentParticipants = new Set<Id<"tournamentRegistrations">>();
+  const currentAdvancers = new Set<Id<"tournamentRegistrations">>();
+  for (const { players } of matchesWithPlayers) {
+    if (players.length !== 2) {
+      throw new Error("Single-elimination matches require exactly two players");
+    }
+    const [first, second] = players;
+    currentParticipants.add(first.playerId);
+    currentParticipants.add(second.playerId);
+    const firstWins = first.gameWins ?? 0;
+    const secondWins = second.gameWins ?? 0;
+    if (firstWins === secondWins) {
+      throw new Error("Single-elimination matches must have a winner");
+    }
+    const winner = firstWins > secondWins ? first : second;
+    const loser = winner === first ? second : first;
+    const winnerRegistration = stats.get(winner.playerId)?.registration;
+    if (winnerRegistration?.status === "active") {
+      currentAdvancers.add(winner.playerId);
+    } else if (stats.get(loser.playerId)?.registration.status === "active") {
+      // A winner who withdrew after reporting gives the opponent the bracket
+      // slot, matching singleEliminationAdvancers in tournaments/rounds.ts.
+      currentAdvancers.add(loser.playerId);
+    }
+  }
+
+  const ranked = [...stats.values()]
+    .filter(
+      (playerStats) =>
+        playerStats.registration.status === "active" ||
+        playerStats.registration.status === "eliminated",
+    )
+    .map((playerStats): RankedPlayerStats => {
+      const playerId = playerStats.registration._id;
+      if (currentAdvancers.has(playerId)) {
+        return { playerStats, playoffStatus: "active" };
+      }
+      if (currentParticipants.has(playerId)) {
+        return {
+          playerStats,
+          playoffStatus: "eliminated",
+          eliminatedInRoundNumber: round.roundNumber,
+        };
+      }
+
+      const previous = previousByPlayer.get(playerId);
+      if (previous?.playoffStatus === "eliminated") {
+        return {
+          playerStats,
+          playoffStatus: "eliminated",
+          eliminatedInRoundNumber: previous.eliminatedInRoundNumber,
+        };
+      }
+      return { playerStats, playoffStatus: "cut" };
+    });
+
+  return ranked.sort((left, right) => {
+    const advancementDifference =
+      playoffAdvancement(right, round.roundNumber) -
+      playoffAdvancement(left, round.roundNumber);
+    return (
+      advancementDifference ||
+      comparePlayerStats(left.playerStats, right.playerStats, stats)
+    );
+  });
+}
+
+function playoffAdvancement(
+  standing: RankedPlayerStats,
+  currentRoundNumber: number,
+) {
+  if (standing.playoffStatus === "active") {
+    return currentRoundNumber + 1;
+  }
+  if (standing.playoffStatus === "eliminated") {
+    return standing.eliminatedInRoundNumber ?? 0;
+  }
+  return -1;
+}
+
+function comparePlayerStats(
+  left: PlayerStats,
+  right: PlayerStats,
+  stats: Map<Id<"tournamentRegistrations">, PlayerStats>,
+) {
+  return compareStandingRows(
+    comparableFromStats(left, stats),
+    comparableFromStats(right, stats),
+  );
 }
 
 // Folds the previous round's cumulative standings forward with only the
@@ -135,6 +277,7 @@ async function cumulativeStatsThroughRound(
   tournamentId: Id<"tournaments">,
   phase: Doc<"tournamentPhases">,
   round: Doc<"tournamentRounds">,
+  matchesWithPlayers: RoundMatchWithPlayers[],
 ) {
   // Dropped players stay in the map so their records keep feeding their
   // former opponents' OMW%/OGW% (MTR Appendix C: withdrawal does not erase
@@ -191,14 +334,14 @@ async function cumulativeStatsThroughRound(
     }
   }
 
-  for (const match of await roundMatches(ctx, round._id)) {
+  for (const { match, players } of matchesWithPlayers) {
     if (
       match.matchStatus !== "completed" &&
       match.matchStatus !== "confirmed"
     ) {
       continue;
     }
-    for (const playerRow of await matchPlayers(ctx, match._id)) {
+    for (const playerRow of players) {
       const playerStats = stats.get(playerRow.playerId);
       if (playerStats) {
         applyMatchPlayerRow(playerStats, playerRow);

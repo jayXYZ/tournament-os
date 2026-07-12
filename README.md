@@ -56,7 +56,7 @@ content, and live round operations.
   - [x] Timer tab in the tournament manager (start / pause / resume / ±minutes / hold-to-reset, plus the default round length setting)
   - [x] Live countdown chip in the tournament progress bar, linking to the Timer tab
   - [x] Show the live timer in the player controller, public event page, and native app (overtime counts up in red; no automation at zero)
-- [ ] `player meeting` setting on phases (seat-all-players step before round 1, players seated alphabetically)
+- [x] `player meeting` setting on phases (seat-all-players step before round 1, players seated alphabetically)
 - [ ] Organizer result corrections: edit a match result after the round (or event) has completed, with standings recomputation for affected rounds
 - [ ] Printable outputs: pairings by table / by name, result slips, standings
 - [ ] Organizer "favorite" players persisted across tournaments; filter pairings/standings by favorites
@@ -71,7 +71,7 @@ standings-based byes, OMW/GW/OGW tiebreakers). The gaps are multi-phase
 structure and playoff support.
 
 - [ ] Phase management after creation: add / remove / reorder phases while the tournament is still editable (currently only phase 1 is configurable)
-- [ ] Single elimination phase type + proper top-8 seeding from swiss standings (1v8, 4v5, 2v7, 3v6)
+- [x] Single elimination phase type + proper top-8 seeding from swiss standings (1v8, 4v5, 2v7, 3v6)
 - [ ] Wire up phase cutoffs (`top_X_players` / `X_points_or_more` exist in the schema but are unused): completing a phase should eliminate non-qualifiers and seed the next phase
 - [ ] Harden swiss for real-event situations
   - [ ] Draws: intentional draws and game draws (only gameWins/gameLosses are tracked today)

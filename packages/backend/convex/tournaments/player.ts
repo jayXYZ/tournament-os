@@ -16,13 +16,15 @@ import {
   registrationDisplayName,
   registrationForUser,
   requireMatch,
+  requireDecisiveEliminationResult,
+  requirePhase,
   requireRegisteredPlayer,
   requireRound,
   requireTournament,
   roundNumberInPhase,
-  selectCurrentSwissPhase,
-  swissPhaseByOrder,
-  swissPhasesInOrder,
+  phaseByOrder,
+  phasesInOrder,
+  selectCurrentPhase,
 } from "../model/tournaments";
 import { ensureCurrentUser } from "../model/users";
 
@@ -57,8 +59,8 @@ export const getMyCurrentMatch = query({
       myRegistrationId: registration._id,
     };
 
-    const phases = await swissPhasesInOrder(ctx, args.tournamentId);
-    const phase = selectCurrentSwissPhase(phases);
+    const phases = await phasesInOrder(ctx, args.tournamentId);
+    const phase = selectCurrentPhase(phases);
 
     // A live player meeting takes over the play surface: until the phase's
     // first round is paired, the player's "match" is their alphabetical seat.
@@ -125,7 +127,7 @@ export const getMyCurrentMatch = query({
     // The tournament's final round is the last round of the last phase: a
     // later phase means more rounds follow even after this phase ends.
     const nextPhase = isFinalRoundOfPhase
-      ? await swissPhaseByOrder(ctx, args.tournamentId, phase.phaseOrder + 1)
+      ? await phaseByOrder(ctx, args.tournamentId, phase.phaseOrder + 1)
       : null;
     const roundSummary = {
       roundNumber: round.roundNumber,
@@ -243,7 +245,7 @@ export const getLatestStandings = query({
     // including the previous phase's final round while a new phase's first
     // round is still being played.
     let latestCompleted: Doc<"tournamentRounds"> | undefined;
-    const phases = await swissPhasesInOrder(ctx, args.tournamentId);
+    const phases = await phasesInOrder(ctx, args.tournamentId);
     for (const phase of [...phases].reverse()) {
       const rounds = await ctx.db
         .query("tournamentRounds")
@@ -284,6 +286,9 @@ export const getLatestStandings = query({
           opponentMatchWinPct: standing.opponentMatchWinPct,
           gameWinPct: standing.gameWinPct,
           opponentGameWinPct: standing.opponentGameWinPct,
+          playoffStatus: standing.playoffStatus,
+          eliminatedInRoundNumber:
+            standing.eliminatedInRoundNumber ?? null,
           isMe: standing.playerId === registration._id,
         };
       }),
@@ -309,6 +314,11 @@ export const reportMyMatchResult = mutation({
     }
     const myGameWins = validGameWins(args.myGameWins);
     const opponentGameWins = validGameWins(args.opponentGameWins);
+    requireDecisiveEliminationResult(
+      await requirePhase(ctx, match.tournamentPhaseId),
+      myGameWins,
+      opponentGameWins,
+    );
 
     const [myPoints, opponentPoints] = matchPointsForResult({
       playerOneGameWins: myGameWins,
@@ -359,10 +369,7 @@ export const confirmMatchResult = mutation({
       ctx,
       args.matchId,
     );
-    if (
-      match.matchStatus !== "completed" ||
-      !match.reportedByRegistrationId
-    ) {
+    if (match.matchStatus !== "completed" || !match.reportedByRegistrationId) {
       throw new Error("Match has no player-reported result to confirm");
     }
     if (match.reportedByRegistrationId === myRow.playerId) {
@@ -442,7 +449,10 @@ async function playerMatchInRound(
 
 // Being one of the match's two players is the authorization: a dropped player
 // may still owe the result for the round they dropped in.
-async function requireMatchParticipant(ctx: MutationCtx, matchId: Id<"tournamentMatches">) {
+async function requireMatchParticipant(
+  ctx: MutationCtx,
+  matchId: Id<"tournamentMatches">,
+) {
   const user = await ensureCurrentUser(ctx);
   const match = await requireMatch(ctx, matchId);
   const tournament = await requireTournament(ctx, match.tournamentId);
@@ -478,10 +488,7 @@ function matchResultForRow(
   match: Doc<"tournamentMatches">,
   playerRow: Doc<"tournamentMatchPlayers">,
 ) {
-  if (
-    match.matchStatus !== "completed" &&
-    match.matchStatus !== "confirmed"
-  ) {
+  if (match.matchStatus !== "completed" && match.matchStatus !== "confirmed") {
     return "pending" as const;
   }
   const gameWins = playerRow.gameWins ?? 0;

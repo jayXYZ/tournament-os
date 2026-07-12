@@ -579,7 +579,8 @@ function PhaseSettingsForm({
   const [busy, setBusy] = useState(false)
 
   const locked = isSetupLocked(tournament)
-  const disabled = locked || busy
+  const isSingleElimination = phase.phaseType === 'single_elimination'
+  const disabled = locked || busy || isSingleElimination
   // Once the meeting has started its seating snapshot exists, so the setting
   // is frozen (the backend rejects changes too).
   const meetingStarted = phase.playerMeetingStatus !== undefined
@@ -630,8 +631,15 @@ function PhaseSettingsForm({
           idPrefix={phase._id}
           value={roundConfiguration}
           onChange={setRoundConfiguration}
-          showDynamicDescription
+          showDynamicDescription={!isSingleElimination}
         />
+
+        {isSingleElimination ? (
+          <FieldDescription>
+            Top-8 playoffs always run as quarterfinals, semifinals, and finals.
+            Seeds come from the preceding Swiss standings and cannot be edited.
+          </FieldDescription>
+        ) : null}
 
         <Field
           orientation="horizontal"

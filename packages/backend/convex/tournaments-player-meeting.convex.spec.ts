@@ -44,6 +44,12 @@ test("phase-1 meeting walks startPlayerMeeting -> startTournament -> completed",
     phaseId,
   });
 
+  await expect(
+    organizer.mutation(api.tournaments.rounds.startTournament, {
+      tournamentId,
+    }),
+  ).rejects.toThrow("Player meeting must be started first");
+
   await organizer.mutation(api.tournaments.playerMeeting.startPlayerMeeting, {
     phaseId,
   });
@@ -265,6 +271,12 @@ test("a later phase holds its own meeting between phases", async () => {
     ready: true,
     phaseId: phaseTwoId,
   });
+
+  await expect(
+    organizer.mutation(api.tournaments.rounds.generateNextRound, {
+      tournamentId,
+    }),
+  ).rejects.toThrow("Player meeting must be started first");
 
   await organizer.mutation(api.tournaments.playerMeeting.startPlayerMeeting, {
     phaseId: phaseTwoId,
