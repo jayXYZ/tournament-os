@@ -78,6 +78,7 @@ function TimerCard({ board }: { board: PairingsBoard }) {
     board.phases
       .flatMap((phaseBoard) => phaseBoard.rounds)
       .find((round) => round.roundStatus === 'in_progress') ?? null
+  const pairingsPublished = currentRound?.pairingsPublishedAt !== undefined
   const timer = activeRoundTimer(board)
   const { phase, remainingMs, formatted } = useRoundTimer(timer)
   const overtime = remainingMs < 0
@@ -124,7 +125,7 @@ function TimerCard({ board }: { board: PairingsBoard }) {
     }
   }
 
-  const disabled = currentRound === null || busy
+  const disabled = currentRound === null || !pairingsPublished || busy
 
   return (
     <Card>
@@ -156,7 +157,9 @@ function TimerCard({ board }: { board: PairingsBoard }) {
           <p className="text-sm text-muted-foreground">
             {phase === 'idle'
               ? currentRound
-                ? 'Timer not started'
+                ? pairingsPublished
+                  ? 'Timer not started'
+                  : 'Publish pairings to make the timer available.'
                 : 'The timer becomes available while a round is in progress.'
               : phase === 'paused'
                 ? overtime

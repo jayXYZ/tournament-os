@@ -5,7 +5,14 @@ import {
   useSearch,
 } from '@tanstack/react-router'
 import { useMutation, useQuery } from 'convex/react'
-import { ListOrdered, Swords, TimerIcon, Trophy, Users } from 'lucide-react'
+import {
+  ListOrdered,
+  Send,
+  Swords,
+  TimerIcon,
+  Trophy,
+  Users,
+} from 'lucide-react'
 import { toast } from 'sonner'
 
 import { api } from '@tournament-os/backend/convex/_generated/api'
@@ -212,6 +219,7 @@ function AdvanceStepButton({
     api.tournaments.playerMeeting.startPlayerMeeting,
   )
   const startTournament = useMutation(api.tournaments.rounds.startTournament)
+  const publishPairings = useMutation(api.tournaments.rounds.publishPairings)
   const startTimer = useMutation(api.tournaments.timer.startTimer)
   const generateNextRound = useMutation(
     api.tournaments.rounds.generateNextRound,
@@ -237,6 +245,7 @@ function AdvanceStepButton({
   const action = advanceAction(step, board.tournament._id, {
     startPlayerMeeting,
     startTournament,
+    publishPairings,
     startTimer,
     generateNextRound,
     completeRound,
@@ -288,6 +297,9 @@ function advanceAction(
     startTournament: (args: {
       tournamentId: Id<'tournaments'>
     }) => Promise<unknown>
+    publishPairings: (args: {
+      roundId: Id<'tournamentRounds'>
+    }) => Promise<unknown>
     startTimer: (args: { tournamentId: Id<'tournaments'> }) => Promise<unknown>
     generateNextRound: (args: {
       tournamentId: Id<'tournaments'>
@@ -316,6 +328,13 @@ function advanceAction(
         icon: <Swords />,
         success: 'Pairings generated',
         run: () => mutations.startTournament({ tournamentId }),
+      }
+    case 'publishPairings':
+      return {
+        label: 'Hold to publish pairings',
+        icon: <Send />,
+        success: 'Pairings published',
+        run: () => mutations.publishPairings({ roundId: step.roundId }),
       }
     case 'startTimer':
       return {

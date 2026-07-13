@@ -73,6 +73,7 @@ export const createTestTournament = mutation({
       playerCapacity,
       format: args.format ?? "standard",
       isTestEvent: true,
+      autoPublishPairings: false,
       activeRegistrationCount: 0,
       // Mirror the test-config seed so pairings are reproducible across runs.
       seed,
@@ -178,9 +179,14 @@ export const advanceTestRound = mutation({
     const round = await requireRound(ctx, phase.phaseCurrentRound);
     await generateTestResults(ctx, tournament, round);
     await replaceStandingsForRound(ctx, tournament, phase, round);
+    const now = Date.now();
     await ctx.db.patch(round._id, {
       roundStatus: "completed",
-      updatedAt: Date.now(),
+      // Keep this shortcut aligned with completeRound: completed pairings are
+      // part of the player-visible tournament record even when this test event
+      // uses manual publication for newly generated rounds.
+      pairingsPublishedAt: round.pairingsPublishedAt ?? now,
+      updatedAt: now,
     });
 
     const config = await requireTestConfig(ctx, args.tournamentId);

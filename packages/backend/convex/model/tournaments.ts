@@ -3,6 +3,7 @@ import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { requireActiveMembership, requireCurrentUser } from "./access";
 import { logAuditEvent } from "./auditLog";
+import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "./batching";
 import { nextPublicCode } from "./publicCodes";
 
 export const SWISS_FORMAT = "swiss";
@@ -126,6 +127,43 @@ export async function requireRound(
     throw new Error("Round not found");
   }
   return round;
+}
+
+export function isPairingsVisibleToPlayers(
+  round: Pick<Doc<"tournamentRounds">, "pairingsPublishedAt">,
+) {
+  return round.pairingsPublishedAt !== undefined;
+}
+
+// Round numbers are global across a tournament. Within a phase, the previous
+// round is the preceding number; across a phase boundary it is the prior
+// phase's final round.
+export async function previousTournamentRound(
+  ctx: QueryCtx,
+  round: Doc<"tournamentRounds">,
+): Promise<Doc<"tournamentRounds"> | null> {
+  const phase = await requirePhase(ctx, round.tournamentPhaseId);
+  const samePhaseRound = await ctx.db
+    .query("tournamentRounds")
+    .withIndex("by_tournamentPhaseId_and_roundNumber", (q) =>
+      q
+        .eq("tournamentPhaseId", round.tournamentPhaseId)
+        .eq("roundNumber", round.roundNumber - 1),
+    )
+    .unique();
+  if (samePhaseRound || phase.phaseOrder <= 1) {
+    return samePhaseRound;
+  }
+
+  const previousPhase = await phaseByOrder(
+    ctx,
+    round.tournamentId,
+    phase.phaseOrder - 1,
+  );
+  // A phase's phaseCurrentRound is its final round once the phase completes.
+  return previousPhase?.phaseCurrentRound
+    ? await ctx.db.get(previousPhase.phaseCurrentRound)
+    : null;
 }
 
 export async function requireMatch(
@@ -347,6 +385,33 @@ export async function adjustActiveRegistrationCount(
   });
 }
 
+type RegistrationStatusUpdate =
+  | {
+      status: "eliminated";
+      eliminatedByRoundId: Id<"tournamentRounds">;
+    }
+  | {
+      status: "active" | "dropped";
+      eliminatedByRoundId?: never;
+    };
+
+export async function setRegistrationStatus(
+  ctx: MutationCtx,
+  registrationId: Id<"tournamentRegistrations">,
+  update: RegistrationStatusUpdate & {
+    playerName?: string;
+    updatedAt?: number;
+  },
+) {
+  const { updatedAt = Date.now(), ...fields } = update;
+  await ctx.db.patch(registrationId, {
+    ...fields,
+    eliminatedByRoundId:
+      update.status === "eliminated" ? update.eliminatedByRoundId : undefined,
+    updatedAt,
+  });
+}
+
 export async function roundMatches(
   ctx: QueryCtx,
   roundId: Id<"tournamentRounds">,
@@ -376,11 +441,29 @@ export async function roundMatchesWithPlayers(
   roundId: Id<"tournamentRounds">,
 ) {
   const matches = await roundMatches(ctx, roundId);
-  return await Promise.all(
-    matches.map(async (match) => ({
+  return await mapAsyncInBatches(
+    matches,
+    DATABASE_IO_BATCH_SIZE,
+    async (match) => ({
       match,
       players: await matchPlayers(ctx, match._id),
-    })),
+    }),
+  );
+}
+
+export const PAIRINGS_REWIND_RECORDED_RESULT_REASON =
+  "Pairings cannot be unpublished after a match result has been recorded";
+
+export function roundHasRecordedResult(
+  matchesWithPlayers: readonly {
+    match: Pick<Doc<"tournamentMatches">, "matchStatus" | "tableNumber">;
+    players: readonly Pick<Doc<"tournamentMatchPlayers">, "isBye">[];
+  }[],
+) {
+  return matchesWithPlayers.some(
+    ({ match, players }) =>
+      !players.every((player) => player.isBye) &&
+      match.matchStatus !== "upcoming",
   );
 }
 
@@ -424,6 +507,7 @@ export async function createTournament(
     playerCapacity: validCapacity(args.playerCapacity),
     format: args.format,
     isTestEvent: args.isTestEvent,
+    autoPublishPairings: false,
     activeRegistrationCount: 0,
     seed: Math.floor(Math.random() * 0x7fffffff),
     updatedAt: now,
@@ -529,6 +613,12 @@ export type PairingsNextStep =
       phaseId: Id<"tournamentPhases">;
     }
   | { kind: "startTournament"; ready: boolean; reason: string | null }
+  | {
+      kind: "publishPairings";
+      ready: boolean;
+      reason: string | null;
+      roundId: Id<"tournamentRounds">;
+    }
   | { kind: "startTimer"; ready: boolean; reason: string | null }
   | {
       kind: "generateStandings";
@@ -553,6 +643,7 @@ export async function pairingsNextStep(
   ctx: QueryCtx,
   tournament: Doc<"tournaments">,
   phaseBoards: PhaseBoard[],
+  currentRoundMatches?: readonly Doc<"tournamentMatches">[],
 ): Promise<PairingsNextStep> {
   if (tournament.lifecycle === "cancelled") {
     return { kind: "tournamentCancelled" };
@@ -632,8 +723,16 @@ export async function pairingsNextStep(
   if (!round) {
     throw new Error("Round not found");
   }
+  if (!isPairingsVisibleToPlayers(round)) {
+    return {
+      kind: "publishPairings",
+      ready: true,
+      reason: null,
+      roundId: round._id,
+    };
+  }
   if (round.roundStatus !== "completed") {
-    const matches = await roundMatches(ctx, round._id);
+    const matches = currentRoundMatches ?? (await roundMatches(ctx, round._id));
     const unreported = matches.reduce(
       (count, match) =>
         match.matchStatus === "completed" || match.matchStatus === "confirmed"

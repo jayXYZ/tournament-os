@@ -127,13 +127,14 @@ export function TournamentSettingsView({
             <p className="rounded-md border bg-muted/50 px-4 py-3 text-sm text-muted-foreground">
               {setup.tournament.lifecycle === 'cancelled'
                 ? 'This tournament has been cancelled. Its settings can no longer be changed.'
-                : 'Core settings are locked once the tournament starts. Visibility can still be changed at any time.'}
+                : 'Core settings are locked once the tournament starts. Visibility and pairing publication preferences can still be changed.'}
             </p>
           ) : null}
           <TournamentSettingsCard
             key={setup.tournament._id}
             tournament={setup.tournament}
           />
+          <PairingsPublicationCard tournament={setup.tournament} />
           <EventDetailsCard
             key={`${setup.tournament._id}-details`}
             tournament={setup.tournament}
@@ -146,6 +147,77 @@ export function TournamentSettingsView({
         </>
       )}
     </section>
+  )
+}
+
+function PairingsPublicationCard({
+  tournament,
+}: {
+  tournament: Doc<'tournaments'>
+}) {
+  const updatePairingsAutoPublish = useMutation(
+    api.tournaments.lifecycle.updatePairingsAutoPublish,
+  )
+  const [busy, setBusy] = useState(false)
+  const disabled =
+    busy ||
+    tournament.lifecycle === 'completed' ||
+    tournament.lifecycle === 'cancelled'
+
+  async function handleChange(autoPublishPairings: boolean) {
+    setBusy(true)
+    try {
+      await updatePairingsAutoPublish({
+        tournamentId: tournament._id,
+        autoPublishPairings,
+      })
+      toast.success(
+        autoPublishPairings
+          ? 'New pairings will publish automatically.'
+          : 'New pairings will wait for organizer approval.',
+      )
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : 'Could not update pairing publication.',
+      )
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Pairing publication</CardTitle>
+        <CardDescription>
+          Choose whether players see each new round as soon as its pairings are
+          generated.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Field orientation="horizontal" data-disabled={disabled}>
+          <FieldContent>
+            <FieldLabel htmlFor="settings-auto-publish-pairings">
+              Publish pairings automatically
+            </FieldLabel>
+            <FieldDescription>
+              When off, the dashboard advance button will ask you to publish
+              each round after reviewing it. This only affects newly generated
+              rounds.
+            </FieldDescription>
+          </FieldContent>
+          <Switch
+            id="settings-auto-publish-pairings"
+            checked={tournament.autoPublishPairings}
+            disabled={disabled}
+            onCheckedChange={(checked) => void handleChange(checked)}
+            aria-label="Publish pairings automatically"
+          />
+        </Field>
+      </CardContent>
+    </Card>
   )
 }
 

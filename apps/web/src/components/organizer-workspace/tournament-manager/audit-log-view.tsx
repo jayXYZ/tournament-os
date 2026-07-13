@@ -159,6 +159,10 @@ function describeEvent(row: AuditEventRow): string {
       return `Paired round ${event.roundNumber} with ${event.playerCount} players`
     case 'round_completed':
       return `Completed round ${event.roundNumber} and posted standings`
+    case 'round_rewound':
+      return event.reopenedRoundNumber === null
+        ? `Unpublished round ${event.removedRoundNumber} pairings and reopened registration`
+        : `Unpublished round ${event.removedRoundNumber} pairings and reopened round ${event.reopenedRoundNumber}`
     case 'tournament_completed':
       return 'Completed the tournament'
     case 'tournament_cancelled':

@@ -93,6 +93,9 @@ export default defineSchema({
     playerCapacity: v.number(),
     format: tournamentFormatValidator,
     isTestEvent: v.boolean(),
+    // When enabled, newly generated rounds are immediately visible on player
+    // surfaces. Disabled by default so organizers can review pairings first.
+    autoPublishPairings: v.boolean(),
     // Organizer-authored event details (description, prizes, logistics) as
     // markdown, rendered on the public tournament page. Absent means the
     // organizer has not written any.
@@ -139,6 +142,10 @@ export default defineSchema({
     tournamentId: v.id("tournaments"),
     userId: v.id("users"),
     status: tournamentRegistrationStatusValidator,
+    // Set only when tournament progression changes an active player to
+    // "eliminated". Rewinding that round can then restore exactly those
+    // players without reviving voluntary drops or disqualifications.
+    eliminatedByRoundId: v.optional(v.id("tournamentRounds")),
     // Display name (user.name ?? user.email) denormalized at registration time
     // so roster, standings, and pairings list queries never join through to the
     // user document per row. Optional only for rows written before this field
@@ -206,6 +213,9 @@ export default defineSchema({
     roundNumber: v.number(),
     roundName: v.string(),
     roundStatus: tournamentRoundStatusValidator,
+    // Absent while generated pairings are organizer-only. Setting this makes
+    // the round visible to players through their subscribed queries.
+    pairingsPublishedAt: v.optional(v.number()),
     updatedAt: v.number(),
   })
     .index("by_tournamentPhaseId", ["tournamentPhaseId"])

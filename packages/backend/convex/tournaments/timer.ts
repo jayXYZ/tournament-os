@@ -10,6 +10,7 @@ import type { Doc } from "../_generated/dataModel";
 import { mutation } from "../_generated/server";
 import type { QueryCtx } from "../_generated/server";
 import {
+  isPairingsVisibleToPlayers,
   requireOrganizerAccess,
   requireCurrentPhase,
   requireRound,
@@ -180,6 +181,9 @@ async function requireTimableCurrentRound(
   const round = await requireRound(ctx, phase.phaseCurrentRound);
   if (round.roundStatus !== "in_progress") {
     throw new Error("No round is in progress");
+  }
+  if (!isPairingsVisibleToPlayers(round)) {
+    throw new Error("Pairings have not been published");
   }
   return round;
 }

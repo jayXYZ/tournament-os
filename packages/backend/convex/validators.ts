@@ -220,6 +220,13 @@ export const tournamentAuditEventValidator = v.union(
     roundId: v.id("tournamentRounds"),
     roundNumber: v.number(),
   }),
+  v.object({
+    type: v.literal("round_rewound"),
+    removedRoundId: v.id("tournamentRounds"),
+    removedRoundNumber: v.number(),
+    reopenedRoundId: v.union(v.id("tournamentRounds"), v.null()),
+    reopenedRoundNumber: v.union(v.number(), v.null()),
+  }),
   v.object({ type: v.literal("tournament_completed") }),
   v.object({ type: v.literal("tournament_cancelled") }),
 );

@@ -108,8 +108,16 @@ function CurrentMatch({
     case "between_rounds":
       return (
         <Text style={styles.muted}>
-          Round {current.round.roundNumber} is complete. Waiting for the next
-          pairing.
+          Round {current.round.roundNumber} is complete. Awaiting next round
+          pairings.
+        </Text>
+      );
+    case "pairings_pending":
+      return (
+        <Text style={styles.muted}>
+          Round {current.round.roundNumber} pairings pending. The organizer is
+          reviewing this round’s pairings. They will appear here once
+          published.
         </Text>
       );
     case "no_match":

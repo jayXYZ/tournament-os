@@ -8,17 +8,20 @@ import {
   existingResultLines,
   logAuditEvent,
 } from "../model/auditLog";
+import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
 import {
   createRoundWithPairings,
   createSingleEliminationRoundWithPairings,
 } from "../model/pairing";
 import {
+  deleteStandingsForRound,
   matchPointsForResult,
   replaceStandingsForRound,
   type RoundMatchWithPlayers,
 } from "../model/standings";
 import {
   MAX_TOURNAMENT_PLAYERS,
+  PAIRINGS_REWIND_RECORDED_RESULT_REASON,
   SINGLE_ELIMINATION_FORMAT,
   SINGLE_ELIMINATION_PLAYERS,
   SWISS_FORMAT,
@@ -28,6 +31,7 @@ import {
   pairingsNextStep,
   phaseByOrder,
   phasesInOrder,
+  previousTournamentRound,
   registrationDisplayName,
   requireMatch,
   requireCurrentPhase,
@@ -39,9 +43,11 @@ import {
   requireRound,
   requireSetupEditable,
   resolvePhaseTotalRounds,
-  roundMatches,
+  roundHasRecordedResult,
   roundMatchesWithPlayers,
   roundNumberInPhase,
+  selectCurrentPhase,
+  setRegistrationStatus,
 } from "../model/tournaments";
 
 export const startTournament = mutation({
@@ -209,7 +215,6 @@ export const generateNextRound = mutation({
     let roundId: Id<"tournamentRounds">;
     if (nextPhase.phaseType === SINGLE_ELIMINATION_FORMAT) {
       registrations = await topEightFromStandings(ctx, currentRound._id);
-      await eliminateNonQualifiers(ctx, tournament, registrations);
       roundId = await createSingleEliminationRoundWithPairings(ctx, {
         tournament,
         phase: playablePhase,
@@ -218,6 +223,15 @@ export const generateNextRound = mutation({
         registrations,
         seededFirstRound: true,
       });
+      // The cut belongs to the completed round whose standings produced it.
+      // Rewinding the quarterfinal reopens that round and should restore the
+      // cut; rewinding a later bracket round must restore only bracket losers.
+      await eliminateNonQualifiers(
+        ctx,
+        tournament,
+        registrations,
+        currentRound._id,
+      );
     } else {
       if (registrations.length < 2) {
         throw new Error("At least two active players are required");
@@ -251,6 +265,27 @@ export const generateNextRound = mutation({
       },
     });
     return roundId;
+  },
+});
+
+export const publishPairings = mutation({
+  args: { roundId: v.id("tournamentRounds") },
+  handler: async (ctx, args) => {
+    const round = await requireRound(ctx, args.roundId);
+    await requireOrganizerAccess(ctx, round.tournamentId);
+    const phase = await requirePhase(ctx, round.tournamentPhaseId);
+    if (phase.phaseCurrentRound !== round._id) {
+      throw new Error("Only the current round's pairings can be published");
+    }
+    if (round.pairingsPublishedAt !== undefined) {
+      return round._id;
+    }
+    const now = Date.now();
+    await ctx.db.patch(round._id, {
+      pairingsPublishedAt: now,
+      updatedAt: now,
+    });
+    return round._id;
   },
 });
 
@@ -380,11 +415,16 @@ export const completeRound = mutation({
         ctx,
         tournament,
         matchesWithPlayers,
+        round._id,
       );
     }
     const now = Date.now();
     await ctx.db.patch(args.roundId, {
       roundStatus: "completed",
+      // A completed round is part of the public tournament record. Publishing
+      // here prevents organizer-entered results from becoming permanently
+      // hidden once phaseCurrentRound advances past an unpublished round.
+      pairingsPublishedAt: round.pairingsPublishedAt ?? now,
       updatedAt: now,
     });
     // The round is over, so its timer is too (patching undefined removes it).
@@ -415,6 +455,102 @@ export const completeRound = mutation({
   },
 });
 
+export const rewindLatestRound = mutation({
+  args: { tournamentId: v.id("tournaments") },
+  handler: async (ctx, args) => {
+    const { tournament, user } = await requireOrganizerAccess(
+      ctx,
+      args.tournamentId,
+    );
+    if (tournament.lifecycle !== "in_progress") {
+      throw new Error("Only an in-progress tournament can be rewound");
+    }
+
+    const phase = await requireCurrentPhase(ctx, tournament._id);
+    if (!phase.phaseCurrentRound) {
+      throw new Error("Current round not found");
+    }
+    const round = await requireRound(ctx, phase.phaseCurrentRound);
+    if (round.roundStatus !== "in_progress") {
+      throw new Error("Only the current active round can be rewound");
+    }
+
+    const matchesWithPlayers = await roundMatchesWithPlayers(ctx, round._id);
+    if (roundHasRecordedResult(matchesWithPlayers)) {
+      throw new Error(PAIRINGS_REWIND_RECORDED_RESULT_REASON);
+    }
+
+    const previousRound = await previousTournamentRound(ctx, round);
+    const now = Date.now();
+    await restoreEliminationsForRewind(ctx, tournament, [
+      round._id,
+      ...(previousRound ? [previousRound._id] : []),
+    ]);
+
+    for (const { match, players } of matchesWithPlayers) {
+      for (const player of players) {
+        await ctx.db.delete(player._id);
+      }
+      await ctx.db.delete(match._id);
+    }
+    await ctx.db.delete(round._id);
+
+    if (previousRound) {
+      await deleteStandingsForRound(ctx, previousRound._id);
+
+      const previousPhase = await requirePhase(
+        ctx,
+        previousRound.tournamentPhaseId,
+      );
+      await ctx.db.patch(previousRound._id, {
+        roundStatus: "in_progress",
+        updatedAt: now,
+      });
+      await ctx.db.patch(previousPhase._id, {
+        phaseStatus: "in_progress",
+        phaseCurrentRound: previousRound._id,
+        updatedAt: now,
+      });
+      if (previousPhase._id !== phase._id) {
+        await ctx.db.patch(phase._id, {
+          phaseStatus: "upcoming",
+          phaseCurrentRound: undefined,
+          updatedAt: now,
+        });
+      }
+      await ctx.db.patch(tournament._id, {
+        roundTimer: undefined,
+        updatedAt: now,
+      });
+    } else {
+      await ctx.db.patch(phase._id, {
+        phaseStatus: "upcoming",
+        phaseCurrentRound: undefined,
+        updatedAt: now,
+      });
+      await ctx.db.patch(tournament._id, {
+        lifecycle: "registration",
+        roundTimer: undefined,
+        updatedAt: now,
+      });
+    }
+
+    await logAuditEvent(ctx, {
+      tournamentId: tournament._id,
+      actor: user,
+      actorRole: "organizer",
+      event: {
+        type: "round_rewound",
+        removedRoundId: round._id,
+        removedRoundNumber: round.roundNumber,
+        reopenedRoundId: previousRound?._id ?? null,
+        reopenedRoundNumber: previousRound?.roundNumber ?? null,
+      },
+    });
+    return previousRound?._id ?? null;
+  },
+});
+
 export const getCurrentRound = query({
   args: { tournamentId: v.id("tournaments") },
   handler: async (ctx, args) => {
@@ -433,23 +569,25 @@ export const listRoundPairings = query({
   handler: async (ctx, args) => {
     const round = await requireRound(ctx, args.roundId);
     await requireOrganizerAccess(ctx, round.tournamentId);
-    const matches = await roundMatches(ctx, args.roundId);
+    const matchesWithPlayers = await roundMatchesWithPlayers(ctx, args.roundId);
 
     // Names come from the denormalized copy on each match-player row; only rows
     // missing it (legacy data) fall back to a live lookup, keeping this query
     // off the per-row user join that would otherwise blow the read budget.
-    return await Promise.all(
-      matches.map(async (match) => {
-        const players = await Promise.all(
-          (await matchPlayers(ctx, match._id)).map(async (player) => ({
+    return await mapAsyncInBatches(
+      matchesWithPlayers,
+      DATABASE_IO_BATCH_SIZE,
+      async ({ match, players }) => {
+        const resolvedPlayers = await Promise.all(
+          players.map(async (player) => ({
             ...player,
             playerName:
               player.playerName ??
               (await registrationDisplayName(ctx, player.playerId)),
           })),
         );
-        return { match, players };
-      }),
+        return { match, players: resolvedPlayers };
+      },
     );
   },
 });
@@ -477,10 +615,40 @@ export const getPairingsBoard = query({
       })),
     );
 
+    const currentPhase = selectCurrentPhase(
+      phaseBoards.map(({ phase }) => phase),
+    );
+    const currentRound = currentPhase?.phaseCurrentRound
+      ? (phaseBoards
+          .find(({ phase }) => phase._id === currentPhase._id)
+          ?.rounds.find(
+            (round) => round._id === currentPhase.phaseCurrentRound,
+          ) ?? null)
+      : null;
+    const currentMatchesWithPlayers =
+      currentRound?.roundStatus === "in_progress"
+        ? await roundMatchesWithPlayers(ctx, currentRound._id)
+        : null;
+    const [nextStep, rewind] = await Promise.all([
+      pairingsNextStep(
+        ctx,
+        tournament,
+        phaseBoards,
+        currentMatchesWithPlayers?.map(({ match }) => match),
+      ),
+      rewindAvailability(
+        ctx,
+        tournament,
+        currentRound,
+        currentMatchesWithPlayers,
+      ),
+    ]);
+
     return {
       tournament,
       phases: phaseBoards,
-      nextStep: await pairingsNextStep(ctx, tournament, phaseBoards),
+      nextStep,
+      rewind,
     };
   },
 });
@@ -513,16 +681,95 @@ export const listRoundStandings = query({
 
     // Denormalized name on the standings row avoids the per-row user join;
     // legacy rows without one fall back to a live lookup.
-    return await Promise.all(
-      standings.map(async (standing) => ({
+    return await mapAsyncInBatches(
+      standings,
+      DATABASE_IO_BATCH_SIZE,
+      async (standing) => ({
         standing,
         playerName:
           standing.playerName ??
           (await registrationDisplayName(ctx, standing.playerId)),
-      })),
+      }),
     );
   },
 });
+
+type RewindAvailability = {
+  eligible: boolean;
+  reason: string | null;
+  removedRoundNumber: number | null;
+  reopenedRoundNumber: number | null;
+};
+
+async function rewindAvailability(
+  ctx: QueryCtx,
+  tournament: Doc<"tournaments">,
+  round: Doc<"tournamentRounds"> | null,
+  prefetchedMatches: RoundMatchWithPlayers[] | null,
+): Promise<RewindAvailability> {
+  if (tournament.lifecycle !== "in_progress") {
+    return {
+      eligible: false,
+      reason: "Only an in-progress tournament can be rewound",
+      removedRoundNumber: null,
+      reopenedRoundNumber: null,
+    };
+  }
+
+  if (!round || round.roundStatus !== "in_progress") {
+    return {
+      eligible: false,
+      reason: "Only the current active round can be rewound",
+      removedRoundNumber: round?.roundNumber ?? null,
+      reopenedRoundNumber: null,
+    };
+  }
+
+  const matchesWithPlayers =
+    prefetchedMatches ?? (await roundMatchesWithPlayers(ctx, round._id));
+  const hasResult = roundHasRecordedResult(matchesWithPlayers);
+  const previousRound = await previousTournamentRound(ctx, round);
+  return {
+    eligible: !hasResult,
+    reason: hasResult ? PAIRINGS_REWIND_RECORDED_RESULT_REASON : null,
+    removedRoundNumber: round.roundNumber,
+    reopenedRoundNumber: previousRound?.roundNumber ?? null,
+  };
+}
+
+async function restoreEliminationsForRewind(
+  ctx: MutationCtx,
+  tournament: Doc<"tournaments">,
+  roundIds: Id<"tournamentRounds">[],
+) {
+  const sourceIds = new Set(roundIds);
+  const eliminated = await ctx.db
+    .query("tournamentRegistrations")
+    .withIndex("by_tournamentId_and_status", (q) =>
+      q.eq("tournamentId", tournament._id).eq("status", "eliminated"),
+    )
+    .take(MAX_TOURNAMENT_PLAYERS);
+  const restored: Doc<"tournamentRegistrations">[] = [];
+  for (const registration of eliminated) {
+    if (
+      registration.eliminatedByRoundId !== undefined &&
+      sourceIds.has(registration.eliminatedByRoundId)
+    ) {
+      restored.push(registration);
+    }
+  }
+  const now = Date.now();
+  await mapAsyncInBatches(
+    restored,
+    DATABASE_IO_BATCH_SIZE,
+    async (registration) =>
+      await setRegistrationStatus(ctx, registration._id, {
+        status: "active",
+        updatedAt: now,
+      }),
+  );
+  await adjustActiveRegistrationCount(ctx, tournament, restored.length, now);
+}
 
 async function topEightFromStandings(
   ctx: QueryCtx,
@@ -535,8 +782,10 @@ async function topEightFromStandings(
     )
     .take(MAX_TOURNAMENT_PLAYERS);
 
-  const loadedRegistrations = await Promise.all(
-    standings.map((standing) => ctx.db.get(standing.playerId)),
+  const loadedRegistrations = await mapAsyncInBatches(
+    standings,
+    DATABASE_IO_BATCH_SIZE,
+    async (standing) => await ctx.db.get(standing.playerId),
   );
   const registrations: Doc<"tournamentRegistrations">[] = [];
   for (const registration of loadedRegistrations) {
@@ -557,6 +806,7 @@ async function eliminateNonQualifiers(
   ctx: MutationCtx,
   tournament: Doc<"tournaments">,
   qualifiers: Doc<"tournamentRegistrations">[],
+  eliminatedByRoundId: Id<"tournamentRounds">,
 ) {
   const qualifierIds = new Set(
     qualifiers.map((registration) => registration._id),
@@ -570,11 +820,15 @@ async function eliminateNonQualifiers(
   }
   const now = Date.now();
   await Promise.all([
-    ...eliminated.map((registration) =>
-      ctx.db.patch(registration._id, {
-        status: "eliminated",
-        updatedAt: now,
-      }),
+    mapAsyncInBatches(
+      eliminated,
+      DATABASE_IO_BATCH_SIZE,
+      async (registration) =>
+        await setRegistrationStatus(ctx, registration._id, {
+          status: "eliminated",
+          eliminatedByRoundId,
+          updatedAt: now,
+        }),
     ),
     adjustActiveRegistrationCount(ctx, tournament, -eliminated.length, now),
   ]);
@@ -615,7 +869,11 @@ async function singleEliminationOutcome(
   }
 
   const ids = [...playerIds];
-  const registrations = await Promise.all(ids.map((id) => ctx.db.get(id)));
+  const registrations = await mapAsyncInBatches(
+    ids,
+    DATABASE_IO_BATCH_SIZE,
+    async (id) => await ctx.db.get(id),
+  );
   const registrationsById = new Map<
     Id<"tournamentRegistrations">,
     Doc<"tournamentRegistrations">
@@ -653,6 +911,7 @@ async function eliminateSingleEliminationLosers(
   ctx: MutationCtx,
   tournament: Doc<"tournaments">,
   matchesWithPlayers: RoundMatchWithPlayers[],
+  eliminatedByRoundId: Id<"tournamentRounds">,
 ) {
   const { advancers, registrationsById } = await singleEliminationOutcome(
     ctx,
@@ -676,11 +935,15 @@ async function eliminateSingleEliminationLosers(
   }
   const now = Date.now();
   await Promise.all([
-    ...eliminated.map((registration) =>
-      ctx.db.patch(registration._id, {
-        status: "eliminated",
-        updatedAt: now,
-      }),
+    mapAsyncInBatches(
+      eliminated,
+      DATABASE_IO_BATCH_SIZE,
+      async (registration) =>
+        await setRegistrationStatus(ctx, registration._id, {
+          status: "eliminated",
+          eliminatedByRoundId,
+          updatedAt: now,
+        }),
     ),
     adjustActiveRegistrationCount(ctx, tournament, -eliminated.length, now),
   ]);

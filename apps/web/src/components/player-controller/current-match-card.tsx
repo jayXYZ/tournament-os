@@ -101,6 +101,16 @@ export function CurrentMatchCard({
     )
   }
 
+  if (currentMatch.kind === 'pairings_pending') {
+    return (
+      <StatusEmpty
+        icon={Hourglass}
+        title={`Round ${currentMatch.round.roundNumber} pairings pending`}
+        description="The organizer is reviewing this round's pairings. They will appear here once published."
+      />
+    )
+  }
+
   if (currentMatch.kind === 'no_match') {
     return (
       <StatusEmpty

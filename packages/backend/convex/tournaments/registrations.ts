@@ -4,6 +4,7 @@ import type { Id } from "../_generated/dataModel";
 import { mutation, query } from "../_generated/server";
 import { currentUserOrNull } from "../model/access";
 import { auditPlayerRef, logAuditEvent } from "../model/auditLog";
+import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
 import { ensureCurrentUser } from "../model/users";
 import {
   adjustActiveRegistrationCount,
@@ -14,6 +15,7 @@ import {
   requireRegistration,
   requireSetupEditable,
   requireTournament,
+  setRegistrationStatus,
 } from "../model/tournaments";
 
 export const registerSelf = mutation({
@@ -51,7 +53,7 @@ export const registerSelf = mutation({
         updatedAt: now,
       }));
     if (existing) {
-      await ctx.db.patch(existing._id, {
+      await setRegistrationStatus(ctx, existing._id, {
         status: "active",
         playerName,
         updatedAt: now,
@@ -87,7 +89,7 @@ export const cancelMyRegistration = mutation({
     }
 
     const now = Date.now();
-    await ctx.db.patch(registration._id, {
+    await setRegistrationStatus(ctx, registration._id, {
       status: "dropped",
       updatedAt: now,
     });
@@ -173,13 +175,15 @@ export const listRegistrations = query({
     // Names come from the denormalized copy on the registration; only rows
     // missing it (legacy data) fall back to a live user lookup, so the common
     // path does zero per-row joins.
-    return await Promise.all(
-      registrations.map(async (registration) => ({
+    return await mapAsyncInBatches(
+      registrations,
+      DATABASE_IO_BATCH_SIZE,
+      async (registration) => ({
         registration,
         playerName:
           registration.playerName ??
           playerDisplayName(await ctx.db.get(registration.userId)),
-      })),
+      }),
     );
   },
 });
@@ -193,7 +197,7 @@ export const dropRegistration = mutation({
       registration.tournamentId,
     );
     const now = Date.now();
-    await ctx.db.patch(args.registrationId, {
+    await setRegistrationStatus(ctx, args.registrationId, {
       status: "dropped",
       updatedAt: now,
     });
@@ -220,7 +224,7 @@ export const reinstateRegistration = mutation({
     );
     requireCapacityAvailable(tournament);
     const now = Date.now();
-    await ctx.db.patch(args.registrationId, {
+    await setRegistrationStatus(ctx, args.registrationId, {
       status: "active",
       updatedAt: now,
     });

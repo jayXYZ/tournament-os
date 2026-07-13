@@ -2,6 +2,8 @@
 import { existsSync, readFileSync } from "node:fs";
 
 import { expect, test } from "vitest";
+import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "./model/batching";
+import { roundHasRecordedResult } from "./model/tournaments";
 
 const schemaSource = readFileSync(new URL("./schema.ts", import.meta.url), "utf8");
 const validatorsSource = readFileSync(
@@ -22,6 +24,49 @@ const modelModules = {
   testing: new URL("./model/testing.ts", import.meta.url),
   random: new URL("./model/random.ts", import.meta.url),
 };
+
+test("database I/O batches preserve order and bound concurrency", async () => {
+  const inputs = Array.from(
+    { length: DATABASE_IO_BATCH_SIZE + 1 },
+    (_, index) => index,
+  );
+  let inFlight = 0;
+  let maxInFlight = 0;
+
+  const results = await mapAsyncInBatches(
+    inputs,
+    DATABASE_IO_BATCH_SIZE,
+    async (input) => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await Promise.resolve();
+      inFlight -= 1;
+      return input * 2;
+    },
+  );
+
+  expect(results).toEqual(inputs.map((input) => input * 2));
+  expect(maxInFlight).toBe(DATABASE_IO_BATCH_SIZE);
+});
+
+test("rewind result detection follows player bye state, not table numbers", () => {
+  expect(
+    roundHasRecordedResult([
+      {
+        match: { matchStatus: "completed", tableNumber: 99 },
+        players: [{ isBye: true }],
+      },
+    ]),
+  ).toBe(false);
+  expect(
+    roundHasRecordedResult([
+      {
+        match: { matchStatus: "completed" },
+        players: [{ isBye: false }, { isBye: false }],
+      },
+    ]),
+  ).toBe(true);
+});
 
 test("tournament schema includes operational indexes and test config tables", () => {
   expect(schemaSource).toMatch(

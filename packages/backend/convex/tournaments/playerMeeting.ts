@@ -2,6 +2,7 @@ import { v } from "convex/values";
 
 import { mutation, query } from "../_generated/server";
 import { logAuditEvent } from "../model/auditLog";
+import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
 import {
   SWISS_FORMAT,
   activeRegistrations,
@@ -64,15 +65,17 @@ export const startPlayerMeeting = mutation({
       throw new Error("At least two active players are required");
     }
 
-    const players = await Promise.all(
-      registrations.map(async (registration) => ({
+    const players = await mapAsyncInBatches(
+      registrations,
+      DATABASE_IO_BATCH_SIZE,
+      async (registration) => ({
         registrationId: registration._id,
         playerName:
           registration.playerName ??
           (await registrationDisplayName(ctx, registration._id)) ??
           null,
         createdAt: registration.createdAt,
-      })),
+      }),
     );
     players.sort(comparePlayersAlphabetically);
 
@@ -115,12 +118,14 @@ export const listPlayerMeetingSeats = query({
       meetingStatus: phase.playerMeetingStatus ?? null,
       // Status is joined live so drops (and reinstatements) made during the
       // meeting strike through immediately without touching the seat rows.
-      seats: await Promise.all(
-        seats.map(async (seat) => ({
+      seats: await mapAsyncInBatches(
+        seats,
+        DATABASE_IO_BATCH_SIZE,
+        async (seat) => ({
           ...seat,
           registrationStatus:
             (await ctx.db.get(seat.registrationId))?.status ?? null,
-        })),
+        }),
       ),
     };
   },

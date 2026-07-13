@@ -253,7 +253,11 @@ function HeaderBadge({
   if (currentMatch.kind === 'not_started') {
     return <Badge variant="outline">Not started</Badge>
   }
-  if (currentMatch.kind === 'match' || currentMatch.kind === 'between_rounds') {
+  if (
+    currentMatch.kind === 'match' ||
+    currentMatch.kind === 'between_rounds' ||
+    currentMatch.kind === 'pairings_pending'
+  ) {
     return <Badge>Round {currentMatch.round.roundNumber}</Badge>
   }
   return null

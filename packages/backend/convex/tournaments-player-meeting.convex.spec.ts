@@ -30,7 +30,12 @@ function playerIdentity(playerNumber: number) {
 test("phase-1 meeting walks startPlayerMeeting -> startTournament -> completed", async () => {
   const t = convexTest(schema, modules);
   const { tournamentId } = await seedTournament(t, 4, [
-    { phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 3, playerMeeting: true },
+    {
+      phaseOrder: 1,
+      phaseRoundMode: "fixed",
+      phaseTotalRounds: 3,
+      playerMeeting: true,
+    },
   ]);
   const organizer = t.withIdentity(organizerIdentity);
 
@@ -57,7 +62,10 @@ test("phase-1 meeting walks startPlayerMeeting -> startTournament -> completed",
     tournamentId,
   });
   expect(board.phases[0].phase.playerMeetingStatus).toBe("in_progress");
-  expect(board.nextStep).toMatchObject({ kind: "startTournament", ready: true });
+  expect(board.nextStep).toMatchObject({
+    kind: "startTournament",
+    ready: true,
+  });
 
   await organizer.mutation(api.tournaments.rounds.startTournament, {
     tournamentId,
@@ -97,7 +105,9 @@ test("seats players alphabetically two per table, odd player alone at the end", 
     "Dave",
     "eve",
   ]);
-  expect(seating.seats.map((seat) => seat.tableNumber)).toEqual([1, 1, 2, 2, 3]);
+  expect(seating.seats.map((seat) => seat.tableNumber)).toEqual([
+    1, 1, 2, 2, 3,
+  ]);
   expect(
     seating.seats.every((seat) => seat.registrationStatus === "active"),
   ).toBe(true);
@@ -115,7 +125,9 @@ test("startPlayerMeeting rejects bad states", async () => {
     await expect(
       t
         .withIdentity(organizerIdentity)
-        .mutation(api.tournaments.playerMeeting.startPlayerMeeting, { phaseId }),
+        .mutation(api.tournaments.playerMeeting.startPlayerMeeting, {
+          phaseId,
+        }),
     ).rejects.toThrow("Player meeting is not enabled for this phase");
   }
 
@@ -205,9 +217,12 @@ test("drops during the meeting strike the seat, keep it on reinstate, and shrink
   expect(droppedSeat?.registrationStatus).toBe("dropped");
   const droppedTable = droppedSeat?.tableNumber;
 
-  await organizer.mutation(api.tournaments.registrations.reinstateRegistration, {
-    registrationId: registrationIds[3],
-  });
+  await organizer.mutation(
+    api.tournaments.registrations.reinstateRegistration,
+    {
+      registrationId: registrationIds[3],
+    },
+  );
   seating = await organizer.query(
     api.tournaments.playerMeeting.listPlayerMeetingSeats,
     { phaseId },
@@ -254,7 +269,12 @@ test("a later phase holds its own meeting between phases", async () => {
   const t = convexTest(schema, modules);
   const { tournamentId } = await seedTournament(t, 4, [
     { phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 1 },
-    { phaseOrder: 2, phaseRoundMode: "fixed", phaseTotalRounds: 1, playerMeeting: true },
+    {
+      phaseOrder: 2,
+      phaseRoundMode: "fixed",
+      phaseTotalRounds: 1,
+      playerMeeting: true,
+    },
   ]);
   const organizer = t.withIdentity(organizerIdentity);
   await organizer.mutation(api.tournaments.rounds.startTournament, {
@@ -284,7 +304,10 @@ test("a later phase holds its own meeting between phases", async () => {
   board = await organizer.query(api.tournaments.rounds.getPairingsBoard, {
     tournamentId,
   });
-  expect(board.nextStep).toMatchObject({ kind: "generateNextRound", ready: true });
+  expect(board.nextStep).toMatchObject({
+    kind: "generateNextRound",
+    ready: true,
+  });
 
   await organizer.mutation(api.tournaments.rounds.generateNextRound, {
     tournamentId,
@@ -435,6 +458,12 @@ async function seedTournament(
       playerCapacity: 16,
       format: "standard",
       phases,
+    });
+  await t
+    .withIdentity(organizerIdentity)
+    .mutation(api.tournaments.lifecycle.updatePairingsAutoPublish, {
+      tournamentId,
+      autoPublishPairings: true,
     });
 
   const registrationIds = await t.run(async (ctx) => {

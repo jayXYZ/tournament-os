@@ -106,6 +106,31 @@ test("startTimer requires an in-progress round", async () => {
   ).rejects.toThrow("No round is in progress");
 });
 
+test("startTimer requires published pairings", async () => {
+  const t = convexTest(schema, modules);
+  const { tournamentId } = await seedTournament(t, 4);
+  const organizer = t.withIdentity(organizerIdentity);
+  await organizer.mutation(
+    api.tournaments.lifecycle.updatePairingsAutoPublish,
+    { tournamentId, autoPublishPairings: false },
+  );
+  await organizer.mutation(api.tournaments.rounds.startTournament, {
+    tournamentId,
+  });
+
+  await expect(
+    organizer.mutation(api.tournaments.timer.startTimer, { tournamentId }),
+  ).rejects.toThrow("Pairings have not been published");
+
+  const round = await currentRound(t, tournamentId);
+  await organizer.mutation(api.tournaments.rounds.publishPairings, {
+    roundId: round._id,
+  });
+  await expect(
+    organizer.mutation(api.tournaments.timer.startTimer, { tournamentId }),
+  ).resolves.toBe(tournamentId);
+});
+
 test("pause freezes the remainder and resume re-anchors it", async () => {
   const t = convexTest(schema, modules);
   const { tournamentId } = await seedStartedTournament(t, 4);
@@ -362,9 +387,12 @@ test("timer state rides along on public and player queries", async () => {
     const tournament = await ctx.db.get(tournamentId);
     return String(tournament!.publicCode);
   });
-  const publicView = await t.query(api.tournaments.lifecycle.getPublicTournament, {
-    publicCode,
-  });
+  const publicView = await t.query(
+    api.tournaments.lifecycle.getPublicTournament,
+    {
+      publicCode,
+    },
+  );
   expect(publicView?.tournament.roundTimer?.kind).toBe("running");
 
   const playerView = await t
@@ -379,9 +407,7 @@ async function storedTimer(
 ) {
   // Read the field outside t.run: its return value is serialized, which would
   // turn a top-level undefined (timer removed) into null.
-  const tournament = await t.run(
-    async (ctx) => await ctx.db.get(tournamentId),
-  );
+  const tournament = await t.run(async (ctx) => await ctx.db.get(tournamentId));
   return tournament?.roundTimer;
 }
 
@@ -479,6 +505,12 @@ async function seedTournament(
       playerCapacity: 16,
       format: "standard",
       phases: [{ phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 3 }],
+    });
+  await t
+    .withIdentity(organizerIdentity)
+    .mutation(api.tournaments.lifecycle.updatePairingsAutoPublish, {
+      tournamentId,
+      autoPublishPairings: true,
     });
 
   const registrationIds = await t.run(async (ctx) => {

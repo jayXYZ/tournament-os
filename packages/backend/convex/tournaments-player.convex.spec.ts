@@ -85,31 +85,43 @@ test("reportMyMatchResult rejects outsiders, byes, re-reports, and bad scores", 
 
   // A player registered but seated at another table cannot report this match.
   await expect(
-    t.withIdentity(playerIdentity(outsider)).mutation(
-      api.tournaments.player.reportMyMatchResult,
-      { matchId: match._id, myGameWins: 2, opponentGameWins: 0 },
-    ),
+    t
+      .withIdentity(playerIdentity(outsider))
+      .mutation(api.tournaments.player.reportMyMatchResult, {
+        matchId: match._id,
+        myGameWins: 2,
+        opponentGameWins: 0,
+      }),
   ).rejects.toThrow("You are not part of this match");
 
   await expect(
-    t.withIdentity(playerIdentity(99)).mutation(
-      api.tournaments.player.reportMyMatchResult,
-      { matchId: match._id, myGameWins: 2, opponentGameWins: 0 },
-    ),
+    t
+      .withIdentity(playerIdentity(99))
+      .mutation(api.tournaments.player.reportMyMatchResult, {
+        matchId: match._id,
+        myGameWins: 2,
+        opponentGameWins: 0,
+      }),
   ).rejects.toThrow("Not registered for this tournament");
 
   await expect(
-    t.withIdentity(playerIdentity(5)).mutation(
-      api.tournaments.player.reportMyMatchResult,
-      { matchId: byeMatch._id, myGameWins: 2, opponentGameWins: 0 },
-    ),
+    t
+      .withIdentity(playerIdentity(5))
+      .mutation(api.tournaments.player.reportMyMatchResult, {
+        matchId: byeMatch._id,
+        myGameWins: 2,
+        opponentGameWins: 0,
+      }),
   ).rejects.toThrow("Only two-player matches can be reported by players");
 
   await expect(
-    t.withIdentity(playerIdentity(1)).mutation(
-      api.tournaments.player.reportMyMatchResult,
-      { matchId: match._id, myGameWins: 3, opponentGameWins: 0 },
-    ),
+    t
+      .withIdentity(playerIdentity(1))
+      .mutation(api.tournaments.player.reportMyMatchResult, {
+        matchId: match._id,
+        myGameWins: 3,
+        opponentGameWins: 0,
+      }),
   ).rejects.toThrow("Game wins must be a whole number between 0 and 2");
 
   await t
@@ -120,10 +132,13 @@ test("reportMyMatchResult rejects outsiders, byes, re-reports, and bad scores", 
       opponentGameWins: 0,
     });
   await expect(
-    t.withIdentity(playerIdentity(opponent)).mutation(
-      api.tournaments.player.reportMyMatchResult,
-      { matchId: match._id, myGameWins: 2, opponentGameWins: 0 },
-    ),
+    t
+      .withIdentity(playerIdentity(opponent))
+      .mutation(api.tournaments.player.reportMyMatchResult, {
+        matchId: match._id,
+        myGameWins: 2,
+        opponentGameWins: 0,
+      }),
   ).rejects.toThrow("Match already has a result");
 });
 
@@ -139,10 +154,11 @@ test("confirmMatchResult requires the opponent; organizer override clears the re
   );
 
   await expect(
-    t.withIdentity(playerIdentity(opponent)).mutation(
-      api.tournaments.player.confirmMatchResult,
-      { matchId: match._id },
-    ),
+    t
+      .withIdentity(playerIdentity(opponent))
+      .mutation(api.tournaments.player.confirmMatchResult, {
+        matchId: match._id,
+      }),
   ).rejects.toThrow("Match has no player-reported result to confirm");
 
   await t
@@ -154,10 +170,11 @@ test("confirmMatchResult requires the opponent; organizer override clears the re
     });
 
   await expect(
-    t.withIdentity(playerIdentity(1)).mutation(
-      api.tournaments.player.confirmMatchResult,
-      { matchId: match._id },
-    ),
+    t
+      .withIdentity(playerIdentity(1))
+      .mutation(api.tournaments.player.confirmMatchResult, {
+        matchId: match._id,
+      }),
   ).rejects.toThrow("The reporting player cannot confirm their own result");
 
   await t
@@ -397,9 +414,12 @@ test("getMyCurrentMatch walks the tournament lifecycle", async () => {
   const { tournamentId, registrationIds } = await seedTournament(t, 4);
   const playerOne = t.withIdentity(playerIdentity(1));
 
-  let current = await playerOne.query(api.tournaments.player.getMyCurrentMatch, {
-    tournamentId,
-  });
+  let current = await playerOne.query(
+    api.tournaments.player.getMyCurrentMatch,
+    {
+      tournamentId,
+    },
+  );
   expect(current.kind).toBe("not_started");
 
   await t
@@ -439,7 +459,11 @@ test("getMyCurrentMatch walks the tournament lifecycle", async () => {
   expect(current.match.reportedByRegistrationId).toBe(registrationIds[0]);
 
   const round = await currentRound(t, tournamentId);
-  const otherNumber = await outsiderNumber(t, current.match._id, registrationIds);
+  const otherNumber = await outsiderNumber(
+    t,
+    current.match._id,
+    registrationIds,
+  );
   const otherMatch = await matchForPlayer(
     t,
     tournamentId,
@@ -463,6 +487,144 @@ test("getMyCurrentMatch walks the tournament lifecycle", async () => {
   expect(current.kind).toBe("between_rounds");
 });
 
+test("pairings stay private until published and auto-publish applies to future rounds", async () => {
+  const t = convexTest(schema, modules);
+  const { tournamentId, registrationIds } = await seedTournament(
+    t,
+    4,
+    [{ phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 2 }],
+    false,
+  );
+  const organizer = t.withIdentity(organizerIdentity);
+  const playerOne = t.withIdentity(playerIdentity(1));
+
+  const setup = await organizer.query(
+    api.tournaments.lifecycle.getTournamentSetup,
+    { tournamentId },
+  );
+  expect(setup.tournament.autoPublishPairings).toBe(false);
+
+  await organizer.mutation(api.tournaments.rounds.startTournament, {
+    tournamentId,
+  });
+  const roundOne = await currentRound(t, tournamentId);
+  const match = await matchForPlayer(t, tournamentId, 1, registrationIds[0]);
+
+  expect(
+    await playerOne.query(api.tournaments.player.getMyCurrentMatch, {
+      tournamentId,
+    }),
+  ).toMatchObject({ kind: "pairings_pending", round: { roundNumber: 1 } });
+  expect(
+    await playerOne.query(api.tournaments.player.getMyMatchHistory, {
+      tournamentId,
+    }),
+  ).toEqual([]);
+  await expect(
+    playerOne.mutation(api.tournaments.player.reportMyMatchResult, {
+      matchId: match._id,
+      myGameWins: 2,
+      opponentGameWins: 0,
+    }),
+  ).rejects.toThrow("Pairings have not been published");
+  expect(
+    await organizer.query(api.tournaments.rounds.getPairingsBoard, {
+      tournamentId,
+    }),
+  ).toMatchObject({
+    nextStep: { kind: "publishPairings", roundId: roundOne._id, ready: true },
+  });
+
+  await organizer.mutation(api.tournaments.rounds.publishPairings, {
+    roundId: roundOne._id,
+  });
+  expect(
+    await playerOne.query(api.tournaments.player.getMyCurrentMatch, {
+      tournamentId,
+    }),
+  ).toMatchObject({ kind: "match", round: { roundNumber: 1 } });
+
+  await organizer.mutation(
+    api.tournaments.lifecycle.updatePairingsAutoPublish,
+    { tournamentId, autoPublishPairings: true },
+  );
+  await playOutCurrentRound(t, tournamentId);
+  const roundTwoId = await organizer.mutation(
+    api.tournaments.rounds.generateNextRound,
+    { tournamentId },
+  );
+  const roundTwo = await t.run(async (ctx) => await ctx.db.get(roundTwoId));
+  expect(roundTwo?.pairingsPublishedAt).toEqual(expect.any(Number));
+  expect(
+    await playerOne.query(api.tournaments.player.getMyCurrentMatch, {
+      tournamentId,
+    }),
+  ).toMatchObject({ kind: "match", round: { roundNumber: 2 } });
+});
+
+test("unpublished rounds do not promise pairings to excluded players", async () => {
+  const t = convexTest(schema, modules);
+  const { tournamentId, registrationIds } = await seedTournament(
+    t,
+    4,
+    [{ phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 1 }],
+    false,
+  );
+  const organizer = t.withIdentity(organizerIdentity);
+  await organizer.mutation(api.tournaments.registrations.dropRegistration, {
+    registrationId: registrationIds[3],
+  });
+  await organizer.mutation(api.tournaments.rounds.startTournament, {
+    tournamentId,
+  });
+
+  expect(
+    await t
+      .withIdentity(playerIdentity(1))
+      .query(api.tournaments.player.getMyCurrentMatch, { tournamentId }),
+  ).toMatchObject({ kind: "pairings_pending" });
+  expect(
+    await t
+      .withIdentity(playerIdentity(4))
+      .query(api.tournaments.player.getMyCurrentMatch, { tournamentId }),
+  ).toMatchObject({ kind: "no_match", myRegistrationStatus: "dropped" });
+});
+
+test("completing unpublished pairings preserves the round in match history", async () => {
+  const t = convexTest(schema, modules);
+  const { tournamentId } = await seedTournament(
+    t,
+    4,
+    [{ phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 2 }],
+    false,
+  );
+  const organizer = t.withIdentity(organizerIdentity);
+  const playerOne = t.withIdentity(playerIdentity(1));
+
+  await organizer.mutation(api.tournaments.rounds.startTournament, {
+    tournamentId,
+  });
+  const roundOne = await currentRound(t, tournamentId);
+  expect(roundOne.pairingsPublishedAt).toBeUndefined();
+
+  // Organizers can enter results before publishing pairings. Completing the
+  // round must make that final record visible before the current round moves.
+  await playOutCurrentRound(t, tournamentId);
+  await organizer.mutation(api.tournaments.rounds.generateNextRound, {
+    tournamentId,
+  });
+
+  const completedRound = await t.run(
+    async (ctx) => await ctx.db.get(roundOne._id),
+  );
+  expect(completedRound?.pairingsPublishedAt).toEqual(expect.any(Number));
+  expect(
+    await playerOne.query(api.tournaments.player.getMyMatchHistory, {
+      tournamentId,
+    }),
+  ).toMatchObject([{ roundNumber: 1 }]);
+});
+
 test("isFinalRound is only true in the tournament's last phase", async () => {
   const t = convexTest(schema, modules);
   const { tournamentId } = await seedTournament(t, 4, [
@@ -477,9 +639,12 @@ test("isFinalRound is only true in the tournament's last phase", async () => {
 
   // Phase 1's last round is not the tournament's final round: phase 2 still
   // has rounds to play.
-  let current = await playerOne.query(api.tournaments.player.getMyCurrentMatch, {
-    tournamentId,
-  });
+  let current = await playerOne.query(
+    api.tournaments.player.getMyCurrentMatch,
+    {
+      tournamentId,
+    },
+  );
   if (current.kind === "not_started" || current.kind === "player_meeting") {
     throw new Error("Expected the tournament to have started");
   }
@@ -691,6 +856,7 @@ async function seedTournament(
     phaseRoundMode: "fixed" | "dynamic";
     phaseTotalRounds?: number;
   }[] = [{ phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 3 }],
+  autoPublishPairings = true,
 ) {
   const { organizationId } = await seedOrganizer(t);
   const tournamentId: Id<"tournaments"> = await t
@@ -703,6 +869,14 @@ async function seedTournament(
       format: "standard",
       phases,
     });
+  if (autoPublishPairings) {
+    await t
+      .withIdentity(organizerIdentity)
+      .mutation(api.tournaments.lifecycle.updatePairingsAutoPublish, {
+        tournamentId,
+        autoPublishPairings: true,
+      });
+  }
 
   const registrationIds = await t.run(async (ctx) => {
     const now = Date.now();

@@ -3,6 +3,7 @@ import type { MutationCtx, QueryCtx } from "../_generated/server";
 import {
   MAX_TOURNAMENT_PLAYERS,
   allRegistrations,
+  previousTournamentRound,
   roundMatchesWithPlayers,
 } from "./tournaments";
 
@@ -83,6 +84,21 @@ export function hasCumulativeTotals(standing: Doc<"roundStandings">) {
   );
 }
 
+export async function deleteStandingsForRound(
+  ctx: MutationCtx,
+  roundId: Id<"tournamentRounds">,
+) {
+  const standings = await ctx.db
+    .query("roundStandings")
+    .withIndex("by_tournamentRoundId_and_rank", (q) =>
+      q.eq("tournamentRoundId", roundId),
+    )
+    .take(MAX_TOURNAMENT_PLAYERS);
+  for (const standing of standings) {
+    await ctx.db.delete(standing._id);
+  }
+}
+
 export async function replaceStandingsForRound(
   ctx: MutationCtx,
   tournament: Doc<"tournaments">,
@@ -90,22 +106,13 @@ export async function replaceStandingsForRound(
   round: Doc<"tournamentRounds">,
   prefetchedMatches?: RoundMatchWithPlayers[],
 ) {
-  const existing = await ctx.db
-    .query("roundStandings")
-    .withIndex("by_tournamentRoundId_and_rank", (q) =>
-      q.eq("tournamentRoundId", round._id),
-    )
-    .take(MAX_TOURNAMENT_PLAYERS);
-  for (const standing of existing) {
-    await ctx.db.delete(standing._id);
-  }
+  await deleteStandingsForRound(ctx, round._id);
 
   const matchesWithPlayers =
     prefetchedMatches ?? (await roundMatchesWithPlayers(ctx, round._id));
   const stats = await cumulativeStatsThroughRound(
     ctx,
     tournament._id,
-    phase,
     round,
     matchesWithPlayers,
   );
@@ -165,7 +172,7 @@ async function rankedStatsForRound(
       }));
   }
 
-  const previousRound = await previousRoundForStandings(ctx, phase, round);
+  const previousRound = await previousTournamentRound(ctx, round);
   const previousStandings = previousRound
     ? await ctx.db
         .query("roundStandings")
@@ -275,7 +282,6 @@ function comparePlayerStats(
 async function cumulativeStatsThroughRound(
   ctx: QueryCtx,
   tournamentId: Id<"tournaments">,
-  phase: Doc<"tournamentPhases">,
   round: Doc<"tournamentRounds">,
   matchesWithPlayers: RoundMatchWithPlayers[],
 ) {
@@ -293,7 +299,7 @@ async function cumulativeStatsThroughRound(
   // Round numbers are global across phases, so round 1 is the tournament's
   // very first round and every later round folds from the one before it.
   if (round.roundNumber > 1) {
-    const previousRound = await previousRoundForStandings(ctx, phase, round);
+    const previousRound = await previousTournamentRound(ctx, round);
     const previousStandings = previousRound
       ? await ctx.db
           .query("roundStandings")
@@ -350,41 +356,6 @@ async function cumulativeStatsThroughRound(
   }
 
   return stats;
-}
-
-// The round whose standings feed the given round's fold. Within a phase that
-// is the prior round number; for the first round of a later phase (numbering
-// is global, so its number continues the previous phase's) it is the previous
-// phase's final round, so records carry across Swiss phases.
-async function previousRoundForStandings(
-  ctx: QueryCtx,
-  phase: Doc<"tournamentPhases">,
-  round: Doc<"tournamentRounds">,
-): Promise<Doc<"tournamentRounds"> | null> {
-  const samePhaseRound = await ctx.db
-    .query("tournamentRounds")
-    .withIndex("by_tournamentPhaseId_and_roundNumber", (q) =>
-      q
-        .eq("tournamentPhaseId", phase._id)
-        .eq("roundNumber", round.roundNumber - 1),
-    )
-    .unique();
-  if (samePhaseRound || phase.phaseOrder <= 1) {
-    return samePhaseRound;
-  }
-
-  const previousPhase = await ctx.db
-    .query("tournamentPhases")
-    .withIndex("by_tournamentId_and_phaseOrder", (q) =>
-      q
-        .eq("tournamentId", round.tournamentId)
-        .eq("phaseOrder", phase.phaseOrder - 1),
-    )
-    .unique();
-  // A phase's phaseCurrentRound is its final round once the phase completes.
-  return previousPhase?.phaseCurrentRound
-    ? await ctx.db.get(previousPhase.phaseCurrentRound)
-    : null;
 }
 
 // Full-history recompute for a single player. Round numbers are global across

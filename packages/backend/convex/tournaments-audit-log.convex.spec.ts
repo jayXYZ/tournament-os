@@ -144,17 +144,23 @@ test("registration changes and drops are audited with the acting side", async ()
   await playerFive.mutation(api.tournaments.registrations.registerSelf, {
     tournamentId,
   });
-  await playerFive.mutation(api.tournaments.registrations.cancelMyRegistration, {
-    tournamentId,
-  });
+  await playerFive.mutation(
+    api.tournaments.registrations.cancelMyRegistration,
+    {
+      tournamentId,
+    },
+  );
 
   // The organizer drops and reinstates player 1.
   await organizer.mutation(api.tournaments.registrations.dropRegistration, {
     registrationId: registrationIds[0],
   });
-  await organizer.mutation(api.tournaments.registrations.reinstateRegistration, {
-    registrationId: registrationIds[0],
-  });
+  await organizer.mutation(
+    api.tournaments.registrations.reinstateRegistration,
+    {
+      registrationId: registrationIds[0],
+    },
+  );
 
   // Player 2 drops themselves mid-event.
   await organizer.mutation(api.tournaments.rounds.startTournament, {
@@ -239,10 +245,12 @@ test("listAuditEvents is organizer-only and paginates newest first", async () =>
   const { tournamentId } = await seedStartedTournament(t, 4);
 
   await expect(
-    t.withIdentity(playerIdentity(1)).query(
-      api.tournaments.auditLog.listAuditEvents,
-      { tournamentId, paginationOpts: { numItems: 10, cursor: null } },
-    ),
+    t
+      .withIdentity(playerIdentity(1))
+      .query(api.tournaments.auditLog.listAuditEvents, {
+        tournamentId,
+        paginationOpts: { numItems: 10, cursor: null },
+      }),
   ).rejects.toThrow("Unauthorized");
 
   await playOutCurrentRound(t, tournamentId);
@@ -263,9 +271,9 @@ test("listAuditEvents is organizer-only and paginates newest first", async () =>
     },
   );
   // The remaining events end with the oldest: the tournament start.
-  expect(
-    secondPage.page[secondPage.page.length - 1].event.type,
-  ).toBe("tournament_started");
+  expect(secondPage.page[secondPage.page.length - 1].event.type).toBe(
+    "tournament_started",
+  );
 });
 
 test("deleting a tournament removes its audit trail", async () => {
@@ -318,6 +326,12 @@ async function seedTournament(
       playerCapacity: 16,
       format: "standard",
       phases,
+    });
+  await t
+    .withIdentity(organizerIdentity)
+    .mutation(api.tournaments.lifecycle.updatePairingsAutoPublish, {
+      tournamentId,
+      autoPublishPairings: true,
     });
 
   const registrationIds = await t.run(async (ctx) => {

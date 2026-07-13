@@ -101,6 +101,7 @@ export async function createSingleEliminationRoundWithPairings(
     roundNumber: args.roundNumber,
     roundName: args.roundName,
     roundStatus: "in_progress",
+    pairingsPublishedAt: args.tournament.autoPublishPairings ? now : undefined,
     updatedAt: now,
   });
 
@@ -167,6 +168,7 @@ export async function createRoundWithPairings(
     roundNumber: args.roundNumber,
     roundName: `Round ${args.roundNumber}`,
     roundStatus: "in_progress",
+    pairingsPublishedAt: args.tournament.autoPublishPairings ? now : undefined,
     updatedAt: now,
   });
   const ranked = await rankedRegistrationsForPairing(ctx, {

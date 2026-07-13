@@ -31,6 +31,7 @@ test("listUpcomingPublic returns future public tournaments in start date order",
       playerCapacity: 32,
       format: "standard" as const,
       isTestEvent: false,
+      autoPublishPairings: false,
       activeRegistrationCount: 0,
       updatedAt: now,
     };
@@ -118,6 +119,7 @@ test("getPublicTournament hides private and unpublished events and reports regis
       playerCapacity: 32,
       format: "standard" as const,
       isTestEvent: false,
+      autoPublishPairings: false,
       activeRegistrationCount: 0,
       updatedAt: now,
     };
@@ -221,6 +223,7 @@ test("getPublicTournament keeps private events resolvable for registered players
       playerCapacity: 32,
       format: "standard",
       isTestEvent: false,
+      autoPublishPairings: false,
       activeRegistrationCount: 1,
       updatedAt: now,
       name: "Private Live Event",
@@ -300,6 +303,7 @@ test("listMyTournaments returns the player's active registrations for visible ev
       playerCapacity: 32,
       format: "standard" as const,
       isTestEvent: false,
+      autoPublishPairings: false,
       activeRegistrationCount: 0,
       updatedAt: now,
     };
@@ -399,6 +403,7 @@ test("listUpcomingForOrganization returns active future tournaments for one orga
       playerCapacity: 32,
       format: "standard" as const,
       isTestEvent: false,
+      autoPublishPairings: false,
       activeRegistrationCount: 0,
       updatedAt: now,
     };
@@ -997,6 +1002,401 @@ test("multi-phase tournaments advance into the next phase and carry records", as
   expect(board.nextStep).toEqual({ kind: "tournamentCompleted" });
 });
 
+test("rewinding round one ignores byes, clears the timer, and reopens registration", async () => {
+  const t = convexTest(schema, modules);
+  const { organizationId } = await seedOrganizer(t);
+  const authed = t.withIdentity(organizerIdentity);
+  const tournamentId = await authed.mutation(
+    api.tournaments.lifecycle.createTournamentWithPhases,
+    {
+      organizationId,
+      name: "Round One Rewind",
+      startDate: Date.now(),
+      playerCapacity: 8,
+      format: "standard",
+      phases: [{ phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 1 }],
+    },
+  );
+  await seedActiveRegistrations(t, tournamentId, 3);
+  const roundId = await authed.mutation(
+    api.tournaments.rounds.startTournament,
+    { tournamentId },
+  );
+  await authed.mutation(api.tournaments.rounds.publishPairings, { roundId });
+  await authed.mutation(api.tournaments.timer.startTimer, { tournamentId });
+
+  const board = await authed.query(api.tournaments.rounds.getPairingsBoard, {
+    tournamentId,
+  });
+  expect(board.rewind).toMatchObject({
+    eligible: true,
+    removedRoundNumber: 1,
+    reopenedRoundNumber: null,
+  });
+  expect(
+    (
+      await authed.query(api.tournaments.rounds.listRoundPairings, { roundId })
+    ).some(({ players }) => players.every((player) => player.isBye)),
+  ).toBe(true);
+
+  await authed.mutation(api.tournaments.rounds.rewindLatestRound, {
+    tournamentId,
+  });
+  const after = await authed.query(
+    api.tournaments.lifecycle.getTournamentSetup,
+    { tournamentId },
+  );
+  expect(after.tournament.lifecycle).toBe("registration");
+  expect(after.tournament.roundTimer).toBeUndefined();
+  expect(after.phases[0].phaseStatus).toBe("upcoming");
+  expect(after.phases[0].phaseCurrentRound).toBeUndefined();
+  await t.run(async (ctx) => {
+    expect(await ctx.db.get(roundId)).toBeNull();
+  });
+});
+
+test("rewind requires organizer access and an in-progress lifecycle", async () => {
+  const t = convexTest(schema, modules);
+  const { organizationId } = await seedOrganizer(t);
+  const authed = t.withIdentity(organizerIdentity);
+  const tournamentId = await authed.mutation(
+    api.tournaments.lifecycle.createTournamentWithPhases,
+    {
+      organizationId,
+      name: "Rewind Guard",
+      startDate: Date.now(),
+      playerCapacity: 8,
+      format: "standard",
+      phases: [{ phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 1 }],
+    },
+  );
+
+  for (const lifecycle of [
+    "setup",
+    "registration",
+    "cancelled",
+    "completed",
+  ] as const) {
+    await t.run(async (ctx) => {
+      await ctx.db.patch(tournamentId, { lifecycle });
+    });
+    await expect(
+      authed.mutation(api.tournaments.rounds.rewindLatestRound, {
+        tournamentId,
+      }),
+    ).rejects.toThrow("Only an in-progress tournament can be rewound");
+  }
+
+  await t.run(async (ctx) => {
+    await ctx.db.patch(tournamentId, { lifecycle: "in_progress" });
+  });
+  await expect(
+    t.mutation(api.tournaments.rounds.rewindLatestRound, { tournamentId }),
+  ).rejects.toThrow();
+});
+
+test("rewinding a Swiss round reopens results and regenerates pairings", async () => {
+  const t = convexTest(schema, modules);
+  const { organizationId } = await seedOrganizer(t);
+  const authed = t.withIdentity(organizerIdentity);
+  const tournamentId = await authed.mutation(
+    api.tournaments.lifecycle.createTournamentWithPhases,
+    {
+      organizationId,
+      name: "Swiss Repair",
+      startDate: Date.now(),
+      playerCapacity: 8,
+      format: "standard",
+      phases: [{ phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 2 }],
+    },
+  );
+  await seedActiveRegistrations(t, tournamentId, 4);
+  await authed.mutation(api.tournaments.rounds.startTournament, {
+    tournamentId,
+  });
+  const first = await playOutCurrentRound(authed, tournamentId);
+  const removedRoundId = await authed.mutation(
+    api.tournaments.rounds.generateNextRound,
+    { tournamentId },
+  );
+
+  await authed.mutation(api.tournaments.rounds.rewindLatestRound, {
+    tournamentId,
+  });
+  expect(
+    await authed.query(api.tournaments.rounds.getCurrentRound, {
+      tournamentId,
+    }),
+  ).toMatchObject({ _id: first.round._id, roundStatus: "in_progress" });
+  expect(
+    await authed.query(api.tournaments.rounds.getStandings, {
+      roundId: first.round._id,
+    }),
+  ).toEqual([]);
+  const reopenedPairings = await authed.query(
+    api.tournaments.rounds.listRoundPairings,
+    { roundId: first.round._id },
+  );
+  await authed.mutation(api.tournaments.rounds.recordMatchResult, {
+    matchId: reopenedPairings[0].match._id,
+    playerOneRegistrationId: reopenedPairings[0].players[0].playerId,
+    playerTwoRegistrationId: reopenedPairings[0].players[1].playerId,
+    playerOneGameWins: 0,
+    playerTwoGameWins: 2,
+  });
+  await authed.mutation(api.tournaments.rounds.completeRound, {
+    roundId: first.round._id,
+  });
+  const replacementRoundId = await authed.mutation(
+    api.tournaments.rounds.generateNextRound,
+    { tournamentId },
+  );
+  expect(replacementRoundId).not.toBe(removedRoundId);
+  const replacementPairings = await authed.query(
+    api.tournaments.rounds.listRoundPairings,
+    { roundId: replacementRoundId },
+  );
+  await authed.mutation(api.tournaments.rounds.recordMatchResult, {
+    matchId: replacementPairings[0].match._id,
+    playerOneRegistrationId: replacementPairings[0].players[0].playerId,
+    playerTwoRegistrationId: replacementPairings[0].players[1].playerId,
+    playerOneGameWins: 2,
+    playerTwoGameWins: 0,
+  });
+  expect(
+    (
+      await authed.query(api.tournaments.rounds.getPairingsBoard, {
+        tournamentId,
+      })
+    ).rewind,
+  ).toMatchObject({ eligible: false });
+  await expect(
+    authed.mutation(api.tournaments.rounds.rewindLatestRound, {
+      tournamentId,
+    }),
+  ).rejects.toThrow(/after a match result/);
+
+  await t.run(async (ctx) => {
+    expect(await ctx.db.get(removedRoundId)).toBeNull();
+    const rewound = await ctx.db
+      .query("tournamentAuditEvents")
+      .withIndex("by_tournamentId", (q) => q.eq("tournamentId", tournamentId))
+      .order("desc")
+      .take(8);
+    expect(rewound.some(({ event }) => event.type === "round_rewound")).toBe(
+      true,
+    );
+  });
+});
+
+test("rewinding a playoff restores cut players and reopens the Swiss phase", async () => {
+  const t = convexTest(schema, modules);
+  const { organizationId } = await seedOrganizer(t);
+  const authed = t.withIdentity(organizerIdentity);
+  const tournamentId = await authed.mutation(
+    api.tournaments.lifecycle.createTournamentWithPhases,
+    {
+      organizationId,
+      name: "Playoff Cut Repair",
+      startDate: Date.now(),
+      playerCapacity: 12,
+      format: "standard",
+      phases: [
+        {
+          phaseOrder: 1,
+          phaseType: "swiss",
+          phaseRoundMode: "fixed",
+          phaseTotalRounds: 1,
+        },
+        {
+          phaseOrder: 2,
+          phaseType: "single_elimination",
+          phaseRoundMode: "fixed",
+        },
+      ],
+    },
+  );
+  await seedActiveRegistrations(t, tournamentId, 10);
+  await authed.mutation(api.tournaments.rounds.startTournament, {
+    tournamentId,
+  });
+  const swiss = await playOutCurrentRound(authed, tournamentId);
+  await authed.mutation(api.tournaments.rounds.generateNextRound, {
+    tournamentId,
+  });
+  const cutRegistrations = await authed.query(
+    api.tournaments.registrations.listRegistrations,
+    { tournamentId },
+  );
+  const withdrawnCutPlayer = cutRegistrations.find(
+    ({ registration }) => registration.status === "eliminated",
+  );
+  if (!withdrawnCutPlayer) {
+    throw new Error("Expected a player below the playoff cut");
+  }
+  await authed.mutation(api.tournaments.registrations.dropRegistration, {
+    registrationId: withdrawnCutPlayer.registration._id,
+  });
+  expect(
+    (
+      await authed.query(api.tournaments.lifecycle.getTournamentSetup, {
+        tournamentId,
+      })
+    ).tournament.activeRegistrationCount,
+  ).toBe(8);
+
+  await authed.mutation(api.tournaments.rounds.rewindLatestRound, {
+    tournamentId,
+  });
+  const setup = await authed.query(
+    api.tournaments.lifecycle.getTournamentSetup,
+    { tournamentId },
+  );
+  expect(setup.tournament.activeRegistrationCount).toBe(9);
+  const registrationsAfterRewind = await authed.query(
+    api.tournaments.registrations.listRegistrations,
+    { tournamentId },
+  );
+  expect(
+    registrationsAfterRewind.find(
+      ({ registration }) =>
+        registration._id === withdrawnCutPlayer.registration._id,
+    )?.registration.status,
+  ).toBe("dropped");
+  expect(setup.phases.map((phase) => phase.phaseStatus)).toEqual([
+    "in_progress",
+    "upcoming",
+  ]);
+  expect(
+    await authed.query(api.tournaments.rounds.getCurrentRound, {
+      tournamentId,
+    }),
+  ).toMatchObject({ _id: swiss.round._id, roundStatus: "in_progress" });
+});
+
+test("rewinding elimination pairings restores losers and repairs advancement", async () => {
+  const t = convexTest(schema, modules);
+  const { organizationId } = await seedOrganizer(t);
+  const authed = t.withIdentity(organizerIdentity);
+  const tournamentId = await authed.mutation(
+    api.tournaments.lifecycle.createTournamentWithPhases,
+    {
+      organizationId,
+      name: "Bracket Repair",
+      startDate: Date.now(),
+      playerCapacity: 12,
+      format: "standard",
+      phases: [
+        {
+          phaseOrder: 1,
+          phaseType: "swiss",
+          phaseRoundMode: "fixed",
+          phaseTotalRounds: 1,
+        },
+        {
+          phaseOrder: 2,
+          phaseType: "single_elimination",
+          phaseRoundMode: "fixed",
+        },
+      ],
+    },
+  );
+  await seedActiveRegistrations(t, tournamentId, 12);
+  await authed.mutation(api.tournaments.rounds.startTournament, {
+    tournamentId,
+  });
+  const swiss = await playOutCurrentRound(authed, tournamentId);
+  const quarterfinalId = await authed.mutation(
+    api.tournaments.rounds.generateNextRound,
+    { tournamentId },
+  );
+  const registrationsAfterCut = await authed.query(
+    api.tournaments.registrations.listRegistrations,
+    { tournamentId },
+  );
+  const cutPlayerIds = registrationsAfterCut
+    .filter(({ registration }) => registration.status === "eliminated")
+    .map(({ registration }) => registration._id);
+  expect(cutPlayerIds).toHaveLength(4);
+  expect(
+    registrationsAfterCut
+      .filter(({ registration }) => cutPlayerIds.includes(registration._id))
+      .map(({ registration }) => registration.eliminatedByRoundId),
+  ).toEqual(Array(4).fill(swiss.round._id));
+  const quarterfinalPairings = await authed.query(
+    api.tournaments.rounds.listRoundPairings,
+    { roundId: quarterfinalId },
+  );
+  await recordFirstPlayerWins(authed, quarterfinalPairings);
+  await authed.mutation(api.tournaments.rounds.completeRound, {
+    roundId: quarterfinalId,
+  });
+  const removedSemifinalId = await authed.mutation(
+    api.tournaments.rounds.generateNextRound,
+    { tournamentId },
+  );
+
+  await authed.mutation(api.tournaments.rounds.rewindLatestRound, {
+    tournamentId,
+  });
+  expect(
+    (
+      await authed.query(api.tournaments.lifecycle.getTournamentSetup, {
+        tournamentId,
+      })
+    ).tournament.activeRegistrationCount,
+  ).toBe(8);
+  const registrationsAfterRewind = await authed.query(
+    api.tournaments.registrations.listRegistrations,
+    { tournamentId },
+  );
+  expect(
+    registrationsAfterRewind
+      .filter(({ registration }) => cutPlayerIds.includes(registration._id))
+      .map(({ registration }) => registration.status),
+  ).toEqual(Array(4).fill("eliminated"));
+  expect(
+    await authed.query(api.tournaments.rounds.getCurrentRound, {
+      tournamentId,
+    }),
+  ).toMatchObject({ _id: quarterfinalId, roundStatus: "in_progress" });
+
+  const corrected = quarterfinalPairings[0];
+  const correctedWinner = corrected.players[1].playerId;
+  const replacedWinner = corrected.players[0].playerId;
+  await authed.mutation(api.tournaments.rounds.recordMatchResult, {
+    matchId: corrected.match._id,
+    playerOneRegistrationId: replacedWinner,
+    playerTwoRegistrationId: correctedWinner,
+    playerOneGameWins: 0,
+    playerTwoGameWins: 2,
+  });
+  await authed.mutation(api.tournaments.rounds.completeRound, {
+    roundId: quarterfinalId,
+  });
+  expect(
+    (
+      await authed.query(api.tournaments.lifecycle.getTournamentSetup, {
+        tournamentId,
+      })
+    ).tournament.activeRegistrationCount,
+  ).toBe(4);
+  const repairedSemifinalId = await authed.mutation(
+    api.tournaments.rounds.generateNextRound,
+    { tournamentId },
+  );
+  const repairedSemifinals = await authed.query(
+    api.tournaments.rounds.listRoundPairings,
+    { roundId: repairedSemifinalId },
+  );
+  const repairedPlayers = repairedSemifinals.flatMap(({ players }) =>
+    players.map(({ playerId }) => playerId),
+  );
+  expect(repairedSemifinalId).not.toBe(removedSemifinalId);
+  expect(repairedPlayers).toContain(correctedWinner);
+  expect(repairedPlayers).not.toContain(replacedWinner);
+});
+
 test("top-8 single elimination advances active players without reseeding", async () => {
   const t = convexTest(schema, modules);
   const { organizationId } = await seedOrganizer(t);
@@ -1024,6 +1424,10 @@ test("top-8 single elimination advances active players without reseeding", async
       ],
     },
   );
+  await authed.mutation(api.tournaments.lifecycle.updatePairingsAutoPublish, {
+    tournamentId,
+    autoPublishPairings: true,
+  });
   await seedActiveRegistrations(t, tournamentId, 12);
   await authed.mutation(api.tournaments.rounds.startTournament, {
     tournamentId,
@@ -1444,6 +1848,9 @@ test("test tournaments seed players, generate Swiss rounds, and complete", async
   await authed.mutation(api.tournaments.testing.advanceTestRound, {
     tournamentId,
   });
+  expect(
+    await t.run(async (ctx) => await ctx.db.get(roundOne!._id)),
+  ).toMatchObject({ pairingsPublishedAt: expect.any(Number) });
   const roundOneStandings = await authed.query(
     api.tournaments.rounds.getStandings,
     {
@@ -1468,6 +1875,21 @@ test("test tournaments seed players, generate Swiss rounds, and complete", async
   );
   expect(setup.tournament.lifecycle).toBe("completed");
   expect(setup.testConfig?.seed).toBe(4242);
+  const testPlayer = t.withIdentity({
+    issuer: "https://convex.test",
+    subject: "test-player-1",
+    tokenIdentifier: `test:${tournamentId}:player:1`,
+  });
+  expect(
+    await testPlayer.query(api.tournaments.player.getMyMatchHistory, {
+      tournamentId,
+    }),
+  ).toHaveLength(2);
+  expect(
+    await testPlayer.query(api.tournaments.player.getMyCurrentMatch, {
+      tournamentId,
+    }),
+  ).toMatchObject({ kind: "between_rounds" });
 
   await authed.mutation(api.tournaments.testing.resetTestTournament, {
     tournamentId,
@@ -1689,6 +2111,9 @@ async function playOutCurrentRound(
   if (!round) {
     throw new Error("No current round to play out");
   }
+  await authed.mutation(api.tournaments.rounds.publishPairings, {
+    roundId: round._id,
+  });
   const pairings = await authed.query(
     api.tournaments.rounds.listRoundPairings,
     {

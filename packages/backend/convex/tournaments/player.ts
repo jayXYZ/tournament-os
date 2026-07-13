@@ -8,10 +8,12 @@ import {
   auditResultLine,
   logAuditEvent,
 } from "../model/auditLog";
+import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
 import { matchPointsForResult } from "../model/standings";
 import {
   MAX_TOURNAMENT_PLAYERS,
   adjustActiveRegistrationCount,
+  isPairingsVisibleToPlayers,
   matchPlayers,
   registrationDisplayName,
   registrationForUser,
@@ -25,6 +27,7 @@ import {
   phaseByOrder,
   phasesInOrder,
   selectCurrentPhase,
+  setRegistrationStatus,
 } from "../model/tournaments";
 import { ensureCurrentUser } from "../model/users";
 
@@ -135,6 +138,23 @@ export const getMyCurrentMatch = query({
       roundStatus: round.roundStatus,
       isFinalRound: isFinalRoundOfPhase && nextPhase === null,
     };
+    if (!isPairingsVisibleToPlayers(round)) {
+      // Inactive registrations can still belong to this round when a player
+      // drops after pairings are generated. Preserve the pending state for
+      // those players, but do not promise a future pairing to dropped or
+      // eliminated players who were excluded before this round was paired.
+      if (
+        registration.status !== "active" &&
+        !(await playerMatchInRound(ctx, registration._id, round._id))
+      ) {
+        return { kind: "no_match" as const, ...base, round: roundSummary };
+      }
+      return {
+        kind: "pairings_pending" as const,
+        ...base,
+        round: roundSummary,
+      };
+    }
     if (round.roundStatus === "completed") {
       return { kind: "between_rounds" as const, ...base, round: roundSummary };
     }
@@ -193,38 +213,44 @@ export const getMyMatchHistory = query({
       .withIndex("by_playerId", (q) => q.eq("playerId", registration._id))
       .take(MAX_MATCHES_PER_PLAYER);
 
-    const history = [];
-    for (const playerRow of playerRows) {
-      const match = await ctx.db.get(playerRow.tournamentMatchId);
-      if (!match || match.tournamentId !== args.tournamentId) {
-        continue;
-      }
-      const round = await ctx.db.get(match.tournamentRoundId);
-      if (!round) {
-        continue;
-      }
+    const historyRows = await mapAsyncInBatches(
+      playerRows,
+      DATABASE_IO_BATCH_SIZE,
+      async (playerRow) => {
+        const match = await ctx.db.get(playerRow.tournamentMatchId);
+        if (!match || match.tournamentId !== args.tournamentId) {
+          return null;
+        }
+        const round = await ctx.db.get(match.tournamentRoundId);
+        if (!round || !isPairingsVisibleToPlayers(round)) {
+          return null;
+        }
 
-      let opponentName: string | null = null;
-      if (playerRow.opponentPlayerId) {
-        const opponentRegistration = await ctx.db.get(
-          playerRow.opponentPlayerId,
-        );
-        const opponentUser = opponentRegistration
-          ? await ctx.db.get(opponentRegistration.userId)
-          : null;
-        opponentName = opponentUser?.name ?? null;
-      }
+        let opponentName: string | null = null;
+        if (playerRow.opponentPlayerId) {
+          const opponentRegistration = await ctx.db.get(
+            playerRow.opponentPlayerId,
+          );
+          const opponentUser = opponentRegistration
+            ? await ctx.db.get(opponentRegistration.userId)
+            : null;
+          opponentName = opponentUser?.name ?? null;
+        }
 
-      history.push({
-        roundNumber: round.roundNumber,
-        roundName: round.roundName,
-        opponentName,
-        isBye: playerRow.isBye,
-        myGameWins: playerRow.gameWins ?? null,
-        myGameLosses: playerRow.gameLosses ?? null,
-        result: matchResultForRow(match, playerRow),
-      });
-    }
+        return {
+          roundNumber: round.roundNumber,
+          roundName: round.roundName,
+          opponentName,
+          isBye: playerRow.isBye,
+          myGameWins: playerRow.gameWins ?? null,
+          myGameLosses: playerRow.gameLosses ?? null,
+          result: matchResultForRow(match, playerRow),
+        };
+      },
+    );
+    const history = historyRows.filter(
+      (row): row is NonNullable<typeof row> => row !== null,
+    );
 
     // Round numbers are global across phases, so this orders the whole
     // tournament's history.
@@ -271,8 +297,10 @@ export const getLatestStandings = query({
         q.eq("tournamentRoundId", latestCompleted._id),
       )
       .take(MAX_TOURNAMENT_PLAYERS);
-    const rows = await Promise.all(
-      standings.map(async (standing) => {
+    const rows = await mapAsyncInBatches(
+      standings,
+      DATABASE_IO_BATCH_SIZE,
+      async (standing) => {
         const name =
           standing.playerName ??
           (await registrationDisplayName(ctx, standing.playerId));
@@ -291,7 +319,7 @@ export const getLatestStandings = query({
             standing.eliminatedInRoundNumber ?? null,
           isMe: standing.playerId === registration._id,
         };
-      }),
+      },
     );
 
     return { roundNumber: latestCompleted.roundNumber, rows };
@@ -414,7 +442,7 @@ export const dropSelf = mutation({
     }
 
     const now = Date.now();
-    await ctx.db.patch(registration._id, {
+    await setRegistrationStatus(ctx, registration._id, {
       status: "dropped",
       updatedAt: now,
     });
@@ -458,6 +486,10 @@ async function requireMatchParticipant(
   const tournament = await requireTournament(ctx, match.tournamentId);
   if (tournament.lifecycle !== "in_progress") {
     throw new Error("Tournament is not in progress");
+  }
+  const round = await requireRound(ctx, match.tournamentRoundId);
+  if (!isPairingsVisibleToPlayers(round)) {
+    throw new Error("Pairings have not been published");
   }
   const registration = await registrationForUser(
     ctx,

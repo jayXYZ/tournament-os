@@ -284,6 +284,30 @@ export const updateTournamentSetup = mutation({
   },
 });
 
+// This preference remains editable while play is underway because it only
+// controls rounds generated after the change. Already generated rounds keep
+// their explicit publication state.
+export const updatePairingsAutoPublish = mutation({
+  args: {
+    tournamentId: v.id("tournaments"),
+    autoPublishPairings: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
+    if (
+      tournament.lifecycle === "completed" ||
+      tournament.lifecycle === "cancelled"
+    ) {
+      throw new Error("Tournament is no longer editable");
+    }
+    await ctx.db.patch(tournament._id, {
+      autoPublishPairings: args.autoPublishPairings,
+      updatedAt: Date.now(),
+    });
+    return tournament._id;
+  },
+});
+
 // Unlike updateTournamentSetup, details stay editable through the whole
 // lifecycle: organizers legitimately update prize or logistics info while an
 // event is in registration or already running. Cancelled events are the one
