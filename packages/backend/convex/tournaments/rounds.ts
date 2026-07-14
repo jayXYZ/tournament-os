@@ -41,7 +41,6 @@ import {
   requirePlayerMeetingStarted,
   requireResolvedPhaseTotalRounds,
   requireRound,
-  requireSetupEditable,
   resolvePhaseTotalRounds,
   roundHasRecordedResult,
   roundMatchesWithPlayers,
@@ -57,7 +56,9 @@ export const startTournament = mutation({
       ctx,
       args.tournamentId,
     );
-    requireSetupEditable(tournament);
+    if (tournament.lifecycle !== "registration") {
+      throw new Error("Tournament must be published before it can start");
+    }
     const phase = await requireCurrentPhase(ctx, args.tournamentId);
     if (phase.phaseType !== SWISS_FORMAT || phase.phaseOrder !== 1) {
       throw new Error("A tournament must start with a Swiss phase");
@@ -390,9 +391,22 @@ export const completeRound = mutation({
       ctx,
       round.tournamentId,
     );
-    // The round's own phase, not the tournament's current one — the two can
-    // differ, and standings must be computed against the phase being played.
+    // Load the round's own phase both to prove it is the tournament's current
+    // phase and to compute standings against the phase actually being played.
     const phase = await requirePhase(ctx, round.tournamentPhaseId);
+    if (tournament.lifecycle !== "in_progress") {
+      throw new Error("Tournament is not in progress");
+    }
+    const currentPhase = await requireCurrentPhase(ctx, tournament._id);
+    if (
+      currentPhase._id !== phase._id ||
+      currentPhase.phaseCurrentRound !== round._id
+    ) {
+      throw new Error("Only the current round can be completed");
+    }
+    if (round.roundStatus !== "in_progress") {
+      throw new Error("Current round is not in progress");
+    }
     const matchesWithPlayers = await roundMatchesWithPlayers(ctx, args.roundId);
     for (const { match } of matchesWithPlayers) {
       if (

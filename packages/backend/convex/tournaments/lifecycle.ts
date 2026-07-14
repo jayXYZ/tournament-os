@@ -126,21 +126,21 @@ export const getPublicTournament = query({
     if (!tournament) {
       return null;
     }
-    // Going private only removes the event from public discovery. Registered
-    // players must still resolve the code, or flipping a live event to
-    // private would lock them out of pairings and result reporting. Setup
-    // events stay hidden from everyone except the organizing team, whose
-    // admin Overview previews the public page before publish.
+    // Setup events stay hidden from everyone except the organizing team, even
+    // if test data or an organizer-created row already registered a player.
+    // After publication, going private only removes public access: registered
+    // players must still resolve the code or a live visibility change would
+    // lock them out of pairings and result reporting.
     if (!isPubliclyViewable(tournament)) {
       const user = await currentUserOrNull(ctx);
-      const registration = user
-        ? await registrationForUser(ctx, tournament._id, user._id)
+      const membership = user
+        ? await getActiveMembership(ctx, tournament.organizationId, user._id)
         : null;
-      const membership =
-        !registration && user
-          ? await getActiveMembership(ctx, tournament.organizationId, user._id)
+      const registration =
+        tournament.lifecycle !== "setup" && !membership && user
+          ? await registrationForUser(ctx, tournament._id, user._id)
           : null;
-      if (!registration && !membership) {
+      if (!membership && !registration) {
         return null;
       }
     }

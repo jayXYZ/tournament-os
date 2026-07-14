@@ -160,6 +160,26 @@ test("getPublicTournament hides private and unpublished events and reports regis
     return { publicId, privateId, unlistedId, setupId };
   });
   await seedActiveRegistrations(t, rows.publicId, 3);
+  await t.run(async (ctx) => {
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_tokenIdentifier", (q) =>
+        q.eq("tokenIdentifier", "player:1"),
+      )
+      .unique();
+    if (!user) {
+      throw new Error("Expected seeded player");
+    }
+    const now = Date.now();
+    await ctx.db.insert("tournamentRegistrations", {
+      tournamentId: rows.setupId,
+      userId: user._id,
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+    });
+    await ctx.db.patch(rows.setupId, { activeRegistrationCount: 1 });
+  });
 
   const visible = await t.query(api.tournaments.lifecycle.getPublicTournament, {
     publicCode: "100001",
@@ -184,6 +204,29 @@ test("getPublicTournament hides private and unpublished events and reports regis
       publicCode: "100004",
     }),
   ).toBeNull();
+  const registeredSetupPlayer = {
+    issuer: "https://convex.test",
+    subject: "setup-player",
+    tokenIdentifier: "player:1",
+    email: "player1@example.test",
+    name: "Player 1",
+  };
+  expect(
+    await t
+      .withIdentity(registeredSetupPlayer)
+      .query(api.tournaments.lifecycle.getPublicTournament, {
+        publicCode: "100004",
+      }),
+  ).toBeNull();
+  expect(
+    (
+      await t
+        .withIdentity(organizerIdentity)
+        .query(api.tournaments.lifecycle.getPublicTournament, {
+          publicCode: "100004",
+        })
+    )?.tournament.lifecycle,
+  ).toBe("setup");
   expect(
     await t.query(api.tournaments.lifecycle.getPublicTournament, {
       publicCode: rows.publicId,
@@ -510,6 +553,95 @@ test("createTournamentWithPhases creates an unpublished public tournament with o
   expect(setup.phases[0].phaseOrder).toBe(1);
   expect(setup.phases[0].phaseRoundMode).toBe("dynamic");
   expect(setup.phases[0].phaseTotalRounds).toBeNull();
+
+  const organizer = t.withIdentity(organizerIdentity);
+  expect(
+    await organizer.query(api.tournaments.rounds.getPairingsBoard, {
+      tournamentId,
+    }),
+  ).toMatchObject({
+    nextStep: { kind: "publishTournament", ready: true },
+  });
+  await expect(
+    organizer.mutation(api.tournaments.rounds.startTournament, {
+      tournamentId,
+    }),
+  ).rejects.toThrow("Tournament must be published before it can start");
+
+  await organizer.mutation(api.tournaments.lifecycle.publishTournament, {
+    tournamentId,
+  });
+  await expect(
+    organizer.mutation(api.tournaments.lifecycle.updateTournamentSetup, {
+      tournamentId,
+      name: "Published tournaments are structurally locked",
+    }),
+  ).rejects.toThrow("Tournament setup is locked after publication");
+  await expect(
+    organizer.mutation(api.tournaments.lifecycle.updatePhaseSetup, {
+      phaseId: setup.phases[0]._id,
+      phaseRoundMode: "fixed",
+      phaseTotalRounds: 5,
+    }),
+  ).rejects.toThrow("Tournament setup is locked after publication");
+});
+
+test("unlisted registration events are direct-link accessible but absent from discovery", async () => {
+  const t = convexTest(schema, modules);
+  const { organizationId } = await seedOrganizer(t);
+  const organizer = t.withIdentity(organizerIdentity);
+  const tournamentId = await organizer.mutation(
+    api.tournaments.lifecycle.createTournamentWithPhases,
+    {
+      organizationId,
+      name: "Direct Link Event",
+      startDate: Date.now() + 86_400_000,
+      playerCapacity: 16,
+      format: "standard",
+      phases: [{ phaseOrder: 1, phaseRoundMode: "dynamic" }],
+    },
+  );
+  await organizer.mutation(
+    api.tournaments.lifecycle.updateTournamentVisibility,
+    {
+      tournamentId,
+      visibility: "unlisted",
+    },
+  );
+  await organizer.mutation(api.tournaments.lifecycle.publishTournament, {
+    tournamentId,
+  });
+  const setup = await organizer.query(
+    api.tournaments.lifecycle.getTournamentSetup,
+    { tournamentId },
+  );
+  const publicCode = String(setup.tournament.publicCode);
+
+  expect(
+    (
+      await t.query(api.tournaments.lifecycle.getPublicTournament, {
+        publicCode,
+      })
+    )?.tournament.visibility,
+  ).toBe("unlisted");
+  expect(
+    (await t.query(api.tournaments.lifecycle.listUpcomingPublic)).some(
+      (tournament) => tournament._id === tournamentId,
+    ),
+  ).toBe(false);
+
+  const player = t.withIdentity({
+    issuer: "https://convex.test",
+    subject: "unlisted-player",
+    tokenIdentifier: "https://convex.test|unlisted-player",
+    email: "unlisted@example.test",
+    name: "Unlisted Player",
+  });
+  await expect(
+    player.mutation(api.tournaments.registrations.registerSelf, {
+      tournamentId,
+    }),
+  ).resolves.toBeDefined();
 });
 
 test("updateTournamentDetails stores trimmed markdown and clears it when emptied", async () => {
@@ -879,6 +1011,9 @@ test("startTournament resolves dynamic Swiss rounds from active player count", a
     },
   );
   await seedActiveRegistrations(t, tournamentId, 5);
+  await authed.mutation(api.tournaments.lifecycle.publishTournament, {
+    tournamentId,
+  });
 
   await authed.mutation(api.tournaments.rounds.startTournament, {
     tournamentId,
@@ -892,6 +1027,54 @@ test("startTournament resolves dynamic Swiss rounds from active player count", a
 
   expect(setup.phases[0].phaseRoundMode).toBe("dynamic");
   expect(setup.phases[0].phaseTotalRounds).toBe(3);
+});
+
+test("completeRound only accepts the current in-progress round", async () => {
+  const t = convexTest(schema, modules);
+  const { organizationId } = await seedOrganizer(t);
+  const organizer = t.withIdentity(organizerIdentity);
+  const tournamentId = await organizer.mutation(
+    api.tournaments.lifecycle.createTournamentWithPhases,
+    {
+      organizationId,
+      name: "Round Completion Guard",
+      startDate: Date.now(),
+      playerCapacity: 8,
+      format: "standard",
+      phases: [{ phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 2 }],
+    },
+  );
+  await seedActiveRegistrations(t, tournamentId, 4);
+  await organizer.mutation(api.tournaments.lifecycle.publishTournament, {
+    tournamentId,
+  });
+  const firstRoundId = await organizer.mutation(
+    api.tournaments.rounds.startTournament,
+    { tournamentId },
+  );
+  const firstRoundPairings = await organizer.query(
+    api.tournaments.rounds.listRoundPairings,
+    { roundId: firstRoundId },
+  );
+  await recordFirstPlayerWins(organizer, firstRoundPairings);
+  await organizer.mutation(api.tournaments.rounds.completeRound, {
+    roundId: firstRoundId,
+  });
+
+  await expect(
+    organizer.mutation(api.tournaments.rounds.completeRound, {
+      roundId: firstRoundId,
+    }),
+  ).rejects.toThrow("Current round is not in progress");
+
+  await organizer.mutation(api.tournaments.rounds.generateNextRound, {
+    tournamentId,
+  });
+  await expect(
+    organizer.mutation(api.tournaments.rounds.completeRound, {
+      roundId: firstRoundId,
+    }),
+  ).rejects.toThrow("Only the current round can be completed");
 });
 
 test("multi-phase tournaments advance into the next phase and carry records", async () => {
@@ -913,6 +1096,9 @@ test("multi-phase tournaments advance into the next phase and carry records", as
     },
   );
   await seedActiveRegistrations(t, tournamentId, 4);
+  await authed.mutation(api.tournaments.lifecycle.publishTournament, {
+    tournamentId,
+  });
   await authed.mutation(api.tournaments.rounds.startTournament, {
     tournamentId,
   });
@@ -1018,6 +1204,9 @@ test("rewinding round one ignores byes, clears the timer, and reopens registrati
     },
   );
   await seedActiveRegistrations(t, tournamentId, 3);
+  await authed.mutation(api.tournaments.lifecycle.publishTournament, {
+    tournamentId,
+  });
   const roundId = await authed.mutation(
     api.tournaments.rounds.startTournament,
     { tournamentId },
@@ -1111,6 +1300,9 @@ test("rewinding a Swiss round reopens results and regenerates pairings", async (
     },
   );
   await seedActiveRegistrations(t, tournamentId, 4);
+  await authed.mutation(api.tournaments.lifecycle.publishTournament, {
+    tournamentId,
+  });
   await authed.mutation(api.tournaments.rounds.startTournament, {
     tournamentId,
   });
@@ -1217,6 +1409,9 @@ test("rewinding a playoff restores cut players and reopens the Swiss phase", asy
     },
   );
   await seedActiveRegistrations(t, tournamentId, 10);
+  await authed.mutation(api.tournaments.lifecycle.publishTournament, {
+    tournamentId,
+  });
   await authed.mutation(api.tournaments.rounds.startTournament, {
     tournamentId,
   });
@@ -1302,6 +1497,9 @@ test("rewinding elimination pairings restores losers and repairs advancement", a
     },
   );
   await seedActiveRegistrations(t, tournamentId, 12);
+  await authed.mutation(api.tournaments.lifecycle.publishTournament, {
+    tournamentId,
+  });
   await authed.mutation(api.tournaments.rounds.startTournament, {
     tournamentId,
   });
@@ -1429,6 +1627,9 @@ test("top-8 single elimination advances active players without reseeding", async
     autoPublishPairings: true,
   });
   await seedActiveRegistrations(t, tournamentId, 12);
+  await authed.mutation(api.tournaments.lifecycle.publishTournament, {
+    tournamentId,
+  });
   await authed.mutation(api.tournaments.rounds.startTournament, {
     tournamentId,
   });
@@ -1631,6 +1832,9 @@ test("top-8 cut promotes the next-ranked active player when a qualifier drops", 
     },
   );
   await seedActiveRegistrations(t, tournamentId, 12);
+  await authed.mutation(api.tournaments.lifecycle.publishTournament, {
+    tournamentId,
+  });
   await authed.mutation(api.tournaments.rounds.startTournament, {
     tournamentId,
   });
@@ -1700,6 +1904,9 @@ test("top-8 tournaments cannot start with fewer than eight active players", asyn
     },
   );
   await seedActiveRegistrations(t, tournamentId, 7);
+  await authed.mutation(api.tournaments.lifecycle.publishTournament, {
+    tournamentId,
+  });
 
   const board = await authed.query(api.tournaments.rounds.getPairingsBoard, {
     tournamentId,
@@ -1742,6 +1949,9 @@ test("an unplayable top-8 phase can be cancelled after Swiss", async () => {
     },
   );
   await seedActiveRegistrations(t, tournamentId, 8);
+  await authed.mutation(api.tournaments.lifecycle.publishTournament, {
+    tournamentId,
+  });
   await authed.mutation(api.tournaments.rounds.startTournament, {
     tournamentId,
   });

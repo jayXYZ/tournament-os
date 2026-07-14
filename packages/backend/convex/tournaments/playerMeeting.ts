@@ -46,10 +46,15 @@ export const startPlayerMeeting = mutation({
       throw new Error("Player meeting has already started");
     }
     if (phase.phaseOrder === 1) {
-      if (tournament.lifecycle === "in_progress") {
-        throw new Error("Tournament has already started");
+      if (tournament.lifecycle !== "registration") {
+        throw new Error(
+          "Tournament must be published before the meeting starts",
+        );
       }
     } else {
+      if (tournament.lifecycle !== "in_progress") {
+        throw new Error("Tournament is not in progress");
+      }
       const previousPhase = await swissPhaseByOrder(
         ctx,
         tournament._id,

@@ -84,11 +84,7 @@ const phaseStatusBadgeVariant: Record<
 }
 
 function isSetupLocked(tournament: Doc<'tournaments'>) {
-  return (
-    tournament.lifecycle === 'in_progress' ||
-    tournament.lifecycle === 'completed' ||
-    tournament.lifecycle === 'cancelled'
-  )
+  return tournament.lifecycle !== 'setup'
 }
 
 export function TournamentSettingsView({
@@ -127,7 +123,7 @@ export function TournamentSettingsView({
             <p className="rounded-md border bg-muted/50 px-4 py-3 text-sm text-muted-foreground">
               {setup.tournament.lifecycle === 'cancelled'
                 ? 'This tournament has been cancelled. Its settings can no longer be changed.'
-                : 'Core settings are locked once the tournament starts. Visibility and pairing publication preferences can still be changed.'}
+                : 'Core settings are locked once the tournament is published. Visibility, event details, and pairing publication preferences can still be changed.'}
             </p>
           ) : null}
           <TournamentSettingsCard
@@ -281,7 +277,7 @@ function TournamentSettingsCard({
         <CardTitle>Tournament settings</CardTitle>
         <CardDescription>
           {locked
-            ? 'Setup is locked once the tournament starts.'
+            ? 'Setup is locked once the tournament is published.'
             : 'Update the basic details for this tournament.'}
         </CardDescription>
         <CardAction>

@@ -606,6 +606,7 @@ export async function completeTournament(
 }
 
 export type PairingsNextStep =
+  | { kind: "publishTournament"; ready: boolean; reason: string | null }
   | {
       kind: "startPlayerMeeting";
       ready: boolean;
@@ -621,7 +622,7 @@ export type PairingsNextStep =
     }
   | { kind: "startTimer"; ready: boolean; reason: string | null }
   | {
-      kind: "generateStandings";
+      kind: "completeRound";
       ready: boolean;
       reason: string | null;
       roundId: Id<"tournamentRounds">;
@@ -656,6 +657,17 @@ export async function pairingsNextStep(
   const board =
     phaseBoards.find(({ phase: candidate }) => candidate._id === phase?._id) ??
     null;
+  if (tournament.lifecycle === "setup") {
+    const hasSwissPhase = phaseBoards.some(
+      ({ phase: candidate }) => candidate.phaseType === SWISS_FORMAT,
+    );
+    return {
+      kind: "publishTournament",
+      ready: hasSwissPhase,
+      reason: hasSwissPhase ? null : "Swiss phase is not configured",
+    };
+  }
+
   if (tournament.lifecycle !== "in_progress") {
     if (!phase) {
       return {
@@ -740,11 +752,12 @@ export async function pairingsNextStep(
           : count + 1,
       0,
     );
-    // Once every match has a result, standings are the next step regardless
-    // of the timer (a round can finish without one ever being started).
+    // Once every match has a result, completing the round and posting standings
+    // is the next step regardless of the timer (a round can finish without one
+    // ever being started).
     if (unreported === 0) {
       return {
-        kind: "generateStandings",
+        kind: "completeRound",
         ready: true,
         reason: null,
         roundId: round._id,
@@ -757,7 +770,7 @@ export async function pairingsNextStep(
       return { kind: "startTimer", ready: true, reason: null };
     }
     return {
-      kind: "generateStandings",
+      kind: "completeRound",
       ready: false,
       reason: `${unreported} ${unreported === 1 ? "match still needs" : "matches still need"} a result`,
       roundId: round._id,
@@ -873,9 +886,7 @@ export function requireDecisiveEliminationResult(
 // A configured player meeting is a backend lifecycle prerequisite, not only a
 // UI step. Once the meeting is in progress, pairing the phase's first round is
 // what completes it.
-export function requirePlayerMeetingStarted(
-  phase: Doc<"tournamentPhases">,
-) {
+export function requirePlayerMeetingStarted(phase: Doc<"tournamentPhases">) {
   if (phase.playerMeeting && phase.playerMeetingStatus === undefined) {
     throw new Error("Player meeting must be started first");
   }
@@ -1029,14 +1040,8 @@ export async function deleteTournamentOperationalDataBatch(
 }
 
 export function requireSetupEditable(tournament: Doc<"tournaments">) {
-  if (
-    tournament.lifecycle === "in_progress" ||
-    tournament.lifecycle === "completed"
-  ) {
-    throw new Error("Tournament setup is locked");
-  }
-  if (tournament.lifecycle === "cancelled") {
-    throw new Error("Tournament has been cancelled");
+  if (tournament.lifecycle !== "setup") {
+    throw new Error("Tournament setup is locked after publication");
   }
 }
 

@@ -493,6 +493,9 @@ async function seedTournament(
     }
     return ids;
   });
+  await t
+    .withIdentity(organizerIdentity)
+    .mutation(api.tournaments.lifecycle.publishTournament, { tournamentId });
 
   return { tournamentId, registrationIds };
 }

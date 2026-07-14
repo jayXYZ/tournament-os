@@ -60,13 +60,14 @@ test("result reports, confirmations, and organizer overrides are audited", async
       playerTwoGameWins: 2,
     });
 
-  // Newest first: override, confirmation, report, then the tournament start.
+  // Newest first: override, confirmation, report, tournament start, publish.
   const events = await auditEvents(t, tournamentId);
   expect(events.map((row) => row.event.type)).toEqual([
     "match_result_recorded",
     "match_result_confirmed",
     "match_result_reported",
     "tournament_started",
+    "tournament_published",
   ]);
 
   const reported = events[2];
@@ -134,10 +135,6 @@ test("registration changes and drops are audited with the acting side", async ()
   const t = convexTest(schema, modules);
   const { tournamentId, registrationIds } = await seedTournament(t, 4);
   const organizer = t.withIdentity(organizerIdentity);
-
-  await organizer.mutation(api.tournaments.lifecycle.publishTournament, {
-    tournamentId,
-  });
 
   // A new player registers themselves, then cancels.
   const playerFive = t.withIdentity(playerIdentity(5));
@@ -219,6 +216,7 @@ test("round and tournament lifecycle actions are audited", async () => {
     "round_started",
     "round_completed",
     "tournament_started",
+    "tournament_published",
   ]);
   const roundStarted = lifecycleEvents[2];
   if (roundStarted.event.type !== "round_started") {
@@ -270,9 +268,9 @@ test("listAuditEvents is organizer-only and paginates newest first", async () =>
       paginationOpts: { numItems: 100, cursor: firstPage.continueCursor },
     },
   );
-  // The remaining events end with the oldest: the tournament start.
+  // The remaining events end with the oldest: tournament publication.
   expect(secondPage.page[secondPage.page.length - 1].event.type).toBe(
-    "tournament_started",
+    "tournament_published",
   );
 });
 
@@ -359,6 +357,9 @@ async function seedTournament(
     }
     return ids;
   });
+  await t
+    .withIdentity(organizerIdentity)
+    .mutation(api.tournaments.lifecycle.publishTournament, { tournamentId });
 
   return { tournamentId, registrationIds };
 }

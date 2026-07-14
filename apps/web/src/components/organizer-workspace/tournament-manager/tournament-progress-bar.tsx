@@ -6,6 +6,7 @@ import {
 } from '@tanstack/react-router'
 import { useMutation, useQuery } from 'convex/react'
 import {
+  Globe,
   ListOrdered,
   Send,
   Swords,
@@ -134,8 +135,8 @@ function useCurrentRound(): CurrentRound | null {
 // grouped into labeled phase sections. Filled nodes are completed rounds and
 // link to that round's standings; the ringed node is the in-progress round and
 // links to its pairings. The strip also carries the tournament's single
-// advance action (start / next round / standings / complete), so it renders
-// as soon as the board loads — even before any rounds exist.
+// advance action (publish / start / next round / complete round / complete), so
+// it renders as soon as the board loads — even before any rounds exist.
 export function TournamentProgressBar({
   tournamentId,
   publicCode,
@@ -218,6 +219,9 @@ function AdvanceStepButton({
   const startPlayerMeeting = useMutation(
     api.tournaments.playerMeeting.startPlayerMeeting,
   )
+  const publishTournament = useMutation(
+    api.tournaments.lifecycle.publishTournament,
+  )
   const startTournament = useMutation(api.tournaments.rounds.startTournament)
   const publishPairings = useMutation(api.tournaments.rounds.publishPairings)
   const startTimer = useMutation(api.tournaments.timer.startTimer)
@@ -243,6 +247,7 @@ function AdvanceStepButton({
   }
 
   const action = advanceAction(step, board.tournament._id, {
+    publishTournament,
     startPlayerMeeting,
     startTournament,
     publishPairings,
@@ -291,6 +296,9 @@ function advanceAction(
   step: AdvanceStep,
   tournamentId: Id<'tournaments'>,
   mutations: {
+    publishTournament: (args: {
+      tournamentId: Id<'tournaments'>
+    }) => Promise<unknown>
     startPlayerMeeting: (args: {
       phaseId: Id<'tournamentPhases'>
     }) => Promise<unknown>
@@ -315,6 +323,13 @@ function advanceAction(
   // Success copy is shown on the button itself while it is still sized for
   // the idle label, so keep it shorter than the matching "Hold to" label.
   switch (step.kind) {
+    case 'publishTournament':
+      return {
+        label: 'Hold to publish and open registration',
+        icon: <Globe />,
+        success: 'Registration opened',
+        run: () => mutations.publishTournament({ tournamentId }),
+      }
     case 'startPlayerMeeting':
       return {
         label: 'Hold to start player meeting',
@@ -343,11 +358,11 @@ function advanceAction(
         success: 'Timer started',
         run: () => mutations.startTimer({ tournamentId }),
       }
-    case 'generateStandings':
+    case 'completeRound':
       return {
-        label: 'Hold to generate standings',
+        label: 'Hold to complete round and post standings',
         icon: <ListOrdered />,
-        success: 'Standings generated',
+        success: 'Round completed',
         run: () => mutations.completeRound({ roundId: step.roundId }),
       }
     case 'generateNextRound':

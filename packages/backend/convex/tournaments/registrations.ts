@@ -13,7 +13,6 @@ import {
   requireCapacityAvailable,
   requireOrganizerAccess,
   requireRegistration,
-  requireSetupEditable,
   requireTournament,
   setRegistrationStatus,
 } from "../model/tournaments";
@@ -78,7 +77,9 @@ export const cancelMyRegistration = mutation({
   handler: async (ctx, args) => {
     const user = await ensureCurrentUser(ctx);
     const tournament = await requireTournament(ctx, args.tournamentId);
-    requireSetupEditable(tournament);
+    if (tournament.lifecycle !== "registration") {
+      throw new Error("Tournament is not open for registration");
+    }
     const registration = await registrationForUser(
       ctx,
       args.tournamentId,
@@ -153,7 +154,9 @@ export const listMyTournaments = query({
       });
     }
 
-    rows.sort((left, right) => left.tournament.startDate - right.tournament.startDate);
+    rows.sort(
+      (left, right) => left.tournament.startDate - right.tournament.startDate,
+    );
     return rows;
   },
 });

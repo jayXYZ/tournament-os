@@ -338,7 +338,7 @@ test("timer mutations reject non-organizers", async () => {
   }
 });
 
-test("advance step offers the timer first, then standings once results are in", async () => {
+test("advance step offers the timer first, then round completion once results are in", async () => {
   const t = convexTest(schema, modules);
   const { tournamentId } = await seedStartedTournament(t, 4);
   const organizer = t.withIdentity(organizerIdentity);
@@ -349,13 +349,13 @@ test("advance step offers the timer first, then standings once results are in", 
   });
   expect(board.nextStep).toMatchObject({ kind: "startTimer", ready: true });
 
-  // With a live timer the step becomes standings, gated on open matches.
+  // With a live timer the step becomes round completion, gated on open matches.
   await organizer.mutation(api.tournaments.timer.startTimer, { tournamentId });
   board = await organizer.query(api.tournaments.rounds.getPairingsBoard, {
     tournamentId,
   });
   expect(board.nextStep).toMatchObject({
-    kind: "generateStandings",
+    kind: "completeRound",
     ready: false,
   });
 
@@ -366,13 +366,13 @@ test("advance step offers the timer first, then standings once results are in", 
   });
   expect(board.nextStep).toMatchObject({ kind: "startTimer", ready: true });
 
-  // Every match has a result: standings unblock even though no timer ran.
+  // Every match has a result: round completion unblocks even without a timer.
   await recordAllResults(t, tournamentId);
   board = await organizer.query(api.tournaments.rounds.getPairingsBoard, {
     tournamentId,
   });
   expect(board.nextStep).toMatchObject({
-    kind: "generateStandings",
+    kind: "completeRound",
     ready: true,
   });
 });
@@ -537,6 +537,9 @@ async function seedTournament(
     }
     return ids;
   });
+  await t
+    .withIdentity(organizerIdentity)
+    .mutation(api.tournaments.lifecycle.publishTournament, { tournamentId });
 
   return { tournamentId, registrationIds };
 }
