@@ -29,6 +29,11 @@
   --color-chart-3: var(--chart-3);
   --color-chart-2: var(--chart-2);
   --color-chart-1: var(--chart-1);
+  --color-round-between: var(--round-between);
+  --color-round-ready: var(--round-ready);
+  --color-round-live: var(--round-live);
+  --color-round-timer: var(--round-timer);
+  --color-round-pairings: var(--round-pairings);
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
@@ -78,6 +83,11 @@
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
+  --round-pairings: oklch(0.52 0.14 75);
+  --round-timer: oklch(0.5 0.18 255);
+  --round-live: oklch(0.47 0.13 160);
+  --round-ready: oklch(0.5 0.18 305);
+  --round-between: oklch(0.53 0.17 40);
   --radius: 0.625rem;
   --sidebar: oklch(0.955 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
@@ -113,6 +123,11 @@
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
+  --round-pairings: oklch(0.78 0.14 75);
+  --round-timer: oklch(0.75 0.14 255);
+  --round-live: oklch(0.75 0.12 160);
+  --round-ready: oklch(0.76 0.14 305);
+  --round-between: oklch(0.76 0.15 40);
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);
@@ -168,6 +183,78 @@
   .hold-check-draw,
   .hold-pending-pulse {
     animation: none;
+  }
+}
+
+/* A ready tournament step is the organizer's one consequential action. Two
+   quiet, staggered rings make that moment legible without turning the whole
+   progress strip into an alert. */
+@keyframes advance-step-ring {
+  0% {
+    opacity: 0;
+    transform: scale(1, 1);
+  }
+  16% {
+    opacity: 0.42;
+  }
+  72%,
+  100% {
+    opacity: 0;
+    transform: scale(1.045, 1.38);
+  }
+}
+.advance-step-attention {
+  position: relative;
+  isolation: isolate;
+}
+.advance-step-attention::before,
+.advance-step-attention::after {
+  position: absolute;
+  inset: 0;
+  border: 1px solid color-mix(in oklch, var(--primary) 55%, transparent);
+  border-radius: var(--radius-md);
+  content: '';
+  pointer-events: none;
+  animation: advance-step-ring 2.8s cubic-bezier(0.2, 0.7, 0.25, 1) infinite;
+}
+.advance-step-attention::after {
+  animation-delay: 1.4s;
+}
+.advance-step-attention > [data-slot='button'] {
+  box-shadow: 0 1px 2px color-mix(in oklch, var(--foreground) 16%, transparent);
+}
+@media (hover: hover) {
+  .advance-step-attention
+    > [data-slot='button']:not([data-phase='holding']):hover {
+    box-shadow: 0 4px 10px
+      color-mix(in oklch, var(--foreground) 14%, transparent);
+    transform: translateY(-1px);
+  }
+}
+.advance-step-attention > [data-slot='button']:focus-visible {
+  box-shadow: 0 4px 10px color-mix(in oklch, var(--foreground) 14%, transparent);
+  transform: translateY(-1px);
+}
+.advance-step-attention:has([data-phase='holding'])::before,
+.advance-step-attention:has([data-phase='holding'])::after,
+.advance-step-attention:has([data-phase='pending'])::before,
+.advance-step-attention:has([data-phase='pending'])::after,
+.advance-step-attention:has([data-phase='success'])::before,
+.advance-step-attention:has([data-phase='success'])::after {
+  animation: none;
+  opacity: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .advance-step-attention::before,
+  .advance-step-attention::after {
+    animation: none;
+    opacity: 0;
+  }
+  .advance-step-attention > [data-slot='button'],
+  .advance-step-attention > [data-slot='button']:hover,
+  .advance-step-attention > [data-slot='button']:focus-visible {
+    transition: none;
+    transform: none;
   }
 }
 

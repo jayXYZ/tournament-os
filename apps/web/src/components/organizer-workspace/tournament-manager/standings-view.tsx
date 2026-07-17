@@ -78,6 +78,7 @@ export function StandingsView({
               {navigation.activePhase ? (
                 <TournamentPhaseTabs
                   activePhaseId={navigation.activePhase.phase._id}
+                  mode="completed"
                   phases={navigation.phases}
                   onValueChange={navigation.selectPhase}
                 />

@@ -134,7 +134,7 @@ test("tournament functions expose setup registration operation and test APIs", (
       "createTournament",
       "createTournamentWithPhases",
       "updateTournamentSetup",
-      "configureSwissPhase",
+      "updateTournamentPhases",
       "publishTournament",
       "cancelTournament",
       "completeTournament",

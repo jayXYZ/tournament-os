@@ -70,7 +70,7 @@ Swiss pairing is already solid (seeded shuffle, rematch-minimizing backtracking,
 standings-based byes, OMW/GW/OGW tiebreakers). The gaps are multi-phase
 structure and playoff support.
 
-- [ ] Phase management after creation: add / remove / reorder phases while the tournament is still editable (currently only phase 1 is configurable)
+- [x] Phase management after creation: add / remove / reorder phases while the tournament is still editable
 - [x] Single elimination phase type + proper top-8 seeding from swiss standings (1v8, 4v5, 2v7, 3v6)
 - [ ] Wire up phase cutoffs (`top_X_players` / `X_points_or_more` exist in the schema but are unused): completing a phase should eliminate non-qualifiers and seed the next phase
 - [ ] Harden swiss for real-event situations

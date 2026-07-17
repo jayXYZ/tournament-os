@@ -13,6 +13,7 @@ import type * as http from "../http.js";
 import type * as maintenance from "../maintenance.js";
 import type * as model_access from "../model/access.js";
 import type * as model_auditLog from "../model/auditLog.js";
+import type * as model_batching from "../model/batching.js";
 import type * as model_pairing from "../model/pairing.js";
 import type * as model_publicCodes from "../model/publicCodes.js";
 import type * as model_random from "../model/random.js";
@@ -44,6 +45,7 @@ declare const fullApi: ApiFromModules<{
   maintenance: typeof maintenance;
   "model/access": typeof model_access;
   "model/auditLog": typeof model_auditLog;
+  "model/batching": typeof model_batching;
   "model/pairing": typeof model_pairing;
   "model/publicCodes": typeof model_publicCodes;
   "model/random": typeof model_random;

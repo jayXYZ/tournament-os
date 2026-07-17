@@ -107,72 +107,76 @@ export function PairingsView({
     <section className="flex flex-col gap-4">
       <WorkspacePageHeader eyebrow="Tournament manager" title="Pairings" />
 
-      {activePhase?.playerMeetingStatus !== undefined ? (
+      {navigation.isPlayerMeetingSelected &&
+      activePhase?.playerMeetingStatus !== undefined ? (
         <PlayerMeetingCard
           phaseId={activePhase._id}
           meetingStatus={activePhase.playerMeetingStatus}
         />
       ) : null}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Round pairings</CardTitle>
-          <CardDescription>
-            View table assignments and match results for each round.
-          </CardDescription>
-          <CardAction>
-            <PairingsSettingsMenu
-              board={board}
-              roundId={navigation.selectedRound?._id ?? null}
-              onRewound={() => onRoundSelectionChange({})}
-            />
-          </CardAction>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          {board === undefined ? (
-            <TableLoadingSkeleton />
-          ) : (
-            <>
-              {navigation.activePhase ? (
-                <TournamentPhaseTabs
-                  activePhaseId={navigation.activePhase.phase._id}
-                  phases={navigation.phases}
-                  onValueChange={navigation.selectPhase}
-                />
-              ) : null}
-
-              {navigation.availableRounds.length === 0 ||
-              !navigation.selectedRound ? (
-                <Empty className="min-h-64">
-                  <EmptyHeader>
-                    <EmptyMedia variant="icon">
-                      <Swords />
-                    </EmptyMedia>
-                    <EmptyTitle>No pairings yet</EmptyTitle>
-                    <EmptyDescription>
-                      Generate pairings to create the first round and assign
-                      players to tables.
-                    </EmptyDescription>
-                  </EmptyHeader>
-                </Empty>
-              ) : (
-                <>
-                  <TournamentRoundTabs
-                    activeRoundNumber={navigation.selectedRound.roundNumber}
-                    availableRoundNumbers={navigation.availableRounds.map(
-                      (round) => round.roundNumber,
-                    )}
-                    firstRoundNumber={navigation.firstRoundNumber}
-                    onValueChange={navigation.selectRound}
-                    roundCount={navigation.roundTabCount}
+      {!navigation.isPlayerMeetingSelected ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Round pairings</CardTitle>
+            <CardDescription>
+              View table assignments and match results for each round.
+            </CardDescription>
+            <CardAction>
+              <PairingsSettingsMenu
+                board={board}
+                roundId={navigation.selectedRound?._id ?? null}
+                onRewound={() => onRoundSelectionChange({})}
+              />
+            </CardAction>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            {board === undefined ? (
+              <TableLoadingSkeleton />
+            ) : (
+              <>
+                {navigation.activePhase ? (
+                  <TournamentPhaseTabs
+                    activePhaseId={navigation.activePhase.phase._id}
+                    mode="all"
+                    phases={navigation.phases}
+                    onValueChange={navigation.selectPhase}
                   />
-                  <PairingsTable roundId={navigation.selectedRound._id} />
-                </>
-              )}
-            </>
-          )}
-        </CardContent>
-      </Card>
+                ) : null}
+
+                {navigation.availableRounds.length === 0 ||
+                !navigation.selectedRound ? (
+                  <Empty className="min-h-64">
+                    <EmptyHeader>
+                      <EmptyMedia variant="icon">
+                        <Swords />
+                      </EmptyMedia>
+                      <EmptyTitle>No pairings yet</EmptyTitle>
+                      <EmptyDescription>
+                        Generate pairings to create the first round and assign
+                        players to tables.
+                      </EmptyDescription>
+                    </EmptyHeader>
+                  </Empty>
+                ) : (
+                  <>
+                    <TournamentRoundTabs
+                      activeRoundNumber={navigation.selectedRound.roundNumber}
+                      availableRoundNumbers={navigation.availableRounds.map(
+                        (round) => round.roundNumber,
+                      )}
+                      firstRoundNumber={navigation.firstRoundNumber}
+                      onValueChange={navigation.selectRound}
+                      roundCount={navigation.roundTabCount}
+                    />
+                    <PairingsTable roundId={navigation.selectedRound._id} />
+                  </>
+                )}
+              </>
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
     </section>
   )
 }

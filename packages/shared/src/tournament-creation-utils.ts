@@ -30,6 +30,8 @@ export type TournamentCreationPhasePayload = {
   playerMeeting?: boolean;
 };
 
+export const MAX_TOURNAMENT_PHASES = 16;
+
 export function createDefaultTournamentCreationPhase(
   id: string,
 ): TournamentCreationPhaseForm {
@@ -46,7 +48,73 @@ export function addTournamentCreationPhase(
   phases: TournamentCreationPhaseForm[],
   id: string,
 ) {
-  return [...phases, createDefaultTournamentCreationPhase(id)];
+  const nextPhase = createDefaultTournamentCreationPhase(id);
+  const playoffIndex = phases.findIndex(
+    (phase) => phase.phaseType === "single_elimination",
+  );
+  if (playoffIndex === -1) {
+    return [...phases, nextPhase];
+  }
+  return [
+    ...phases.slice(0, playoffIndex),
+    nextPhase,
+    ...phases.slice(playoffIndex),
+  ];
+}
+
+function hasValidTournamentPhaseOrder(phases: TournamentCreationPhaseForm[]) {
+  return (
+    phases.length > 0 &&
+    phases.length <= MAX_TOURNAMENT_PHASES &&
+    phases[0].phaseType === "swiss" &&
+    phases.every(
+      (phase, index) =>
+        phase.phaseType !== "single_elimination" ||
+        index === phases.length - 1,
+    )
+  );
+}
+
+export function canMoveTournamentCreationPhase(
+  phases: TournamentCreationPhaseForm[],
+  id: string,
+  direction: -1 | 1,
+) {
+  const currentIndex = phases.findIndex((phase) => phase.id === id);
+  const nextIndex = currentIndex + direction;
+  if (
+    currentIndex === -1 ||
+    nextIndex < 0 ||
+    nextIndex >= phases.length
+  ) {
+    return false;
+  }
+
+  const reordered = [...phases];
+  [reordered[currentIndex], reordered[nextIndex]] = [
+    reordered[nextIndex],
+    reordered[currentIndex],
+  ];
+  return hasValidTournamentPhaseOrder(reordered);
+}
+
+export function moveTournamentCreationPhase(
+  phases: TournamentCreationPhaseForm[],
+  id: string,
+  direction: -1 | 1,
+) {
+  if (!canMoveTournamentCreationPhase(phases, id, direction)) {
+    return phases;
+  }
+
+  const currentIndex = phases.findIndex((phase) => phase.id === id);
+  const nextIndex = currentIndex + direction;
+  const reordered = [...phases];
+  [reordered[currentIndex], reordered[nextIndex]] = [
+    reordered[nextIndex],
+    reordered[currentIndex],
+  ];
+  return reordered;
 }
 
 export function canRemoveTournamentCreationPhase(

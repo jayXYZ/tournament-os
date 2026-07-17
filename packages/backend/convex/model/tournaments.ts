@@ -1045,6 +1045,15 @@ export function requireSetupEditable(tournament: Doc<"tournaments">) {
   }
 }
 
+export function requirePreStartEditable(tournament: Doc<"tournaments">) {
+  if (
+    tournament.lifecycle !== "setup" &&
+    tournament.lifecycle !== "registration"
+  ) {
+    throw new Error("Tournament setup is locked after play begins");
+  }
+}
+
 // A tournament is publicly viewable (by public code) once it has been
 // published, unless the organizer has made it private. Unlisted events pass:
 // they are link-only but still viewable by anyone who has the code.

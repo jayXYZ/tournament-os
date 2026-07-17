@@ -7,6 +7,7 @@
     "dev:frontend": "pnpm --filter @tournament-os/web dev",
     "dev:backend": "pnpm --filter @tournament-os/backend dev",
     "dev:native": "pnpm --filter @tournament-os/native start",
+    "db:wipe": "pnpm --filter @tournament-os/backend exec convex run maintenance:wipeAll",
     "build": "pnpm run build:web && pnpm run build:native",
     "build:web": "pnpm --filter @tournament-os/web build",
     "build:native": "pnpm --filter @tournament-os/native build",

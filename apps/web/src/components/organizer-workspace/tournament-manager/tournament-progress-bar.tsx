@@ -41,6 +41,21 @@ type AdvanceStep = Exclude<
   PairingsBoard['nextStep'],
   { kind: 'tournamentCompleted' } | { kind: 'tournamentCancelled' }
 >
+type ActiveRoundStep =
+  | 'pairingsReady'
+  | 'timerReady'
+  | 'playing'
+  | 'readyToComplete'
+
+type ActiveRoundProgress = {
+  roundId: Id<'tournamentRounds'>
+  step: ActiveRoundStep
+}
+
+type BetweenRoundTarget = {
+  phaseId: Id<'tournamentPhases'>
+  slotIndex: number
+}
 
 // One node on the bar. Beyond the rounds that exist, fixed-length phases show
 // their remaining planned rounds and dynamic phases show a single "?" node,
@@ -106,17 +121,87 @@ function phaseStartNumbers(phases: Array<PhaseBoard>): Array<number | null> {
   return startNumbers
 }
 
-// The round the organizer is currently viewing, derived from the active
-// route's search params. Only set when the URL carries an explicit selection
-// (i.e. after clicking a bar node or a round tab), which is exactly when the
-// highlight is meaningful.
-type CurrentRound = {
-  view: 'pairings' | 'standings'
-  phase: number
-  round: number
+// The backend's next action is also the most precise description of an active
+// round's lifecycle. Keep that meaning on the node itself: the action button
+// can then move around the dashboard without separating the state from the
+// round it describes.
+function activeRoundProgress(board: PairingsBoard): ActiveRoundProgress | null {
+  const { nextStep } = board
+  if (nextStep.kind === 'publishPairings') {
+    return { roundId: nextStep.roundId, step: 'pairingsReady' }
+  }
+  if (nextStep.kind === 'completeRound') {
+    return {
+      roundId: nextStep.roundId,
+      step: nextStep.ready ? 'readyToComplete' : 'playing',
+    }
+  }
+  if (nextStep.kind !== 'startTimer') {
+    return null
+  }
+
+  const activeRound = board.phases
+    .flatMap(({ rounds }) => rounds)
+    .find((round) => round.roundStatus === 'in_progress')
+  return activeRound ? { roundId: activeRound._id, step: 'timerReady' } : null
 }
 
-function useCurrentRound(): CurrentRound | null {
+// Once a completed round is waiting for the next one to be generated, the
+// next planned slot becomes the bar's current step. This works within a phase
+// and across phase boundaries, including dynamic phases whose node is "?".
+function betweenRoundTarget(
+  board: PairingsBoard,
+  startNumbers: Array<number | null>,
+): BetweenRoundTarget | null {
+  const betweenRounds =
+    board.tournament.lifecycle === 'in_progress' &&
+    board.nextStep.kind === 'generateNextRound'
+  if (!betweenRounds) {
+    return null
+  }
+
+  let lastRoundPhaseIndex = -1
+  for (const [index, phaseBoard] of board.phases.entries()) {
+    if (phaseBoard.rounds.length > 0) {
+      lastRoundPhaseIndex = index
+    }
+  }
+
+  for (
+    let phaseIndex = Math.max(lastRoundPhaseIndex, 0);
+    phaseIndex < board.phases.length;
+    phaseIndex++
+  ) {
+    const phaseBoard = board.phases[phaseIndex]
+    const slots = phaseSlots(phaseBoard, startNumbers[phaseIndex])
+    const slotIndex = slots.findIndex((slot) => slot.kind !== 'round')
+    if (slotIndex !== -1) {
+      return { phaseId: phaseBoard.phase._id, slotIndex }
+    }
+  }
+
+  return null
+}
+
+// The timeline destination the organizer is currently viewing, derived from
+// the active route's search params. Only set when the URL carries an explicit
+// selection (i.e. after clicking a bar node or a round tab), which is exactly
+// when the highlight is meaningful.
+type CurrentTimelineSelection =
+  | {
+      view: 'pairings' | 'standings'
+      phase: number
+      round: number
+      meeting?: never
+    }
+  | {
+      view: 'pairings'
+      phase: number
+      meeting: true
+      round?: never
+    }
+
+function useCurrentTimelineSelection(): CurrentTimelineSelection | null {
   const pathname = useLocation().pathname
   const search = useSearch({ strict: false })
 
@@ -125,7 +210,14 @@ function useCurrentRound(): CurrentRound | null {
     : pathname.endsWith('/standings')
       ? 'standings'
       : null
-  if (!view || search.phase === undefined || search.round === undefined) {
+  if (!view || search.phase === undefined) {
+    return null
+  }
+
+  if (view === 'pairings' && search.meeting === true) {
+    return { view, phase: search.phase, meeting: true }
+  }
+  if (search.round === undefined) {
     return null
   }
   return { view, phase: search.phase, round: search.round }
@@ -147,7 +239,7 @@ export function TournamentProgressBar({
   const board = useQuery(api.tournaments.rounds.getPairingsBoard, {
     tournamentId,
   })
-  const currentRound = useCurrentRound()
+  const currentSelection = useCurrentTimelineSelection()
   const navigate = useNavigate()
 
   // Keep the bar's shell (and the advance control's slot) visible while the
@@ -172,6 +264,8 @@ export function TournamentProgressBar({
   }
 
   const startNumbers = phaseStartNumbers(board.phases)
+  const activeProgress = activeRoundProgress(board)
+  const betweenTarget = betweenRoundTarget(board, startNumbers)
 
   return (
     <TooltipProvider>
@@ -188,7 +282,17 @@ export function TournamentProgressBar({
                 startNumber={startNumbers[index]}
                 publicCode={publicCode}
                 showLabel={board.phases.length > 1}
-                currentRound={currentRound}
+                currentSelection={currentSelection}
+                activeProgress={activeProgress}
+                playerMeetingIsNext={
+                  board.nextStep.kind === 'startPlayerMeeting' &&
+                  board.nextStep.phaseId === phaseBoard.phase._id
+                }
+                betweenRoundSlotIndex={
+                  betweenTarget?.phaseId === phaseBoard.phase._id
+                    ? betweenTarget.slotIndex
+                    : null
+                }
               />
             ))}
           </div>
@@ -281,14 +385,19 @@ function AdvanceStepButton({
   // need a result") instead of a "Hold to ..." label it can't act on; the
   // action's icon stays as a hint of what the gate is holding back.
   return (
-    <HoldButton
-      disabled={!step.ready}
-      onConfirm={handleAdvance}
-      successLabel={action.success}
+    <div
+      className={cn('shrink-0', step.ready && 'advance-step-attention')}
+      data-attention={step.ready || undefined}
     >
-      {action.icon}
-      {step.ready ? action.label : (step.reason ?? action.label)}
-    </HoldButton>
+      <HoldButton
+        disabled={!step.ready}
+        onConfirm={handleAdvance}
+        successLabel={action.success}
+      >
+        {action.icon}
+        {step.ready ? action.label : (step.reason ?? action.label)}
+      </HoldButton>
+    </div>
   )
 }
 
@@ -387,17 +496,24 @@ function PhaseSection({
   startNumber,
   publicCode,
   showLabel,
-  currentRound,
+  currentSelection,
+  activeProgress,
+  playerMeetingIsNext,
+  betweenRoundSlotIndex,
 }: {
   phaseBoard: PhaseBoard
   startNumber: number | null
   publicCode: string
   showLabel: boolean
-  currentRound: CurrentRound | null
+  currentSelection: CurrentTimelineSelection | null
+  activeProgress: ActiveRoundProgress | null
+  playerMeetingIsNext: boolean
+  betweenRoundSlotIndex: number | null
 }) {
   const { phase } = phaseBoard
   const slots = phaseSlots(phaseBoard, startNumber)
-  if (slots.length === 0) {
+  const hasPlayerMeeting = phase.playerMeeting === true
+  if (slots.length === 0 && !hasPlayerMeeting) {
     return null
   }
 
@@ -419,31 +535,66 @@ function PhaseSection({
         </span>
       ) : null}
       <ol className="flex items-center">
+        {hasPlayerMeeting ? (
+          <li className="flex items-center">
+            <PlayerMeetingNode
+              phaseOrder={phase.phaseOrder}
+              phaseName={phaseName}
+              publicCode={publicCode}
+              status={phase.playerMeetingStatus}
+              isNext={playerMeetingIsNext}
+              isCurrent={
+                currentSelection?.view === 'pairings' &&
+                currentSelection.phase === phase.phaseOrder &&
+                currentSelection.meeting === true
+              }
+            />
+          </li>
+        ) : null}
         {slots.map((slot, index) => {
           const previous = index > 0 ? slots[index - 1] : undefined
+          const isBetweenRoundTarget = index === betweenRoundSlotIndex
           const filled =
-            previous?.kind === 'round' &&
-            previous.round.roundStatus === 'completed'
+            (previous?.kind === 'round' &&
+              previous.round.roundStatus === 'completed') ||
+            (index === 0 && phase.playerMeetingStatus === 'completed')
           return (
             <li
-              key={slot.kind === 'round' ? slot.round._id : `slot-${index}`}
+              // A timeline position keeps its identity when a planned round
+              // becomes real, allowing its connector fill to transition.
+              key={`slot-${index}`}
               className="flex items-center"
             >
-              {previous ? (
+              {previous || hasPlayerMeeting ? (
                 <span
                   aria-hidden
-                  className={cn(
-                    'h-0.5 w-3 sm:w-5',
-                    filled ? 'bg-primary' : 'bg-border',
-                  )}
-                />
+                  className="h-0.5 w-3 overflow-hidden bg-border sm:w-5"
+                >
+                  <span
+                    className={cn(
+                      'block h-full bg-primary transition-[width] duration-300 ease-out motion-reduce:transition-none',
+                      isBetweenRoundTarget
+                        ? 'w-1/2'
+                        : filled
+                          ? 'w-full'
+                          : 'w-0',
+                    )}
+                  />
+                </span>
               ) : null}
               <RoundNode
                 slot={slot}
                 phaseOrder={phase.phaseOrder}
                 phaseName={phaseName}
                 publicCode={publicCode}
-                currentRound={currentRound}
+                currentSelection={currentSelection}
+                activeStep={
+                  slot.kind === 'round' &&
+                  activeProgress?.roundId === slot.round._id
+                    ? activeProgress.step
+                    : null
+                }
+                isBetweenRounds={isBetweenRoundTarget}
               />
             </li>
           )
@@ -454,27 +605,100 @@ function PhaseSection({
 }
 
 const nodeClassName =
-  'flex size-6 items-center justify-center rounded-full border text-[11px] font-medium tabular-nums'
+  'flex size-6 items-center justify-center rounded-full border text-[11px] font-medium tabular-nums transition-[color,background-color,border-color,box-shadow,transform] duration-300 ease-out motion-reduce:transition-none'
+
+const nodeEntranceClassName =
+  'animate-in fade-in-0 zoom-in-95 motion-reduce:animate-none'
+
+function PlayerMeetingNode({
+  phaseOrder,
+  phaseName,
+  publicCode,
+  status,
+  isNext,
+  isCurrent,
+}: {
+  phaseOrder: number
+  phaseName: string
+  publicCode: string
+  status: PhaseBoard['phase']['playerMeetingStatus']
+  isNext: boolean
+  isCurrent: boolean
+}) {
+  if (status === undefined) {
+    return (
+      <InertNode
+        label="PM"
+        tooltip={
+          isNext
+            ? `${phaseName} · Player meeting is next`
+            : `${phaseName} · Player meeting · Not started`
+        }
+        isBetweenRounds={isNext}
+      />
+    )
+  }
+
+  const completed = status === 'completed'
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Link
+          to="/admin/tournaments/$tournamentId/pairings"
+          params={{ tournamentId: publicCode }}
+          search={{ phase: phaseOrder, meeting: true }}
+          aria-label={`${phaseName}, player meeting: ${completed ? 'completed' : 'in progress'}; view seating`}
+          aria-current={isCurrent ? 'page' : undefined}
+          className={cn(
+            nodeClassName,
+            nodeEntranceClassName,
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            completed
+              ? 'border-primary bg-primary text-primary-foreground hover:bg-primary/85'
+              : 'border-round-live bg-round-live/10 text-round-live ring-2 ring-round-live/20 hover:bg-round-live/20',
+            isCurrent &&
+              'outline-none ring-2 ring-ring ring-offset-2 ring-offset-background',
+          )}
+        >
+          PM
+        </Link>
+      </TooltipTrigger>
+      <TooltipContent>
+        {phaseName} · Player meeting · {completed ? 'Completed' : 'In progress'}{' '}
+        — view seating
+      </TooltipContent>
+    </Tooltip>
+  )
+}
 
 function RoundNode({
   slot,
   phaseOrder,
   phaseName,
   publicCode,
-  currentRound,
+  currentSelection,
+  activeStep,
+  isBetweenRounds,
 }: {
   slot: RoundSlot
   phaseOrder: number
   phaseName: string
   publicCode: string
-  currentRound: CurrentRound | null
+  currentSelection: CurrentTimelineSelection | null
+  activeStep: ActiveRoundStep | null
+  isBetweenRounds: boolean
 }) {
   if (slot.kind !== 'round') {
     if (slot.kind === 'unknown') {
       return (
         <InertNode
           label="?"
-          tooltip={`${phaseName} · More rounds may follow`}
+          tooltip={
+            isBetweenRounds
+              ? `${phaseName} · Between rounds · Next round is not generated yet`
+              : `${phaseName} · More rounds may follow`
+          }
+          isBetweenRounds={isBetweenRounds}
         />
       )
     }
@@ -482,10 +706,13 @@ function RoundNode({
       <InertNode
         label={slot.roundNumber === null ? '?' : String(slot.roundNumber)}
         tooltip={
-          slot.roundNumber === null
-            ? `${phaseName} · Not started`
-            : `${phaseName} · Round ${slot.roundNumber} · Not started`
+          isBetweenRounds
+            ? `${phaseName} · Between rounds · Round ${slot.roundNumber ?? 'pending'} is next`
+            : slot.roundNumber === null
+              ? `${phaseName} · Not started`
+              : `${phaseName} · Round ${slot.roundNumber} · Not started`
         }
+        isBetweenRounds={isBetweenRounds}
       />
     )
   }
@@ -513,10 +740,11 @@ function RoundNode({
   }
 
   const completed = view === 'standings'
+  const progress = activeStep ? activeRoundStepPresentation[activeStep] : null
   const isCurrent =
-    currentRound?.view === view &&
-    currentRound.phase === phaseOrder &&
-    currentRound.round === round.roundNumber
+    currentSelection?.view === view &&
+    currentSelection.phase === phaseOrder &&
+    currentSelection.round === round.roundNumber
 
   return (
     <Tooltip>
@@ -529,14 +757,17 @@ function RoundNode({
           }
           params={{ tournamentId: publicCode }}
           search={{ phase: phaseOrder, round: round.roundNumber }}
-          aria-label={`${phaseName}, ${round.roundName}: view ${view}`}
+          aria-label={`${phaseName}, ${round.roundName}: ${progress?.label ?? (completed ? 'completed' : 'in progress')}; view ${view}`}
           aria-current={isCurrent ? 'page' : undefined}
           className={cn(
             nodeClassName,
-            'transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            nodeEntranceClassName,
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
             completed
               ? 'border-primary bg-primary text-primary-foreground hover:bg-primary/85'
-              : 'border-primary bg-background text-primary ring-2 ring-primary/25 hover:bg-primary/10',
+              : progress
+                ? progress.className
+                : 'border-primary bg-background text-primary ring-2 ring-primary/25 hover:bg-primary/10',
             isCurrent &&
               'outline-none ring-2 ring-ring ring-offset-2 ring-offset-background',
           )}
@@ -548,23 +779,70 @@ function RoundNode({
         {phaseName} · {round.roundName} ·{' '}
         {completed
           ? 'Completed — view standings'
-          : 'In progress — view pairings'}
+          : `${progress?.tooltip ?? 'In progress'} — view pairings`}
       </TooltipContent>
     </Tooltip>
   )
 }
 
-function InertNode({ label, tooltip }: { label: string; tooltip: string }) {
+const activeRoundStepPresentation: Record<
+  ActiveRoundStep,
+  { label: string; tooltip: string; className: string }
+> = {
+  pairingsReady: {
+    label: 'pairings ready to publish',
+    tooltip: 'Pairings ready to publish',
+    className:
+      'border-round-pairings bg-round-pairings/10 text-round-pairings ring-2 ring-round-pairings/20 hover:bg-round-pairings/20',
+  },
+  timerReady: {
+    label: 'pairings published; timer not started',
+    tooltip: 'Pairings published · Timer not started',
+    className:
+      'border-round-timer bg-round-timer/10 text-round-timer ring-2 ring-round-timer/20 hover:bg-round-timer/20',
+  },
+  playing: {
+    label: 'round in progress',
+    tooltip: 'Round in progress',
+    className:
+      'border-round-live bg-round-live/10 text-round-live ring-2 ring-round-live/20 hover:bg-round-live/20',
+  },
+  readyToComplete: {
+    label: 'results reported; ready to complete',
+    tooltip: 'Results reported · Ready to complete',
+    className:
+      'border-round-ready bg-round-ready/10 text-round-ready ring-2 ring-round-ready/20 hover:bg-round-ready/20',
+  },
+}
+
+function InertNode({
+  label,
+  tooltip,
+  isBetweenRounds = false,
+}: {
+  label: string
+  tooltip: string
+  isBetweenRounds?: boolean
+}) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <span
+          aria-label={tooltip.replaceAll(' · ', ', ')}
+          aria-current={isBetweenRounds ? 'step' : undefined}
           className={cn(
             nodeClassName,
             'border-dashed border-border text-muted-foreground/70',
+            isBetweenRounds && 'relative',
           )}
         >
           {label}
+          {isBetweenRounds ? (
+            <span
+              aria-hidden
+              className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-round-between ring-2 ring-background duration-200 ease-out animate-in fade-in-0 zoom-in-50 motion-reduce:animate-none"
+            />
+          ) : null}
         </span>
       </TooltipTrigger>
       <TooltipContent>{tooltip}</TooltipContent>

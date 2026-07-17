@@ -571,19 +571,30 @@ test("createTournamentWithPhases creates an unpublished public tournament with o
   await organizer.mutation(api.tournaments.lifecycle.publishTournament, {
     tournamentId,
   });
-  await expect(
-    organizer.mutation(api.tournaments.lifecycle.updateTournamentSetup, {
-      tournamentId,
-      name: "Published tournaments are structurally locked",
-    }),
-  ).rejects.toThrow("Tournament setup is locked after publication");
-  await expect(
-    organizer.mutation(api.tournaments.lifecycle.updatePhaseSetup, {
-      phaseId: setup.phases[0]._id,
-      phaseRoundMode: "fixed",
-      phaseTotalRounds: 5,
-    }),
-  ).rejects.toThrow("Tournament setup is locked after publication");
+  await organizer.mutation(api.tournaments.lifecycle.updateTournamentSetup, {
+    tournamentId,
+    name: "Published and still editable",
+  });
+  await organizer.mutation(api.tournaments.lifecycle.updateTournamentPhases, {
+    tournamentId,
+    phases: [
+      {
+        phaseId: setup.phases[0]._id,
+        phaseOrder: 1,
+        phaseType: "swiss",
+        phaseRoundMode: "fixed",
+        phaseTotalRounds: 5,
+      },
+    ],
+  });
+  const registrationSetup = await organizer.query(
+    api.tournaments.lifecycle.getTournamentSetup,
+    { tournamentId },
+  );
+  expect(registrationSetup.tournament.name).toBe(
+    "Published and still editable",
+  );
+  expect(registrationSetup.phases[0].phaseTotalRounds).toBe(5);
 });
 
 test("unlisted registration events are direct-link accessible but absent from discovery", async () => {
@@ -975,6 +986,372 @@ test("createTournamentWithPhases stores multiple Swiss phases in order", async (
     6,
     null,
   ]);
+});
+
+test("updateTournamentPhases atomically adds, removes, reorders, and changes phase types", async () => {
+  const t = convexTest(schema, modules);
+  const { organizationId } = await seedOrganizer(t);
+  const organizer = t.withIdentity(organizerIdentity);
+  const tournamentId = await organizer.mutation(
+    api.tournaments.lifecycle.createTournamentWithPhases,
+    {
+      organizationId,
+      name: "Editable Structure",
+      startDate: Date.now() + 86_400_000,
+      playerCapacity: 32,
+      format: "standard",
+      phases: [
+        { phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 4 },
+        { phaseOrder: 2, phaseRoundMode: "dynamic" },
+      ],
+    },
+  );
+  const initial = await organizer.query(
+    api.tournaments.lifecycle.getTournamentSetup,
+    { tournamentId },
+  );
+  const [phaseOne, phaseTwo] = initial.phases;
+  await organizer.mutation(api.tournaments.lifecycle.publishTournament, {
+    tournamentId,
+  });
+
+  const reorderedIds = await organizer.mutation(
+    api.tournaments.lifecycle.updateTournamentPhases,
+    {
+      tournamentId,
+      phases: [
+        {
+          phaseId: phaseTwo._id,
+          phaseOrder: 1,
+          phaseType: "swiss",
+          phaseRoundMode: "fixed",
+          phaseTotalRounds: 5,
+        },
+        {
+          phaseId: phaseOne._id,
+          phaseOrder: 2,
+          phaseType: "swiss",
+          phaseRoundMode: "dynamic",
+        },
+        {
+          phaseOrder: 3,
+          phaseType: "single_elimination",
+          phaseRoundMode: "fixed",
+        },
+      ],
+    },
+  );
+  expect(reorderedIds.slice(0, 2)).toEqual([phaseTwo._id, phaseOne._id]);
+
+  let updated = await organizer.query(
+    api.tournaments.lifecycle.getTournamentSetup,
+    { tournamentId },
+  );
+  expect(updated.phases.map((phase) => phase._id)).toEqual(reorderedIds);
+  expect(updated.phases.map((phase) => phase.phaseName)).toEqual([
+    "Phase 1",
+    "Phase 2",
+    "Phase 3",
+  ]);
+  expect(updated.phases.map((phase) => phase.phaseType)).toEqual([
+    "swiss",
+    "swiss",
+    "single_elimination",
+  ]);
+
+  await organizer.mutation(api.tournaments.lifecycle.updateTournamentPhases, {
+    tournamentId,
+    phases: [
+      {
+        phaseId: phaseTwo._id,
+        phaseOrder: 1,
+        phaseType: "swiss",
+        phaseRoundMode: "fixed",
+        phaseTotalRounds: 5,
+      },
+      {
+        phaseId: reorderedIds[2],
+        phaseOrder: 2,
+        phaseType: "swiss",
+        phaseRoundMode: "dynamic",
+      },
+    ],
+  });
+  updated = await organizer.query(api.tournaments.lifecycle.getTournamentSetup, {
+    tournamentId,
+  });
+  expect(updated.phases.map((phase) => phase._id)).toEqual([
+    phaseTwo._id,
+    reorderedIds[2],
+  ]);
+  expect(updated.phases.map((phase) => phase.phaseType)).toEqual([
+    "swiss",
+    "swiss",
+  ]);
+  expect(await t.run(async (ctx) => await ctx.db.get(phaseOne._id))).toBeNull();
+});
+
+test("pre-start settings enforce roster capacity and lock only while play is active or ended", async () => {
+  const t = convexTest(schema, modules);
+  const { organizationId } = await seedOrganizer(t);
+  const organizer = t.withIdentity(organizerIdentity);
+  const tournamentId = await organizer.mutation(
+    api.tournaments.lifecycle.createTournamentWithPhases,
+    {
+      organizationId,
+      name: "Lifecycle Editing",
+      startDate: Date.now(),
+      playerCapacity: 8,
+      format: "standard",
+      phases: [
+        { phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 2 },
+      ],
+    },
+  );
+  await seedActiveRegistrations(t, tournamentId, 3);
+  await organizer.mutation(api.tournaments.lifecycle.publishTournament, {
+    tournamentId,
+  });
+  const setup = await organizer.query(
+    api.tournaments.lifecycle.getTournamentSetup,
+    { tournamentId },
+  );
+
+  await organizer.mutation(api.tournaments.lifecycle.updateTournamentSetup, {
+    tournamentId,
+    playerCapacity: 4,
+    format: "modern",
+  });
+  await expect(
+    organizer.mutation(api.tournaments.lifecycle.updateTournamentSetup, {
+      tournamentId,
+      playerCapacity: 2,
+    }),
+  ).rejects.toThrow(
+    "Player capacity cannot be lower than the active registration count",
+  );
+  await organizer.mutation(api.tournaments.lifecycle.updateTournamentPhases, {
+    tournamentId,
+    phases: [
+      {
+        phaseId: setup.phases[0]._id,
+        phaseOrder: 1,
+        phaseType: "swiss",
+        phaseRoundMode: "fixed",
+        phaseTotalRounds: 3,
+      },
+    ],
+  });
+
+  await organizer.mutation(api.tournaments.rounds.startTournament, {
+    tournamentId,
+  });
+  expect(
+    (
+      await organizer.query(api.tournaments.lifecycle.getTournamentSetup, {
+        tournamentId,
+      })
+    ).phases[0].phaseTotalRounds,
+  ).toBe(3);
+  await expect(
+    organizer.mutation(api.tournaments.lifecycle.updateTournamentSetup, {
+      tournamentId,
+      name: "Locked during play",
+    }),
+  ).rejects.toThrow("Tournament setup is locked after play begins");
+  await expect(
+    organizer.mutation(api.tournaments.lifecycle.updateTournamentPhases, {
+      tournamentId,
+      phases: [
+        {
+          phaseId: setup.phases[0]._id,
+          phaseOrder: 1,
+          phaseType: "swiss",
+          phaseRoundMode: "dynamic",
+        },
+      ],
+    }),
+  ).rejects.toThrow("Tournament setup is locked after play begins");
+
+  await organizer.mutation(api.tournaments.rounds.rewindLatestRound, {
+    tournamentId,
+  });
+  await organizer.mutation(api.tournaments.lifecycle.updateTournamentSetup, {
+    tournamentId,
+    name: "Editable after rewind",
+  });
+
+  for (const lifecycle of ["completed", "cancelled"] as const) {
+    await t.run(async (ctx) => {
+      await ctx.db.patch(tournamentId, { lifecycle });
+    });
+    await expect(
+      organizer.mutation(api.tournaments.lifecycle.updateTournamentSetup, {
+        tournamentId,
+        name: "Still locked",
+      }),
+    ).rejects.toThrow("Tournament setup is locked after play begins");
+  }
+});
+
+test("updateTournamentPhases rejects duplicate and foreign phase IDs", async () => {
+  const t = convexTest(schema, modules);
+  const { organizationId } = await seedOrganizer(t);
+  const organizer = t.withIdentity(organizerIdentity);
+  const tournamentIds = await Promise.all(
+    ["First Event", "Second Event"].map((name) =>
+      organizer.mutation(
+        api.tournaments.lifecycle.createTournamentWithPhases,
+        {
+          organizationId,
+          name,
+          startDate: Date.now(),
+          playerCapacity: 8,
+          format: "standard",
+          phases: [{ phaseOrder: 1, phaseRoundMode: "dynamic" }],
+        },
+      ),
+    ),
+  );
+  const [first, second] = await Promise.all(
+    tournamentIds.map((tournamentId) =>
+      organizer.query(api.tournaments.lifecycle.getTournamentSetup, {
+        tournamentId,
+      }),
+    ),
+  );
+
+  await expect(
+    organizer.mutation(api.tournaments.lifecycle.updateTournamentPhases, {
+      tournamentId: tournamentIds[0],
+      phases: [
+        {
+          phaseId: first.phases[0]._id,
+          phaseOrder: 1,
+          phaseType: "swiss",
+          phaseRoundMode: "dynamic",
+        },
+        {
+          phaseId: first.phases[0]._id,
+          phaseOrder: 2,
+          phaseType: "swiss",
+          phaseRoundMode: "dynamic",
+        },
+      ],
+    }),
+  ).rejects.toThrow("Tournament phase IDs must be unique");
+
+  await expect(
+    organizer.mutation(api.tournaments.lifecycle.updateTournamentPhases, {
+      tournamentId: tournamentIds[0],
+      phases: [
+        {
+          phaseId: second.phases[0]._id,
+          phaseOrder: 1,
+          phaseType: "swiss",
+          phaseRoundMode: "dynamic",
+        },
+      ],
+    }),
+  ).rejects.toThrow("Tournament phase does not belong to this tournament");
+});
+
+test("structural phase changes reset only affected player meeting snapshots", async () => {
+  const t = convexTest(schema, modules);
+  const { organizationId } = await seedOrganizer(t);
+  const organizer = t.withIdentity(organizerIdentity);
+  const tournamentId = await organizer.mutation(
+    api.tournaments.lifecycle.createTournamentWithPhases,
+    {
+      organizationId,
+      name: "Meeting Reset",
+      startDate: Date.now(),
+      playerCapacity: 8,
+      format: "standard",
+      phases: [
+        {
+          phaseOrder: 1,
+          phaseRoundMode: "dynamic",
+          playerMeeting: true,
+        },
+        { phaseOrder: 2, phaseRoundMode: "dynamic" },
+      ],
+    },
+  );
+  await seedActiveRegistrations(t, tournamentId, 2);
+  await organizer.mutation(api.tournaments.lifecycle.publishTournament, {
+    tournamentId,
+  });
+  const initial = await organizer.query(
+    api.tournaments.lifecycle.getTournamentSetup,
+    { tournamentId },
+  );
+  const [meetingPhase, otherPhase] = initial.phases;
+  await organizer.mutation(api.tournaments.playerMeeting.startPlayerMeeting, {
+    phaseId: meetingPhase._id,
+  });
+
+  await organizer.mutation(api.tournaments.lifecycle.updateTournamentPhases, {
+    tournamentId,
+    phases: [
+      {
+        phaseId: meetingPhase._id,
+        phaseOrder: 1,
+        phaseType: "swiss",
+        phaseRoundMode: "fixed",
+        phaseTotalRounds: 4,
+        playerMeeting: true,
+      },
+      {
+        phaseId: otherPhase._id,
+        phaseOrder: 2,
+        phaseType: "swiss",
+        phaseRoundMode: "dynamic",
+      },
+    ],
+  });
+  let meetingState = await t.run(async (ctx) => ({
+    phase: await ctx.db.get(meetingPhase._id),
+    seats: await ctx.db
+      .query("playerMeetingSeats")
+      .withIndex("by_tournamentPhaseId_and_tableNumber", (q) =>
+        q.eq("tournamentPhaseId", meetingPhase._id),
+      )
+      .take(8),
+  }));
+  expect(meetingState.phase?.playerMeetingStatus).toBe("in_progress");
+  expect(meetingState.seats).toHaveLength(2);
+
+  await organizer.mutation(api.tournaments.lifecycle.updateTournamentPhases, {
+    tournamentId,
+    phases: [
+      {
+        phaseId: otherPhase._id,
+        phaseOrder: 1,
+        phaseType: "swiss",
+        phaseRoundMode: "dynamic",
+      },
+      {
+        phaseId: meetingPhase._id,
+        phaseOrder: 2,
+        phaseType: "swiss",
+        phaseRoundMode: "fixed",
+        phaseTotalRounds: 4,
+        playerMeeting: true,
+      },
+    ],
+  });
+  meetingState = await t.run(async (ctx) => ({
+    phase: await ctx.db.get(meetingPhase._id),
+    seats: await ctx.db
+      .query("playerMeetingSeats")
+      .withIndex("by_tournamentPhaseId_and_tableNumber", (q) =>
+        q.eq("tournamentPhaseId", meetingPhase._id),
+      )
+      .take(8),
+  }));
+  expect(meetingState.phase?.playerMeetingStatus).toBeUndefined();
+  expect(meetingState.seats).toHaveLength(0);
 });
 
 test("createTournamentWithPhases rejects an empty phase list", async () => {

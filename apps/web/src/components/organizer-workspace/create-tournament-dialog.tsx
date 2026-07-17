@@ -1,14 +1,11 @@
 import { useState } from 'react'
 import { useMutation } from 'convex/react'
-import { Plus, Trash2 } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { api } from '@tournament-os/backend/convex/_generated/api'
 import {
-  addTournamentCreationPhase,
-  canRemoveTournamentCreationPhase,
   createDefaultTournamentCreationPhase,
-  removeTournamentCreationPhase,
   toTournamentCreationPhasePayload,
   tournamentFormats,
 } from '@tournament-os/shared/tournament-creation-utils'
@@ -20,9 +17,9 @@ import type {
 import type { FormEvent } from 'react'
 import type { TournamentBasicsValue } from '@/components/tournaments'
 import {
-  RoundConfigurationFields,
   TournamentBasicsFields,
 } from '@/components/tournaments'
+import { TournamentPhaseEditor } from '@/components/tournaments/tournament-phase-editor'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -40,8 +37,6 @@ import {
   FieldDescription,
   FieldGroup,
   FieldLabel,
-  FieldLegend,
-  FieldSet,
 } from '@/components/ui/field'
 import {
   Select,
@@ -83,16 +78,6 @@ export function CreateTournamentDialog() {
     setFormat('standard')
     setIsTestEvent(false)
     setPhases([createDefaultTournamentCreationPhase('phase-1')])
-  }
-
-  function handleAddPhase() {
-    setPhases((current) =>
-      addTournamentCreationPhase(current, `phase-${Date.now()}`),
-    )
-  }
-
-  function handleRemovePhase(id: string) {
-    setPhases((current) => removeTournamentCreationPhase(current, id))
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -196,33 +181,11 @@ export function CreateTournamentDialog() {
               </FieldContent>
             </Field>
 
-            <FieldSet>
-              <FieldLegend>Tournament phases</FieldLegend>
-              <FieldGroup>
-                {phases.map((phase, index) => (
-                  <TournamentPhaseField
-                    key={phase.id}
-                    disabled={disabled}
-                    index={index}
-                    onRemovePhase={handleRemovePhase}
-                    onPhasesChange={setPhases}
-                    phase={phase}
-                    phases={phases}
-                  />
-                ))}
-              </FieldGroup>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={handleAddPhase}
-                disabled={
-                  disabled || phases.at(-1)?.phaseType === 'single_elimination'
-                }
-              >
-                <Plus data-icon="inline-start" />
-                Add phase
-              </Button>
-            </FieldSet>
+            <TournamentPhaseEditor
+              disabled={disabled}
+              phases={phases}
+              onChange={setPhases}
+            />
 
             {!selectedOrganizationId && (
               <FieldDescription>
@@ -240,132 +203,5 @@ export function CreateTournamentDialog() {
         </form>
       </DialogContent>
     </Dialog>
-  )
-}
-
-function TournamentPhaseField({
-  disabled,
-  index,
-  onRemovePhase,
-  onPhasesChange,
-  phase,
-  phases,
-}: {
-  disabled: boolean
-  index: number
-  onRemovePhase: (id: string) => void
-  onPhasesChange: (phases: Array<TournamentCreationPhaseForm>) => void
-  phase: TournamentCreationPhaseForm
-  phases: Array<TournamentCreationPhaseForm>
-}) {
-  return (
-    <Field className="rounded-md border border-border p-3">
-      <div className="grid gap-3 md:grid-cols-[180px_1fr_32px] md:items-end">
-        <Field data-disabled={disabled || undefined}>
-          <FieldLabel>Phase {index + 1}</FieldLabel>
-          <Select
-            value={phase.phaseType}
-            onValueChange={(phaseType) =>
-              onPhasesChange(
-                phases.map((current) =>
-                  current.id === phase.id
-                    ? {
-                        ...current,
-                        phaseType:
-                          phaseType as TournamentCreationPhaseForm['phaseType'],
-                        ...(phaseType === 'single_elimination'
-                          ? {
-                              phaseRoundMode: 'fixed' as const,
-                              phaseTotalRounds: '3',
-                              playerMeeting: false,
-                            }
-                          : {}),
-                      }
-                    : current,
-                ),
-              )
-            }
-            disabled={disabled}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                <SelectItem value="swiss">Swiss</SelectItem>
-                <SelectItem
-                  value="single_elimination"
-                  disabled={index === 0 || index !== phases.length - 1}
-                >
-                  Top 8 playoff
-                </SelectItem>
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-        </Field>
-        <RoundConfigurationFields
-          disabled={disabled || phase.phaseType === 'single_elimination'}
-          idPrefix={phase.id}
-          value={{
-            roundMode: phase.phaseRoundMode,
-            totalRounds: phase.phaseTotalRounds,
-          }}
-          onChange={(value) =>
-            onPhasesChange(
-              phases.map((current) =>
-                current.id === phase.id
-                  ? {
-                      ...current,
-                      phaseRoundMode: value.roundMode,
-                      phaseTotalRounds: value.totalRounds,
-                    }
-                  : current,
-              ),
-            )
-          }
-        />
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          onClick={() => onRemovePhase(phase.id)}
-          disabled={
-            disabled || !canRemoveTournamentCreationPhase(phases, phase.id)
-          }
-          aria-label={`Remove phase ${index + 1}`}
-        >
-          <Trash2 />
-        </Button>
-      </div>
-      <Field
-        orientation="horizontal"
-        data-disabled={disabled || phase.phaseType === 'single_elimination'}
-      >
-        <Checkbox
-          id={`${phase.id}-player-meeting`}
-          checked={phase.playerMeeting}
-          onCheckedChange={(checked) =>
-            onPhasesChange(
-              phases.map((current) =>
-                current.id === phase.id
-                  ? { ...current, playerMeeting: checked === true }
-                  : current,
-              ),
-            )
-          }
-          disabled={disabled || phase.phaseType === 'single_elimination'}
-        />
-        <FieldContent>
-          <FieldLabel htmlFor={`${phase.id}-player-meeting`}>
-            Hold a player meeting
-          </FieldLabel>
-          <FieldDescription>
-            {phase.phaseType === 'single_elimination'
-              ? 'The playoff begins directly from the final Swiss standings.'
-              : "Seat players alphabetically before this phase's first round for attendance and announcements."}
-          </FieldDescription>
-        </FieldContent>
-      </Field>
-    </Field>
   )
 }

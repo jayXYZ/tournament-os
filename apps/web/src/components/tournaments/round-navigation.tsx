@@ -11,15 +11,26 @@ export type RoundNavigationMode = 'all' | 'completed'
 export type RoundSelection = {
   phase?: number
   round?: number
+  meeting?: true
 }
 
-// validateSearch for routes that carry a round selection. The router's search
-// parser already turns numeric params into numbers; anything else is dropped.
+// validateSearch for routes that carry a timeline selection. The router's
+// search parser already restores numeric and boolean values; anything else is
+// dropped.
 export function parseRoundSelectionSearch(
   search: Record<string, unknown>,
 ): RoundSelection {
+  const phase = typeof search.phase === 'number' ? search.phase : undefined
+
+  // A player meeting and a round are separate timeline destinations. Keep the
+  // parsed selection mutually exclusive even if a hand-edited URL contains
+  // both search params.
+  if (search.meeting === true) {
+    return { phase, meeting: true }
+  }
+
   return {
-    phase: typeof search.phase === 'number' ? search.phase : undefined,
+    phase,
     round: typeof search.round === 'number' ? search.round : undefined,
   }
 }
@@ -50,9 +61,7 @@ export function useTournamentRoundNavigation(
   selection: RoundSelection,
   onSelectionChange: (selection: RoundSelection) => void,
 ) {
-  const roundsForMode = (
-    rounds: TournamentRoundNavigationPhase['rounds'],
-  ) =>
+  const roundsForMode = (rounds: TournamentRoundNavigationPhase['rounds']) =>
     mode === 'completed'
       ? rounds.filter((round) => round.roundStatus === 'completed')
       : rounds
@@ -64,9 +73,7 @@ export function useTournamentRoundNavigation(
   // seating is the content the organizer needs.
   const defaultPhase =
     (mode === 'all'
-      ? phases.find(
-          ({ phase }) => phase.playerMeetingStatus === 'in_progress',
-        )
+      ? phases.find(({ phase }) => phase.playerMeetingStatus === 'in_progress')
       : undefined) ??
     [...phases]
       .reverse()
@@ -78,9 +85,16 @@ export function useTournamentRoundNavigation(
     defaultPhase
   const allRounds = activePhase?.rounds ?? []
   const availableRounds = roundsForMode(allRounds)
-  const selectedRound =
-    availableRounds.find((round) => round.roundNumber === selection.round) ??
-    availableRounds.at(-1)
+  const isPlayerMeetingSelected =
+    mode === 'all' &&
+    activePhase?.phase.playerMeetingStatus !== undefined &&
+    (selection.meeting === true ||
+      (selection.round === undefined &&
+        activePhase.phase.playerMeetingStatus === 'in_progress'))
+  const selectedRound = isPlayerMeetingSelected
+    ? undefined
+    : (availableRounds.find((round) => round.roundNumber === selection.round) ??
+      availableRounds.at(-1))
   const roundTabCount = Math.max(
     activePhase?.phase.phaseTotalRounds ?? 0,
     allRounds.length,
@@ -93,12 +107,23 @@ export function useTournamentRoundNavigation(
     activePhase,
     availableRounds,
     firstRoundNumber,
+    isPlayerMeetingSelected,
     phases,
     roundTabCount,
     selectedRound,
     selectPhase: (phaseId: string) => {
       const target = phases.find(({ phase }) => phase._id === phaseId)
-      onSelectionChange(target ? { phase: target.phase.phaseOrder } : {})
+      onSelectionChange(
+        target
+          ? {
+              phase: target.phase.phaseOrder,
+              ...(mode === 'all' &&
+              target.phase.playerMeetingStatus === 'in_progress'
+                ? { meeting: true as const }
+                : {}),
+            }
+          : {},
+      )
     },
     selectRound: (roundNumber: number) =>
       onSelectionChange({
@@ -110,10 +135,12 @@ export function useTournamentRoundNavigation(
 
 export function TournamentPhaseTabs({
   activePhaseId,
+  mode,
   onValueChange,
   phases,
 }: {
   activePhaseId: string
+  mode: RoundNavigationMode
   onValueChange: (phaseId: string) => void
   phases: Array<TournamentRoundNavigationPhase>
 }) {
@@ -128,12 +155,13 @@ export function TournamentPhaseTabs({
           <TabsTrigger
             key={phase._id}
             value={phase._id}
-            // An upcoming phase becomes selectable once its player meeting
-            // starts, so the meeting seating stays reachable before the
-            // phase's first round is paired.
+            // Pairings can open an upcoming phase once its player meeting
+            // starts so the seating stays reachable. Standings still require
+            // a completed round and must not navigate to an empty phase.
             disabled={
               phase.phaseStatus === 'upcoming' &&
-              phase.playerMeetingStatus === undefined
+              (mode === 'completed' ||
+                phase.playerMeetingStatus === undefined)
             }
           >
             {phase.phaseName ?? `Phase ${phase.phaseOrder}`}

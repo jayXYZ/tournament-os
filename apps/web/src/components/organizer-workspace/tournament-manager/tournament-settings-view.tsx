@@ -5,26 +5,29 @@ import { Ban, Globe, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { api } from '@tournament-os/backend/convex/_generated/api'
-import { tournamentFormats } from '@tournament-os/shared/tournament-creation-utils'
+import {
+  toTournamentCreationPhasePayload,
+  tournamentFormats,
+} from '@tournament-os/shared/tournament-creation-utils'
 import type { FormEvent } from 'react'
-import type { TournamentFormat } from '@tournament-os/shared/tournament-creation-utils'
+import type {
+  TournamentCreationPhaseForm,
+  TournamentFormat,
+} from '@tournament-os/shared/tournament-creation-utils'
 import type {
   Doc,
   Id,
 } from '@tournament-os/backend/convex/_generated/dataModel'
-import type {
-  RoundConfigurationValue,
-  TournamentBasicsValue,
-} from '@/components/tournaments'
+import type { TournamentBasicsValue } from '@/components/tournaments'
 import { WorkspacePageHeader } from '@/components/shared/workspace-page-header'
 import {
-  RoundConfigurationFields,
   TournamentBasicsFields,
   TournamentLifecycleBadge,
   TournamentVisibilityBadge,
   toDatetimeLocalValue,
   tournamentVisibilities,
 } from '@/components/tournaments'
+import { TournamentPhaseEditor } from '@/components/tournaments/tournament-phase-editor'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -36,7 +39,6 @@ import {
   AlertDialogMedia,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -69,22 +71,12 @@ import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
 import { Switch } from '@/components/ui/switch'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
-type PhaseStatus = Doc<'tournamentPhases'>['phaseStatus']
-
-const phaseStatusBadgeVariant: Record<
-  PhaseStatus,
-  'default' | 'secondary' | 'destructive' | 'outline'
-> = {
-  upcoming: 'outline',
-  in_progress: 'default',
-  completed: 'secondary',
-  cancelled: 'destructive',
-}
-
-function isSetupLocked(tournament: Doc<'tournaments'>) {
-  return tournament.lifecycle !== 'setup'
+function isPreStartLocked(tournament: Doc<'tournaments'>) {
+  return (
+    tournament.lifecycle !== 'setup' &&
+    tournament.lifecycle !== 'registration'
+  )
 }
 
 export function TournamentSettingsView({
@@ -119,11 +111,11 @@ export function TournamentSettingsView({
         <SettingsSkeleton />
       ) : (
         <>
-          {isSetupLocked(setup.tournament) ? (
+          {isPreStartLocked(setup.tournament) ? (
             <p className="rounded-md border bg-muted/50 px-4 py-3 text-sm text-muted-foreground">
               {setup.tournament.lifecycle === 'cancelled'
                 ? 'This tournament has been cancelled. Its settings can no longer be changed.'
-                : 'Core settings are locked once the tournament is published. Visibility, event details, and pairing publication preferences can still be changed.'}
+                : 'Core and phase settings are locked after tournament play begins. Visibility, event details, and pairing publication preferences can still be changed.'}
             </p>
           ) : null}
           <TournamentSettingsCard
@@ -136,6 +128,9 @@ export function TournamentSettingsView({
             tournament={setup.tournament}
           />
           <PhaseSettingsCard
+            key={setup.phases
+              .map((phase) => `${phase._id}:${phase.updatedAt}`)
+              .join('|')}
             tournament={setup.tournament}
             phases={setup.phases}
           />
@@ -244,7 +239,7 @@ function TournamentSettingsCard({
   const [format, setFormat] = useState<TournamentFormat>(tournament.format)
   const [busy, setBusy] = useState(false)
 
-  const locked = isSetupLocked(tournament)
+  const locked = isPreStartLocked(tournament)
   const disabled = locked || busy
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -277,8 +272,8 @@ function TournamentSettingsCard({
         <CardTitle>Tournament settings</CardTitle>
         <CardDescription>
           {locked
-            ? 'Setup is locked once the tournament is published.'
-            : 'Update the basic details for this tournament.'}
+            ? 'Core settings are locked after tournament play begins.'
+            : 'Update these details any time before tournament play begins.'}
         </CardDescription>
         <CardAction>
           <div className="flex items-center gap-2">
@@ -590,89 +585,51 @@ function PhaseSettingsCard({
   tournament: Doc<'tournaments'>
   phases: Array<Doc<'tournamentPhases'>>
 }) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Phase settings</CardTitle>
-        <CardDescription>
-          Configure how each phase of this tournament runs.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        {phases.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            No phases have been configured for this tournament.
-          </p>
-        ) : (
-          <Tabs defaultValue={phases[0]._id}>
-            <TabsList>
-              {phases.map((phase) => (
-                <TabsTrigger key={phase._id} value={phase._id}>
-                  {phase.phaseName ?? `Phase ${phase.phaseOrder}`}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-            {phases.map((phase) => (
-              <TabsContent key={phase._id} value={phase._id} className="pt-2">
-                <PhaseSettingsForm tournament={tournament} phase={phase} />
-              </TabsContent>
-            ))}
-          </Tabs>
-        )}
-      </CardContent>
-    </Card>
+  const updateTournamentPhases = useMutation(
+    api.tournaments.lifecycle.updateTournamentPhases,
   )
-}
-
-function PhaseSettingsForm({
-  tournament,
-  phase,
-}: {
-  tournament: Doc<'tournaments'>
-  phase: Doc<'tournamentPhases'>
-}) {
-  const updatePhaseSetup = useMutation(
-    api.tournaments.lifecycle.updatePhaseSetup,
-  )
-
-  const [roundConfiguration, setRoundConfiguration] =
-    useState<RoundConfigurationValue>({
-      roundMode: phase.phaseRoundMode,
-      totalRounds:
-        phase.phaseTotalRounds === null ? '' : String(phase.phaseTotalRounds),
-    })
-  const [playerMeeting, setPlayerMeeting] = useState(
-    phase.playerMeeting ?? false,
+  const [phaseForms, setPhaseForms] = useState<
+    Array<TournamentCreationPhaseForm>
+  >(() =>
+    phases.map((phase) => ({
+      id: phase._id,
+      phaseType: phase.phaseType,
+      phaseRoundMode: phase.phaseRoundMode,
+      phaseTotalRounds:
+        phase.phaseTotalRounds === null
+          ? '3'
+          : String(phase.phaseTotalRounds),
+      playerMeeting: phase.playerMeeting ?? false,
+    })),
   )
   const [busy, setBusy] = useState(false)
-
-  const locked = isSetupLocked(tournament)
-  const isSingleElimination = phase.phaseType === 'single_elimination'
-  const disabled = locked || busy || isSingleElimination
-  // Once the meeting has started its seating snapshot exists, so the setting
-  // is frozen (the backend rejects changes too).
-  const meetingStarted = phase.playerMeetingStatus !== undefined
+  const locked = isPreStartLocked(tournament)
+  const existingPhaseIds = new Set(phases.map((phase) => phase._id))
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-
     setBusy(true)
     try {
-      await updatePhaseSetup({
-        phaseId: phase._id,
-        phaseRoundMode: roundConfiguration.roundMode,
-        phaseTotalRounds:
-          roundConfiguration.roundMode === 'fixed'
-            ? Number.parseInt(roundConfiguration.totalRounds, 10)
-            : undefined,
-        ...(meetingStarted ? {} : { playerMeeting }),
+      const phasePayloads = toTournamentCreationPhasePayload(phaseForms)
+      await updateTournamentPhases({
+        tournamentId: tournament._id,
+        phases: phasePayloads.map((phase, index) => ({
+          ...phase,
+          ...(existingPhaseIds.has(
+            phaseForms[index].id as Id<'tournamentPhases'>,
+          )
+            ? {
+                phaseId: phaseForms[index].id as Id<'tournamentPhases'>,
+              }
+            : {}),
+        })),
       })
-      toast.success('Phase settings saved.')
+      toast.success('Tournament phases saved.')
     } catch (error) {
       toast.error(
         error instanceof Error
           ? error.message
-          : 'Could not save phase settings.',
+          : 'Could not save tournament phases.',
       )
     } finally {
       setBusy(false)
@@ -680,103 +637,33 @@ function PhaseSettingsForm({
   }
 
   return (
-    <form onSubmit={handleSubmit}>
-      <FieldGroup>
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="secondary" className="capitalize">
-            {phase.phaseType}
-          </Badge>
-          <Badge
-            variant={phaseStatusBadgeVariant[phase.phaseStatus]}
-            className="capitalize"
-          >
-            {phase.phaseStatus.replace(/_/g, ' ')}
-          </Badge>
-        </div>
-
-        <RoundConfigurationFields
-          disabled={disabled}
-          idPrefix={phase._id}
-          value={roundConfiguration}
-          onChange={setRoundConfiguration}
-          showDynamicDescription={!isSingleElimination}
-        />
-
-        {isSingleElimination ? (
-          <FieldDescription>
-            Top-8 playoffs always run as quarterfinals, semifinals, and finals.
-            Seeds come from the preceding Swiss standings and cannot be edited.
-          </FieldDescription>
-        ) : null}
-
-        <Field
-          orientation="horizontal"
-          data-disabled={disabled || meetingStarted}
-        >
-          <Switch
-            id={`${phase._id}-player-meeting`}
-            checked={playerMeeting}
-            onCheckedChange={(checked) => setPlayerMeeting(checked === true)}
-            disabled={disabled || meetingStarted}
-          />
-          <FieldContent>
-            <FieldLabel htmlFor={`${phase._id}-player-meeting`}>
-              Player meeting
-            </FieldLabel>
-            <FieldDescription>
-              Seat all players alphabetically before this phase&apos;s first
-              round so you can take attendance, drop no-shows, and make
-              announcements.
-              {meetingStarted
-                ? ' The meeting has already been held, so this can no longer change.'
-                : ''}
-            </FieldDescription>
-          </FieldContent>
-        </Field>
-
-        <FieldSet>
-          <FieldLegend>Coming soon</FieldLegend>
-          <FieldDescription>
-            These phase settings are not available yet.
-          </FieldDescription>
-          <div className="grid gap-4 md:grid-cols-2">
-            <Field>
-              <FieldLabel>Cutoff</FieldLabel>
-              <Select disabled>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Top X players" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    <SelectItem value="top_X_players">Top X players</SelectItem>
-                    <SelectItem value="X_points_or_more">
-                      X points or more
-                    </SelectItem>
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field>
-              <FieldLabel htmlFor={`${phase._id}-round-time`}>
-                Round time limit
-              </FieldLabel>
-              <Input
-                id={`${phase._id}-round-time`}
-                placeholder="50 minutes"
-                disabled
-              />
-            </Field>
-          </div>
-        </FieldSet>
-
-        <div className="flex justify-end">
-          <Button type="submit" disabled={disabled}>
-            {busy ? <Spinner data-icon="inline-start" /> : null}
-            Save phase
-          </Button>
-        </div>
-      </FieldGroup>
-    </form>
+    <Card>
+      <CardHeader>
+        <CardTitle>Phase settings</CardTitle>
+        <CardDescription>
+          {locked
+            ? 'Phase structure is locked after tournament play begins.'
+            : 'Add, remove, reorder, and configure phases before tournament play begins. Structural changes to a phase with a started player meeting reset its seating.'}
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={handleSubmit}>
+          <FieldGroup>
+            <TournamentPhaseEditor
+              disabled={locked || busy}
+              phases={phaseForms}
+              onChange={setPhaseForms}
+            />
+            <div className="flex justify-end">
+              <Button type="submit" disabled={locked || busy}>
+                {busy ? <Spinner data-icon="inline-start" /> : null}
+                Save phases
+              </Button>
+            </div>
+          </FieldGroup>
+        </form>
+      </CardContent>
+    </Card>
   )
 }
 

@@ -10,16 +10,18 @@ const allTables: TableNames[] = [
   "tournaments",
   "tournamentRegistrations",
   "tournamentPhases",
+  "playerMeetingSeats",
   "tournamentRounds",
   "tournamentMatches",
   "tournamentMatchPlayers",
   "roundStandings",
+  "tournamentAuditEvents",
   "tournamentTestConfigs",
   "testTournamentPlayers",
 ];
 
-// Dev-only reset. Internal so it is not callable from clients; run it with
-// `npx convex run maintenance:wipeAll`.
+// Dev-only reset. Internal so it is not callable from clients; run it from the
+// repository root with `pnpm db:wipe`.
 export const wipeAll = internalMutation({
   args: {},
   handler: async (ctx) => {

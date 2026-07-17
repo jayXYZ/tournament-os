@@ -2,6 +2,7 @@ import { v } from "convex/values";
 
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
+import type { MutationCtx } from "../_generated/server";
 import { internalMutation, mutation, query } from "../_generated/server";
 import {
   currentUserOrNull,
@@ -11,22 +12,22 @@ import {
 import { logAuditEvent } from "../model/auditLog";
 import { parsePublicCode } from "../model/publicCodes";
 import {
+  MAX_TOURNAMENT_PLAYERS,
+  SINGLE_ELIMINATION_FORMAT,
   SWISS_FORMAT,
   cleanName,
   completeTournament as completeTournamentModel,
   createTournament as createTournamentModel,
-  defaultSwissRoundCount,
   deleteTournamentOperationalDataBatch,
   isPubliclyViewable,
   registrationForUser,
   requireOrganizerAccess,
-  requirePhase,
+  requirePreStartEditable,
   requireSetupEditable,
   requireSwissPhase,
   validCapacity,
   validDetailsMarkdown,
   validPhaseInputs,
-  validRoundCount,
 } from "../model/tournaments";
 import {
   tournamentFormatValidator,
@@ -263,7 +264,7 @@ export const updateTournamentSetup = mutation({
   },
   handler: async (ctx, args) => {
     const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
-    requireSetupEditable(tournament);
+    requirePreStartEditable(tournament);
 
     const patch: Partial<Doc<"tournaments">> = { updatedAt: Date.now() };
     if (args.name !== undefined) {
@@ -273,7 +274,13 @@ export const updateTournamentSetup = mutation({
       patch.startDate = args.startDate;
     }
     if (args.playerCapacity !== undefined) {
-      patch.playerCapacity = validCapacity(args.playerCapacity);
+      const playerCapacity = validCapacity(args.playerCapacity);
+      if (playerCapacity < tournament.activeRegistrationCount) {
+        throw new Error(
+          "Player capacity cannot be lower than the active registration count",
+        );
+      }
+      patch.playerCapacity = playerCapacity;
     }
     if (args.format !== undefined) {
       patch.format = args.format;
@@ -330,96 +337,128 @@ export const updateTournamentDetails = mutation({
   },
 });
 
-export const configureSwissPhase = mutation({
+async function clearPlayerMeetingSnapshot(
+  ctx: MutationCtx,
+  phaseId: Id<"tournamentPhases">,
+) {
+  const seats = await ctx.db
+    .query("playerMeetingSeats")
+    .withIndex("by_tournamentPhaseId_and_tableNumber", (q) =>
+      q.eq("tournamentPhaseId", phaseId),
+    )
+    .take(MAX_TOURNAMENT_PLAYERS);
+  for (const seat of seats) {
+    await ctx.db.delete(seat._id);
+  }
+}
+
+export const updateTournamentPhases = mutation({
   args: {
     tournamentId: v.id("tournaments"),
-    phaseTotalRounds: v.optional(v.number()),
+    phases: v.array(
+      v.object({
+        phaseId: v.optional(v.id("tournamentPhases")),
+        phaseOrder: v.number(),
+        phaseType: tournamentPhaseTypeValidator,
+        phaseRoundMode: tournamentPhaseRoundModeValidator,
+        phaseTotalRounds: v.optional(v.number()),
+        playerMeeting: v.optional(v.boolean()),
+      }),
+    ),
   },
-  handler: async (ctx, args): Promise<Id<"tournamentPhases">> => {
-    const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
-    requireSetupEditable(tournament);
-    const now = Date.now();
-    const phaseTotalRounds = validRoundCount(
-      args.phaseTotalRounds ??
-        defaultSwissRoundCount(tournament.playerCapacity),
-    );
-    const existing = await ctx.db
-      .query("tournamentPhases")
-      .withIndex("by_tournamentId_and_phaseOrder", (q) =>
-        q.eq("tournamentId", args.tournamentId).eq("phaseOrder", 1),
-      )
-      .unique();
-
-    if (existing) {
-      await ctx.db.patch(existing._id, {
-        phaseType: SWISS_FORMAT,
-        phaseStatus: "upcoming",
-        phaseRoundMode: "fixed",
-        phaseTotalRounds,
-        phaseCutoff: null,
-        updatedAt: now,
-      });
-      return existing._id;
-    }
-
-    return await ctx.db.insert("tournamentPhases", {
-      tournamentId: args.tournamentId,
-      phaseName: "Phase 1",
-      phaseType: SWISS_FORMAT,
-      phaseOrder: 1,
-      phaseStatus: "upcoming",
-      phaseRoundMode: "fixed",
-      phaseTotalRounds,
-      phaseCutoff: null,
-      updatedAt: now,
-    });
-  },
-});
-
-export const updatePhaseSetup = mutation({
-  args: {
-    phaseId: v.id("tournamentPhases"),
-    phaseRoundMode: tournamentPhaseRoundModeValidator,
-    phaseTotalRounds: v.optional(v.number()),
-    playerMeeting: v.optional(v.boolean()),
-  },
-  handler: async (ctx, args): Promise<Id<"tournamentPhases">> => {
-    const phase = await requirePhase(ctx, args.phaseId);
+  handler: async (ctx, args): Promise<Id<"tournamentPhases">[]> => {
     const { tournament } = await requireOrganizerAccess(
       ctx,
-      phase.tournamentId,
+      args.tournamentId,
     );
-    requireSetupEditable(tournament);
+    requirePreStartEditable(tournament);
 
-    if (phase.phaseType === "single_elimination") {
-      throw new Error("Single-elimination rounds are fixed by the bracket");
+    const validatedPhases = validPhaseInputs(
+      args.phases.map(({ phaseId: _phaseId, ...phase }) => phase),
+    );
+    const existingPhases = await ctx.db
+      .query("tournamentPhases")
+      .withIndex("by_tournamentId_and_phaseOrder", (q) =>
+        q.eq("tournamentId", args.tournamentId),
+      )
+      .take(16);
+    const existingById = new Map(
+      existingPhases.map((phase) => [phase._id, phase]),
+    );
+    const requestedExistingIds = new Set<Id<"tournamentPhases">>();
+
+    for (const requested of args.phases) {
+      if (requested.phaseId === undefined) {
+        continue;
+      }
+      if (requestedExistingIds.has(requested.phaseId)) {
+        throw new Error("Tournament phase IDs must be unique");
+      }
+      if (!existingById.has(requested.phaseId)) {
+        throw new Error("Tournament phase does not belong to this tournament");
+      }
+      requestedExistingIds.add(requested.phaseId);
     }
 
-    const phaseTotalRounds =
-      args.phaseRoundMode === "fixed"
-        ? validRoundCount(
-            args.phaseTotalRounds ??
-              phase.phaseTotalRounds ??
-              defaultSwissRoundCount(tournament.playerCapacity),
-          )
-        : null;
-
-    const changesMeeting =
-      args.playerMeeting !== undefined &&
-      args.playerMeeting !== (phase.playerMeeting ?? false);
-    if (changesMeeting && phase.playerMeetingStatus !== undefined) {
-      throw new Error("Player meeting has already started");
+    const now = Date.now();
+    for (const existing of existingPhases) {
+      if (requestedExistingIds.has(existing._id)) {
+        continue;
+      }
+      if (existing.playerMeetingStatus !== undefined) {
+        await clearPlayerMeetingSnapshot(ctx, existing._id);
+      }
+      await ctx.db.delete(existing._id);
     }
 
-    await ctx.db.patch(args.phaseId, {
-      phaseRoundMode: args.phaseRoundMode,
-      phaseTotalRounds,
-      ...(changesMeeting
-        ? { playerMeeting: args.playerMeeting || undefined }
-        : {}),
-      updatedAt: Date.now(),
-    });
-    return args.phaseId;
+    const orderedPhaseIds: Id<"tournamentPhases">[] = [];
+    for (const [index, phase] of validatedPhases.entries()) {
+      const requested = args.phases[index];
+      const existing =
+        requested.phaseId === undefined
+          ? undefined
+          : existingById.get(requested.phaseId);
+      const resetMeeting =
+        existing?.playerMeetingStatus !== undefined &&
+        (phase.phaseOrder !== 1 ||
+          phase.phaseType === SINGLE_ELIMINATION_FORMAT ||
+          phase.playerMeeting !== true);
+
+      if (existing && resetMeeting) {
+        await clearPlayerMeetingSnapshot(ctx, existing._id);
+      }
+
+      const phaseFields = {
+        phaseName: `Phase ${phase.phaseOrder}`,
+        phaseType: phase.phaseType,
+        phaseOrder: phase.phaseOrder,
+        phaseStatus: "upcoming" as const,
+        phaseRoundMode: phase.phaseRoundMode,
+        phaseTotalRounds: phase.phaseTotalRounds,
+        phaseCurrentRound: undefined,
+        phaseCutoff: null,
+        powerPairFinalRound:
+          phase.phaseType === SWISS_FORMAT ? true : undefined,
+        playerMeeting: phase.playerMeeting,
+        ...(resetMeeting ? { playerMeetingStatus: undefined } : {}),
+        updatedAt: now,
+      };
+
+      if (existing) {
+        await ctx.db.patch(existing._id, phaseFields);
+        orderedPhaseIds.push(existing._id);
+      } else {
+        orderedPhaseIds.push(
+          await ctx.db.insert("tournamentPhases", {
+            tournamentId: args.tournamentId,
+            ...phaseFields,
+          }),
+        );
+      }
+    }
+
+    await ctx.db.patch(args.tournamentId, { updatedAt: now });
+    return orderedPhaseIds;
   },
 });
 
