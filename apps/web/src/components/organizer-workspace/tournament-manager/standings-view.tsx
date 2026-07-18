@@ -8,23 +8,9 @@ import type { FunctionReturnType } from 'convex/server'
 import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
 import type { RoundSelection } from '@/components/tournaments'
 import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'
-import { WorkspacePageHeader } from '@/components/shared/workspace-page-header'
-import {
-  TournamentPhaseTabs,
-  TournamentRoundTabs,
-  useTournamentRoundNavigation,
-} from '@/components/tournaments'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
-import {
-  DataTable,
-  DataTableColumnHeader,
-} from '@/components/ui/data-table'
+import { useTournamentRoundNavigation } from '@/components/tournaments'
+import { Card, CardContent } from '@/components/ui/card'
+import { DataTable, DataTableColumnHeader } from '@/components/ui/data-table'
 import {
   Empty,
   EmptyDescription,
@@ -61,57 +47,25 @@ export function StandingsView({
 
   return (
     <section className="flex flex-col gap-4">
-      <WorkspacePageHeader eyebrow="Tournament manager" title="Standings" />
-
       <Card>
-        <CardHeader>
-          <CardTitle>Tournament standings</CardTitle>
-          <CardDescription>
-            Track ranks, match points, and tiebreakers across rounds.
-          </CardDescription>
-        </CardHeader>
         <CardContent className="flex flex-col gap-4">
           {board === undefined ? (
             <TableLoadingSkeleton />
+          ) : !navigation.selectedRound ? (
+            <Empty className="min-h-64">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <Trophy />
+                </EmptyMedia>
+                <EmptyTitle>No standings yet</EmptyTitle>
+                <EmptyDescription>
+                  Standings are generated when a round is completed. Finish a
+                  round to see the leaderboard here.
+                </EmptyDescription>
+              </EmptyHeader>
+            </Empty>
           ) : (
-            <>
-              {navigation.activePhase ? (
-                <TournamentPhaseTabs
-                  activePhaseId={navigation.activePhase.phase._id}
-                  mode="completed"
-                  phases={navigation.phases}
-                  onValueChange={navigation.selectPhase}
-                />
-              ) : null}
-
-              {!navigation.selectedRound ? (
-                <Empty className="min-h-64">
-                  <EmptyHeader>
-                    <EmptyMedia variant="icon">
-                      <Trophy />
-                    </EmptyMedia>
-                    <EmptyTitle>No standings yet</EmptyTitle>
-                    <EmptyDescription>
-                      Standings are generated when a round is completed. Finish
-                      a round to see the leaderboard here.
-                    </EmptyDescription>
-                  </EmptyHeader>
-                </Empty>
-              ) : (
-                <>
-                  <TournamentRoundTabs
-                    activeRoundNumber={navigation.selectedRound.roundNumber}
-                    availableRoundNumbers={navigation.availableRounds.map(
-                      (round) => round.roundNumber,
-                    )}
-                    firstRoundNumber={navigation.firstRoundNumber}
-                    onValueChange={navigation.selectRound}
-                    roundCount={navigation.roundTabCount}
-                  />
-                  <StandingsTable roundId={navigation.selectedRound._id} />
-                </>
-              )}
-            </>
+            <StandingsTable roundId={navigation.selectedRound._id} />
           )}
         </CardContent>
       </Card>

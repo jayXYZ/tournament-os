@@ -18,7 +18,6 @@ import { activeRoundTimer } from './round-timer-chip'
 import type { FormEvent } from 'react'
 import type { FunctionReturnType } from 'convex/server'
 import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
-import { WorkspacePageHeader } from '@/components/shared/workspace-page-header'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -47,7 +46,6 @@ export function RoundTimerView({ tournamentId }: { tournamentId: string }) {
 
   return (
     <section className="flex flex-col gap-4">
-      <WorkspacePageHeader eyebrow="Tournament manager" title="Round timer" />
       {board === undefined ? (
         <div className="grid gap-4">
           <Skeleton className="h-80" />

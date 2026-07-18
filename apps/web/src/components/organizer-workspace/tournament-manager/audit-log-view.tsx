@@ -4,7 +4,6 @@ import { ScrollText } from 'lucide-react'
 import { api } from '@tournament-os/backend/convex/_generated/api'
 import type { FunctionReturnType } from 'convex/server'
 import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
-import { WorkspacePageHeader } from '@/components/shared/workspace-page-header'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -43,7 +42,6 @@ export function AuditLogView({ tournamentId }: { tournamentId: string }) {
 
   return (
     <section className="flex flex-col gap-4">
-      <WorkspacePageHeader eyebrow="Tournament manager" title="Event log" />
       <Card>
         <CardHeader>
           <CardTitle>Audit log</CardTitle>

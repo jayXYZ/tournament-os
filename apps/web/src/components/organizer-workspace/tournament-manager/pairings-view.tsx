@@ -18,7 +18,6 @@ import type { FunctionReturnType } from 'convex/server'
 import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
 import type { RoundSelection } from '@/components/tournaments'
 import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'
-import { WorkspacePageHeader } from '@/components/shared/workspace-page-header'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -30,21 +29,10 @@ import {
   AlertDialogMedia,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import {
-  TournamentPhaseTabs,
-  TournamentRoundTabs,
-  useTournamentRoundNavigation,
-} from '@/components/tournaments'
+import { useTournamentRoundNavigation } from '@/components/tournaments'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import {
   Dialog,
   DialogContent,
@@ -105,8 +93,6 @@ export function PairingsView({
 
   return (
     <section className="flex flex-col gap-4">
-      <WorkspacePageHeader eyebrow="Tournament manager" title="Pairings" />
-
       {navigation.isPlayerMeetingSelected &&
       activePhase?.playerMeetingStatus !== undefined ? (
         <PlayerMeetingCard
@@ -117,62 +103,32 @@ export function PairingsView({
 
       {!navigation.isPlayerMeetingSelected ? (
         <Card>
-          <CardHeader>
-            <CardTitle>Round pairings</CardTitle>
-            <CardDescription>
-              View table assignments and match results for each round.
-            </CardDescription>
-            <CardAction>
+          <CardContent className="flex flex-col gap-4">
+            <div className="flex justify-end">
               <PairingsSettingsMenu
                 board={board}
                 roundId={navigation.selectedRound?._id ?? null}
                 onRewound={() => onRoundSelectionChange({})}
               />
-            </CardAction>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
+            </div>
             {board === undefined ? (
               <TableLoadingSkeleton />
+            ) : navigation.availableRounds.length === 0 ||
+              !navigation.selectedRound ? (
+              <Empty className="min-h-64">
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <Swords />
+                  </EmptyMedia>
+                  <EmptyTitle>No pairings yet</EmptyTitle>
+                  <EmptyDescription>
+                    Generate pairings to create the first round and assign
+                    players to tables.
+                  </EmptyDescription>
+                </EmptyHeader>
+              </Empty>
             ) : (
-              <>
-                {navigation.activePhase ? (
-                  <TournamentPhaseTabs
-                    activePhaseId={navigation.activePhase.phase._id}
-                    mode="all"
-                    phases={navigation.phases}
-                    onValueChange={navigation.selectPhase}
-                  />
-                ) : null}
-
-                {navigation.availableRounds.length === 0 ||
-                !navigation.selectedRound ? (
-                  <Empty className="min-h-64">
-                    <EmptyHeader>
-                      <EmptyMedia variant="icon">
-                        <Swords />
-                      </EmptyMedia>
-                      <EmptyTitle>No pairings yet</EmptyTitle>
-                      <EmptyDescription>
-                        Generate pairings to create the first round and assign
-                        players to tables.
-                      </EmptyDescription>
-                    </EmptyHeader>
-                  </Empty>
-                ) : (
-                  <>
-                    <TournamentRoundTabs
-                      activeRoundNumber={navigation.selectedRound.roundNumber}
-                      availableRoundNumbers={navigation.availableRounds.map(
-                        (round) => round.roundNumber,
-                      )}
-                      firstRoundNumber={navigation.firstRoundNumber}
-                      onValueChange={navigation.selectRound}
-                      roundCount={navigation.roundTabCount}
-                    />
-                    <PairingsTable roundId={navigation.selectedRound._id} />
-                  </>
-                )}
-              </>
+              <PairingsTable roundId={navigation.selectedRound._id} />
             )}
           </CardContent>
         </Card>

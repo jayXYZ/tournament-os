@@ -16,7 +16,6 @@ import type {
   Id,
 } from '@tournament-os/backend/convex/_generated/dataModel'
 import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'
-import { WorkspacePageHeader } from '@/components/shared/workspace-page-header'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -91,8 +90,6 @@ export function RegistrationsView({ tournamentId }: { tournamentId: string }) {
 
   return (
     <section className="flex flex-col gap-4">
-      <WorkspacePageHeader eyebrow="Tournament manager" title="Registrations" />
-
       <Card>
         <CardHeader>
           <CardTitle>Player registrations</CardTitle>

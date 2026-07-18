@@ -4,7 +4,6 @@ import { Settings } from 'lucide-react'
 
 import { api } from '@tournament-os/backend/convex/_generated/api'
 import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
-import { WorkspacePageHeader } from '@/components/shared/workspace-page-header'
 import { TournamentPublicPageContent } from '@/components/tournament-public-page'
 import {
   TournamentLifecycleBadge,
@@ -25,33 +24,25 @@ export function TournamentOverviewView({
 
   return (
     <section className="flex flex-col gap-4">
-      <WorkspacePageHeader
-        eyebrow="Tournament manager"
-        title="Overview"
-        metadata={
-          setup ? (
-            <div className="flex items-center gap-2">
-              <TournamentLifecycleBadge
-                lifecycle={setup.tournament.lifecycle}
-              />
-              <TournamentVisibilityBadge
-                visibility={setup.tournament.visibility}
-              />
-            </div>
-          ) : null
-        }
-        actions={
-          <Button asChild type="button" variant="outline">
-            <Link
-              to="/admin/tournaments/$tournamentId/settings"
-              params={{ tournamentId: publicCode }}
-            >
-              <Settings data-icon="inline-start" />
-              Settings
-            </Link>
-          </Button>
-        }
-      />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        {setup ? (
+          <div className="flex items-center gap-2">
+            <TournamentLifecycleBadge lifecycle={setup.tournament.lifecycle} />
+            <TournamentVisibilityBadge
+              visibility={setup.tournament.visibility}
+            />
+          </div>
+        ) : null}
+        <Button asChild type="button" variant="outline" className="ml-auto">
+          <Link
+            to="/admin/tournaments/$tournamentId/settings"
+            params={{ tournamentId: publicCode }}
+          >
+            <Settings data-icon="inline-start" />
+            Settings
+          </Link>
+        </Button>
+      </div>
 
       <p className="text-sm text-muted-foreground">
         Preview of the public event page as players see it.

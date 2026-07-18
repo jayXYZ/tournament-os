@@ -19,7 +19,6 @@ import type {
   Id,
 } from '@tournament-os/backend/convex/_generated/dataModel'
 import type { TournamentBasicsValue } from '@/components/tournaments'
-import { WorkspacePageHeader } from '@/components/shared/workspace-page-header'
 import {
   TournamentBasicsFields,
   TournamentLifecycleBadge,
@@ -90,22 +89,12 @@ export function TournamentSettingsView({
 
   return (
     <section className="flex flex-col gap-4">
-      <WorkspacePageHeader
-        eyebrow="Tournament manager"
-        title="Settings"
-        metadata={
-          setup ? (
-            <div className="flex items-center gap-2">
-              <TournamentLifecycleBadge
-                lifecycle={setup.tournament.lifecycle}
-              />
-              <TournamentVisibilityBadge
-                visibility={setup.tournament.visibility}
-              />
-            </div>
-          ) : null
-        }
-      />
+      {setup ? (
+        <div className="flex items-center gap-2">
+          <TournamentLifecycleBadge lifecycle={setup.tournament.lifecycle} />
+          <TournamentVisibilityBadge visibility={setup.tournament.visibility} />
+        </div>
+      ) : null}
 
       {setup === undefined ? (
         <SettingsSkeleton />

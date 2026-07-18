@@ -20,6 +20,10 @@ import { api } from '@tournament-os/backend/convex/_generated/api'
 import { RoundTimerChip } from './round-timer-chip'
 import type { FunctionReturnType } from 'convex/server'
 import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
+import {
+  parseRoundSelectionSearch,
+  useTournamentRoundNavigation,
+} from '@/components/tournaments'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { HoldButton } from '@/components/ui/hold-button'
@@ -183,10 +187,11 @@ function betweenRoundTarget(
   return null
 }
 
-// The timeline destination the organizer is currently viewing, derived from
-// the active route's search params. Only set when the URL carries an explicit
-// selection (i.e. after clicking a bar node or a round tab), which is exactly
-// when the highlight is meaningful.
+// The timeline destination the organizer is currently viewing. Pairings and
+// standings both fall back to their latest available round when the URL has no
+// explicit selection, so resolve the timeline through that same navigation
+// logic. This keeps the selected ring in sync with the content on first load
+// and after clicking an already-active Pairings or Standings navigation item.
 type CurrentTimelineSelection =
   | {
       view: 'pairings' | 'standings'
@@ -201,26 +206,40 @@ type CurrentTimelineSelection =
       round?: never
     }
 
-function useCurrentTimelineSelection(): CurrentTimelineSelection | null {
+function useCurrentTimelineSelection(
+  phases: Array<PhaseBoard>,
+): CurrentTimelineSelection | null {
   const pathname = useLocation().pathname
-  const search = useSearch({ strict: false })
+  const search = parseRoundSelectionSearch(useSearch({ strict: false }))
 
   const view = pathname.endsWith('/pairings')
     ? 'pairings'
     : pathname.endsWith('/standings')
       ? 'standings'
       : null
-  if (!view || search.phase === undefined) {
+  const navigation = useTournamentRoundNavigation(
+    phases,
+    view === 'standings' ? 'completed' : 'all',
+    search,
+    () => undefined,
+  )
+  const activePhase = navigation.activePhase?.phase
+
+  if (!view || !activePhase) {
     return null
   }
 
-  if (view === 'pairings' && search.meeting === true) {
-    return { view, phase: search.phase, meeting: true }
+  if (view === 'pairings' && navigation.isPlayerMeetingSelected) {
+    return { view, phase: activePhase.phaseOrder, meeting: true }
   }
-  if (search.round === undefined) {
+  if (!navigation.selectedRound) {
     return null
   }
-  return { view, phase: search.phase, round: search.round }
+  return {
+    view,
+    phase: activePhase.phaseOrder,
+    round: navigation.selectedRound.roundNumber,
+  }
 }
 
 // A segmented progress strip for the tournament manager: one node per round,
@@ -239,7 +258,7 @@ export function TournamentProgressBar({
   const board = useQuery(api.tournaments.rounds.getPairingsBoard, {
     tournamentId,
   })
-  const currentSelection = useCurrentTimelineSelection()
+  const currentSelection = useCurrentTimelineSelection(board?.phases ?? [])
   const navigate = useNavigate()
 
   // Keep the bar's shell (and the advance control's slot) visible while the
@@ -741,10 +760,13 @@ function RoundNode({
 
   const completed = view === 'standings'
   const progress = activeStep ? activeRoundStepPresentation[activeStep] : null
-  const isCurrent =
-    currentSelection?.view === view &&
-    currentSelection.phase === phaseOrder &&
+  // A completed round can be viewed in either Pairings or Standings even
+  // though its timeline link defaults to Standings. Selection belongs to the
+  // round, not to the view used to inspect it.
+  const isCurrentRound =
+    currentSelection?.phase === phaseOrder &&
     currentSelection.round === round.roundNumber
+  const isCurrentPage = isCurrentRound && currentSelection.view === view
 
   return (
     <Tooltip>
@@ -758,7 +780,7 @@ function RoundNode({
           params={{ tournamentId: publicCode }}
           search={{ phase: phaseOrder, round: round.roundNumber }}
           aria-label={`${phaseName}, ${round.roundName}: ${progress?.label ?? (completed ? 'completed' : 'in progress')}; view ${view}`}
-          aria-current={isCurrent ? 'page' : undefined}
+          aria-current={isCurrentPage ? 'page' : undefined}
           className={cn(
             nodeClassName,
             nodeEntranceClassName,
@@ -768,7 +790,7 @@ function RoundNode({
               : progress
                 ? progress.className
                 : 'border-primary bg-background text-primary ring-2 ring-primary/25 hover:bg-primary/10',
-            isCurrent &&
+            isCurrentRound &&
               'outline-none ring-2 ring-ring ring-offset-2 ring-offset-background',
           )}
         >
