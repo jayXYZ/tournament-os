@@ -203,7 +203,7 @@ async function rankedStatsForRound(
       currentAdvancers.add(winner.playerId);
     } else if (stats.get(loser.playerId)?.registration.status === "active") {
       // A winner who withdrew after reporting gives the opponent the bracket
-      // slot, matching singleEliminationAdvancers in tournaments/rounds.ts.
+      // slot, matching singleEliminationAdvancers in model/singleElimination.ts.
       currentAdvancers.add(loser.playerId);
     }
   }
