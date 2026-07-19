@@ -9,25 +9,29 @@ import {
   logAuditEvent,
 } from "../model/auditLog";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
-import { matchPointsForResult } from "../model/standings";
 import {
-  MAX_TOURNAMENT_PLAYERS,
-  adjustActiveRegistrationCount,
-  isPairingsVisibleToPlayers,
-  matchPlayers,
-  registrationDisplayName,
-  registrationForUser,
-  requireMatch,
   requireDecisiveEliminationResult,
   requirePhase,
-  requireRegisteredPlayer,
-  requireRound,
-  requireTournament,
   roundNumberInPhase,
   phaseByOrder,
   phasesInOrder,
   selectCurrentPhase,
+} from "../model/phases";
+import {
+  MAX_TOURNAMENT_PLAYERS,
+  adjustActiveRegistrationCount,
+  registrationDisplayName,
+  registrationForUser,
   setRegistrationStatus,
+} from "../model/registrations";
+import { matchPointsForResult } from "../model/standings";
+import {
+  isPairingsVisibleToPlayers,
+  matchPlayers,
+  requireMatch,
+  requireRegisteredPlayer,
+  requireRound,
+  requireTournament,
 } from "../model/tournaments";
 import { ensureCurrentUser } from "../model/users";
 

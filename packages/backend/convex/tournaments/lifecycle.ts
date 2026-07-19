@@ -10,24 +10,28 @@ import {
   requireActiveMembership,
 } from "../model/access";
 import { logAuditEvent } from "../model/auditLog";
+import { deleteTournamentOperationalDataBatch } from "../model/deletion";
+import {
+  SINGLE_ELIMINATION_FORMAT,
+  SWISS_FORMAT,
+  requireSwissPhase,
+  validPhaseInputs,
+} from "../model/phases";
 import { parsePublicCode } from "../model/publicCodes";
 import {
   MAX_TOURNAMENT_PLAYERS,
-  SINGLE_ELIMINATION_FORMAT,
-  SWISS_FORMAT,
+  registrationForUser,
+} from "../model/registrations";
+import {
   cleanName,
   completeTournament as completeTournamentModel,
   createTournament as createTournamentModel,
-  deleteTournamentOperationalDataBatch,
   isPubliclyViewable,
-  registrationForUser,
   requireOrganizerAccess,
   requirePreStartEditable,
   requireSetupEditable,
-  requireSwissPhase,
   validCapacity,
   validDetailsMarkdown,
-  validPhaseInputs,
 } from "../model/tournaments";
 import {
   tournamentFormatValidator,

@@ -1,16 +1,13 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
+import { requireResolvedPhaseTotalRounds, roundNumberInPhase } from "./phases";
 import { createSeededRandom, pairingSeed, seededShuffle } from "./random";
+import { MAX_TOURNAMENT_PLAYERS } from "./registrations";
 import {
   BYE_MATCH_POINTS,
   compareStandingRows,
   hasCumulativeTotals,
 } from "./standings";
-import {
-  MAX_TOURNAMENT_PLAYERS,
-  requireResolvedPhaseTotalRounds,
-  roundNumberInPhase,
-} from "./tournaments";
 
 export type PairingOptions = {
   // Stored tournament seed driving the within-bracket shuffle.

@@ -1,15 +1,16 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
+import { requireDecisiveEliminationResult, requirePhase } from "./phases";
 import { createSeededRandom } from "./random";
-import { matchPointsForResult } from "./standings";
-import { nextUserPublicCode } from "./users";
 import {
   activeRegistrations,
   adjustActiveRegistrationCount,
-  matchPlayers,
   registrationForUser,
-  requireDecisiveEliminationResult,
-  requirePhase,
+} from "./registrations";
+import { matchPointsForResult } from "./standings";
+import { nextUserPublicCode } from "./users";
+import {
+  matchPlayers,
   requireTestTournament,
   requireTournament,
   roundMatches,

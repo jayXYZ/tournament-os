@@ -1,11 +1,8 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
-import {
-  MAX_TOURNAMENT_PLAYERS,
-  allRegistrations,
-  previousTournamentRound,
-  roundMatchesWithPlayers,
-} from "./tournaments";
+import { previousTournamentRound } from "./phases";
+import { MAX_TOURNAMENT_PLAYERS, allRegistrations } from "./registrations";
+import { roundMatchesWithPlayers } from "./tournaments";
 
 export type RoundMatchWithPlayers = Awaited<
   ReturnType<typeof roundMatchesWithPlayers>

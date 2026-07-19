@@ -5,16 +5,18 @@ import { mutation, query } from "../_generated/server";
 import { currentUserOrNull } from "../model/access";
 import { auditPlayerRef, logAuditEvent } from "../model/auditLog";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
-import { ensureCurrentUser } from "../model/users";
 import {
   adjustActiveRegistrationCount,
   playerDisplayName,
   registrationForUser,
   requireCapacityAvailable,
-  requireOrganizerAccess,
   requireRegistration,
-  requireTournament,
   setRegistrationStatus,
+} from "../model/registrations";
+import { ensureCurrentUser } from "../model/users";
+import {
+  requireOrganizerAccess,
+  requireTournament,
 } from "../model/tournaments";
 
 export const registerSelf = mutation({

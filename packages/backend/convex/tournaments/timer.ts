@@ -9,10 +9,10 @@ import {
 import type { Doc } from "../_generated/dataModel";
 import { mutation } from "../_generated/server";
 import type { QueryCtx } from "../_generated/server";
+import { requireCurrentPhase } from "../model/phases";
 import {
   isPairingsVisibleToPlayers,
   requireOrganizerAccess,
-  requireCurrentPhase,
   requireRound,
 } from "../model/tournaments";
 
