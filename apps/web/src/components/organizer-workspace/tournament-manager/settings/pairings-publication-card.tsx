@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { useMutation } from 'convex/react'
 import { toast } from 'sonner'
 
@@ -18,6 +17,7 @@ import {
   FieldLabel,
 } from '@/components/ui/field'
 import { Switch } from '@/components/ui/switch'
+import { useBusyAction } from '@/hooks/use-busy-action'
 
 export function PairingsPublicationCard({
   tournament,
@@ -27,15 +27,14 @@ export function PairingsPublicationCard({
   const updatePairingsAutoPublish = useMutation(
     api.tournaments.lifecycle.updatePairingsAutoPublish,
   )
-  const [busy, setBusy] = useState(false)
+  const { busy, run } = useBusyAction()
   const disabled =
     busy ||
     tournament.lifecycle === 'completed' ||
     tournament.lifecycle === 'cancelled'
 
   async function handleChange(autoPublishPairings: boolean) {
-    setBusy(true)
-    try {
+    await run(async () => {
       await updatePairingsAutoPublish({
         tournamentId: tournament._id,
         autoPublishPairings,
@@ -45,15 +44,7 @@ export function PairingsPublicationCard({
           ? 'New pairings will publish automatically.'
           : 'New pairings will wait for organizer approval.',
       )
-    } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : 'Could not update pairing publication.',
-      )
-    } finally {
-      setBusy(false)
-    }
+    }, 'Could not update pairing publication.')
   }
 
   return (

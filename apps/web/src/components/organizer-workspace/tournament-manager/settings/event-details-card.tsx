@@ -16,6 +16,7 @@ import {
 import { FieldGroup } from '@/components/ui/field'
 import { MarkdownEditor } from '@/components/ui/markdown-editor'
 import { Spinner } from '@/components/ui/spinner'
+import { useBusyAction } from '@/hooks/use-busy-action'
 
 export function EventDetailsCard({
   tournament,
@@ -27,7 +28,7 @@ export function EventDetailsCard({
   )
 
   const [details, setDetails] = useState(tournament.detailsMarkdown ?? '')
-  const [busy, setBusy] = useState(false)
+  const { busy, run } = useBusyAction()
 
   // Details stay editable after the event starts (prize and logistics info
   // legitimately changes mid-event); only cancelled events are read-only.
@@ -35,23 +36,13 @@ export function EventDetailsCard({
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-
-    setBusy(true)
-    try {
+    await run(async () => {
       await updateTournamentDetails({
         tournamentId: tournament._id,
         detailsMarkdown: details,
       })
       toast.success('Event details saved.')
-    } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : 'Could not save event details.',
-      )
-    } finally {
-      setBusy(false)
-    }
+    }, 'Could not save event details.')
   }
 
   return (

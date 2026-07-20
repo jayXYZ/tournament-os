@@ -42,6 +42,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Spinner } from '@/components/ui/spinner'
+import { useBusyAction } from '@/hooks/use-busy-action'
 
 export function TournamentSettingsCard({
   tournament,
@@ -58,16 +59,14 @@ export function TournamentSettingsCard({
     startDateTime: toDatetimeLocalValue(tournament.startDate),
   })
   const [format, setFormat] = useState<TournamentFormat>(tournament.format)
-  const [busy, setBusy] = useState(false)
+  const { busy, run } = useBusyAction()
 
   const locked = isPreStartLocked(tournament)
   const disabled = locked || busy
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-
-    setBusy(true)
-    try {
+    await run(async () => {
       await updateTournamentSetup({
         tournamentId: tournament._id,
         name: basics.name,
@@ -76,15 +75,7 @@ export function TournamentSettingsCard({
         format,
       })
       toast.success('Tournament settings saved.')
-    } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : 'Could not save tournament settings.',
-      )
-    } finally {
-      setBusy(false)
-    }
+    }, 'Could not save tournament settings.')
   }
 
   return (

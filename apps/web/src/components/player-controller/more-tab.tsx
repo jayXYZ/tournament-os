@@ -1,6 +1,5 @@
-import { useState } from 'react'
 import {
-  
+
   useDropSelf,
   useMyMatchHistory
 } from '@tournament-os/core'
@@ -8,17 +7,7 @@ import { toast } from 'sonner'
 import type {MyCurrentMatch} from '@tournament-os/core';
 
 import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog'
+import { ConfirmActionDialog } from '@/components/shared/confirm-action-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -29,7 +18,6 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Spinner } from '@/components/ui/spinner'
 
 export function MoreTab({
   tournamentId,
@@ -117,7 +105,6 @@ function DropCard({
   currentMatch: MyCurrentMatch | undefined
 }) {
   const dropSelf = useDropSelf()
-  const [busy, setBusy] = useState(false)
 
   if (currentMatch?.myRegistrationStatus === 'dropped') {
     return (
@@ -152,46 +139,27 @@ function DropCard({
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <AlertDialog>
-          <AlertDialogTrigger asChild>
-            <Button type="button" variant="destructive" disabled={busy}>
-              {busy ? <Spinner data-icon="inline-start" /> : null}
+        <ConfirmActionDialog
+          trigger={
+            <Button type="button" variant="destructive">
               Drop from tournament
             </Button>
-          </AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Drop from this tournament?</AlertDialogTitle>
-              <AlertDialogDescription>
-                {hasUnreportedMatch
-                  ? 'Your current match has no result yet — report it (or tell the organizer) before you leave. Dropping cannot be undone from here; the organizer can reinstate you.'
-                  : 'You will not be paired in any future rounds. Dropping cannot be undone from here; the organizer can reinstate you.'}
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Stay in</AlertDialogCancel>
-              <AlertDialogAction
-                onClick={async () => {
-                  setBusy(true)
-                  try {
-                    await dropSelf({ tournamentId })
-                    toast.success('You have dropped from the tournament.')
-                  } catch (error) {
-                    toast.error(
-                      error instanceof Error
-                        ? error.message
-                        : 'Could not drop from the tournament.',
-                    )
-                  } finally {
-                    setBusy(false)
-                  }
-                }}
-              >
-                Drop
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+          }
+          destructive
+          title="Drop from this tournament?"
+          description={
+            hasUnreportedMatch
+              ? 'Your current match has no result yet — report it (or tell the organizer) before you leave. Dropping cannot be undone from here; the organizer can reinstate you.'
+              : 'You will not be paired in any future rounds. Dropping cannot be undone from here; the organizer can reinstate you.'
+          }
+          cancelLabel="Stay in"
+          actionLabel="Drop"
+          failureMessage="Could not drop from the tournament."
+          onConfirm={async () => {
+            await dropSelf({ tournamentId })
+            toast.success('You have dropped from the tournament.')
+          }}
+        />
       </CardContent>
     </Card>
   )

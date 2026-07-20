@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Spinner } from '@/components/ui/spinner'
+import { useBusyAction } from '@/hooks/use-busy-action'
 
 export function ReportResultDialog({
   matchId,
@@ -27,23 +28,16 @@ export function ReportResultDialog({
   onOpenChange: (open: boolean) => void
 }) {
   const reportResult = useReportResult()
-  const [busy, setBusy] = useState(false)
+  const { busy, run } = useBusyAction()
   const [myGameWins, setMyGameWins] = useState(0)
   const [opponentGameWins, setOpponentGameWins] = useState(0)
 
   async function handleSubmit() {
-    setBusy(true)
-    try {
+    await run(async () => {
       await reportResult({ matchId, myGameWins, opponentGameWins })
       onOpenChange(false)
       toast.success('Result reported.')
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Could not report the result.',
-      )
-    } finally {
-      setBusy(false)
-    }
+    }, 'Could not report the result.')
   }
 
   return (

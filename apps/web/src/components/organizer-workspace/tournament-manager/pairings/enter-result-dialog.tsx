@@ -18,6 +18,7 @@ import {
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
+import { useBusyAction } from '@/hooks/use-busy-action'
 
 export function EnterResultDialog({
   row,
@@ -34,7 +35,7 @@ export function EnterResultDialog({
   const playerOne = row.players.at(0)
   const playerTwo = row.players.at(1)
 
-  const [busy, setBusy] = useState(false)
+  const { busy, run } = useBusyAction()
   const [playerOneWins, setPlayerOneWins] = useState(
     String(playerOne?.gameWins ?? 0),
   )
@@ -48,8 +49,7 @@ export function EnterResultDialog({
       return
     }
 
-    setBusy(true)
-    try {
+    await run(async () => {
       await recordMatchResult({
         matchId: row.match._id,
         playerOneRegistrationId: playerOne.playerId,
@@ -59,15 +59,7 @@ export function EnterResultDialog({
       })
       onOpenChange(false)
       toast.success('Match result recorded.')
-    } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : 'Could not record the match result.',
-      )
-    } finally {
-      setBusy(false)
-    }
+    }, 'Could not record the match result.')
   }
 
   return (

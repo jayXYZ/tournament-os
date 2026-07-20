@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { useMutation } from 'convex/react'
 import { toast } from 'sonner'
 
@@ -13,6 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { useBusyAction } from '@/hooks/use-busy-action'
 
 export function VisibilitySelect({
   tournament,
@@ -22,25 +22,18 @@ export function VisibilitySelect({
   const updateVisibility = useMutation(
     api.tournaments.lifecycle.updateTournamentVisibility,
   )
-  const [busy, setBusy] = useState(false)
+  const { busy, run } = useBusyAction()
 
   async function handleChange(visibility: Doc<'tournaments'>['visibility']) {
     if (visibility === tournament.visibility) {
       return
     }
-    setBusy(true)
-    try {
+    await run(async () => {
       await updateVisibility({ tournamentId: tournament._id, visibility })
       toast.success(
         `Visibility set to ${tournamentVisibilities[visibility].label.toLowerCase()}.`,
       )
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Could not update visibility.',
-      )
-    } finally {
-      setBusy(false)
-    }
+    }, 'Could not update visibility.')
   }
 
   return (

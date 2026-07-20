@@ -39,6 +39,7 @@ import {
 } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
+import { useBusyAction } from '@/hooks/use-busy-action'
 
 export function StaffView() {
   const { selectedOrganizationId, selectedOrganization } = useOrganization()
@@ -64,7 +65,7 @@ export function StaffView() {
 
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteRole, setInviteRole] = useState<Role>('staff')
-  const [busy, setBusy] = useState(false)
+  const { busy, run } = useBusyAction()
 
   async function handleInvite(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -72,8 +73,7 @@ export function StaffView() {
       return
     }
 
-    setBusy(true)
-    try {
+    await run(async () => {
       await inviteMember({
         organizationId: selectedOrganizationId,
         email: inviteEmail,
@@ -82,13 +82,7 @@ export function StaffView() {
       setInviteEmail('')
       setInviteRole('staff')
       toast.success('Invitation sent.')
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Could not send invitation.',
-      )
-    } finally {
-      setBusy(false)
-    }
+    }, 'Could not send invitation.')
   }
 
   return (

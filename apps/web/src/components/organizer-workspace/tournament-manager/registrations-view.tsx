@@ -15,6 +15,7 @@ import type {
   Doc,
   Id,
 } from '@tournament-os/backend/convex/_generated/dataModel'
+import { ConfirmActionDialog } from '@/components/shared/confirm-action-dialog'
 import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -26,17 +27,6 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogMedia,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
 import { DataTable, DataTableColumnHeader } from '@/components/ui/data-table'
 import {
   DropdownMenu,
@@ -54,6 +44,7 @@ import {
 } from '@/components/ui/empty'
 import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
+import { useBusyAction } from '@/hooks/use-busy-action'
 
 type RegistrationRow = {
   registration: Doc<'tournamentRegistrations'>
@@ -119,7 +110,7 @@ function RegistrationSettingsMenu({
   tournament: Doc<'tournaments'> | undefined
 }) {
   const seedTestPlayers = useMutation(api.tournaments.testing.seedTestPlayers)
-  const [busy, setBusy] = useState(false)
+  const { busy, run } = useBusyAction()
 
   const activeRegistrations =
     registrations?.filter((row) => row.registration.status === 'active')
@@ -136,27 +127,17 @@ function RegistrationSettingsMenu({
       return
     }
 
-    setBusy(true)
-    try {
-      const result = await seedTestPlayers({
+    await run(async () => {
+      const { addedCount } = await seedTestPlayers({
         tournamentId: tournament._id,
         count: remainingSeats,
       })
-      const { addedCount } = result
       toast.success(
         addedCount > 0
           ? `${addedCount} test ${addedCount === 1 ? 'user' : 'users'} generated.`
           : 'Tournament is already at capacity.',
       )
-    } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : 'Could not generate test users.',
-      )
-    } finally {
-      setBusy(false)
-    }
+    }, 'Could not generate test users.')
   }
 
   return (
@@ -278,24 +259,8 @@ function ManagePlayerMenu({ row }: { row: RegistrationRow }) {
   )
 
   const [confirmingDrop, setConfirmingDrop] = useState(false)
-  const [busy, setBusy] = useState(false)
 
   const alreadyDropped = row.registration.status === 'dropped'
-
-  async function handleDrop() {
-    setBusy(true)
-    try {
-      await dropRegistration({ registrationId: row.registration._id })
-      setConfirmingDrop(false)
-      toast.success(`${playerName(row)} has been dropped.`)
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Could not drop player.',
-      )
-    } finally {
-      setBusy(false)
-    }
-  }
 
   return (
     <>
@@ -324,41 +289,20 @@ function ManagePlayerMenu({ row }: { row: RegistrationRow }) {
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <AlertDialog
+      <ConfirmActionDialog
         open={confirmingDrop}
-        onOpenChange={(open) => {
-          if (!busy) {
-            setConfirmingDrop(open)
-          }
+        onOpenChange={setConfirmingDrop}
+        icon={<UserMinus />}
+        destructive
+        title={`Drop ${playerName(row)}?`}
+        description="This player will be removed from future pairings and their status will be set to dropped."
+        actionLabel="Drop player"
+        failureMessage="Could not drop player."
+        onConfirm={async () => {
+          await dropRegistration({ registrationId: row.registration._id })
+          toast.success(`${playerName(row)} has been dropped.`)
         }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogMedia>
-              <UserMinus />
-            </AlertDialogMedia>
-            <AlertDialogTitle>Drop {playerName(row)}?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This player will be removed from future pairings and their status
-              will be set to dropped.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              variant="destructive"
-              disabled={busy}
-              onClick={(event) => {
-                event.preventDefault()
-                void handleDrop()
-              }}
-            >
-              {busy ? <Spinner data-icon="inline-start" /> : null}
-              Drop player
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      />
     </>
   )
 }

@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/card'
 import { FieldGroup } from '@/components/ui/field'
 import { Spinner } from '@/components/ui/spinner'
+import { useBusyAction } from '@/hooks/use-busy-action'
 
 export function PhaseSettingsCard({
   tournament,
@@ -47,14 +48,13 @@ export function PhaseSettingsCard({
       playerMeeting: phase.playerMeeting ?? false,
     })),
   )
-  const [busy, setBusy] = useState(false)
+  const { busy, run } = useBusyAction()
   const locked = isPreStartLocked(tournament)
   const existingPhaseIds = new Set(phases.map((phase) => phase._id))
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    setBusy(true)
-    try {
+    await run(async () => {
       const phasePayloads = toTournamentCreationPhasePayload(phaseForms)
       await updateTournamentPhases({
         tournamentId: tournament._id,
@@ -70,15 +70,7 @@ export function PhaseSettingsCard({
         })),
       })
       toast.success('Tournament phases saved.')
-    } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : 'Could not save tournament phases.',
-      )
-    } finally {
-      setBusy(false)
-    }
+    }, 'Could not save tournament phases.')
   }
 
   return (

@@ -47,6 +47,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Spinner } from '@/components/ui/spinner'
+import { useBusyAction } from '@/hooks/use-busy-action'
 
 export function CreateTournamentDialog() {
   const { selectedOrganizationId } = useOrganization()
@@ -55,7 +56,7 @@ export function CreateTournamentDialog() {
   )
 
   const [open, setOpen] = useState(false)
-  const [busy, setBusy] = useState(false)
+  const { busy, run } = useBusyAction()
   const [basics, setBasics] = useState<TournamentBasicsValue>({
     name: '',
     playerCapacity: '32',
@@ -86,8 +87,7 @@ export function CreateTournamentDialog() {
       return
     }
 
-    setBusy(true)
-    try {
+    await run(async () => {
       await createTournament({
         organizationId: selectedOrganizationId,
         name: basics.name,
@@ -100,13 +100,7 @@ export function CreateTournamentDialog() {
       resetForm()
       setOpen(false)
       toast.success('Tournament created.')
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Could not create tournament.',
-      )
-    } finally {
-      setBusy(false)
-    }
+    }, 'Could not create tournament.')
   }
 
   return (
