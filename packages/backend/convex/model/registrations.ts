@@ -32,6 +32,14 @@ export async function registrationDisplayName(
   return playerDisplayName(await ctx.db.get(registration.userId));
 }
 
+export async function resolveRegistrationDisplayName(
+  ctx: QueryCtx,
+  playerName: string | undefined,
+  registrationId: Id<"tournamentRegistrations">,
+) {
+  return playerName ?? (await registrationDisplayName(ctx, registrationId));
+}
+
 // Seating order for player meetings: alphabetical by display name (case-
 // insensitive, locale-aware), tie-broken by registration createdAt so players
 // with identical names still seat deterministically (the same tie-break

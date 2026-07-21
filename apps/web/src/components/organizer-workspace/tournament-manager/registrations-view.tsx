@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 
 import { api } from '@tournament-os/backend/convex/_generated/api'
+import { displayPlayerName } from '@tournament-os/core'
 import { toast } from 'sonner'
 import type { ColumnDef } from '@tanstack/react-table'
 import type {
@@ -16,7 +17,9 @@ import type {
   Id,
 } from '@tournament-os/backend/convex/_generated/dataModel'
 import { ConfirmActionDialog } from '@/components/shared/confirm-action-dialog'
+import { TableEmptyState } from '@/components/shared/table-empty-state'
 import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'
+import { TableSearchInput } from '@/components/shared/table-search-input'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -35,14 +38,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from '@/components/ui/empty'
-import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
 import { useBusyAction } from '@/hooks/use-busy-action'
 
@@ -64,19 +59,19 @@ const statusBadgeVariant: Record<
   disqualified: 'destructive',
 }
 
-function playerName(row: RegistrationRow) {
-  return row.playerName ?? 'Unknown player'
-}
-
-export function RegistrationsView({ tournamentId }: { tournamentId: string }) {
+export function RegistrationsView({
+  tournamentId,
+}: {
+  tournamentId: Id<'tournaments'>
+}) {
   const registrations = useQuery(
     api.tournaments.registrations.listRegistrations,
     {
-      tournamentId: tournamentId as Id<'tournaments'>,
+      tournamentId,
     },
   )
   const setup = useQuery(api.tournaments.lifecycle.getTournamentSetup, {
-    tournamentId: tournamentId as Id<'tournaments'>,
+    tournamentId,
   })
 
   return (
@@ -170,7 +165,7 @@ function RegistrationSettingsMenu({
 const registrationColumns: Array<ColumnDef<RegistrationRow>> = [
   {
     id: 'player',
-    accessorFn: (row) => playerName(row),
+    accessorFn: (row) => displayPlayerName(row.playerName),
     header: ({ column }) => (
       <DataTableColumnHeader column={column} title="Player" />
     ),
@@ -178,7 +173,9 @@ const registrationColumns: Array<ColumnDef<RegistrationRow>> = [
     // names change length across pages.
     meta: { className: 'w-full' },
     cell: ({ row }) => (
-      <p className="font-medium text-foreground">{playerName(row.original)}</p>
+      <p className="font-medium text-foreground">
+        {displayPlayerName(row.original.playerName)}
+      </p>
     ),
   },
   {
@@ -219,17 +216,11 @@ function RegistrationsTable({
 
   if (registrations.length === 0) {
     return (
-      <Empty className="min-h-64">
-        <EmptyHeader>
-          <EmptyMedia variant="icon">
-            <ClipboardList />
-          </EmptyMedia>
-          <EmptyTitle>No registrations yet</EmptyTitle>
-          <EmptyDescription>
-            Players who sign up for this tournament will appear here.
-          </EmptyDescription>
-        </EmptyHeader>
-      </Empty>
+      <TableEmptyState
+        icon={ClipboardList}
+        title="No registrations yet"
+        description="Players who sign up for this tournament will appear here."
+      />
     )
   }
 
@@ -240,13 +231,10 @@ function RegistrationsTable({
       className="min-w-[480px]"
       noResultsLabel="No players match your search."
       toolbar={(table) => (
-        <Input
+        <TableSearchInput
+          table={table}
+          columnId="player"
           placeholder="Search players..."
-          value={String(table.getColumn('player')?.getFilterValue() ?? '')}
-          onChange={(event) =>
-            table.getColumn('player')?.setFilterValue(event.target.value)
-          }
-          className="max-w-xs"
         />
       )}
     />
@@ -261,6 +249,7 @@ function ManagePlayerMenu({ row }: { row: RegistrationRow }) {
   const [confirmingDrop, setConfirmingDrop] = useState(false)
 
   const alreadyDropped = row.registration.status === 'dropped'
+  const name = displayPlayerName(row.playerName)
 
   return (
     <>
@@ -270,7 +259,7 @@ function ManagePlayerMenu({ row }: { row: RegistrationRow }) {
             type="button"
             variant="outline"
             size="icon"
-            aria-label={`Manage ${playerName(row)}`}
+            aria-label={`Manage ${name}`}
           >
             <MoreHorizontal />
           </Button>
@@ -294,13 +283,13 @@ function ManagePlayerMenu({ row }: { row: RegistrationRow }) {
         onOpenChange={setConfirmingDrop}
         icon={<UserMinus />}
         destructive
-        title={`Drop ${playerName(row)}?`}
+        title={`Drop ${name}?`}
         description="This player will be removed from future pairings and their status will be set to dropped."
         actionLabel="Drop player"
         failureMessage="Could not drop player."
         onConfirm={async () => {
           await dropRegistration({ registrationId: row.registration._id })
-          toast.success(`${playerName(row)} has been dropped.`)
+          toast.success(`${name} has been dropped.`)
         }}
       />
     </>

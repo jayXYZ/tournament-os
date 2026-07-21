@@ -14,7 +14,9 @@ import {
 import type { ColumnDef } from '@tanstack/react-table'
 import type { Doc } from '@tournament-os/backend/convex/_generated/dataModel'
 
+import { TableEmptyState } from '@/components/shared/table-empty-state'
 import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'
+import { TableSearchInput } from '@/components/shared/table-search-input'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -28,14 +30,6 @@ import {
   DataTable,
   DataTableColumnHeader,
 } from '@/components/ui/data-table'
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from '@/components/ui/empty'
-import { Input } from '@/components/ui/input'
 
 export type TournamentTableVariant = 'public' | 'registered' | 'manage'
 
@@ -104,17 +98,10 @@ export function TournamentTable({
               : undefined
           }
           toolbar={(table) => (
-            <Input
+            <TableSearchInput
+              table={table}
+              columnId="tournament"
               placeholder="Search tournaments..."
-              value={String(
-                table.getColumn('tournament')?.getFilterValue() ?? '',
-              )}
-              onChange={(event) =>
-                table
-                  .getColumn('tournament')
-                  ?.setFilterValue(event.target.value)
-              }
-              className="max-w-xs"
             />
           )}
         />
@@ -179,27 +166,16 @@ function TournamentTableEmpty({
   }
 
   const empty = (
-    <Empty
-      className={
-        variant === 'public' ? 'min-h-80 border bg-card' : 'min-h-64'
+    <TableEmptyState
+      icon={variant === 'public' ? UserRound : CalendarDays}
+      title="No upcoming tournaments"
+      description={
+        variant === 'public'
+          ? 'Public tournaments will appear here once an organizer publishes future events.'
+          : 'Future tournaments for this organization will appear here.'
       }
-    >
-      <EmptyHeader>
-        <EmptyMedia variant="icon">
-          {variant === 'public' ? (
-            <UserRound aria-hidden="true" />
-          ) : (
-            <CalendarDays aria-hidden="true" />
-          )}
-        </EmptyMedia>
-        <EmptyTitle>No upcoming tournaments</EmptyTitle>
-        <EmptyDescription>
-          {variant === 'public'
-            ? 'Public tournaments will appear here once an organizer publishes future events.'
-            : 'Future tournaments for this organization will appear here.'}
-        </EmptyDescription>
-      </EmptyHeader>
-    </Empty>
+      className={variant === 'public' ? 'min-h-80 border bg-card' : undefined}
+    />
   )
 
   if (variant === 'public') {

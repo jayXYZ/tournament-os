@@ -5,3 +5,7 @@ export function formatPercent(value: number) {
 export function formatRecord(wins: number, losses: number, draws: number) {
   return `${wins}–${losses}–${draws}`;
 }
+
+export function displayPlayerName(name: string | null | undefined) {
+  return name ?? "Unknown player";
+}

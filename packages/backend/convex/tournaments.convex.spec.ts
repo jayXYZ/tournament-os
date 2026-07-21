@@ -1538,9 +1538,11 @@ test("multi-phase tournaments advance into the next phase and carry records", as
 
   // Records carry too: after the phase-2 round every player has three rounds
   // of results.
-  const standings = await authed.query(api.tournaments.rounds.getStandings, {
-    roundId: roundThree.round._id,
-  });
+  const standings = (
+    await authed.query(api.tournaments.rounds.listRoundStandings, {
+      roundId: roundThree.round._id,
+    })
+  ).map(({ standing }) => standing);
   expect(standings).toHaveLength(4);
   for (const standing of standings) {
     expect(
@@ -1698,7 +1700,7 @@ test("rewinding a Swiss round reopens results and regenerates pairings", async (
     }),
   ).toMatchObject({ _id: first.round._id, roundStatus: "in_progress" });
   expect(
-    await authed.query(api.tournaments.rounds.getStandings, {
+    await authed.query(api.tournaments.rounds.listRoundStandings, {
       roundId: first.round._id,
     }),
   ).toEqual([]);
@@ -2011,10 +2013,11 @@ test("top-8 single elimination advances active players without reseeding", async
     tournamentId,
   });
   const swiss = await playOutCurrentRound(authed, tournamentId);
-  const swissStandings = await authed.query(
-    api.tournaments.rounds.getStandings,
-    { roundId: swiss.round._id },
-  );
+  const swissStandings = (
+    await authed.query(api.tournaments.rounds.listRoundStandings, {
+      roundId: swiss.round._id,
+    })
+  ).map(({ standing }) => standing);
   const seeds = swissStandings.slice(0, 8).map((row) => row.playerId);
 
   const quarterfinalId = await authed.mutation(
@@ -2216,10 +2219,11 @@ test("top-8 cut promotes the next-ranked active player when a qualifier drops", 
     tournamentId,
   });
   const swiss = await playOutCurrentRound(authed, tournamentId);
-  const swissStandings = await authed.query(
-    api.tournaments.rounds.getStandings,
-    { roundId: swiss.round._id },
-  );
+  const swissStandings = (
+    await authed.query(api.tournaments.rounds.listRoundStandings, {
+      roundId: swiss.round._id,
+    })
+  ).map(({ standing }) => standing);
   const droppedQualifier = swissStandings[0].playerId;
   await authed.mutation(api.tournaments.registrations.dropRegistration, {
     registrationId: droppedQualifier,
@@ -2439,7 +2443,7 @@ test("test tournaments seed players, generate Swiss rounds, and complete", async
     await t.run(async (ctx) => await ctx.db.get(roundOne!._id)),
   ).toMatchObject({ pairingsPublishedAt: expect.any(Number) });
   const roundOneStandings = await authed.query(
-    api.tournaments.rounds.getStandings,
+    api.tournaments.rounds.listRoundStandings,
     {
       roundId: roundOne!._id,
     },

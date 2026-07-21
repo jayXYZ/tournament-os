@@ -47,7 +47,7 @@ import {
   MAX_TOURNAMENT_PLAYERS,
   activeRegistrations,
   adjustActiveRegistrationCount,
-  registrationDisplayName,
+  resolveRegistrationDisplayName,
   setRegistrationStatus,
 } from "../model/registrations";
 import {
@@ -613,9 +613,11 @@ export const listRoundPairings = query({
         const resolvedPlayers = await Promise.all(
           players.map(async (player) => ({
             ...player,
-            playerName:
-              player.playerName ??
-              (await registrationDisplayName(ctx, player.playerId)),
+            playerName: await resolveRegistrationDisplayName(
+              ctx,
+              player.playerName,
+              player.playerId,
+            ),
           })),
         );
         return { match, players: resolvedPlayers };
@@ -628,12 +630,7 @@ export const getPairingsBoard = query({
   args: { tournamentId: v.id("tournaments") },
   handler: async (ctx, args) => {
     const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
-    const phases = await ctx.db
-      .query("tournamentPhases")
-      .withIndex("by_tournamentId_and_phaseOrder", (q) =>
-        q.eq("tournamentId", args.tournamentId),
-      )
-      .take(16);
+    const phases = await phasesInOrder(ctx, args.tournamentId);
 
     const phaseBoards = await Promise.all(
       phases.map(async (phase) => ({
@@ -685,20 +682,6 @@ export const getPairingsBoard = query({
   },
 });
 
-export const getStandings = query({
-  args: { roundId: v.id("tournamentRounds") },
-  handler: async (ctx, args) => {
-    const round = await requireRound(ctx, args.roundId);
-    await requireOrganizerAccess(ctx, round.tournamentId);
-    return await ctx.db
-      .query("roundStandings")
-      .withIndex("by_tournamentRoundId_and_rank", (q) =>
-        q.eq("tournamentRoundId", args.roundId),
-      )
-      .take(MAX_TOURNAMENT_PLAYERS);
-  },
-});
-
 export const listRoundStandings = query({
   args: { roundId: v.id("tournamentRounds") },
   handler: async (ctx, args) => {
@@ -718,9 +701,11 @@ export const listRoundStandings = query({
       DATABASE_IO_BATCH_SIZE,
       async (standing) => ({
         standing,
-        playerName:
-          standing.playerName ??
-          (await registrationDisplayName(ctx, standing.playerId)),
+        playerName: await resolveRegistrationDisplayName(
+          ctx,
+          standing.playerName,
+          standing.playerId,
+        ),
       }),
     );
   },

@@ -3,7 +3,7 @@ import { useMutation } from 'convex/react'
 import { toast } from 'sonner'
 
 import { api } from '@tournament-os/backend/convex/_generated/api'
-import { pairedPlayerName } from './pairing-row'
+import { displayPlayerName } from '@tournament-os/core'
 import type { FormEvent } from 'react'
 import type { PairingRow } from './pairing-row'
 import { Button } from '@/components/ui/button'
@@ -88,7 +88,7 @@ export function EnterResultDialog({
             <div className="grid gap-4 sm:grid-cols-2">
               <Field>
                 <FieldLabel htmlFor={`player-one-wins-${row.match._id}`}>
-                  {pairedPlayerName(playerOne)}
+                  {displayPlayerName(playerOne?.playerName)}
                 </FieldLabel>
                 <Input
                   id={`player-one-wins-${row.match._id}`}
@@ -103,7 +103,7 @@ export function EnterResultDialog({
               </Field>
               <Field>
                 <FieldLabel htmlFor={`player-two-wins-${row.match._id}`}>
-                  {pairedPlayerName(playerTwo)}
+                  {displayPlayerName(playerTwo?.playerName)}
                 </FieldLabel>
                 <Input
                   id={`player-two-wins-${row.match._id}`}

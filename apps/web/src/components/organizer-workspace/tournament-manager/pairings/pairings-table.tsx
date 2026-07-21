@@ -2,23 +2,17 @@ import { useQuery } from 'convex/react'
 import { Swords } from 'lucide-react'
 
 import { api } from '@tournament-os/backend/convex/_generated/api'
+import { displayPlayerName } from '@tournament-os/core'
 import { ManageMatchMenu } from './manage-match-menu'
 import { MatchResultCell } from './match-result-cell'
-import { pairedPlayerName } from './pairing-row'
 import type { ColumnDef } from '@tanstack/react-table'
 import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
 import type { PairingRow } from './pairing-row'
+import { TableEmptyState } from '@/components/shared/table-empty-state'
 import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'
+import { TableSearchInput } from '@/components/shared/table-search-input'
 import { Badge } from '@/components/ui/badge'
 import { DataTable, DataTableColumnHeader } from '@/components/ui/data-table'
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from '@/components/ui/empty'
-import { Input } from '@/components/ui/input'
 
 const pairingColumns: Array<ColumnDef<PairingRow>> = [
   {
@@ -39,7 +33,9 @@ const pairingColumns: Array<ColumnDef<PairingRow>> = [
   {
     id: 'players',
     accessorFn: (row) =>
-      row.players.map((player) => pairedPlayerName(player)).join(' '),
+      row.players
+        .map((player) => displayPlayerName(player.playerName))
+        .join(' '),
     header: ({ column }) => (
       <DataTableColumnHeader column={column} title="Players" />
     ),
@@ -64,7 +60,11 @@ const pairingColumns: Array<ColumnDef<PairingRow>> = [
   },
 ]
 
-export function PairingsTable({ roundId }: { roundId: Id<'tournamentRounds'> }) {
+export function PairingsTable({
+  roundId,
+}: {
+  roundId: Id<'tournamentRounds'>
+}) {
   const pairings = useQuery(api.tournaments.rounds.listRoundPairings, {
     roundId,
   })
@@ -75,17 +75,11 @@ export function PairingsTable({ roundId }: { roundId: Id<'tournamentRounds'> }) 
 
   if (pairings.length === 0) {
     return (
-      <Empty className="min-h-64">
-        <EmptyHeader>
-          <EmptyMedia variant="icon">
-            <Swords />
-          </EmptyMedia>
-          <EmptyTitle>No matches in this round</EmptyTitle>
-          <EmptyDescription>
-            Pairings for this round will appear here once they are generated.
-          </EmptyDescription>
-        </EmptyHeader>
-      </Empty>
+      <TableEmptyState
+        icon={Swords}
+        title="No matches in this round"
+        description="Pairings for this round will appear here once they are generated."
+      />
     )
   }
 
@@ -96,13 +90,10 @@ export function PairingsTable({ roundId }: { roundId: Id<'tournamentRounds'> }) 
       className="min-w-[640px]"
       noResultsLabel="No matches match your search."
       toolbar={(table) => (
-        <Input
+        <TableSearchInput
+          table={table}
+          columnId="players"
           placeholder="Search players..."
-          value={String(table.getColumn('players')?.getFilterValue() ?? '')}
-          onChange={(event) =>
-            table.getColumn('players')?.setFilterValue(event.target.value)
-          }
-          className="max-w-xs"
         />
       )}
     />
@@ -117,7 +108,7 @@ function PairingPlayersCell({ row }: { row: PairingRow }) {
   return (
     <>
       <p className="font-medium text-foreground">
-        {pairedPlayerName(playerOne)}
+        {displayPlayerName(playerOne?.playerName)}
         {isBye ? null : (
           <span className="font-normal text-muted-foreground"> vs.</span>
         )}
@@ -128,7 +119,7 @@ function PairingPlayersCell({ row }: { row: PairingRow }) {
         </Badge>
       ) : (
         <p className="font-medium text-foreground">
-          {pairedPlayerName(playerTwo)}
+          {displayPlayerName(playerTwo?.playerName)}
         </p>
       )}
     </>

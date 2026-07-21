@@ -1,4 +1,4 @@
-import { pairedPlayerName } from './pairing-row'
+import { displayPlayerName } from '@tournament-os/core'
 import type { PairingRow } from './pairing-row'
 import { Badge } from '@/components/ui/badge'
 
@@ -27,7 +27,9 @@ export function MatchResultCell({ row }: { row: PairingRow }) {
   }
 
   const playerOneWon = playerOneWins > playerTwoWins
-  const winnerName = pairedPlayerName(playerOneWon ? playerOne : playerTwo)
+  const winnerName = displayPlayerName(
+    (playerOneWon ? playerOne : playerTwo)?.playerName,
+  )
   const winnerWins = playerOneWon ? playerOneWins : playerTwoWins
   const loserWins = playerOneWon ? playerTwoWins : playerOneWins
 

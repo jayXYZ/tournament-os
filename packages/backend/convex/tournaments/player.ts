@@ -20,8 +20,8 @@ import {
 import {
   MAX_TOURNAMENT_PLAYERS,
   adjustActiveRegistrationCount,
-  registrationDisplayName,
   registrationForUser,
+  resolveRegistrationDisplayName,
   setRegistrationStatus,
 } from "../model/registrations";
 import { matchPointsForResult } from "../model/standings";
@@ -305,9 +305,11 @@ export const getLatestStandings = query({
       standings,
       DATABASE_IO_BATCH_SIZE,
       async (standing) => {
-        const name =
-          standing.playerName ??
-          (await registrationDisplayName(ctx, standing.playerId));
+        const name = await resolveRegistrationDisplayName(
+          ctx,
+          standing.playerName,
+          standing.playerId,
+        );
         return {
           rank: standing.rank,
           name: name ?? null,

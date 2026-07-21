@@ -7,28 +7,22 @@ import { PairingsSettingsMenu } from './pairings-settings-menu'
 import { PairingsTable } from './pairings-table'
 import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
 import type { RoundSelection } from '@/components/tournaments'
+import { TableEmptyState } from '@/components/shared/table-empty-state'
 import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'
 import { useTournamentRoundNavigation } from '@/components/tournaments'
 import { Card, CardContent } from '@/components/ui/card'
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from '@/components/ui/empty'
 
 export function PairingsView({
   tournamentId,
   roundSelection,
   onRoundSelectionChange,
 }: {
-  tournamentId: string
+  tournamentId: Id<'tournaments'>
   roundSelection: RoundSelection
   onRoundSelectionChange: (selection: RoundSelection) => void
 }) {
   const board = useQuery(api.tournaments.rounds.getPairingsBoard, {
-    tournamentId: tournamentId as Id<'tournaments'>,
+    tournamentId,
   })
 
   const phases = board?.phases ?? []
@@ -65,18 +59,11 @@ export function PairingsView({
               <TableLoadingSkeleton />
             ) : navigation.availableRounds.length === 0 ||
               !navigation.selectedRound ? (
-              <Empty className="min-h-64">
-                <EmptyHeader>
-                  <EmptyMedia variant="icon">
-                    <Swords />
-                  </EmptyMedia>
-                  <EmptyTitle>No pairings yet</EmptyTitle>
-                  <EmptyDescription>
-                    Generate pairings to create the first round and assign
-                    players to tables.
-                  </EmptyDescription>
-                </EmptyHeader>
-              </Empty>
+              <TableEmptyState
+                icon={Swords}
+                title="No pairings yet"
+                description="Generate pairings to create the first round and assign players to tables."
+              />
             ) : (
               <PairingsTable roundId={navigation.selectedRound._id} />
             )}

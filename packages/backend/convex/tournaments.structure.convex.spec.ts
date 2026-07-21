@@ -158,7 +158,7 @@ test("tournament functions expose setup registration operation and test APIs", (
       "completeRound",
       "getCurrentRound",
       "listRoundPairings",
-      "getStandings",
+      "listRoundStandings",
     ],
     testing: [
       "createTestTournament",

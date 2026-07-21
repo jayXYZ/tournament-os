@@ -58,20 +58,12 @@ export async function eliminateNonQualifiers(
       eliminated.push(registration);
     }
   }
-  const now = Date.now();
-  await Promise.all([
-    mapAsyncInBatches(
-      eliminated,
-      DATABASE_IO_BATCH_SIZE,
-      async (registration) =>
-        await setRegistrationStatus(ctx, registration._id, {
-          status: "eliminated",
-          eliminatedByRoundId,
-          updatedAt: now,
-        }),
-    ),
-    adjustActiveRegistrationCount(ctx, tournament, -eliminated.length, now),
-  ]);
+  await eliminateRegistrations(
+    ctx,
+    tournament,
+    eliminated,
+    eliminatedByRoundId,
+  );
 }
 
 export async function singleEliminationAdvancers(
@@ -173,10 +165,24 @@ export async function eliminateSingleEliminationLosers(
       eliminated.push(registration);
     }
   }
+  await eliminateRegistrations(
+    ctx,
+    tournament,
+    eliminated,
+    eliminatedByRoundId,
+  );
+}
+
+async function eliminateRegistrations(
+  ctx: MutationCtx,
+  tournament: Doc<"tournaments">,
+  registrations: Doc<"tournamentRegistrations">[],
+  eliminatedByRoundId: Id<"tournamentRounds">,
+) {
   const now = Date.now();
   await Promise.all([
     mapAsyncInBatches(
-      eliminated,
+      registrations,
       DATABASE_IO_BATCH_SIZE,
       async (registration) =>
         await setRegistrationStatus(ctx, registration._id, {
@@ -185,7 +191,7 @@ export async function eliminateSingleEliminationLosers(
           updatedAt: now,
         }),
     ),
-    adjustActiveRegistrationCount(ctx, tournament, -eliminated.length, now),
+    adjustActiveRegistrationCount(ctx, tournament, -registrations.length, now),
   ]);
 }
 

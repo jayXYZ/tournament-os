@@ -12,7 +12,7 @@ import {
 import {
   activeRegistrations,
   comparePlayersAlphabetically,
-  registrationDisplayName,
+  resolveRegistrationDisplayName,
 } from "../model/registrations";
 import { requireOrganizerAccess } from "../model/tournaments";
 
@@ -78,9 +78,11 @@ export const startPlayerMeeting = mutation({
       async (registration) => ({
         registrationId: registration._id,
         playerName:
-          registration.playerName ??
-          (await registrationDisplayName(ctx, registration._id)) ??
-          null,
+          (await resolveRegistrationDisplayName(
+            ctx,
+            registration.playerName,
+            registration._id,
+          )) ?? null,
         createdAt: registration.createdAt,
       }),
     );

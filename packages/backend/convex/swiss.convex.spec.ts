@@ -53,9 +53,11 @@ test("Swiss pairings and fold-forward standings hold at player capacity", async 
       tournamentId,
     });
 
-    const standings = await authed.query(api.tournaments.rounds.getStandings, {
-      roundId: round!._id,
-    });
+    const standings = (
+      await authed.query(api.tournaments.rounds.listRoundStandings, {
+        roundId: round!._id,
+      })
+    ).map(({ standing }) => standing);
     expect(standings).toHaveLength(512);
     expect(standings.map((row) => row.rank)).toEqual(
       standings.map((_, index) => index + 1),

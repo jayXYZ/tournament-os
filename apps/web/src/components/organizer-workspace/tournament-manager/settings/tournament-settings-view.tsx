@@ -17,10 +17,10 @@ import {
 export function TournamentSettingsView({
   tournamentId,
 }: {
-  tournamentId: string
+  tournamentId: Id<'tournaments'>
 }) {
   const setup = useQuery(api.tournaments.lifecycle.getTournamentSetup, {
-    tournamentId: tournamentId as Id<'tournaments'>,
+    tournamentId,
   })
 
   return (

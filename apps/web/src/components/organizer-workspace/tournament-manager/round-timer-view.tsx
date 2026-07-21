@@ -40,9 +40,13 @@ type PairingsBoard = FunctionReturnType<
 const MIN_MINUTES = durationMsToMinutes(MIN_ROUND_DURATION_MS)
 const MAX_MINUTES = durationMsToMinutes(MAX_ROUND_DURATION_MS)
 
-export function RoundTimerView({ tournamentId }: { tournamentId: string }) {
+export function RoundTimerView({
+  tournamentId,
+}: {
+  tournamentId: Id<'tournaments'>
+}) {
   const board = useQuery(api.tournaments.rounds.getPairingsBoard, {
-    tournamentId: tournamentId as Id<'tournaments'>,
+    tournamentId,
   })
 
   return (

@@ -1,6 +1,7 @@
 import { useQuery } from 'convex/react'
 
 import { api } from '@tournament-os/backend/convex/_generated/api'
+import { displayPlayerName } from '@tournament-os/core'
 import type { FunctionReturnType } from 'convex/server'
 import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
 import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'
@@ -94,7 +95,7 @@ export function PlayerMeetingCard({
                             'text-muted-foreground line-through',
                         )}
                       >
-                        {seat.playerName ?? 'Unknown player'}
+                        {displayPlayerName(seat.playerName)}
                         {seat.registrationStatus !== 'active' ? (
                           <Badge variant="outline" className="ml-2 no-underline">
                             Dropped

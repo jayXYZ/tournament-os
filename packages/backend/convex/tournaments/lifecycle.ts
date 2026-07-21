@@ -14,6 +14,7 @@ import { deleteTournamentOperationalDataBatch } from "../model/deletion";
 import {
   SINGLE_ELIMINATION_FORMAT,
   SWISS_FORMAT,
+  phasesInOrder,
   requireSwissPhase,
   validPhaseInputs,
 } from "../model/phases";
@@ -188,13 +189,11 @@ export const getManagedTournament = query({
 export const getTournamentSetup = query({
   args: { tournamentId: v.id("tournaments") },
   handler: async (ctx, args) => {
-    const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
-    const phases = await ctx.db
-      .query("tournamentPhases")
-      .withIndex("by_tournamentId_and_phaseOrder", (q) =>
-        q.eq("tournamentId", args.tournamentId),
-      )
-      .take(16);
+    const { tournament } = await requireOrganizerAccess(
+      ctx,
+      args.tournamentId,
+    );
+    const phases = await phasesInOrder(ctx, args.tournamentId);
     const testConfig = await ctx.db
       .query("tournamentTestConfigs")
       .withIndex("by_tournamentId", (q) =>
@@ -371,21 +370,13 @@ export const updateTournamentPhases = mutation({
     ),
   },
   handler: async (ctx, args): Promise<Id<"tournamentPhases">[]> => {
-    const { tournament } = await requireOrganizerAccess(
-      ctx,
-      args.tournamentId,
-    );
+    const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
     requirePreStartEditable(tournament);
 
     const validatedPhases = validPhaseInputs(
       args.phases.map(({ phaseId: _phaseId, ...phase }) => phase),
     );
-    const existingPhases = await ctx.db
-      .query("tournamentPhases")
-      .withIndex("by_tournamentId_and_phaseOrder", (q) =>
-        q.eq("tournamentId", args.tournamentId),
-      )
-      .take(16);
+    const existingPhases = await phasesInOrder(ctx, args.tournamentId);
     const existingById = new Map(
       existingPhases.map((phase) => [phase._id, phase]),
     );

@@ -1,10 +1,10 @@
 import {
-
+  displayPlayerName,
   useDropSelf,
-  useMyMatchHistory
+  useMyMatchHistory,
 } from '@tournament-os/core'
 import { toast } from 'sonner'
-import type {MyCurrentMatch} from '@tournament-os/core';
+import type { MyCurrentMatch } from '@tournament-os/core'
 
 import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
 import { ConfirmActionDialog } from '@/components/shared/confirm-action-dialog'
@@ -62,7 +62,7 @@ function MatchHistoryCard({
                 R{entry.roundNumber}
               </span>
               <span className="min-w-0 flex-1 truncate text-sm">
-                {entry.isBye ? 'Bye' : (entry.opponentName ?? 'Unknown player')}
+                {entry.isBye ? 'Bye' : displayPlayerName(entry.opponentName)}
               </span>
               {entry.result === 'pending' ? (
                 <Badge variant="outline">Pending</Badge>
