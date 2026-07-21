@@ -45,6 +45,15 @@ export function PhaseSettingsCard({
         phase.phaseTotalRounds === null
           ? '3'
           : String(phase.phaseTotalRounds),
+      phaseCutoffKind: phase.phaseCutoff?.kind ?? 'none',
+      phaseCutoffValue:
+        phase.phaseCutoff === null
+          ? '8'
+          : String(
+              phase.phaseCutoff.kind === 'top_X_players'
+                ? phase.phaseCutoff.playerCount
+                : phase.phaseCutoff.matchPoints,
+            ),
       playerMeeting: phase.playerMeeting ?? false,
     })),
   )

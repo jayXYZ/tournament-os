@@ -7,11 +7,16 @@ export const SINGLE_ELIMINATION_FORMAT = "single_elimination";
 export const SINGLE_ELIMINATION_PLAYERS = 8;
 export const SINGLE_ELIMINATION_ROUNDS = 3;
 
+export type TournamentPhaseCutoffInput =
+  | { kind: "top_X_players"; playerCount: number }
+  | { kind: "X_points_or_more"; matchPoints: number };
+
 export type TournamentPhaseInput = {
   phaseOrder: number;
   phaseType?: "swiss" | "single_elimination";
   phaseRoundMode: "dynamic" | "fixed";
   phaseTotalRounds?: number;
+  phaseCutoff?: TournamentPhaseCutoffInput | null;
   playerMeeting?: boolean;
 };
 
@@ -206,7 +211,7 @@ export async function createPhases(
       phaseStatus: "upcoming",
       phaseRoundMode: phase.phaseRoundMode,
       phaseTotalRounds: phase.phaseTotalRounds,
-      phaseCutoff: null,
+      phaseCutoff: phase.phaseCutoff,
       powerPairFinalRound: phase.phaseType === SWISS_FORMAT ? true : undefined,
       playerMeeting: phase.playerMeeting,
       updatedAt: now,
@@ -281,10 +286,31 @@ export function requirePlayerMeetingStarted(phase: Doc<"tournamentPhases">) {
 
 export function validRoundCount(value: number) {
   const rounds = Math.trunc(value);
-  if (rounds < 1 || rounds > 16) {
+  if (!Number.isInteger(rounds) || rounds < 1 || rounds > 16) {
     throw new Error("Swiss rounds must be between 1 and 16");
   }
   return rounds;
+}
+
+export function validPhaseCutoff(cutoff: TournamentPhaseCutoffInput) {
+  if (cutoff.kind === "top_X_players") {
+    const playerCount = Math.trunc(cutoff.playerCount);
+    if (
+      !Number.isInteger(playerCount) ||
+      playerCount < 2 ||
+      playerCount > MAX_TOURNAMENT_PLAYERS
+    ) {
+      throw new Error(
+        `A player-count cutoff must keep between 2 and ${MAX_TOURNAMENT_PLAYERS} players`,
+      );
+    }
+    return { kind: cutoff.kind, playerCount };
+  }
+  const matchPoints = Math.trunc(cutoff.matchPoints);
+  if (!Number.isInteger(matchPoints) || matchPoints < 1) {
+    throw new Error("A match-point cutoff must require at least 1 point");
+  }
+  return { kind: cutoff.kind, matchPoints };
 }
 
 export function validPhaseInputs(phases: TournamentPhaseInput[]) {
@@ -312,6 +338,18 @@ export function validPhaseInputs(phases: TournamentPhaseInput[]) {
     }
     // Absent-default convention: store true or leave the field off entirely.
     const playerMeeting = phase.playerMeeting === true ? true : undefined;
+    // A cutoff cuts the field when its phase completes, so it needs a
+    // following Swiss phase to cut into. A phase feeding the top-8 playoff
+    // cannot configure one — the playoff applies its own fixed cut.
+    const nextPhaseType =
+      index === phases.length - 1
+        ? null
+        : (phases[index + 1].phaseType ?? SWISS_FORMAT);
+    const rawCutoff = phase.phaseCutoff ?? null;
+    if (rawCutoff !== null && nextPhaseType !== SWISS_FORMAT) {
+      throw new Error("A phase cutoff requires a following Swiss phase");
+    }
+    const phaseCutoff = rawCutoff === null ? null : validPhaseCutoff(rawCutoff);
     if (phaseType === SINGLE_ELIMINATION_FORMAT) {
       if (playerMeeting) {
         throw new Error(
@@ -323,6 +361,7 @@ export function validPhaseInputs(phases: TournamentPhaseInput[]) {
         phaseType,
         phaseRoundMode: "fixed" as const,
         phaseTotalRounds: SINGLE_ELIMINATION_ROUNDS,
+        phaseCutoff: null,
         playerMeeting: undefined,
       };
     }
@@ -332,6 +371,7 @@ export function validPhaseInputs(phases: TournamentPhaseInput[]) {
         phaseType,
         phaseRoundMode: "dynamic" as const,
         phaseTotalRounds: null,
+        phaseCutoff,
         playerMeeting,
       };
     }
@@ -341,6 +381,7 @@ export function validPhaseInputs(phases: TournamentPhaseInput[]) {
       phaseType,
       phaseRoundMode: "fixed" as const,
       phaseTotalRounds: validRoundCount(phase.phaseTotalRounds ?? 0),
+      phaseCutoff,
       playerMeeting,
     };
   });

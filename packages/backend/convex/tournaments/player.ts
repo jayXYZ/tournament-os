@@ -90,31 +90,46 @@ export const getMyCurrentMatch = query({
             .eq("registrationId", registration._id),
         )
         .unique();
-      let seatmateName: string | null = null;
-      if (seat) {
-        const tableSeats = await ctx.db
-          .query("playerMeetingSeats")
-          .withIndex("by_tournamentPhaseId_and_tableNumber", (q) =>
-            q
-              .eq("tournamentPhaseId", meetingPhase._id)
-              .eq("tableNumber", seat.tableNumber),
-          )
-          .take(2);
-        seatmateName =
-          tableSeats.find((other) => other._id !== seat._id)?.playerName ??
-          null;
+      // A later meeting fed by a cutoff is invitation-only: an active player
+      // without a seat did not qualify and should remain on the completed-round
+      // view. Phase-1 meetings preserve the existing late-registration fallback.
+      const previousPhase =
+        !seat && meetingPhase.phaseOrder > 1
+          ? await phaseByOrder(
+              ctx,
+              args.tournamentId,
+              meetingPhase.phaseOrder - 1,
+            )
+          : null;
+      const excludedByCutoff =
+        !seat && (previousPhase?.phaseCutoff ?? null) !== null;
+      if (!excludedByCutoff) {
+        let seatmateName: string | null = null;
+        if (seat) {
+          const tableSeats = await ctx.db
+            .query("playerMeetingSeats")
+            .withIndex("by_tournamentPhaseId_and_tableNumber", (q) =>
+              q
+                .eq("tournamentPhaseId", meetingPhase._id)
+                .eq("tableNumber", seat.tableNumber),
+            )
+            .take(2);
+          seatmateName =
+            tableSeats.find((other) => other._id !== seat._id)?.playerName ??
+            null;
+        }
+        return {
+          kind: "player_meeting" as const,
+          ...base,
+          meeting: {
+            phaseName:
+              meetingPhase.phaseName ?? `Phase ${meetingPhase.phaseOrder}`,
+            // null: registered after a non-cutoff seating snapshot.
+            tableNumber: seat?.tableNumber ?? null,
+            seatmateName,
+          },
+        };
       }
-      return {
-        kind: "player_meeting" as const,
-        ...base,
-        meeting: {
-          phaseName:
-            meetingPhase.phaseName ?? `Phase ${meetingPhase.phaseOrder}`,
-          // null: registered after the seating snapshot — see the organizer.
-          tableNumber: seat?.tableNumber ?? null,
-          seatmateName,
-        },
-      };
     }
 
     if (

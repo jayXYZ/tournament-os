@@ -9,6 +9,7 @@ import {
   logAuditEvent,
 } from "../model/auditLog";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
+import { cutoffQualifiersForNextPhase } from "../model/cutoffs";
 import {
   createRoundWithPairings,
   createSingleEliminationRoundWithPairings,
@@ -232,7 +233,32 @@ async function startNextPhaseFirstRound(
     throw new Error("All configured rounds have been generated");
   }
   requirePlayerMeetingStarted(nextPhase);
-  let registrations = await activeRegistrations(ctx, tournament._id);
+
+  // Who enters the next phase: the fixed top-8 cut for a playoff, the
+  // finished phase's configured cutoff, otherwise every active player.
+  let registrations: Doc<"tournamentRegistrations">[];
+  let appliesCut = true;
+  if (nextPhase.phaseType === SINGLE_ELIMINATION_FORMAT) {
+    registrations = await topEightFromStandings(ctx, currentRound._id);
+  } else if (phase.phaseCutoff !== null) {
+    registrations = await cutoffQualifiersForNextPhase(
+      ctx,
+      currentRound._id,
+      phase.phaseCutoff,
+      nextPhase,
+    );
+    if (registrations.length < 2) {
+      throw new Error(
+        "The phase cutoff leaves fewer than two qualifying players",
+      );
+    }
+  } else {
+    registrations = await activeRegistrations(ctx, tournament._id);
+    if (registrations.length < 2) {
+      throw new Error("At least two active players are required");
+    }
+    appliesCut = false;
+  }
   const nextPhaseTotalRounds = await resolvePhaseTotalRounds(
     ctx,
     nextPhase,
@@ -243,37 +269,34 @@ async function startNextPhaseFirstRound(
     phaseTotalRounds: nextPhaseTotalRounds,
   };
 
-  let roundId: Id<"tournamentRounds">;
-  if (nextPhase.phaseType === SINGLE_ELIMINATION_FORMAT) {
-    registrations = await topEightFromStandings(ctx, currentRound._id);
-    roundId = await createSingleEliminationRoundWithPairings(ctx, {
-      tournament,
-      phase: playablePhase,
-      roundNumber: currentRound.roundNumber + 1,
-      roundName: "Quarterfinals",
-      registrations,
-      seededFirstRound: true,
-    });
+  const roundId =
+    nextPhase.phaseType === SINGLE_ELIMINATION_FORMAT
+      ? await createSingleEliminationRoundWithPairings(ctx, {
+          tournament,
+          phase: playablePhase,
+          roundNumber: currentRound.roundNumber + 1,
+          roundName: "Quarterfinals",
+          registrations,
+          seededFirstRound: true,
+        })
+      : await createRoundWithPairings(ctx, {
+          tournament,
+          phase: playablePhase,
+          roundNumber: currentRound.roundNumber + 1,
+          registrations,
+          previousRoundId: currentRound._id,
+        });
+  if (appliesCut) {
     // The cut belongs to the completed round whose standings produced it.
-    // Rewinding the quarterfinal reopens that round and should restore the
-    // cut; rewinding a later bracket round must restore only bracket losers.
+    // Rewinding the next phase's first round reopens that round and should
+    // restore the cut; rewinding a later bracket round must restore only
+    // bracket losers.
     await eliminateNonQualifiers(
       ctx,
       tournament,
       registrations,
       currentRound._id,
     );
-  } else {
-    if (registrations.length < 2) {
-      throw new Error("At least two active players are required");
-    }
-    roundId = await createRoundWithPairings(ctx, {
-      tournament,
-      phase: playablePhase,
-      roundNumber: currentRound.roundNumber + 1,
-      registrations,
-      previousRoundId: currentRound._id,
-    });
   }
   await ctx.db.patch(nextPhase._id, {
     phaseStatus: "in_progress",

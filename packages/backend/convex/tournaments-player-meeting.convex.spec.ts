@@ -321,6 +321,162 @@ test("a later phase holds its own meeting between phases", async () => {
   expect(board.phases[1].rounds[0].roundNumber).toBe(2);
 });
 
+test("a cutoff meeting snapshot controls player views and the next-phase field", async () => {
+  const t = convexTest(schema, modules);
+  const { tournamentId, registrationIds } = await seedTournament(t, 4, [
+    {
+      phaseOrder: 1,
+      phaseRoundMode: "fixed",
+      phaseTotalRounds: 1,
+      phaseCutoff: { kind: "top_X_players", playerCount: 3 },
+    },
+    {
+      phaseOrder: 2,
+      phaseRoundMode: "fixed",
+      phaseTotalRounds: 1,
+      playerMeeting: true,
+    },
+  ]);
+  const organizer = t.withIdentity(organizerIdentity);
+  await organizer.mutation(api.tournaments.rounds.startTournament, {
+    tournamentId,
+  });
+  await playOutCurrentRound(t, tournamentId);
+
+  const board = await organizer.query(api.tournaments.rounds.getPairingsBoard, {
+    tournamentId,
+  });
+  const phaseTwoId = board.phases[1].phase._id;
+  expect(board.nextStep).toMatchObject({
+    kind: "startPlayerMeeting",
+    ready: true,
+    phaseId: phaseTwoId,
+  });
+
+  const finalRoundId = board.phases[0].rounds[0]._id;
+  const standings = await organizer.query(
+    api.tournaments.rounds.listRoundStandings,
+    { roundId: finalRoundId },
+  );
+  const qualifierIds = standings
+    .slice(0, 3)
+    .map(({ standing }) => standing.playerId);
+  const nonQualifierId = registrationIds.find(
+    (registrationId) => !qualifierIds.includes(registrationId),
+  );
+  if (!nonQualifierId) {
+    throw new Error("Expected one player to miss the cutoff");
+  }
+
+  await organizer.mutation(api.tournaments.playerMeeting.startPlayerMeeting, {
+    phaseId: phaseTwoId,
+  });
+  const seating = await organizer.query(
+    api.tournaments.playerMeeting.listPlayerMeetingSeats,
+    { phaseId: phaseTwoId },
+  );
+  expect(seating.seats).toHaveLength(3);
+  expect(seating.seats.map((seat) => seat.registrationId).sort()).toEqual(
+    [...qualifierIds].sort(),
+  );
+
+  // The active non-qualifier remains on the completed-round view instead of
+  // being told to attend a meeting where they have no seat.
+  const nonQualifierNumber = registrationIds.indexOf(nonQualifierId) + 1;
+  const nonQualifierView = await t
+    .withIdentity(playerIdentity(nonQualifierNumber))
+    .query(api.tournaments.player.getMyCurrentMatch, { tournamentId });
+  expect(nonQualifierView.kind).toBe("between_rounds");
+
+  // Dropping a seated qualifier does not backfill the unseated player when
+  // round one is paired: the meeting snapshot is the authoritative field.
+  const droppedQualifierId = qualifierIds[0];
+  await organizer.mutation(api.tournaments.registrations.dropRegistration, {
+    registrationId: droppedQualifierId,
+  });
+  await organizer.mutation(api.tournaments.rounds.generateNextRound, {
+    tournamentId,
+  });
+  const nextRound = await organizer.query(
+    api.tournaments.rounds.getCurrentRound,
+    { tournamentId },
+  );
+  if (!nextRound) {
+    throw new Error("Expected the next phase's first round");
+  }
+  const pairings = await organizer.query(
+    api.tournaments.rounds.listRoundPairings,
+    { roundId: nextRound._id },
+  );
+  const pairedIds = pairings.flatMap(({ players }) =>
+    players.map((player) => player.playerId),
+  );
+  expect(pairedIds.sort()).toEqual(
+    qualifierIds
+      .filter((registrationId) => registrationId !== droppedQualifierId)
+      .sort(),
+  );
+  expect(pairedIds).not.toContain(nonQualifierId);
+});
+
+test("a cutoff meeting can complete when its seated field drops below two", async () => {
+  const t = convexTest(schema, modules);
+  const { tournamentId } = await seedTournament(t, 4, [
+    {
+      phaseOrder: 1,
+      phaseRoundMode: "fixed",
+      phaseTotalRounds: 1,
+      phaseCutoff: { kind: "top_X_players", playerCount: 2 },
+    },
+    {
+      phaseOrder: 2,
+      phaseRoundMode: "fixed",
+      phaseTotalRounds: 1,
+      playerMeeting: true,
+    },
+  ]);
+  const organizer = t.withIdentity(organizerIdentity);
+  await organizer.mutation(api.tournaments.rounds.startTournament, {
+    tournamentId,
+  });
+  await playOutCurrentRound(t, tournamentId);
+
+  let board = await organizer.query(api.tournaments.rounds.getPairingsBoard, {
+    tournamentId,
+  });
+  const phaseTwoId = board.phases[1].phase._id;
+  await organizer.mutation(api.tournaments.playerMeeting.startPlayerMeeting, {
+    phaseId: phaseTwoId,
+  });
+  const seating = await organizer.query(
+    api.tournaments.playerMeeting.listPlayerMeetingSeats,
+    { phaseId: phaseTwoId },
+  );
+  await organizer.mutation(api.tournaments.registrations.dropRegistration, {
+    registrationId: seating.seats[0].registrationId,
+  });
+
+  board = await organizer.query(api.tournaments.rounds.getPairingsBoard, {
+    tournamentId,
+  });
+  expect(board.nextStep).toMatchObject({
+    kind: "completeTournament",
+    ready: true,
+  });
+  await organizer.mutation(api.tournaments.lifecycle.completeTournament, {
+    tournamentId,
+  });
+  const setup = await organizer.query(
+    api.tournaments.lifecycle.getTournamentSetup,
+    { tournamentId },
+  );
+  expect(setup.tournament.lifecycle).toBe("completed");
+  expect(setup.phases.map((phase) => phase.phaseStatus)).toEqual([
+    "completed",
+    "cancelled",
+  ]);
+});
+
 test("players see their meeting seat, late registrants see none, and pairing is untouched", async () => {
   const t = convexTest(schema, modules);
   const names = ["Alice", "Bob", "Cara", "Dan"];
@@ -444,6 +600,7 @@ async function seedTournament(
     phaseOrder: number;
     phaseRoundMode: "fixed" | "dynamic";
     phaseTotalRounds?: number;
+    phaseCutoff?: { kind: "top_X_players"; playerCount: number } | null;
     playerMeeting?: boolean;
   }[] = [{ phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 3 }],
   playerNames?: string[],

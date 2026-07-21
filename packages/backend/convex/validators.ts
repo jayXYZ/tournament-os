@@ -107,9 +107,22 @@ export const tournamentPhaseRoundModeValidator = v.union(
   v.literal("fixed"),
 );
 
+// How a phase cuts the field when it completes: keep only the top N ranked
+// players, or everyone at or above a match-point bar. Null means no cut —
+// every active player advances. Only configurable on a Swiss phase followed by
+// another Swiss phase; a top-8 playoff always applies its own fixed cut.
+const topPlayersCutoffValidator = v.object({
+  kind: v.literal("top_X_players"),
+  playerCount: v.number(),
+});
+const pointsCutoffValidator = v.object({
+  kind: v.literal("X_points_or_more"),
+  matchPoints: v.number(),
+});
+
 export const tournamentPhaseCutoffValidator = v.union(
-  v.literal("top_X_players"),
-  v.literal("X_points_or_more"),
+  topPlayersCutoffValidator,
+  pointsCutoffValidator,
   v.null(),
 );
 

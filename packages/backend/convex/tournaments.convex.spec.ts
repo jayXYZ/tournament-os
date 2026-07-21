@@ -1567,6 +1567,371 @@ test("multi-phase tournaments advance into the next phase and carry records", as
   expect(board.nextStep).toEqual({ kind: "tournamentCompleted" });
 });
 
+async function createCutoffTournament(
+  t: ReturnType<typeof convexTest>,
+  phaseCutoff:
+    | { kind: "top_X_players"; playerCount: number }
+    | { kind: "X_points_or_more"; matchPoints: number },
+) {
+  const { organizationId } = await seedOrganizer(t);
+  const authed = t.withIdentity(organizerIdentity);
+  const tournamentId = await authed.mutation(
+    api.tournaments.lifecycle.createTournamentWithPhases,
+    {
+      organizationId,
+      name: "Cutoff Event",
+      startDate: Date.now(),
+      playerCapacity: 8,
+      format: "standard",
+      phases: [
+        {
+          phaseOrder: 1,
+          phaseRoundMode: "fixed",
+          phaseTotalRounds: 1,
+          phaseCutoff,
+        },
+        { phaseOrder: 2, phaseRoundMode: "fixed", phaseTotalRounds: 1 },
+      ],
+    },
+  );
+  await seedActiveRegistrations(t, tournamentId, 4);
+  await authed.mutation(api.tournaments.lifecycle.publishTournament, {
+    tournamentId,
+  });
+  await authed.mutation(api.tournaments.rounds.startTournament, {
+    tournamentId,
+  });
+  return { authed, tournamentId };
+}
+
+test("a top-X cutoff eliminates non-qualifiers when the next phase starts", async () => {
+  const t = convexTest(schema, modules);
+  const { authed, tournamentId } = await createCutoffTournament(t, {
+    kind: "top_X_players",
+    playerCount: 2,
+  });
+
+  const { round: finalRound } = await playOutCurrentRound(authed, tournamentId);
+  const topTwo = (
+    await authed.query(api.tournaments.rounds.listRoundStandings, {
+      roundId: finalRound._id,
+    })
+  )
+    .map(({ standing }) => standing)
+    .slice(0, 2)
+    .map((standing) => standing.playerId);
+
+  await authed.mutation(api.tournaments.rounds.generateNextRound, {
+    tournamentId,
+  });
+
+  // The phase-2 field is exactly the top two; everyone else is eliminated,
+  // keyed to phase 1's final round so a rewind can restore them.
+  const nextRound = await authed.query(api.tournaments.rounds.getCurrentRound, {
+    tournamentId,
+  });
+  const pairings = await authed.query(api.tournaments.rounds.listRoundPairings, {
+    roundId: nextRound!._id,
+  });
+  expect(pairings).toHaveLength(1);
+  expect(
+    pairings[0].players.map((player) => player.playerId).sort(),
+  ).toEqual([...topTwo].sort());
+
+  await t.run(async (ctx) => {
+    const registrations = await ctx.db
+      .query("tournamentRegistrations")
+      .withIndex("by_tournamentId", (q) => q.eq("tournamentId", tournamentId))
+      .collect();
+    const eliminated = registrations.filter(
+      (registration) => registration.status === "eliminated",
+    );
+    expect(eliminated).toHaveLength(2);
+    for (const registration of eliminated) {
+      expect(registration.eliminatedByRoundId).toBe(finalRound._id);
+    }
+    const tournament = await ctx.db.get(tournamentId);
+    expect(tournament?.activeRegistrationCount).toBe(2);
+  });
+});
+
+test("a points cutoff advances every player at or above the bar", async () => {
+  const t = convexTest(schema, modules);
+  const { authed, tournamentId } = await createCutoffTournament(t, {
+    kind: "X_points_or_more",
+    matchPoints: 3,
+  });
+
+  const { round: finalRound } = await playOutCurrentRound(authed, tournamentId);
+  const qualified = (
+    await authed.query(api.tournaments.rounds.listRoundStandings, {
+      roundId: finalRound._id,
+    })
+  )
+    .map(({ standing }) => standing)
+    .filter((standing) => standing.matchPoints >= 3)
+    .map((standing) => standing.playerId);
+  expect(qualified).toHaveLength(2);
+
+  await authed.mutation(api.tournaments.rounds.generateNextRound, {
+    tournamentId,
+  });
+  const nextRound = await authed.query(api.tournaments.rounds.getCurrentRound, {
+    tournamentId,
+  });
+  const pairings = await authed.query(api.tournaments.rounds.listRoundPairings, {
+    roundId: nextRound!._id,
+  });
+  expect(pairings).toHaveLength(1);
+  expect(
+    pairings[0].players.map((player) => player.playerId).sort(),
+  ).toEqual([...qualified].sort());
+});
+
+test("a cutoff nobody clears ends the tournament instead of pairing the next phase", async () => {
+  const t = convexTest(schema, modules);
+  const { authed, tournamentId } = await createCutoffTournament(t, {
+    kind: "X_points_or_more",
+    matchPoints: 6,
+  });
+
+  await playOutCurrentRound(authed, tournamentId);
+
+  // After one round nobody has six points, so the next phase is unpairable:
+  // the board offers completion, and generating the round refuses.
+  const board = await authed.query(api.tournaments.rounds.getPairingsBoard, {
+    tournamentId,
+  });
+  expect(board.nextStep).toMatchObject({
+    kind: "completeTournament",
+    ready: true,
+  });
+  await expect(
+    authed.mutation(api.tournaments.rounds.generateNextRound, {
+      tournamentId,
+    }),
+  ).rejects.toThrow("fewer than two qualifying players");
+
+  await authed.mutation(api.tournaments.lifecycle.completeTournament, {
+    tournamentId,
+  });
+  const setup = await authed.query(
+    api.tournaments.lifecycle.getTournamentSetup,
+    { tournamentId },
+  );
+  expect(setup.tournament.lifecycle).toBe("completed");
+  expect(setup.phases.map((phase) => phase.phaseStatus)).toEqual([
+    "completed",
+    "cancelled",
+  ]);
+});
+
+test("a cutoff nobody clears cancels every later phase, not just the next one", async () => {
+  const t = convexTest(schema, modules);
+  const { organizationId } = await seedOrganizer(t);
+  const authed = t.withIdentity(organizerIdentity);
+  const tournamentId = await authed.mutation(
+    api.tournaments.lifecycle.createTournamentWithPhases,
+    {
+      organizationId,
+      name: "Three Phase Cutoff Event",
+      startDate: Date.now(),
+      playerCapacity: 8,
+      format: "standard",
+      phases: [
+        {
+          phaseOrder: 1,
+          phaseType: "swiss",
+          phaseRoundMode: "fixed",
+          phaseTotalRounds: 1,
+          phaseCutoff: { kind: "X_points_or_more", matchPoints: 6 },
+        },
+        {
+          phaseOrder: 2,
+          phaseType: "swiss",
+          phaseRoundMode: "fixed",
+          phaseTotalRounds: 1,
+        },
+        {
+          phaseOrder: 3,
+          phaseType: "single_elimination",
+          phaseRoundMode: "fixed",
+        },
+      ],
+    },
+  );
+  await seedActiveRegistrations(t, tournamentId, 8);
+  await authed.mutation(api.tournaments.lifecycle.publishTournament, {
+    tournamentId,
+  });
+  await authed.mutation(api.tournaments.rounds.startTournament, {
+    tournamentId,
+  });
+  await playOutCurrentRound(authed, tournamentId);
+
+  // After one round nobody has six points, so no later phase can be played.
+  await authed.mutation(api.tournaments.lifecycle.completeTournament, {
+    tournamentId,
+  });
+  const setup = await authed.query(
+    api.tournaments.lifecycle.getTournamentSetup,
+    { tournamentId },
+  );
+  expect(setup.tournament.lifecycle).toBe("completed");
+  expect(setup.phases.map((phase) => phase.phaseStatus)).toEqual([
+    "completed",
+    "cancelled",
+    "cancelled",
+  ]);
+});
+
+test("rewinding the round after a cutoff restores the eliminated players", async () => {
+  const t = convexTest(schema, modules);
+  const { authed, tournamentId } = await createCutoffTournament(t, {
+    kind: "top_X_players",
+    playerCount: 2,
+  });
+
+  const { round: finalRound } = await playOutCurrentRound(authed, tournamentId);
+  await authed.mutation(api.tournaments.rounds.generateNextRound, {
+    tournamentId,
+  });
+  await authed.mutation(api.tournaments.rounds.rewindLatestRound, {
+    tournamentId,
+  });
+
+  await t.run(async (ctx) => {
+    const registrations = await ctx.db
+      .query("tournamentRegistrations")
+      .withIndex("by_tournamentId", (q) => q.eq("tournamentId", tournamentId))
+      .collect();
+    expect(
+      registrations.every((registration) => registration.status === "active"),
+    ).toBe(true);
+    const tournament = await ctx.db.get(tournamentId);
+    expect(tournament?.activeRegistrationCount).toBe(4);
+  });
+  const reopenedRound = await authed.query(
+    api.tournaments.rounds.getCurrentRound,
+    { tournamentId },
+  );
+  expect(reopenedRound?._id).toBe(finalRound._id);
+  expect(reopenedRound?.roundStatus).toBe("in_progress");
+});
+
+test("phase cutoffs are validated against the phase structure", async () => {
+  const t = convexTest(schema, modules);
+  const { organizationId } = await seedOrganizer(t);
+  const authed = t.withIdentity(organizerIdentity);
+  const createWithPhases = (
+    phases: Array<{
+      phaseOrder: number;
+      phaseType?: "swiss" | "single_elimination";
+      phaseRoundMode: "dynamic" | "fixed";
+      phaseTotalRounds?: number;
+      phaseCutoff?:
+        | { kind: "top_X_players"; playerCount: number }
+        | { kind: "X_points_or_more"; matchPoints: number }
+        | null;
+    }>,
+  ) =>
+    authed.mutation(api.tournaments.lifecycle.createTournamentWithPhases, {
+      organizationId,
+      name: "Cutoff Validation",
+      startDate: Date.now(),
+      playerCapacity: 8,
+      format: "standard",
+      phases,
+    });
+
+  // The final phase has nothing to cut into.
+  await expect(
+    createWithPhases([
+      {
+        phaseOrder: 1,
+        phaseRoundMode: "dynamic",
+        phaseCutoff: { kind: "top_X_players", playerCount: 8 },
+      },
+    ]),
+  ).rejects.toThrow("A phase cutoff requires a following Swiss phase");
+
+  // A phase feeding the playoff cannot configure one — the playoff applies
+  // its own fixed top-8 cut.
+  await expect(
+    createWithPhases([
+      {
+        phaseOrder: 1,
+        phaseRoundMode: "dynamic",
+        phaseCutoff: { kind: "top_X_players", playerCount: 8 },
+      },
+      {
+        phaseOrder: 2,
+        phaseType: "single_elimination",
+        phaseRoundMode: "fixed",
+      },
+    ]),
+  ).rejects.toThrow("A phase cutoff requires a following Swiss phase");
+
+  // A cut keeping fewer than two players could never pair the next phase.
+  await expect(
+    createWithPhases([
+      {
+        phaseOrder: 1,
+        phaseRoundMode: "dynamic",
+        phaseCutoff: { kind: "top_X_players", playerCount: 1 },
+      },
+      { phaseOrder: 2, phaseRoundMode: "dynamic" },
+    ]),
+  ).rejects.toThrow("player-count cutoff");
+
+  // A valid configuration persists on the phase document.
+  const tournamentId = await createWithPhases([
+    {
+      phaseOrder: 1,
+      phaseRoundMode: "dynamic",
+      phaseCutoff: { kind: "X_points_or_more", matchPoints: 9 },
+    },
+    { phaseOrder: 2, phaseRoundMode: "dynamic" },
+  ]);
+  const setup = await authed.query(
+    api.tournaments.lifecycle.getTournamentSetup,
+    { tournamentId },
+  );
+  expect(setup.phases[0].phaseCutoff).toEqual({
+    kind: "X_points_or_more",
+    matchPoints: 9,
+  });
+  expect(setup.phases[1].phaseCutoff).toBeNull();
+
+  // updateTournamentPhases persists and clears cutoffs the same way.
+  await authed.mutation(api.tournaments.lifecycle.updateTournamentPhases, {
+    tournamentId,
+    phases: [
+      {
+        phaseId: setup.phases[0]._id,
+        phaseOrder: 1,
+        phaseType: "swiss",
+        phaseRoundMode: "dynamic",
+        phaseCutoff: { kind: "top_X_players", playerCount: 4 },
+      },
+      {
+        phaseId: setup.phases[1]._id,
+        phaseOrder: 2,
+        phaseType: "swiss",
+        phaseRoundMode: "dynamic",
+      },
+    ],
+  });
+  const updated = await authed.query(
+    api.tournaments.lifecycle.getTournamentSetup,
+    { tournamentId },
+  );
+  expect(updated.phases[0].phaseCutoff).toEqual({
+    kind: "top_X_players",
+    playerCount: 4,
+  });
+});
+
 test("rewinding round one ignores byes, clears the timer, and reopens registration", async () => {
   const t = convexTest(schema, modules);
   const { organizationId } = await seedOrganizer(t);

@@ -1,9 +1,9 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "./batching";
+import { activeStandingsRegistrations } from "./cutoffs";
 import { SINGLE_ELIMINATION_PLAYERS } from "./phases";
 import {
-  MAX_TOURNAMENT_PLAYERS,
   activeRegistrations,
   adjustActiveRegistrationCount,
   setRegistrationStatus,
@@ -15,27 +15,9 @@ export async function topEightFromStandings(
   ctx: QueryCtx,
   roundId: Id<"tournamentRounds">,
 ) {
-  const standings = await ctx.db
-    .query("roundStandings")
-    .withIndex("by_tournamentRoundId_and_rank", (q) =>
-      q.eq("tournamentRoundId", roundId),
-    )
-    .take(MAX_TOURNAMENT_PLAYERS);
-
-  const loadedRegistrations = await mapAsyncInBatches(
-    standings,
-    DATABASE_IO_BATCH_SIZE,
-    async (standing) => await ctx.db.get(standing.playerId),
-  );
-  const registrations: Doc<"tournamentRegistrations">[] = [];
-  for (const registration of loadedRegistrations) {
-    if (
-      registration?.status === "active" &&
-      registrations.length < SINGLE_ELIMINATION_PLAYERS
-    ) {
-      registrations.push(registration);
-    }
-  }
+  const registrations = (await activeStandingsRegistrations(ctx, roundId))
+    .slice(0, SINGLE_ELIMINATION_PLAYERS)
+    .map(({ registration }) => registration);
   if (registrations.length === SINGLE_ELIMINATION_PLAYERS) {
     return registrations;
   }

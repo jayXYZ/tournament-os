@@ -36,6 +36,7 @@ import {
 } from "../model/tournaments";
 import {
   tournamentFormatValidator,
+  tournamentPhaseCutoffValidator,
   tournamentPhaseRoundModeValidator,
   tournamentPhaseTypeValidator,
   tournamentVisibilityValidator,
@@ -240,6 +241,7 @@ export const createTournamentWithPhases = mutation({
         phaseType: v.optional(tournamentPhaseTypeValidator),
         phaseRoundMode: tournamentPhaseRoundModeValidator,
         phaseTotalRounds: v.optional(v.number()),
+        phaseCutoff: v.optional(tournamentPhaseCutoffValidator),
         playerMeeting: v.optional(v.boolean()),
       }),
     ),
@@ -365,6 +367,7 @@ export const updateTournamentPhases = mutation({
         phaseType: tournamentPhaseTypeValidator,
         phaseRoundMode: tournamentPhaseRoundModeValidator,
         phaseTotalRounds: v.optional(v.number()),
+        phaseCutoff: v.optional(tournamentPhaseCutoffValidator),
         playerMeeting: v.optional(v.boolean()),
       }),
     ),
@@ -431,7 +434,7 @@ export const updateTournamentPhases = mutation({
         phaseRoundMode: phase.phaseRoundMode,
         phaseTotalRounds: phase.phaseTotalRounds,
         phaseCurrentRound: undefined,
-        phaseCutoff: null,
+        phaseCutoff: phase.phaseCutoff,
         powerPairFinalRound:
           phase.phaseType === SWISS_FORMAT ? true : undefined,
         playerMeeting: phase.playerMeeting,
