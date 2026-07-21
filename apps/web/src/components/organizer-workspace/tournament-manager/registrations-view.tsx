@@ -9,13 +9,17 @@ import {
 } from 'lucide-react'
 
 import { api } from '@tournament-os/backend/convex/_generated/api'
+import { displayPlayerName } from '@tournament-os/core'
 import { toast } from 'sonner'
 import type { ColumnDef } from '@tanstack/react-table'
 import type {
   Doc,
   Id,
 } from '@tournament-os/backend/convex/_generated/dataModel'
+import { ConfirmActionDialog } from '@/components/shared/confirm-action-dialog'
+import { TableEmptyState } from '@/components/shared/table-empty-state'
 import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'
+import { TableSearchInput } from '@/components/shared/table-search-input'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -26,17 +30,6 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogMedia,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
 import { DataTable, DataTableColumnHeader } from '@/components/ui/data-table'
 import {
   DropdownMenu,
@@ -45,15 +38,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from '@/components/ui/empty'
-import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
+import { useBusyAction } from '@/hooks/use-busy-action'
 
 type RegistrationRow = {
   registration: Doc<'tournamentRegistrations'>
@@ -73,19 +59,19 @@ const statusBadgeVariant: Record<
   disqualified: 'destructive',
 }
 
-function playerName(row: RegistrationRow) {
-  return row.playerName ?? 'Unknown player'
-}
-
-export function RegistrationsView({ tournamentId }: { tournamentId: string }) {
+export function RegistrationsView({
+  tournamentId,
+}: {
+  tournamentId: Id<'tournaments'>
+}) {
   const registrations = useQuery(
     api.tournaments.registrations.listRegistrations,
     {
-      tournamentId: tournamentId as Id<'tournaments'>,
+      tournamentId,
     },
   )
   const setup = useQuery(api.tournaments.lifecycle.getTournamentSetup, {
-    tournamentId: tournamentId as Id<'tournaments'>,
+    tournamentId,
   })
 
   return (
@@ -119,7 +105,7 @@ function RegistrationSettingsMenu({
   tournament: Doc<'tournaments'> | undefined
 }) {
   const seedTestPlayers = useMutation(api.tournaments.testing.seedTestPlayers)
-  const [busy, setBusy] = useState(false)
+  const { busy, run } = useBusyAction()
 
   const activeRegistrations =
     registrations?.filter((row) => row.registration.status === 'active')
@@ -136,27 +122,17 @@ function RegistrationSettingsMenu({
       return
     }
 
-    setBusy(true)
-    try {
-      const result = await seedTestPlayers({
+    await run(async () => {
+      const { addedCount } = await seedTestPlayers({
         tournamentId: tournament._id,
         count: remainingSeats,
       })
-      const { addedCount } = result
       toast.success(
         addedCount > 0
           ? `${addedCount} test ${addedCount === 1 ? 'user' : 'users'} generated.`
           : 'Tournament is already at capacity.',
       )
-    } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : 'Could not generate test users.',
-      )
-    } finally {
-      setBusy(false)
-    }
+    }, 'Could not generate test users.')
   }
 
   return (
@@ -189,7 +165,7 @@ function RegistrationSettingsMenu({
 const registrationColumns: Array<ColumnDef<RegistrationRow>> = [
   {
     id: 'player',
-    accessorFn: (row) => playerName(row),
+    accessorFn: (row) => displayPlayerName(row.playerName),
     header: ({ column }) => (
       <DataTableColumnHeader column={column} title="Player" />
     ),
@@ -197,7 +173,9 @@ const registrationColumns: Array<ColumnDef<RegistrationRow>> = [
     // names change length across pages.
     meta: { className: 'w-full' },
     cell: ({ row }) => (
-      <p className="font-medium text-foreground">{playerName(row.original)}</p>
+      <p className="font-medium text-foreground">
+        {displayPlayerName(row.original.playerName)}
+      </p>
     ),
   },
   {
@@ -238,17 +216,11 @@ function RegistrationsTable({
 
   if (registrations.length === 0) {
     return (
-      <Empty className="min-h-64">
-        <EmptyHeader>
-          <EmptyMedia variant="icon">
-            <ClipboardList />
-          </EmptyMedia>
-          <EmptyTitle>No registrations yet</EmptyTitle>
-          <EmptyDescription>
-            Players who sign up for this tournament will appear here.
-          </EmptyDescription>
-        </EmptyHeader>
-      </Empty>
+      <TableEmptyState
+        icon={ClipboardList}
+        title="No registrations yet"
+        description="Players who sign up for this tournament will appear here."
+      />
     )
   }
 
@@ -259,13 +231,10 @@ function RegistrationsTable({
       className="min-w-[480px]"
       noResultsLabel="No players match your search."
       toolbar={(table) => (
-        <Input
+        <TableSearchInput
+          table={table}
+          columnId="player"
           placeholder="Search players..."
-          value={String(table.getColumn('player')?.getFilterValue() ?? '')}
-          onChange={(event) =>
-            table.getColumn('player')?.setFilterValue(event.target.value)
-          }
-          className="max-w-xs"
         />
       )}
     />
@@ -278,24 +247,9 @@ function ManagePlayerMenu({ row }: { row: RegistrationRow }) {
   )
 
   const [confirmingDrop, setConfirmingDrop] = useState(false)
-  const [busy, setBusy] = useState(false)
 
   const alreadyDropped = row.registration.status === 'dropped'
-
-  async function handleDrop() {
-    setBusy(true)
-    try {
-      await dropRegistration({ registrationId: row.registration._id })
-      setConfirmingDrop(false)
-      toast.success(`${playerName(row)} has been dropped.`)
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Could not drop player.',
-      )
-    } finally {
-      setBusy(false)
-    }
-  }
+  const name = displayPlayerName(row.playerName)
 
   return (
     <>
@@ -305,7 +259,7 @@ function ManagePlayerMenu({ row }: { row: RegistrationRow }) {
             type="button"
             variant="outline"
             size="icon"
-            aria-label={`Manage ${playerName(row)}`}
+            aria-label={`Manage ${name}`}
           >
             <MoreHorizontal />
           </Button>
@@ -324,41 +278,20 @@ function ManagePlayerMenu({ row }: { row: RegistrationRow }) {
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <AlertDialog
+      <ConfirmActionDialog
         open={confirmingDrop}
-        onOpenChange={(open) => {
-          if (!busy) {
-            setConfirmingDrop(open)
-          }
+        onOpenChange={setConfirmingDrop}
+        icon={<UserMinus />}
+        destructive
+        title={`Drop ${name}?`}
+        description="This player will be removed from future pairings and their status will be set to dropped."
+        actionLabel="Drop player"
+        failureMessage="Could not drop player."
+        onConfirm={async () => {
+          await dropRegistration({ registrationId: row.registration._id })
+          toast.success(`${name} has been dropped.`)
         }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogMedia>
-              <UserMinus />
-            </AlertDialogMedia>
-            <AlertDialogTitle>Drop {playerName(row)}?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This player will be removed from future pairings and their status
-              will be set to dropped.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              variant="destructive"
-              disabled={busy}
-              onClick={(event) => {
-                event.preventDefault()
-                void handleDrop()
-              }}
-            >
-              {busy ? <Spinner data-icon="inline-start" /> : null}
-              Drop player
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      />
     </>
   )
 }

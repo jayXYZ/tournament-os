@@ -30,6 +30,7 @@ import { Field, FieldDescription, FieldLabel } from '@/components/ui/field'
 import { HoldButton } from '@/components/ui/hold-button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useBusyAction } from '@/hooks/use-busy-action'
 import { cn } from '@/lib/utils'
 
 type PairingsBoard = FunctionReturnType<
@@ -39,9 +40,13 @@ type PairingsBoard = FunctionReturnType<
 const MIN_MINUTES = durationMsToMinutes(MIN_ROUND_DURATION_MS)
 const MAX_MINUTES = durationMsToMinutes(MAX_ROUND_DURATION_MS)
 
-export function RoundTimerView({ tournamentId }: { tournamentId: string }) {
+export function RoundTimerView({
+  tournamentId,
+}: {
+  tournamentId: Id<'tournaments'>
+}) {
   const board = useQuery(api.tournaments.rounds.getPairingsBoard, {
-    tournamentId: tournamentId as Id<'tournaments'>,
+    tournamentId,
   })
 
   return (
@@ -93,23 +98,12 @@ function TimerCard({ board }: { board: PairingsBoard }) {
     setPrevSavedMinutes(savedMinutes)
     setDraftMinutes(savedMinutes)
   }
-  const [busy, setBusy] = useState(false)
+  const { busy, run } = useBusyAction()
   const parsedMinutes = Number.parseInt(draftMinutes, 10)
   const minutesValid =
     Number.isInteger(parsedMinutes) &&
     parsedMinutes >= MIN_MINUTES &&
     parsedMinutes <= MAX_MINUTES
-
-  async function run(action: () => Promise<unknown>, failure: string) {
-    setBusy(true)
-    try {
-      await action()
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : failure)
-    } finally {
-      setBusy(false)
-    }
-  }
 
   // Rethrow so HoldButton skips its success state on failure (see hold-button).
   async function handleReset() {
@@ -313,27 +307,20 @@ function RoundLengthCard({
       durationMsToMinutes(tournament.roundDurationMs ?? DEFAULT_ROUND_DURATION_MS),
     ),
   )
-  const [busy, setBusy] = useState(false)
+  const { busy, run } = useBusyAction()
   const parsed = Number.parseInt(minutes, 10)
   const valid =
     Number.isInteger(parsed) && parsed >= MIN_MINUTES && parsed <= MAX_MINUTES
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    setBusy(true)
-    try {
+    await run(async () => {
       await setRoundDuration({
         tournamentId: tournament._id,
         durationMs: minutesToDurationMs(parsed),
       })
       toast.success('Round length saved.')
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Could not save round length.',
-      )
-    } finally {
-      setBusy(false)
-    }
+    }, 'Could not save round length.')
   }
 
   return (

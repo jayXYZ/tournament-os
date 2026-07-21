@@ -1,5 +1,6 @@
 import type { Id } from "@tournament-os/backend/convex/_generated/dataModel";
 import {
+  displayPlayerName,
   formatRecord,
   useLatestStandings,
   useMyCurrentMatch,
@@ -168,7 +169,7 @@ function Standings({
         >
           <Text style={styles.rank}>{row.rank}</Text>
           <Text style={styles.name} numberOfLines={1}>
-            {row.name ?? "Unknown player"}
+            {displayPlayerName(row.name)}
           </Text>
           {row.playoffStatus !== "not_started" ? (
             <Text style={styles.playoffStatus}>

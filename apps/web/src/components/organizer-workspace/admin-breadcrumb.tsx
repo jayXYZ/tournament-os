@@ -39,6 +39,7 @@ import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
+import { useBusyAction } from '@/hooks/use-busy-action'
 
 const viewLabels: Record<AdminView, string> = {
   tournaments: 'Tournaments',
@@ -164,27 +165,18 @@ function OrganizationSwitcher() {
   )
 
   const [open, setOpen] = useState(false)
-  const [busy, setBusy] = useState(false)
+  const { busy, run } = useBusyAction()
   const [organizationName, setOrganizationName] = useState('')
 
   async function handleCreateOrganization(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    setBusy(true)
-    try {
+    await run(async () => {
       const result = await createOrganization({ name: organizationName })
       selectOrganization(result.organizationId)
       setOrganizationName('')
       setOpen(false)
       toast.success('Organizer workspace created.')
-    } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : 'Could not create organization.',
-      )
-    } finally {
-      setBusy(false)
-    }
+    }, 'Could not create organization.')
   }
 
   return (

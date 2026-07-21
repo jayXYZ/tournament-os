@@ -15,11 +15,11 @@ export function TournamentOverviewView({
   tournamentId,
   publicCode,
 }: {
-  tournamentId: string
+  tournamentId: Id<'tournaments'>
   publicCode: string
 }) {
   const setup = useQuery(api.tournaments.lifecycle.getTournamentSetup, {
-    tournamentId: tournamentId as Id<'tournaments'>,
+    tournamentId,
   })
 
   return (

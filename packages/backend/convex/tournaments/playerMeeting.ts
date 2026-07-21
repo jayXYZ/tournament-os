@@ -5,14 +5,16 @@ import { logAuditEvent } from "../model/auditLog";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
 import {
   SWISS_FORMAT,
-  activeRegistrations,
-  comparePlayersAlphabetically,
   meetingSeats,
-  registrationDisplayName,
-  requireOrganizerAccess,
   requirePhase,
   swissPhaseByOrder,
-} from "../model/tournaments";
+} from "../model/phases";
+import {
+  activeRegistrations,
+  comparePlayersAlphabetically,
+  resolveRegistrationDisplayName,
+} from "../model/registrations";
+import { requireOrganizerAccess } from "../model/tournaments";
 
 // Seats every active player for a phase's player meeting: alphabetical order,
 // two per table (players 1&2 at table 1, 3&4 at table 2, an odd player alone
@@ -76,9 +78,11 @@ export const startPlayerMeeting = mutation({
       async (registration) => ({
         registrationId: registration._id,
         playerName:
-          registration.playerName ??
-          (await registrationDisplayName(ctx, registration._id)) ??
-          null,
+          (await resolveRegistrationDisplayName(
+            ctx,
+            registration.playerName,
+            registration._id,
+          )) ?? null,
         createdAt: registration.createdAt,
       }),
     );

@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import {
-  
+  displayPlayerName,
   formatPercent,
   formatRecord,
-  useLatestStandings
+  useLatestStandings,
 } from '@tournament-os/core'
 import { ListOrdered } from 'lucide-react'
-import type {StandingRow} from '@tournament-os/core';
+import type { StandingRow } from '@tournament-os/core'
 
 import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
 import {
@@ -96,7 +96,7 @@ function StandingsRow({ row }: { row: StandingRow }) {
           {row.rank}
         </span>
         <span className="min-w-0 flex-1 truncate text-sm font-medium">
-          {row.name ?? 'Unknown player'}
+          {displayPlayerName(row.name)}
           {row.isMe ? (
             <span className="text-muted-foreground"> (you)</span>
           ) : null}

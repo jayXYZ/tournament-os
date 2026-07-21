@@ -19,6 +19,10 @@ const tournamentModules = {
 };
 const modelModules = {
   tournaments: new URL("./model/tournaments.ts", import.meta.url),
+  phases: new URL("./model/phases.ts", import.meta.url),
+  registrations: new URL("./model/registrations.ts", import.meta.url),
+  nextStep: new URL("./model/nextStep.ts", import.meta.url),
+  deletion: new URL("./model/deletion.ts", import.meta.url),
   pairing: new URL("./model/pairing.ts", import.meta.url),
   standings: new URL("./model/standings.ts", import.meta.url),
   testing: new URL("./model/testing.ts", import.meta.url),
@@ -112,9 +116,9 @@ test("tournament domain helpers define Swiss MVP behavior", () => {
     expect(existsSync(path)).toBe(true);
   }
 
-  const tournamentsModel = readFileSync(modelModules.tournaments, "utf8");
-  expect(tournamentsModel).toMatch(/export const SWISS_FORMAT = "swiss"/);
-  expect(tournamentsModel).toMatch(/export function defaultSwissRoundCount/);
+  const phasesModel = readFileSync(modelModules.phases, "utf8");
+  expect(phasesModel).toMatch(/export const SWISS_FORMAT = "swiss"/);
+  expect(phasesModel).toMatch(/export function defaultSwissRoundCount/);
 
   const standingsModel = readFileSync(modelModules.standings, "utf8");
   expect(standingsModel).toMatch(/export function compareStandingRows/);
@@ -154,7 +158,7 @@ test("tournament functions expose setup registration operation and test APIs", (
       "completeRound",
       "getCurrentRound",
       "listRoundPairings",
-      "getStandings",
+      "listRoundStandings",
     ],
     testing: [
       "createTestTournament",

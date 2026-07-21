@@ -2,23 +2,21 @@ import { useQuery } from 'convex/react'
 import { Trophy } from 'lucide-react'
 
 import { api } from '@tournament-os/backend/convex/_generated/api'
-import { formatPercent, formatRecord } from '@tournament-os/core'
+import {
+  displayPlayerName,
+  formatPercent,
+  formatRecord,
+} from '@tournament-os/core'
 import type { ColumnDef } from '@tanstack/react-table'
 import type { FunctionReturnType } from 'convex/server'
 import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
 import type { RoundSelection } from '@/components/tournaments'
+import { TableEmptyState } from '@/components/shared/table-empty-state'
 import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'
+import { TableSearchInput } from '@/components/shared/table-search-input'
 import { useTournamentRoundNavigation } from '@/components/tournaments'
 import { Card, CardContent } from '@/components/ui/card'
 import { DataTable, DataTableColumnHeader } from '@/components/ui/data-table'
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from '@/components/ui/empty'
-import { Input } from '@/components/ui/input'
 
 type StandingRow = FunctionReturnType<
   typeof api.tournaments.rounds.listRoundStandings
@@ -29,12 +27,12 @@ export function StandingsView({
   roundSelection,
   onRoundSelectionChange,
 }: {
-  tournamentId: string
+  tournamentId: Id<'tournaments'>
   roundSelection: RoundSelection
   onRoundSelectionChange: (selection: RoundSelection) => void
 }) {
   const board = useQuery(api.tournaments.rounds.getPairingsBoard, {
-    tournamentId: tournamentId as Id<'tournaments'>,
+    tournamentId,
   })
 
   const phases = board?.phases ?? []
@@ -52,18 +50,11 @@ export function StandingsView({
           {board === undefined ? (
             <TableLoadingSkeleton />
           ) : !navigation.selectedRound ? (
-            <Empty className="min-h-64">
-              <EmptyHeader>
-                <EmptyMedia variant="icon">
-                  <Trophy />
-                </EmptyMedia>
-                <EmptyTitle>No standings yet</EmptyTitle>
-                <EmptyDescription>
-                  Standings are generated when a round is completed. Finish a
-                  round to see the leaderboard here.
-                </EmptyDescription>
-              </EmptyHeader>
-            </Empty>
+            <TableEmptyState
+              icon={Trophy}
+              title="No standings yet"
+              description="Standings are generated when a round is completed. Finish a round to see the leaderboard here."
+            />
           ) : (
             <StandingsTable roundId={navigation.selectedRound._id} />
           )}
@@ -71,10 +62,6 @@ export function StandingsView({
       </Card>
     </section>
   )
-}
-
-function standingPlayerName(row: StandingRow) {
-  return row.playerName ?? 'Unknown player'
 }
 
 const standingColumns: Array<ColumnDef<StandingRow>> = [
@@ -93,7 +80,7 @@ const standingColumns: Array<ColumnDef<StandingRow>> = [
   },
   {
     id: 'player',
-    accessorFn: (row) => standingPlayerName(row),
+    accessorFn: (row) => displayPlayerName(row.playerName),
     header: ({ column }) => (
       <DataTableColumnHeader column={column} title="Player" />
     ),
@@ -101,7 +88,7 @@ const standingColumns: Array<ColumnDef<StandingRow>> = [
     meta: { className: 'w-full' },
     cell: ({ row }) => (
       <p className="font-medium text-foreground">
-        {standingPlayerName(row.original)}
+        {displayPlayerName(row.original.playerName)}
       </p>
     ),
   },
@@ -188,17 +175,11 @@ function StandingsTable({ roundId }: { roundId: Id<'tournamentRounds'> }) {
 
   if (standings.length === 0) {
     return (
-      <Empty className="min-h-64">
-        <EmptyHeader>
-          <EmptyMedia variant="icon">
-            <Trophy />
-          </EmptyMedia>
-          <EmptyTitle>No standings for this round</EmptyTitle>
-          <EmptyDescription>
-            Standings for this round will appear here once they are generated.
-          </EmptyDescription>
-        </EmptyHeader>
-      </Empty>
+      <TableEmptyState
+        icon={Trophy}
+        title="No standings for this round"
+        description="Standings for this round will appear here once they are generated."
+      />
     )
   }
 
@@ -209,13 +190,10 @@ function StandingsTable({ roundId }: { roundId: Id<'tournamentRounds'> }) {
       className="min-w-[640px]"
       noResultsLabel="No players match your search."
       toolbar={(table) => (
-        <Input
+        <TableSearchInput
+          table={table}
+          columnId="player"
           placeholder="Search players..."
-          value={String(table.getColumn('player')?.getFilterValue() ?? '')}
-          onChange={(event) =>
-            table.getColumn('player')?.setFilterValue(event.target.value)
-          }
-          className="max-w-xs"
         />
       )}
     />

@@ -5,25 +5,27 @@ import type { Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { internalMutation, mutation } from "../_generated/server";
 import { requireActiveMembership } from "../model/access";
+import { deleteTournamentOperationalDataBatch } from "../model/deletion";
 import { createRoundWithPairings } from "../model/pairing";
-import { replaceStandingsForRound } from "../model/standings";
 import {
   SWISS_FORMAT,
-  activeRegistrations,
-  cleanName,
-  completeTournament,
   defaultSwissRoundCount,
-  deleteTournamentOperationalDataBatch,
-  requireOrganizerAccess,
   requirePhase,
   requireResolvedPhaseTotalRounds,
-  requireRound,
   requireSwissPhase,
+  validRoundCount,
+} from "../model/phases";
+import { activeRegistrations } from "../model/registrations";
+import { replaceStandingsForRound } from "../model/standings";
+import {
+  cleanName,
+  completeTournament,
+  requireOrganizerAccess,
+  requireRound,
   requireTestTournament,
   requireTournament,
   nextTournamentPublicCode,
   validCapacity,
-  validRoundCount,
 } from "../model/tournaments";
 import {
   generateTestResults,

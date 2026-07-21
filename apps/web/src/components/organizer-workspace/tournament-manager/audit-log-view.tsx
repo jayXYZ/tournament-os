@@ -2,6 +2,7 @@ import { usePaginatedQuery } from 'convex/react'
 import { ScrollText } from 'lucide-react'
 
 import { api } from '@tournament-os/backend/convex/_generated/api'
+import { displayPlayerName } from '@tournament-os/core'
 import type { FunctionReturnType } from 'convex/server'
 import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
 import { Badge } from '@/components/ui/badge'
@@ -33,10 +34,14 @@ type ResultLine = Extract<
 
 const PAGE_SIZE = 50
 
-export function AuditLogView({ tournamentId }: { tournamentId: string }) {
+export function AuditLogView({
+  tournamentId,
+}: {
+  tournamentId: Id<'tournaments'>
+}) {
   const { results, status, loadMore } = usePaginatedQuery(
     api.tournaments.auditLog.listAuditEvents,
-    { tournamentId: tournamentId as Id<'tournaments'> },
+    { tournamentId },
     { initialNumItems: PAGE_SIZE },
   )
 
@@ -138,15 +143,15 @@ function describeEvent(row: AuditEventRow): string {
     case 'match_result_confirmed':
       return `Confirmed the reported result ${matchLocation(event)}`
     case 'player_registered':
-      return `${lineName(event.player.playerName)} registered for the event`
+      return `${displayPlayerName(event.player.playerName)} registered for the event`
     case 'registration_cancelled':
-      return `${lineName(event.player.playerName)} cancelled their registration`
+      return `${displayPlayerName(event.player.playerName)} cancelled their registration`
     case 'player_dropped':
       return row.actorRole === 'organizer'
-        ? `Dropped ${lineName(event.player.playerName)} from the event`
-        : `${lineName(event.player.playerName)} dropped from the event`
+        ? `Dropped ${displayPlayerName(event.player.playerName)} from the event`
+        : `${displayPlayerName(event.player.playerName)} dropped from the event`
     case 'player_reinstated':
-      return `Reinstated ${lineName(event.player.playerName)}`
+      return `Reinstated ${displayPlayerName(event.player.playerName)}`
     case 'tournament_published':
       return 'Published the tournament and opened registration'
     case 'player_meeting_started':
@@ -183,11 +188,7 @@ function formatScoreline(lines: Array<ResultLine>) {
   if (!first || !second) {
     return 'a match result'
   }
-  return `${lineName(first.playerName)} ${first.gameWins}–${second.gameWins} ${lineName(second.playerName)}`
-}
-
-function lineName(name: string | null) {
-  return name ?? 'Unknown player'
+  return `${displayPlayerName(first.playerName)} ${first.gameWins}–${second.gameWins} ${displayPlayerName(second.playerName)}`
 }
 
 function formatTimestamp(creationTime: number) {

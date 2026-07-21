@@ -1,11 +1,8 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
-import {
-  MAX_TOURNAMENT_PLAYERS,
-  allRegistrations,
-  previousTournamentRound,
-  roundMatchesWithPlayers,
-} from "./tournaments";
+import { previousTournamentRound } from "./phases";
+import { MAX_TOURNAMENT_PLAYERS, allRegistrations } from "./registrations";
+import { roundMatchesWithPlayers } from "./tournaments";
 
 export type RoundMatchWithPlayers = Awaited<
   ReturnType<typeof roundMatchesWithPlayers>
@@ -206,7 +203,7 @@ async function rankedStatsForRound(
       currentAdvancers.add(winner.playerId);
     } else if (stats.get(loser.playerId)?.registration.status === "active") {
       // A winner who withdrew after reporting gives the opponent the bracket
-      // slot, matching singleEliminationAdvancers in tournaments/rounds.ts.
+      // slot, matching singleEliminationAdvancers in model/singleElimination.ts.
       currentAdvancers.add(loser.playerId);
     }
   }

@@ -283,10 +283,11 @@ test("playoff standings lock placements by elimination round", async () => {
   await playOutCurrentRound(t, tournamentId);
 
   const swissRound = await currentRound(t, tournamentId);
-  const swissStandings = await organizer.query(
-    api.tournaments.rounds.getStandings,
-    { roundId: swissRound._id },
-  );
+  const swissStandings = (
+    await organizer.query(api.tournaments.rounds.listRoundStandings, {
+      roundId: swissRound._id,
+    })
+  ).map(({ standing }) => standing);
   expect(swissStandings).toHaveLength(12);
   const cutPlayerIds = swissStandings.slice(8).map((row) => row.playerId);
   const cutPlayerNumber = registrationIds.indexOf(cutPlayerIds[0]) + 1;
