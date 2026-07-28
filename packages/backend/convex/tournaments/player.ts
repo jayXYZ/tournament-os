@@ -20,6 +20,7 @@ import {
 import {
   MAX_TOURNAMENT_PLAYERS,
   playerVisibleParticipationStatus,
+  playerVisibleRegistration,
   registrationForUser,
   resolveRegistrationDisplayName,
   setRegistrationState,
@@ -49,10 +50,13 @@ type OpponentSummary = {
 export const getMyCurrentMatch = query({
   args: { tournamentId: v.id("tournaments") },
   handler: async (ctx, args) => {
-    const { tournament, registration } = await requireRegisteredPlayer(
-      ctx,
-      args.tournamentId,
-    );
+    const { tournament, registration: storedRegistration } =
+      await requireRegisteredPlayer(ctx, args.tournamentId);
+    // The rest of the handler only distinguishes active from non-active, so
+    // building the whole payload from the masked row changes nothing but the
+    // reported status: a disqualified player reads as dropped, and the
+    // clients' existing dropped branches render the removed-from-event state.
+    const registration = playerVisibleRegistration(storedRegistration);
     const base = {
       tournament: {
         name: tournament.name,

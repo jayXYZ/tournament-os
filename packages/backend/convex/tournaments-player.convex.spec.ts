@@ -848,6 +848,14 @@ test("dropSelf removes the player from future rounds but keeps read access", asy
   expect(
     maskedStandings?.rows.find((row) => row.isMe)?.registrationStatus,
   ).toBe("dropped");
+  // The controller query masks the player's own status the same way, so the
+  // clients' existing dropped branches cover a disqualification with no
+  // dedicated handling of their own.
+  const maskedCurrent = await playerFour.query(
+    api.tournaments.player.getMyCurrentMatch,
+    { tournamentId },
+  );
+  expect(maskedCurrent.myRegistrationStatus).toBe("dropped");
   const organizerStandings = await organizer.query(
     api.tournaments.rounds.listRoundStandings,
     { roundId: round._id },
