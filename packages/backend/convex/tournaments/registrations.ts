@@ -10,6 +10,7 @@ import { clampPageSize } from "../model/pagination";
 import {
   adjustConfirmedRegistrationCount,
   playerDisplayName,
+  playerVisibleRegistration,
   registrationDropEffect,
   registrationForUser,
   requireCapacityAvailable,
@@ -159,7 +160,14 @@ export const getMyRegistration = query({
       return null;
     }
 
-    return await registrationForUser(ctx, args.tournamentId, user._id);
+    const registration = await registrationForUser(
+      ctx,
+      args.tournamentId,
+      user._id,
+    );
+    return registration === null
+      ? null
+      : playerVisibleRegistration(registration);
   },
 });
 
@@ -171,13 +179,16 @@ export const listMyTournaments = query({
       return [];
     }
 
+    // Every confirmed seat, whatever its participation status: a player who
+    // was dropped, eliminated, or disqualified mid-event still holds their
+    // seat and the player controller still admits them (its gate is
+    // entryStatus === "confirmed"), so this listing must keep the event
+    // discoverable while it runs. Filtering to active here would leave a cut
+    // player with no route back to their standings and match history.
     const registrations = await ctx.db
       .query("tournamentRegistrations")
       .withIndex("by_userId_and_entryStatus_and_participationStatus", (q) =>
-        q
-          .eq("userId", user._id)
-          .eq("entryStatus", "confirmed")
-          .eq("participationStatus", "active"),
+        q.eq("userId", user._id).eq("entryStatus", "confirmed"),
       )
       .take(100);
 
@@ -193,7 +204,7 @@ export const listMyTournaments = query({
       }
       const organization = await ctx.db.get(tournament.organizationId);
       rows.push({
-        registration,
+        registration: playerVisibleRegistration(registration),
         tournament,
         organizationName: organization?.name ?? null,
         registeredCount: tournament.confirmedRegistrationCount,

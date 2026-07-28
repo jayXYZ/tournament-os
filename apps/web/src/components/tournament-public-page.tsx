@@ -340,9 +340,12 @@ function RegistrationPanel({
   }
 
   // A withdrawn player still holds their confirmed seat (a mid-play drop, or
-  // one preserved by a round-one rewind back into registration). The only
-  // self-service action the server accepts here is cancelling to release the
-  // seat; rejoining is an organizer-side reinstatement.
+  // one preserved by a round-one rewind back into registration), and the
+  // server masks a disqualification as a drop, so this branch covers both.
+  // Before play the only self-service action the server accepts is cancelling
+  // to release the seat; rejoining is an organizer-side reinstatement. While
+  // the event runs, the player controller still admits every confirmed seat,
+  // so keep its entry point available for standings and match history.
   if (
     registration?.entryStatus === 'confirmed' &&
     registration.participationStatus === 'dropped'
@@ -365,6 +368,57 @@ function RegistrationPanel({
             {pending ? <Spinner /> : null}
             Cancel registration
           </Button>
+        ) : tournament.lifecycle === 'in_progress' ? (
+          <>
+            <Button asChild type="button">
+              <Link
+                to="/tournaments/$tournamentId/play"
+                params={{ tournamentId: String(tournament.publicCode) }}
+              >
+                <Swords data-icon="inline-start" />
+                Open player controller
+              </Link>
+            </Button>
+            <p className="text-sm text-muted-foreground">
+              You can still follow standings and your match history.
+            </p>
+          </>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            The event has started, so registration changes are locked.
+          </p>
+        )}
+      </div>
+    )
+  }
+
+  // An eliminated player is out of contention but keeps their confirmed seat,
+  // and the player controller still admits them, so while the event runs it
+  // stays their route to live standings and their match history.
+  if (
+    registration?.entryStatus === 'confirmed' &&
+    registration.participationStatus === 'eliminated'
+  ) {
+    return (
+      <div className="flex flex-wrap items-center gap-3">
+        <Badge variant="secondary">
+          You&apos;ve been eliminated from this event
+        </Badge>
+        {tournament.lifecycle === 'in_progress' ? (
+          <>
+            <Button asChild type="button">
+              <Link
+                to="/tournaments/$tournamentId/play"
+                params={{ tournamentId: String(tournament.publicCode) }}
+              >
+                <Swords data-icon="inline-start" />
+                Open player controller
+              </Link>
+            </Button>
+            <p className="text-sm text-muted-foreground">
+              You can still follow standings and your match history.
+            </p>
+          </>
         ) : (
           <p className="text-sm text-muted-foreground">
             The event has started, so registration changes are locked.

@@ -340,7 +340,11 @@ test("getPublicTournament keeps private events resolvable for registered players
   ).toBeNull();
 });
 
-test("listMyTournaments returns the player's active registrations for visible events", async () => {
+// Every confirmed seat is listed, whatever its participation status: the
+// player controller admits any confirmed entry, so a player who was dropped,
+// eliminated, or disqualified mid-event must still find the running event
+// here. Disqualifications are masked as drops on this player-facing surface.
+test("listMyTournaments returns every confirmed seat for ongoing and upcoming events", async () => {
   const t = convexTest(schema, modules);
   const now = Date.now();
   const { organizationId, userId } = await seedOrganizer(t);
@@ -352,7 +356,7 @@ test("listMyTournaments returns the player's active registrations for visible ev
     name: "Player",
   };
 
-  await t.run(async (ctx) => {
+  const { disqualifiedFrom } = await t.run(async (ctx) => {
     const playerUserId = await ctx.db.insert("users", {
       tokenIdentifier: playerIdentity.tokenIdentifier,
       publicCode: 1,
@@ -405,6 +409,13 @@ test("listMyTournaments returns the player's active registrations for visible ev
       lifecycle: "registration",
       startDate: now + 90_000,
     });
+    const disqualifiedFromId = await ctx.db.insert("tournaments", {
+      ...base,
+      name: "Disqualified Event",
+      visibility: "public",
+      lifecycle: "in_progress",
+      startDate: now + 30_000,
+    });
 
     await ctx.db.insert("tournamentRegistrations", {
       ...registrationBase,
@@ -413,12 +424,14 @@ test("listMyTournaments returns the player's active registrations for visible ev
       entryStatus: "confirmed",
       participationStatus: "active",
     });
+    // Eliminated mid-event (a cut): the running event must stay listed so the
+    // player keeps a route to the player controller.
     await ctx.db.insert("tournamentRegistrations", {
       ...registrationBase,
       tournamentId: inProgress,
       tournamentStartDate: now + 60_000,
       entryStatus: "confirmed",
-      participationStatus: "active",
+      participationStatus: "eliminated",
     });
     await ctx.db.insert("tournamentRegistrations", {
       ...registrationBase,
@@ -427,6 +440,8 @@ test("listMyTournaments returns the player's active registrations for visible ev
       entryStatus: "confirmed",
       participationStatus: "active",
     });
+    // A withdrawal preserved by a round-one rewind: the seat is still held
+    // (cancelling it is self-service), so the event stays discoverable.
     await ctx.db.insert("tournamentRegistrations", {
       ...registrationBase,
       tournamentId: droppedFrom,
@@ -434,17 +449,42 @@ test("listMyTournaments returns the player's active registrations for visible ev
       entryStatus: "confirmed",
       participationStatus: "dropped",
     });
+    await ctx.db.insert("tournamentRegistrations", {
+      ...registrationBase,
+      tournamentId: disqualifiedFromId,
+      tournamentStartDate: now + 30_000,
+      entryStatus: "confirmed",
+      participationStatus: "disqualified",
+    });
+    return { disqualifiedFrom: disqualifiedFromId };
   });
 
-  const rows = await t
-    .withIdentity(playerIdentity)
-    .query(api.tournaments.registrations.listMyTournaments, {});
+  const player = t.withIdentity(playerIdentity);
+  const rows = await player.query(
+    api.tournaments.registrations.listMyTournaments,
+    {},
+  );
 
+  // Completed events drop out; everything else sorts by start date.
   expect(rows.map((row) => row.tournament.name)).toEqual([
+    "Disqualified Event",
     "In Progress Event",
+    "Dropped Event",
     "Later Public Event",
   ]);
   expect(rows[0].organizationName).toBe("Test Org");
+  // Player-facing masking: the disqualification reads as a drop, here and on
+  // the single-registration query the event pages branch on.
+  expect(rows[0].registration.participationStatus).toBe("dropped");
+  expect(rows[1].registration.participationStatus).toBe("eliminated");
+  const myDisqualifiedRegistration = await player.query(
+    api.tournaments.registrations.getMyRegistration,
+    { tournamentId: disqualifiedFrom },
+  );
+  expect(myDisqualifiedRegistration).toMatchObject({
+    entryStatus: "confirmed",
+    participationStatus: "dropped",
+  });
 
   const anonymous = await t.query(
     api.tournaments.registrations.listMyTournaments,
