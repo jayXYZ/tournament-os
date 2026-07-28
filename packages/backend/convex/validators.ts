@@ -148,9 +148,20 @@ export const tournamentPhaseCutoffValidator = v.union(
 
 // Lifecycle of a phase's player meeting. Absent on the phase = not started;
 // "in_progress" is the only state in which seats are shown to players.
+//
+// The remaining two states say what the meeting's seat snapshot is worth:
+// pairing the phase's first round stamps "completed" (from "in_progress" or
+// "superseded") in the same patch that sets the phase "in_progress", and
+// rewindLatestRound stamps "superseded" when it un-pairs that round — the
+// snapshot outlived the standings it was drawn from, and
+// cutoffPartitionForNextPhase reads the stamp to re-draw the cut boundary
+// instead of taking the seats verbatim. "completed" therefore always means
+// the phase's first round is paired; it can never coexist with an "upcoming"
+// phase.
 export const playerMeetingStatusValidator = v.union(
   v.literal("in_progress"),
   v.literal("completed"),
+  v.literal("superseded"),
 );
 
 export const tournamentRoundStatusValidator = v.union(

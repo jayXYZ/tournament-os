@@ -3,7 +3,10 @@ import { useQuery } from 'convex/react'
 import { api } from '@tournament-os/backend/convex/_generated/api'
 import { displayPlayerName } from '@tournament-os/core'
 import type { FunctionReturnType } from 'convex/server'
-import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
+import type {
+  Doc,
+  Id,
+} from '@tournament-os/backend/convex/_generated/dataModel'
 import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -37,7 +40,7 @@ export function PlayerMeetingCard({
   meetingStatus,
 }: {
   phaseId: Id<'tournamentPhases'>
-  meetingStatus: 'in_progress' | 'completed'
+  meetingStatus: NonNullable<Doc<'tournamentPhases'>['playerMeetingStatus']>
 }) {
   const seating = useQuery(
     api.tournaments.playerMeeting.listPlayerMeetingSeats,
@@ -59,6 +62,8 @@ export function PlayerMeetingCard({
           {meetingStatus === 'in_progress' ? (
             <Badge>In progress</Badge>
           ) : (
+            // A "superseded" snapshot (its phase's first round was rewound)
+            // still reads "Completed" here: the meeting itself did finish.
             <Badge variant="secondary">Completed</Badge>
           )}
         </CardTitle>

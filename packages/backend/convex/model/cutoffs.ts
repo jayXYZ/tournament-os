@@ -211,7 +211,8 @@ async function meetingCutoffPartition(
 }
 
 // A rewind reopens the round the cut was drawn from and deletes its standings,
-// but the next phase's meeting is over and its seats stay on disk. Taking those
+// but the next phase's meeting is over and its seats stay on disk — the rewind
+// stamps the phase's meeting "superseded" to say exactly that. Taking those
 // seats verbatim would let the snapshot outrank the very results the organizer
 // rewound in order to correct, so the boundary is re-drawn from the corrected
 // standings and the snapshot keeps only the one thing standings cannot express:
@@ -236,42 +237,49 @@ async function supersededMeetingCutoffPartition(
   return await standingsCutoffPartition(ctx, roundId, cutoff, grantedEntryIds);
 }
 
-// Three states, keyed on what the next phase's meeting snapshot is worth right
-// now rather than on whether the meeting is live:
+// Routes on the phase's explicit meeting-snapshot status (the state machine
+// lives on playerMeetingStatusValidator), which says what the snapshot is
+// worth right now:
 //
 //   undefined      no snapshot — the entry field freezes at pairing time, so
 //                  the cut reads the standings (cutoffPartition).
 //   "in_progress"  a live meeting — its seats ARE the frozen field and are
 //                  taken verbatim (meetingCutoffPartition).
-//   "completed" on an "upcoming" phase
-//                  a superseded snapshot. Pairing a phase's first round marks
-//                  its meeting completed in the same patch that sets the phase
-//                  "in_progress" (tournaments/rounds.ts), so on a phase that
-//                  can be a nextPhase only rewindLatestRound can split that
-//                  pair — the seats outlived the standings they were drawn from
-//                  and the boundary must be re-drawn
+//   "superseded"   rewindLatestRound un-paired the phase's first round and
+//                  deleted the standings the seats were drawn from, stamping
+//                  this — the boundary must be re-drawn
 //                  (supersededMeetingCutoffPartition).
+//   "completed"    impossible here: pairing the phase's first round is what
+//                  stamps it, in the same patch that sets the phase
+//                  "in_progress", and the rewind that undoes that pairing
+//                  re-stamps "superseded" — so a next phase (always
+//                  "upcoming" at every call site) can never carry it. Reaching
+//                  it means a new code path completed a meeting without
+//                  pairing or rewound without re-stamping; fail loudly rather
+//                  than guess which standings the seats were drawn from.
 export async function cutoffPartitionForNextPhase(
   ctx: QueryCtx,
   roundId: Id<"tournamentRounds">,
   cutoff: TournamentPhaseCutoff,
   nextPhase: Doc<"tournamentPhases">,
 ): Promise<CutoffPartition> {
-  if (nextPhase.playerMeetingStatus === undefined) {
-    return await cutoffPartition(ctx, roundId, cutoff);
+  switch (nextPhase.playerMeetingStatus) {
+    case undefined:
+      return await cutoffPartition(ctx, roundId, cutoff);
+    case "in_progress":
+      return await meetingCutoffPartition(ctx, nextPhase);
+    case "superseded":
+      return await supersededMeetingCutoffPartition(
+        ctx,
+        roundId,
+        cutoff,
+        nextPhase._id,
+      );
+    case "completed":
+      throw new Error(
+        "Next phase's player meeting is marked completed but its first round is not paired; a rewind must stamp the snapshot superseded",
+      );
   }
-  if (
-    nextPhase.playerMeetingStatus === "completed" &&
-    nextPhase.phaseStatus === "upcoming"
-  ) {
-    return await supersededMeetingCutoffPartition(
-      ctx,
-      roundId,
-      cutoff,
-      nextPhase._id,
-    );
-  }
-  return await meetingCutoffPartition(ctx, nextPhase);
 }
 
 export async function cutoffQualifiersForNextPhase(

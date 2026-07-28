@@ -114,10 +114,11 @@ export const startTournament = mutation({
     await ctx.db.patch(playablePhase._id, {
       phaseStatus: "in_progress",
       phaseCurrentRound: roundId,
-      // Pairing round 1 ends any live player meeting. Keyed on the status, not
-      // the setting, so a meeting started before the flag was frozen still
-      // closes cleanly.
-      ...(phase.playerMeetingStatus === "in_progress"
+      // Pairing round 1 ends any live player meeting, and re-completes a
+      // snapshot a round-1 rewind had stamped "superseded". Keyed on the
+      // status, not the setting, so a meeting started before the flag was
+      // frozen still closes cleanly.
+      ...(phase.playerMeetingStatus !== undefined
         ? { playerMeetingStatus: "completed" as const }
         : {}),
       updatedAt: now,
@@ -304,8 +305,10 @@ async function startNextPhaseFirstRound(
   await ctx.db.patch(nextPhase._id, {
     phaseStatus: "in_progress",
     phaseCurrentRound: roundId,
-    // Pairing the phase's first round ends any live player meeting.
-    ...(nextPhase.playerMeetingStatus === "in_progress"
+    // Pairing the phase's first round ends any live player meeting, and a
+    // "superseded" snapshot the cut above just consumed goes back to
+    // "completed" so a later rewind can supersede it again.
+    ...(nextPhase.playerMeetingStatus !== undefined
       ? { playerMeetingStatus: "completed" as const }
       : {}),
     updatedAt: Date.now(),
@@ -574,23 +577,19 @@ export const rewindLatestRound = mutation({
         updatedAt: now,
       });
       if (previousPhase._id !== phase._id) {
-        // Unwinding the phase's start. Its player meeting stays "completed"
-        // and its seats stay on disk — the meeting really did happen — but
-        // the standings that drew them are being deleted a few lines up, so
-        // "upcoming" + "completed" is exactly the superseded-snapshot state
-        // cutoffPartitionForNextPhase re-draws the cut from. On a phase that
-        // can be a nextPhase — i.e. phaseOrder >= 2, which is all the cut ever
-        // looks at — nothing else can produce that pair: pairing a phase's
-        // first round marks its meeting completed in the same patch that sets
-        // the phase "in_progress", and updateTournamentPhases clears both the
-        // status and the seats of any phase carrying a meeting that lands
-        // below order 1. (Order-1 phases can hold the pair — the rewind of the
-        // tournament's very first round below, and that same
-        // updateTournamentPhases carve-out — but no cut is ever drawn for
-        // them.)
+        // Unwinding the phase's start. The meeting really happened and its
+        // seats stay on disk, but the standings they were drawn from are
+        // being deleted a few lines up, so the snapshot no longer proves who
+        // belongs in the field. Stamp it "superseded" — the explicit marker
+        // cutoffPartitionForNextPhase reads to re-draw the cut boundary from
+        // the corrected standings instead of taking the seats verbatim.
+        // Re-pairing the phase's first round stamps it back to "completed".
         await ctx.db.patch(phase._id, {
           phaseStatus: "upcoming",
           phaseCurrentRound: undefined,
+          ...(phase.playerMeetingStatus === "completed"
+            ? { playerMeetingStatus: "superseded" as const }
+            : {}),
           updatedAt: now,
         });
       }
@@ -602,6 +601,14 @@ export const rewindLatestRound = mutation({
       await ctx.db.patch(phase._id, {
         phaseStatus: "upcoming",
         phaseCurrentRound: undefined,
+        // Same supersede stamp as the cross-phase unwind above. No cut ever
+        // reads an order-1 phase, but the stamp keeps the state machine
+        // uniform: "completed" always means the phase's first round is
+        // paired, and startTournament re-completes the snapshot when round 1
+        // is paired again.
+        ...(phase.playerMeetingStatus === "completed"
+          ? { playerMeetingStatus: "superseded" as const }
+          : {}),
         updatedAt: now,
       });
       await ctx.db.patch(tournament._id, {

@@ -638,16 +638,22 @@ test("a rewound next phase still cuts against its meeting seats when re-paired",
     tournamentId,
   });
 
-  // The rewind returns phase two to "upcoming" but the meeting is over and its
-  // seat snapshot stands, so re-pairing must not fall back to live standings.
+  // The rewind returns phase two to "upcoming" and stamps its meeting
+  // "superseded": the seats are still on disk but the standings they were
+  // drawn from are gone, and the stamp is what routes the re-drawn cut.
   const rewoundPhaseTwo = await t.run(async (ctx) => ctx.db.get(phaseTwoId));
   expect(rewoundPhaseTwo?.phaseStatus).toBe("upcoming");
-  expect(rewoundPhaseTwo?.playerMeetingStatus).toBe("completed");
+  expect(rewoundPhaseTwo?.playerMeetingStatus).toBe("superseded");
 
   await playOutCurrentRound(t, tournamentId);
   await organizer.mutation(api.tournaments.rounds.generateNextRound, {
     tournamentId,
   });
+
+  // Re-pairing consumed the superseded snapshot and re-completed the meeting.
+  const repairedPhaseTwo = await t.run(async (ctx) => ctx.db.get(phaseTwoId));
+  expect(repairedPhaseTwo?.phaseStatus).toBe("in_progress");
+  expect(repairedPhaseTwo?.playerMeetingStatus).toBe("completed");
 
   const repairedRound = await organizer.query(
     api.tournaments.rounds.getCurrentRound,
@@ -701,6 +707,104 @@ test("a rewound next phase still cuts against its meeting seats when re-paired",
       eliminatedByRoundId: finalRoundId,
     });
   }
+});
+
+// The superseded-snapshot cut is routed by the explicit "superseded" stamp the
+// rewind writes, not inferred from a "completed" meeting on an "upcoming"
+// phase. A next phase carrying "completed" while still upcoming violates the
+// state machine (pairing stamps "completed" only in the patch that starts the
+// phase; the rewind re-stamps "superseded"), and the cut must refuse it loudly
+// instead of silently re-drawing the boundary against standings the seats may
+// never have been drawn from.
+test("an upcoming next phase with a 'completed' meeting fails the cut loudly", async () => {
+  const t = convexTest(schema, modules);
+  const { tournamentId } = await seedTournament(t, 5, [
+    {
+      phaseOrder: 1,
+      phaseRoundMode: "fixed",
+      phaseTotalRounds: 1,
+      phaseCutoff: { kind: "top_X_players", playerCount: 3 },
+    },
+    {
+      phaseOrder: 2,
+      phaseRoundMode: "fixed",
+      phaseTotalRounds: 1,
+      playerMeeting: true,
+    },
+  ]);
+  const organizer = t.withIdentity(organizerIdentity);
+  await organizer.mutation(api.tournaments.rounds.startTournament, {
+    tournamentId,
+  });
+  await playOutCurrentRound(t, tournamentId);
+
+  const board = await organizer.query(api.tournaments.rounds.getPairingsBoard, {
+    tournamentId,
+  });
+  const phaseTwoId = board.phases[1].phase._id;
+  await organizer.mutation(api.tournaments.playerMeeting.startPlayerMeeting, {
+    phaseId: phaseTwoId,
+  });
+  // Simulate a rogue future code path completing the meeting without pairing
+  // the phase's first round.
+  await t.run(async (ctx) => {
+    await ctx.db.patch(phaseTwoId, { playerMeetingStatus: "completed" });
+  });
+
+  await expect(
+    organizer.mutation(api.tournaments.rounds.generateNextRound, {
+      tournamentId,
+    }),
+  ).rejects.toThrow(
+    "Next phase's player meeting is marked completed but its first round is not paired",
+  );
+});
+
+// The supersede stamp is uniform: rewinding the tournament's very first round
+// also marks a completed phase-1 meeting "superseded" (no cut ever reads an
+// order-1 phase, but "completed" must always mean the phase's first round is
+// paired), and re-starting the tournament re-completes it.
+test("rewinding round 1 supersedes a phase-1 meeting; restarting re-completes it", async () => {
+  const t = convexTest(schema, modules);
+  const { tournamentId } = await seedTournament(t, 4, [
+    {
+      phaseOrder: 1,
+      phaseRoundMode: "fixed",
+      phaseTotalRounds: 3,
+      playerMeeting: true,
+    },
+  ]);
+  const organizer = t.withIdentity(organizerIdentity);
+  const phaseId = await firstPhaseId(t, tournamentId);
+  await organizer.mutation(api.tournaments.playerMeeting.startPlayerMeeting, {
+    phaseId,
+  });
+  await organizer.mutation(api.tournaments.rounds.startTournament, {
+    tournamentId,
+  });
+
+  await organizer.mutation(api.tournaments.rounds.rewindLatestRound, {
+    tournamentId,
+  });
+  const rewound = await t.run(async (ctx) => ctx.db.get(phaseId));
+  expect(rewound?.phaseStatus).toBe("upcoming");
+  expect(rewound?.playerMeetingStatus).toBe("superseded");
+
+  // The meeting already happened: the restart is offered directly, without a
+  // second meeting, and pairing round 1 re-completes the snapshot.
+  const board = await organizer.query(api.tournaments.rounds.getPairingsBoard, {
+    tournamentId,
+  });
+  expect(board.nextStep).toMatchObject({
+    kind: "startTournament",
+    ready: true,
+  });
+  await organizer.mutation(api.tournaments.rounds.startTournament, {
+    tournamentId,
+  });
+  const restarted = await t.run(async (ctx) => ctx.db.get(phaseId));
+  expect(restarted?.phaseStatus).toBe("in_progress");
+  expect(restarted?.playerMeetingStatus).toBe("completed");
 });
 
 // Reverses the recorded result of the first two-player match in the current
