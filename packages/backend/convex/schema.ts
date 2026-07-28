@@ -10,7 +10,8 @@ import {
   tournamentFormatValidator,
   tournamentVisibilityValidator,
   tournamentLifecycleValidator,
-  tournamentRegistrationStatusValidator,
+  tournamentEntryStatusValidator,
+  tournamentParticipationStatusValidator,
   tournamentPhaseStatusValidator,
   tournamentPhaseTypeValidator,
   tournamentPhaseRoundModeValidator,
@@ -34,6 +35,10 @@ export default defineSchema({
     // Optional: readers treat a missing value as "public" (see getPublicPlayer),
     // and upsertUser sets it explicitly for new users.
     profileVisibility: v.optional(userProfileVisibilityValidator),
+    // Whether the profile page shows past tournament results. Lets a player
+    // keep their profile card visible while hiding their history. Optional with
+    // the same missing-means-"public" reading as profileVisibility.
+    historyVisibility: v.optional(userProfileVisibilityValidator),
     email: v.optional(v.string()),
     name: v.optional(v.string()),
     avatarUrl: v.optional(v.string()),
@@ -100,11 +105,9 @@ export default defineSchema({
     // markdown, rendered on the public tournament page. Absent means the
     // organizer has not written any.
     detailsMarkdown: v.optional(v.string()),
-    // Denormalized count of registrations with status "active". List queries
-    // read this instead of scanning each tournament's registration rows, which
-    // would fan out into tens of thousands of reads across a full schedule.
-    // Maintained by every mutation that changes a registration's active state.
-    activeRegistrationCount: v.number(),
+    // Confirmed entries occupy capacity and remain part of the historical
+    // field even after a later competitive drop or elimination.
+    confirmedRegistrationCount: v.number(),
     // Deterministic seed for pairing's within-bracket shuffle, so pairings are
     // reproducible and auditable. Optional for rows created before it existed;
     // readers fall back to publicCode.
@@ -141,7 +144,13 @@ export default defineSchema({
   tournamentRegistrations: defineTable({
     tournamentId: v.id("tournaments"),
     userId: v.id("users"),
-    status: tournamentRegistrationStatusValidator,
+    // Denormalized from the tournament so a player's history can be indexed
+    // and paginated newest-first without joining every registration first.
+    tournamentStartDate: v.number(),
+    entryStatus: tournamentEntryStatusValidator,
+    // Present only for confirmed entries. Mutations centralize transitions so
+    // non-confirmed entries never carry a competitive state.
+    participationStatus: v.optional(tournamentParticipationStatusValidator),
     // Set only when tournament progression changes an active player to
     // "eliminated". Rewinding that round can then restore exactly those
     // players without reviving voluntary drops or disqualifications.
@@ -156,10 +165,37 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index("by_tournamentId", ["tournamentId"])
+    // Whole-tournament scans prefix-query this on tournamentId alone; the
+    // startDate column exists so a reschedule's sync batches can range-read
+    // only rows whose denormalized copy is stale (see
+    // syncRegistrationStartDatesBatch).
+    .index("by_tournamentId_and_tournamentStartDate", [
+      "tournamentId",
+      "tournamentStartDate",
+    ])
     .index("by_tournamentId_and_userId", ["tournamentId", "userId"])
-    .index("by_tournamentId_and_status", ["tournamentId", "status"])
-    .index("by_userId_and_status", ["userId", "status"]),
+    .index("by_tournamentId_and_entryStatus_and_participationStatus", [
+      "tournamentId",
+      "entryStatus",
+      "participationStatus",
+    ])
+    .index("by_userId_and_entryStatus_and_participationStatus", [
+      "userId",
+      "entryStatus",
+      "participationStatus",
+    ])
+    .index("by_userId_and_entryStatus_and_tournamentStartDate", [
+      "userId",
+      "entryStatus",
+      "tournamentStartDate",
+    ])
+    // Organizer roster search over the denormalized name. tournamentId as a
+    // filter field scopes matches to one event, so searching never requires
+    // loading that event's registration history.
+    .searchIndex("search_playerName", {
+      searchField: "playerName",
+      filterFields: ["tournamentId"],
+    }),
 
   tournamentPhases: defineTable({
     tournamentId: v.id("tournaments"),
@@ -297,6 +333,14 @@ export default defineSchema({
       v.literal("cut"),
     ),
     eliminatedInRoundNumber: v.optional(v.number()),
+    // The player's live participation status, denormalized so the standings
+    // query every player in the event subscribes to never reads a registration
+    // document (see getLatestStandings). Absent means "active" — the common
+    // case, and what a legacy row without the field must read as. Written when
+    // the row is created and written through by setRegistrationState whenever
+    // the status changes afterwards, so the copy on the tournament's latest
+    // completed round is always the live value.
+    participationStatus: v.optional(tournamentParticipationStatusValidator),
     sortKey: v.number(),
     updatedAt: v.number(),
   })
@@ -304,7 +348,11 @@ export default defineSchema({
       "tournamentRoundId",
       "playerId",
     ])
-    .index("by_tournamentRoundId_and_rank", ["tournamentRoundId", "rank"]),
+    .index("by_tournamentRoundId_and_rank", ["tournamentRoundId", "rank"])
+    // Ordered descending, this finds a player's row in the tournament's latest
+    // completed round in one read: rows are only ever created in
+    // round-completion batches, so their newest row is that round's.
+    .index("by_playerId", ["playerId"]),
 
   // Append-only audit trail of tournament actions (result entries and edits,
   // drops, lifecycle changes) for dispute resolution. Rows are immutable — no

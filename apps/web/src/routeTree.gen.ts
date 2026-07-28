@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
@@ -28,6 +29,11 @@ import { Route as AdminTournamentsTournamentIdRegistrationsRouteImport } from '.
 import { Route as AdminTournamentsTournamentIdPairingsRouteImport } from './routes/admin.tournaments.$tournamentId.pairings'
 import { Route as AdminTournamentsTournamentIdLogRouteImport } from './routes/admin.tournaments.$tournamentId.log'
 
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminRoute = AdminRouteImport.update({
   id: '/admin',
   path: '/admin',
@@ -132,6 +138,7 @@ const AdminTournamentsTournamentIdLogRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteWithChildren
+  '/settings': typeof SettingsRoute
   '/admin/organization': typeof AdminOrganizationRoute
   '/admin/staff': typeof AdminStaffRoute
   '/sign-in/$': typeof SignInSplatRoute
@@ -151,6 +158,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/settings': typeof SettingsRoute
   '/admin/organization': typeof AdminOrganizationRoute
   '/admin/staff': typeof AdminStaffRoute
   '/sign-in/$': typeof SignInSplatRoute
@@ -171,6 +179,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteWithChildren
+  '/settings': typeof SettingsRoute
   '/admin/organization': typeof AdminOrganizationRoute
   '/admin/staff': typeof AdminStaffRoute
   '/sign-in/$': typeof SignInSplatRoute
@@ -193,6 +202,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/admin'
+    | '/settings'
     | '/admin/organization'
     | '/admin/staff'
     | '/sign-in/$'
@@ -212,6 +222,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/settings'
     | '/admin/organization'
     | '/admin/staff'
     | '/sign-in/$'
@@ -231,6 +242,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/admin'
+    | '/settings'
     | '/admin/organization'
     | '/admin/staff'
     | '/sign-in/$'
@@ -252,6 +264,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRoute: typeof AdminRouteWithChildren
+  SettingsRoute: typeof SettingsRoute
   SignInSplatRoute: typeof SignInSplatRoute
   SignUpSplatRoute: typeof SignUpSplatRoute
   UsersPublicCodeRoute: typeof UsersPublicCodeRoute
@@ -261,6 +274,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin': {
       id: '/admin'
       path: '/admin'
@@ -442,6 +462,7 @@ const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRoute: AdminRouteWithChildren,
+  SettingsRoute: SettingsRoute,
   SignInSplatRoute: SignInSplatRoute,
   SignUpSplatRoute: SignUpSplatRoute,
   UsersPublicCodeRoute: UsersPublicCodeRoute,

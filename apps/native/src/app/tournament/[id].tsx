@@ -1,11 +1,14 @@
+import { api } from "@tournament-os/backend/convex/_generated/api";
 import type { Id } from "@tournament-os/backend/convex/_generated/dataModel";
 import {
   displayPlayerName,
   formatRecord,
+  standingStatusLabel,
   useLatestStandings,
   useMyCurrentMatch,
   useRoundTimer,
 } from "@tournament-os/core";
+import { useQuery } from "convex/react";
 import { useLocalSearchParams, useNavigation } from "expo-router";
 import { useEffect } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
@@ -15,8 +18,17 @@ export default function TournamentScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const tournamentId = (id ?? null) as Id<"tournaments"> | null;
 
-  const current = useMyCurrentMatch(tournamentId);
-  const standings = useLatestStandings(tournamentId);
+  // The player queries reject entries that are not confirmed (e.g. a
+  // registration cancelled while this screen is open), so gate them on
+  // entryStatus to match the server's requireRegisteredPlayer.
+  const registration = useQuery(
+    api.tournaments.registrations.getMyRegistration,
+    tournamentId ? { tournamentId } : "skip",
+  );
+  const confirmedTournamentId =
+    registration?.entryStatus === "confirmed" ? tournamentId : null;
+  const current = useMyCurrentMatch(confirmedTournamentId);
+  const standings = useLatestStandings(confirmedTournamentId);
 
   // Update the header title once the tournament name loads. Done via
   // setOptions (not a <Stack.Screen> rendered inside the route) — rendering a
@@ -29,6 +41,18 @@ export default function TournamentScreen() {
       navigation.setOptions({ title: tournamentName });
     }
   }, [navigation, tournamentName]);
+
+  if (registration !== undefined && registration?.entryStatus !== "confirmed") {
+    return (
+      <SafeAreaView style={styles.container} edges={["bottom"]}>
+        <View style={styles.content}>
+          <Text style={styles.muted}>
+            You are not registered for this tournament.
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={["bottom"]}>
@@ -162,31 +186,29 @@ function Standings({
   return (
     <View style={styles.card}>
       <Text style={styles.cardLabel}>After round {standings.roundNumber}</Text>
-      {standings.rows.map((row) => (
-        <View
-          key={`${row.rank}-${row.name ?? "anon"}`}
-          style={[styles.row, row.isMe && styles.rowMe]}
-        >
-          <Text style={styles.rank}>{row.rank}</Text>
-          <Text style={styles.name} numberOfLines={1}>
-            {displayPlayerName(row.name)}
-          </Text>
-          {row.playoffStatus !== "not_started" ? (
-            <Text style={styles.playoffStatus}>
-              {row.playoffStatus === "active"
-                ? "Still active"
-                : row.playoffStatus === "cut"
-                  ? "Missed cut"
-                  : row.eliminatedInRoundNumber === null
-                    ? "Eliminated"
-                    : `Eliminated R${row.eliminatedInRoundNumber}`}
+      {standings.rows.map((row) => {
+        // Players see a DQ as a plain drop; the organizer view names it.
+        const statusLabel = standingStatusLabel(row, {
+          disqualifiedLabel: "Dropped",
+        });
+        return (
+          <View
+            key={`${row.rank}-${row.name ?? "anon"}`}
+            style={[styles.row, row.isMe && styles.rowMe]}
+          >
+            <Text style={styles.rank}>{row.rank}</Text>
+            <Text style={styles.name} numberOfLines={1}>
+              {displayPlayerName(row.name)}
             </Text>
-          ) : null}
-          <Text style={styles.record}>
-            {formatRecord(row.matchWins, row.matchLosses, row.matchDraws)}
-          </Text>
-        </View>
-      ))}
+            {statusLabel ? (
+              <Text style={styles.playoffStatus}>{statusLabel}</Text>
+            ) : null}
+            <Text style={styles.record}>
+              {formatRecord(row.matchWins, row.matchLosses, row.matchDraws)}
+            </Text>
+          </View>
+        );
+      })}
     </View>
   );
 }

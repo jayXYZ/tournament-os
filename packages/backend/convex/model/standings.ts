@@ -1,7 +1,11 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { previousTournamentRound } from "./phases";
-import { MAX_TOURNAMENT_PLAYERS, allRegistrations } from "./registrations";
+import {
+  MAX_TOURNAMENT_PLAYERS,
+  nonActiveParticipationStatuses,
+  participantRegistrations,
+} from "./registrations";
 import { roundMatchesWithPlayers } from "./tournaments";
 
 export type RoundMatchWithPlayers = Awaited<
@@ -81,7 +85,12 @@ export function hasCumulativeTotals(standing: Doc<"roundStandings">) {
   );
 }
 
-export async function deleteStandingsForRound(
+// Module-private on purpose: dropping a round's standings without either
+// rewriting them or repairing the rows this promotes leaves a stale
+// participation status on the standings every player reads. Callers outside
+// this module go through replaceStandingsForRound or
+// deleteStandingsForReopenedRound.
+async function deleteStandingsForRound(
   ctx: MutationCtx,
   roundId: Id<"tournamentRounds">,
 ) {
@@ -93,6 +102,46 @@ export async function deleteStandingsForRound(
     .take(MAX_TOURNAMENT_PLAYERS);
   for (const standing of standings) {
     await ctx.db.delete(standing._id);
+  }
+}
+
+// Deletes the standings of a round a rewind is reopening, then repairs the
+// participation status denormalized onto the rows this promotes to "latest
+// completed round" — the rows every player's standings query will now read.
+//
+// Only the latest completed round's rows are kept current (see
+// syncStandingParticipationStatus), so the promoted rows still hold whatever
+// status they carried when their round stopped being the latest: a player
+// dropped while the deleted round was on screen would silently read as active
+// again. Reading them back from the live registrations closes that window.
+// replaceStandingsForRound needs no equivalent — it rewrites the same round's
+// rows from the live registrations in the same transaction.
+export async function deleteStandingsForReopenedRound(
+  ctx: MutationCtx,
+  tournamentId: Id<"tournaments">,
+  round: Doc<"tournamentRounds">,
+) {
+  await deleteStandingsForRound(ctx, round._id);
+  const promoted = await previousTournamentRound(ctx, round);
+  if (!promoted) {
+    return;
+  }
+  const standings = await ctx.db
+    .query("roundStandings")
+    .withIndex("by_tournamentRoundId_and_rank", (q) =>
+      q.eq("tournamentRoundId", promoted._id),
+    )
+    .take(MAX_TOURNAMENT_PLAYERS);
+  if (standings.length === 0) {
+    return;
+  }
+  const nonActive = await nonActiveParticipationStatuses(ctx, tournamentId);
+  const now = Date.now();
+  for (const standing of standings) {
+    const participationStatus = nonActive.get(standing.playerId) ?? "active";
+    if (standing.participationStatus !== participationStatus) {
+      await ctx.db.patch(standing._id, { participationStatus, updatedAt: now });
+    }
   }
 }
 
@@ -146,6 +195,11 @@ export async function replaceStandingsForRound(
       opponentGameWinPct: comparable.opponentGameWinPct,
       playoffStatus,
       eliminatedInRoundNumber,
+      // Free here — the registration document is already in hand — and it
+      // saves the player standings query a per-tournament scan of every
+      // non-active registration. setRegistrationState keeps it current for
+      // status changes that land after this round's standings are written.
+      participationStatus: playerStats.registration.participationStatus,
       sortKey: index + 1,
       updatedAt: now,
     });
@@ -159,9 +213,17 @@ async function rankedStatsForRound(
   round: Doc<"tournamentRounds">,
   matchesWithPlayers: RoundMatchWithPlayers[],
 ): Promise<RankedPlayerStats[]> {
+  // Every participant is ranked, not just active players: MTR final
+  // standings keep dropped players listed with their frozen record, and a
+  // player cut at a phase boundary keeps their placement in later rounds
+  // (65th after a top-64 cut stays visible in 65th). Points and tiebreakers
+  // alone decide order, so non-active players sink naturally as the field
+  // keeps scoring. The stats map contains only confirmed entries; cancelled,
+  // rejected, pending, and waitlisted registrations never reach standings.
+  // Cutoffs and top-8 seeding live-join participation status and skip players
+  // who are no longer active.
   if (phase.phaseType !== "single_elimination") {
     return [...stats.values()]
-      .filter((playerStats) => playerStats.registration.status === "active")
       .sort((left, right) => comparePlayerStats(left, right, stats))
       .map((playerStats) => ({
         playerStats,
@@ -199,44 +261,40 @@ async function rankedStatsForRound(
     const winner = firstWins > secondWins ? first : second;
     const loser = winner === first ? second : first;
     const winnerRegistration = stats.get(winner.playerId)?.registration;
-    if (winnerRegistration?.status === "active") {
+    if (winnerRegistration?.participationStatus === "active") {
       currentAdvancers.add(winner.playerId);
-    } else if (stats.get(loser.playerId)?.registration.status === "active") {
+    } else if (
+      stats.get(loser.playerId)?.registration.participationStatus === "active"
+    ) {
       // A winner who withdrew after reporting gives the opponent the bracket
       // slot, matching singleEliminationAdvancers in model/singleElimination.ts.
       currentAdvancers.add(loser.playerId);
     }
   }
 
-  const ranked = [...stats.values()]
-    .filter(
-      (playerStats) =>
-        playerStats.registration.status === "active" ||
-        playerStats.registration.status === "eliminated",
-    )
-    .map((playerStats): RankedPlayerStats => {
-      const playerId = playerStats.registration._id;
-      if (currentAdvancers.has(playerId)) {
-        return { playerStats, playoffStatus: "active" };
-      }
-      if (currentParticipants.has(playerId)) {
-        return {
-          playerStats,
-          playoffStatus: "eliminated",
-          eliminatedInRoundNumber: round.roundNumber,
-        };
-      }
+  const ranked = [...stats.values()].map((playerStats): RankedPlayerStats => {
+    const playerId = playerStats.registration._id;
+    if (currentAdvancers.has(playerId)) {
+      return { playerStats, playoffStatus: "active" };
+    }
+    if (currentParticipants.has(playerId)) {
+      return {
+        playerStats,
+        playoffStatus: "eliminated",
+        eliminatedInRoundNumber: round.roundNumber,
+      };
+    }
 
-      const previous = previousByPlayer.get(playerId);
-      if (previous?.playoffStatus === "eliminated") {
-        return {
-          playerStats,
-          playoffStatus: "eliminated",
-          eliminatedInRoundNumber: previous.eliminatedInRoundNumber,
-        };
-      }
-      return { playerStats, playoffStatus: "cut" };
-    });
+    const previous = previousByPlayer.get(playerId);
+    if (previous?.playoffStatus === "eliminated") {
+      return {
+        playerStats,
+        playoffStatus: "eliminated",
+        eliminatedInRoundNumber: previous.eliminatedInRoundNumber,
+      };
+    }
+    return { playerStats, playoffStatus: "cut" };
+  });
 
   return ranked.sort((left, right) => {
     const advancementDifference =
@@ -284,8 +342,9 @@ async function cumulativeStatsThroughRound(
 ) {
   // Dropped players stay in the map so their records keep feeding their
   // former opponents' OMW%/OGW% (MTR Appendix C: withdrawal does not erase
-  // a record); they are filtered out before ranks are assigned.
-  const registrations = await allRegistrations(ctx, tournamentId);
+  // a record); they also stay ranked, with their record frozen at the point
+  // they stopped playing.
+  const registrations = await participantRegistrations(ctx, tournamentId);
   const stats = new Map<Id<"tournamentRegistrations">, PlayerStats>(
     registrations.map((registration) => [
       registration._id,
@@ -397,7 +456,7 @@ export async function recomputeStatsThroughRound(
   tournamentId: Id<"tournaments">,
   throughRoundNumber: number,
 ) {
-  const registrations = await allRegistrations(ctx, tournamentId);
+  const registrations = await participantRegistrations(ctx, tournamentId);
   const stats = new Map<Id<"tournamentRegistrations">, PlayerStats>(
     registrations.map((registration) => [
       registration._id,

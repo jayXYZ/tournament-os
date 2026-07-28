@@ -13,16 +13,9 @@ import {
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import schema from "./schema";
+import { organizerIdentity, seedOrganizer } from "./specHelpers";
 
 const modules = import.meta.glob("./**/*.ts");
-
-const organizerIdentity = {
-  issuer: "https://convex.test",
-  subject: "organizer",
-  tokenIdentifier: "https://convex.test|organizer",
-  email: "organizer@example.test",
-  name: "Organizer",
-};
 
 const outsiderIdentity = {
   issuer: "https://convex.test",
@@ -515,6 +508,10 @@ async function seedTournament(
 
   const registrationIds = await t.run(async (ctx) => {
     const now = Date.now();
+    const tournament = await ctx.db.get(tournamentId);
+    if (!tournament) {
+      throw new Error("Tournament not found in test setup");
+    }
     const ids: Id<"tournamentRegistrations">[] = [];
     for (let playerNumber = 1; playerNumber <= playerCount; playerNumber += 1) {
       const identity = playerIdentity(playerNumber);
@@ -529,12 +526,18 @@ async function seedTournament(
         await ctx.db.insert("tournamentRegistrations", {
           tournamentId,
           userId,
-          status: "active",
+          tournamentStartDate: tournament.startDate,
+          entryStatus: "confirmed",
+          participationStatus: "active",
           createdAt: now + playerNumber,
           updatedAt: now,
         }),
       );
     }
+    await ctx.db.patch(tournamentId, {
+      confirmedRegistrationCount: playerCount,
+      updatedAt: now,
+    });
     return ids;
   });
   await t
@@ -555,34 +558,4 @@ async function seedStartedTournament(
       tournamentId: seeded.tournamentId,
     });
   return seeded;
-}
-
-async function seedOrganizer(t: TestConvex<typeof schema>) {
-  return await t.run(async (ctx) => {
-    const now = Date.now();
-    const userId = await ctx.db.insert("users", {
-      tokenIdentifier: organizerIdentity.tokenIdentifier,
-      publicCode: 1,
-      email: organizerIdentity.email,
-      name: organizerIdentity.name,
-      updatedAt: now,
-    });
-    const organizationId = await ctx.db.insert("organizations", {
-      name: "Test Org",
-      slug: "test-org",
-      createdBy: userId,
-      status: "active",
-      updatedAt: now,
-    });
-    await ctx.db.insert("organizationMemberships", {
-      organizationId,
-      userId,
-      email: organizerIdentity.email,
-      role: "owner",
-      status: "active",
-      updatedAt: now,
-    });
-
-    return { organizationId, userId };
-  });
 }

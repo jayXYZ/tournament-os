@@ -66,11 +66,26 @@ export function TournamentSettingsCard({
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    // The datetime-local input is minute-truncated, so an untouched field
+    // would round-trip as a spuriously different timestamp and trigger the
+    // backend's per-registration start-date sync. Submit the stored value
+    // unless the organizer actually picked a different time.
+    const startDate =
+      basics.startDateTime === toDatetimeLocalValue(tournament.startDate)
+        ? tournament.startDate
+        : new Date(basics.startDateTime).getTime()
     await run(async () => {
+      // new Date(...).getTime() is NaN for an unparseable datetime-local
+      // value; catch it here so the organizer gets a clear message instead
+      // of a rejected mutation (the mutation also rejects non-finite dates
+      // server-side, since it's public API).
+      if (!Number.isFinite(startDate)) {
+        throw new Error('Enter a valid start date and time.')
+      }
       await updateTournamentSetup({
         tournamentId: tournament._id,
         name: basics.name,
-        startDate: new Date(basics.startDateTime).getTime(),
+        startDate,
         playerCapacity: Number.parseInt(basics.playerCapacity, 10),
         format,
       })

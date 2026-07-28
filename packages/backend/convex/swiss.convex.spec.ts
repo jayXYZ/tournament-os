@@ -11,6 +11,7 @@ import {
   recomputeStatsThroughRound,
 } from "./model/standings";
 import schema from "./schema";
+import { organizerIdentity, seedOrganizer } from "./specHelpers";
 
 const modules = import.meta.glob("./**/*.ts");
 
@@ -18,14 +19,6 @@ function createTest() {
   return convexTest(schema, modules);
 }
 type Test = ReturnType<typeof createTest>;
-
-const organizerIdentity = {
-  issuer: "https://convex.test",
-  subject: "organizer",
-  tokenIdentifier: "https://convex.test|organizer",
-  email: "organizer@example.test",
-  name: "Organizer",
-};
 
 test("Swiss pairings and fold-forward standings hold at player capacity", async () => {
   const t = createTest();
@@ -65,9 +58,12 @@ test("Swiss pairings and fold-forward standings hold at player capacity", async 
     await expectStandingsMatchOracle(t, tournamentId, round!._id, roundNumber);
   }
 
-  const setup = await authed.query(api.tournaments.lifecycle.getTournamentSetup, {
-    tournamentId,
-  });
+  const setup = await authed.query(
+    api.tournaments.lifecycle.getTournamentSetup,
+    {
+      tournamentId,
+    },
+  );
   expect(setup.tournament.lifecycle).toBe("completed");
 
   // Even field: no byes, and the pairing engine never repeats a pairing.
@@ -124,9 +120,12 @@ test("odd-sized Swiss events give byes to distinct players and stay consistent",
     expect(byeStanding!.opponentGameWinPct).toBe(0.33);
   });
 
-  const setup = await authed.query(api.tournaments.lifecycle.getTournamentSetup, {
-    tournamentId,
-  });
+  const setup = await authed.query(
+    api.tournaments.lifecycle.getTournamentSetup,
+    {
+      tournamentId,
+    },
+  );
   expect(setup.tournament.lifecycle).toBe("completed");
 
   // One bye per round, and never the same player twice while others are
@@ -281,9 +280,16 @@ test("dropped players keep feeding their opponents' tiebreakers", async () => {
       )
       .collect();
 
-    // The dropped player is not ranked, but everyone else still is.
-    expect(standings).toHaveLength(7);
-    expect(standings.some((row) => row.playerId === droppedId)).toBe(false);
+    // The dropped player stays ranked with their record frozen at the drop
+    // (1-0 from round one), alongside everyone who kept playing.
+    expect(standings).toHaveLength(8);
+    const droppedRow = standings.find((row) => row.playerId === droppedId);
+    expect(droppedRow).toMatchObject({
+      matchPoints: 3,
+      matchWins: 1,
+      matchLosses: 0,
+      matchDraws: 0,
+    });
 
     // MTR Appendix C floors game-win percentage at 0.33.
     for (const row of standings) {
@@ -370,7 +376,7 @@ async function pairingSignature(t: Test, tournamentId: Id<"tournaments">) {
     const registrations = (
       await ctx.db
         .query("tournamentRegistrations")
-        .withIndex("by_tournamentId", (q) =>
+        .withIndex("by_tournamentId_and_tournamentStartDate", (q) =>
           q.eq("tournamentId", tournamentId),
         )
         .collect()
@@ -431,16 +437,14 @@ async function expectStandingsMatchOracle(
       roundNumber,
     );
 
-    // The oracle tracks every registration (dropped players still feed
-    // opponents' tiebreakers), but only active players receive ranks.
-    const expectedOrder = [...oracle.values()]
-      .filter((stats) => stats.registration.status === "active")
-      .sort((left, right) =>
-        compareStandingRows(
-          comparableFromStats(left, oracle),
-          comparableFromStats(right, oracle),
-        ),
-      );
+    // The oracle contains only confirmed entries; everyone who took part
+    // receives a rank, including dropped players with a frozen record.
+    const expectedOrder = [...oracle.values()].sort((left, right) =>
+      compareStandingRows(
+        comparableFromStats(left, oracle),
+        comparableFromStats(right, oracle),
+      ),
+    );
     expect(standings.map((row) => row.playerId)).toEqual(
       expectedOrder.map((stats) => stats.registration._id),
     );
@@ -474,10 +478,7 @@ async function expectStandingsMatchOracle(
   });
 }
 
-async function collectPairingFacts(
-  t: Test,
-  tournamentId: Id<"tournaments">,
-) {
+async function collectPairingFacts(t: Test, tournamentId: Id<"tournaments">) {
   return await t.run(async (ctx) => {
     const matches = (await ctx.db.query("tournamentMatches").collect()).filter(
       (match) => match.tournamentId === tournamentId,
@@ -503,35 +504,5 @@ async function collectPairingFacts(
     }
 
     return { pairKeys, byePlayerIds };
-  });
-}
-
-async function seedOrganizer(t: Test) {
-  return await t.run(async (ctx) => {
-    const now = Date.now();
-    const userId = await ctx.db.insert("users", {
-      tokenIdentifier: organizerIdentity.tokenIdentifier,
-      publicCode: 1,
-      email: organizerIdentity.email,
-      name: organizerIdentity.name,
-      updatedAt: now,
-    });
-    const organizationId = await ctx.db.insert("organizations", {
-      name: "Test Org",
-      slug: "test-org",
-      createdBy: userId,
-      status: "active",
-      updatedAt: now,
-    });
-    await ctx.db.insert("organizationMemberships", {
-      organizationId,
-      userId,
-      email: organizerIdentity.email,
-      role: "owner",
-      status: "active",
-      updatedAt: now,
-    });
-
-    return { organizationId, userId };
   });
 }

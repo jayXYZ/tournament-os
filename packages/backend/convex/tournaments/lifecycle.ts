@@ -22,6 +22,7 @@ import { parsePublicCode } from "../model/publicCodes";
 import {
   MAX_TOURNAMENT_PLAYERS,
   registrationForUser,
+  syncRegistrationStartDatesBatch,
 } from "../model/registrations";
 import {
   cleanName,
@@ -33,6 +34,7 @@ import {
   requireSetupEditable,
   validCapacity,
   validDetailsMarkdown,
+  validStartDate,
 } from "../model/tournaments";
 import {
   tournamentFormatValidator,
@@ -77,7 +79,7 @@ export const listUpcomingPublic = query({
       rows.push({
         ...tournament,
         organizationName: organization?.name ?? null,
-        registeredCount: tournament.activeRegistrationCount,
+        registeredCount: tournament.confirmedRegistrationCount,
       });
     }
 
@@ -110,7 +112,7 @@ export const listUpcomingForOrganization = query({
     const limited = rows.slice(0, 100);
     return limited.map((tournament) => ({
       ...tournament,
-      registeredCount: tournament.activeRegistrationCount,
+      registeredCount: tournament.confirmedRegistrationCount,
     }));
   },
 });
@@ -147,7 +149,7 @@ export const getPublicTournament = query({
         tournament.lifecycle !== "setup" && !membership && user
           ? await registrationForUser(ctx, tournament._id, user._id)
           : null;
-      if (!membership && !registration) {
+      if (!membership && registration?.entryStatus !== "confirmed") {
         return null;
       }
     }
@@ -156,7 +158,7 @@ export const getPublicTournament = query({
     return {
       tournament,
       organizationName: organization?.name ?? null,
-      registeredCount: tournament.activeRegistrationCount,
+      registeredCount: tournament.confirmedRegistrationCount,
     };
   },
 });
@@ -190,10 +192,7 @@ export const getManagedTournament = query({
 export const getTournamentSetup = query({
   args: { tournamentId: v.id("tournaments") },
   handler: async (ctx, args) => {
-    const { tournament } = await requireOrganizerAccess(
-      ctx,
-      args.tournamentId,
-    );
+    const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
     const phases = await phasesInOrder(ctx, args.tournamentId);
     const testConfig = await ctx.db
       .query("tournamentTestConfigs")
@@ -271,18 +270,42 @@ export const updateTournamentSetup = mutation({
     const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
     requirePreStartEditable(tournament);
 
-    const patch: Partial<Doc<"tournaments">> = { updatedAt: Date.now() };
+    const now = Date.now();
+    const patch: Partial<Doc<"tournaments">> = { updatedAt: now };
     if (args.name !== undefined) {
       patch.name = cleanName(args.name, "Tournament name");
     }
     if (args.startDate !== undefined) {
-      patch.startDate = args.startDate;
+      // Validated before the unchanged-date comparison below: NaN !== NaN, so
+      // an unvalidated non-finite value would always look "changed" and reach
+      // both the tournament document and the registration fan-out.
+      const startDate = validStartDate(args.startDate);
+      if (startDate !== tournament.startDate) {
+        patch.startDate = startDate;
+        // Every registration carries a denormalized copy of the start date (it
+        // orders player history pages), so a reschedule must rewrite them all —
+        // hence the unchanged-date guard above, which keeps unrelated settings
+        // saves from even reading the registration table.
+        // Small events sync within this transaction; heavy register/cancel churn
+        // continues in self-rescheduled batches to stay within transaction
+        // limits. The tournament document patched below is the source of truth
+        // throughout, so its readers never see a stale date.
+        if (
+          !(await syncRegistrationStartDatesBatch(ctx, tournament._id, startDate))
+        ) {
+          await ctx.scheduler.runAfter(
+            0,
+            internal.tournaments.lifecycle.continueRegistrationStartDateSync,
+            { tournamentId: tournament._id },
+          );
+        }
+      }
     }
     if (args.playerCapacity !== undefined) {
       const playerCapacity = validCapacity(args.playerCapacity);
-      if (playerCapacity < tournament.activeRegistrationCount) {
+      if (playerCapacity < tournament.confirmedRegistrationCount) {
         throw new Error(
-          "Player capacity cannot be lower than the active registration count",
+          "Player capacity cannot be lower than the confirmed registration count",
         );
       }
       patch.playerCapacity = playerCapacity;
@@ -293,6 +316,34 @@ export const updateTournamentSetup = mutation({
 
     await ctx.db.patch(args.tournamentId, patch);
     return args.tournamentId;
+  },
+});
+
+// Continuation for updateTournamentSetup start-date changes that exceed one
+// transaction's write budget. Re-reads the tournament's current startDate each
+// batch so overlapping edits converge on the latest value (last writer wins);
+// a tournament deleted mid-sync ends the chain.
+export const continueRegistrationStartDateSync = internalMutation({
+  args: { tournamentId: v.id("tournaments") },
+  handler: async (ctx, args) => {
+    const tournament = await ctx.db.get(args.tournamentId);
+    if (!tournament) {
+      return null;
+    }
+    if (
+      !(await syncRegistrationStartDatesBatch(
+        ctx,
+        tournament._id,
+        tournament.startDate,
+      ))
+    ) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.tournaments.lifecycle.continueRegistrationStartDateSync,
+        args,
+      );
+    }
+    return null;
   },
 });
 

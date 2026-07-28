@@ -1,23 +1,52 @@
+import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 
-import type { Id } from "../_generated/dataModel";
-import { mutation, query } from "../_generated/server";
+import type { Doc, Id } from "../_generated/dataModel";
+import { mutation, query, type QueryCtx } from "../_generated/server";
 import { currentUserOrNull } from "../model/access";
 import { auditPlayerRef, logAuditEvent } from "../model/auditLog";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
+import { clampPageSize } from "../model/pagination";
 import {
-  adjustActiveRegistrationCount,
+  adjustConfirmedRegistrationCount,
   playerDisplayName,
+  registrationDropEffect,
   registrationForUser,
   requireCapacityAvailable,
   requireRegistration,
-  setRegistrationStatus,
+  setRegistrationState,
 } from "../model/registrations";
 import { ensureCurrentUser } from "../model/users";
 import {
   requireOrganizerAccess,
   requireTournament,
 } from "../model/tournaments";
+
+const REGISTRATION_PAGE_SIZE = 100;
+
+async function registrationRows(
+  ctx: QueryCtx,
+  tournament: Doc<"tournaments">,
+  registrations: Array<Doc<"tournamentRegistrations">>,
+) {
+  // Names come from the denormalized copy on the registration; only rows
+  // missing it (legacy data) fall back to a live user lookup, so the common
+  // path does zero per-row joins.
+  return await mapAsyncInBatches(
+    registrations,
+    DATABASE_IO_BATCH_SIZE,
+    async (registration) => ({
+      registration,
+      playerName:
+        registration.playerName ??
+        playerDisplayName(await ctx.db.get(registration.userId)),
+      // What dropRegistration would do to this row right now (null when it
+      // is unavailable), so the client renders the drop action from server
+      // truth instead of mirroring the lifecycle rules.
+      dropEffect: registrationDropEffect(tournament.lifecycle, registration),
+    }),
+  );
+}
 
 export const registerSelf = mutation({
   args: { tournamentId: v.id("tournaments") },
@@ -36,7 +65,7 @@ export const registerSelf = mutation({
       args.tournamentId,
       user._id,
     );
-    if (existing && existing.status !== "dropped") {
+    if (existing && existing.entryStatus !== "cancelled") {
       throw new Error("Already registered");
     }
 
@@ -48,19 +77,23 @@ export const registerSelf = mutation({
       (await ctx.db.insert("tournamentRegistrations", {
         tournamentId: args.tournamentId,
         userId: user._id,
-        status: "active",
+        tournamentStartDate: tournament.startDate,
+        entryStatus: "confirmed",
+        participationStatus: "active",
         playerName,
         createdAt: now,
         updatedAt: now,
       }));
     if (existing) {
-      await setRegistrationStatus(ctx, existing._id, {
-        status: "active",
+      await setRegistrationState(ctx, existing._id, {
+        entryStatus: "confirmed",
+        participationStatus: "active",
         playerName,
+        tournamentStartDate: tournament.startDate,
         updatedAt: now,
       });
     }
-    await adjustActiveRegistrationCount(ctx, tournament, 1, now);
+    await adjustConfirmedRegistrationCount(ctx, tournament, 1, now);
     await logAuditEvent(ctx, {
       tournamentId: tournament._id,
       actor: user,
@@ -87,16 +120,24 @@ export const cancelMyRegistration = mutation({
       args.tournamentId,
       user._id,
     );
-    if (!registration || registration.status !== "active") {
+    if (
+      !registration ||
+      registration.entryStatus !== "confirmed" ||
+      // Dropped rows are also accepted: a withdrawal preserved by a round-one
+      // rewind still holds the player's seat, and cancelling releases it so
+      // they can later re-register if they change their mind.
+      (registration.participationStatus !== "active" &&
+        registration.participationStatus !== "dropped")
+    ) {
       throw new Error("Active registration not found");
     }
 
     const now = Date.now();
-    await setRegistrationStatus(ctx, registration._id, {
-      status: "dropped",
+    await setRegistrationState(ctx, registration._id, {
+      entryStatus: "cancelled",
       updatedAt: now,
     });
-    await adjustActiveRegistrationCount(ctx, tournament, -1, now);
+    await adjustConfirmedRegistrationCount(ctx, tournament, -1, now);
     await logAuditEvent(ctx, {
       tournamentId: tournament._id,
       actor: user,
@@ -132,8 +173,11 @@ export const listMyTournaments = query({
 
     const registrations = await ctx.db
       .query("tournamentRegistrations")
-      .withIndex("by_userId_and_status", (q) =>
-        q.eq("userId", user._id).eq("status", "active"),
+      .withIndex("by_userId_and_entryStatus_and_participationStatus", (q) =>
+        q
+          .eq("userId", user._id)
+          .eq("entryStatus", "confirmed")
+          .eq("participationStatus", "active"),
       )
       .take(100);
 
@@ -152,7 +196,7 @@ export const listMyTournaments = query({
         registration,
         tournament,
         organizationName: organization?.name ?? null,
-        registeredCount: tournament.activeRegistrationCount,
+        registeredCount: tournament.confirmedRegistrationCount,
       });
     }
 
@@ -163,33 +207,65 @@ export const listMyTournaments = query({
   },
 });
 
-export const listRegistrations = query({
-  args: { tournamentId: v.id("tournaments") },
+// Every registration workflow record, newest first. Unlike confirmed
+// participants, pending/cancelled/rejected rows are not bounded by tournament
+// capacity, so this organizer history must be cursor-paginated.
+export const listRegistrationPage = query({
+  args: {
+    tournamentId: v.id("tournaments"),
+    paginationOpts: paginationOptsValidator,
+  },
   handler: async (ctx, args) => {
-    await requireOrganizerAccess(ctx, args.tournamentId);
-    // Collects all statuses: dropped rows persist and can push the total past
-    // capacity, so a MAX_TOURNAMENT_PLAYERS cap would hide the newest entrants
-    // from the organizer list. Scoped to one tournament via an equality index.
-    const registrations = await ctx.db
+    const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
+    // Prefix query on the compound index; the startDate column is constant
+    // per tournament (reschedule syncs excepted, transiently), so this still
+    // reads newest-registration-first.
+    // No maximumRowsRead: this walk is a plain index-equality prefix with no
+    // post-index filter, so every row read is a row returned. A cap here
+    // would buy no headroom — it would just equal numItems and trip on every
+    // full page (rowsRead reaches the cap on the same doc that fills the
+    // page), flagging a healthy page as SplitRequired/SplitRecommended and
+    // making usePaginatedQuery split and re-issue it instead of settling.
+    const page = await ctx.db
       .query("tournamentRegistrations")
-      .withIndex("by_tournamentId", (q) =>
+      .withIndex("by_tournamentId_and_tournamentStartDate", (q) =>
         q.eq("tournamentId", args.tournamentId),
       )
-      .collect();
+      .order("desc")
+      .paginate({
+        ...args.paginationOpts,
+        numItems: clampPageSize(
+          args.paginationOpts.numItems,
+          REGISTRATION_PAGE_SIZE,
+        ),
+      });
 
-    // Names come from the denormalized copy on the registration; only rows
-    // missing it (legacy data) fall back to a live user lookup, so the common
-    // path does zero per-row joins.
-    return await mapAsyncInBatches(
-      registrations,
-      DATABASE_IO_BATCH_SIZE,
-      async (registration) => ({
-        registration,
-        playerName:
-          registration.playerName ??
-          playerDisplayName(await ctx.db.get(registration.userId)),
-      }),
-    );
+    return {
+      ...page,
+      page: await registrationRows(ctx, tournament, page.page),
+    };
+  },
+});
+
+// Organizer roster search across the full registration history. The search
+// index prefix-matches the last term, which suits name-as-you-type, and
+// results are relevance-ordered and bounded to one page — the client never
+// has to page older records in to find a player. Rows without a denormalized
+// playerName (legacy data) are absent from the index and cannot match.
+export const searchRegistrations = query({
+  args: { tournamentId: v.id("tournaments"), search: v.string() },
+  handler: async (ctx, args) => {
+    const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
+    const matches = await ctx.db
+      .query("tournamentRegistrations")
+      .withSearchIndex("search_playerName", (q) =>
+        q
+          .search("playerName", args.search)
+          .eq("tournamentId", args.tournamentId),
+      )
+      .take(REGISTRATION_PAGE_SIZE);
+
+    return await registrationRows(ctx, tournament, matches);
   },
 });
 
@@ -201,19 +277,45 @@ export const dropRegistration = mutation({
       ctx,
       registration.tournamentId,
     );
+    if (
+      tournament.lifecycle !== "registration" &&
+      tournament.lifecycle !== "in_progress"
+    ) {
+      throw new Error("Tournament is no longer accepting roster changes");
+    }
     const now = Date.now();
-    await setRegistrationStatus(ctx, args.registrationId, {
-      status: "dropped",
-      updatedAt: now,
-    });
-    if (registration.status === "active") {
-      await adjustActiveRegistrationCount(ctx, tournament, -1, now);
+    const dropEffect = registrationDropEffect(
+      tournament.lifecycle,
+      registration,
+    );
+    if (dropEffect === null) {
+      throw new Error("Registration cannot be dropped in its current state");
+    }
+    const beforePlay = dropEffect === "cancel";
+    await setRegistrationState(
+      ctx,
+      args.registrationId,
+      beforePlay
+        ? { entryStatus: "cancelled", updatedAt: now }
+        : {
+            entryStatus: "confirmed",
+            participationStatus: "dropped",
+            // setRegistrationState keeps an eliminated player's elimination
+            // record, so reinstating them cannot return them to active play.
+            updatedAt: now,
+          },
+    );
+    if (beforePlay) {
+      await adjustConfirmedRegistrationCount(ctx, tournament, -1, now);
     }
     await logAuditEvent(ctx, {
       tournamentId: tournament._id,
       actor: user,
       actorRole: "organizer",
-      event: { type: "player_dropped", player: auditPlayerRef(registration) },
+      event: {
+        type: beforePlay ? "registration_cancelled" : "player_dropped",
+        player: auditPlayerRef(registration),
+      },
     });
     return args.registrationId;
   },
@@ -227,14 +329,53 @@ export const reinstateRegistration = mutation({
       ctx,
       registration.tournamentId,
     );
-    requireCapacityAvailable(tournament);
+    const restoringCancelledEntry =
+      tournament.lifecycle === "registration" &&
+      registration.entryStatus === "cancelled";
+    // Dropped participants normally exist mid-play, but a round-one rewind
+    // preserves withdrawals into the reopened registration lifecycle, so both
+    // lifecycles must offer the way back to active play.
+    const restoringDroppedParticipant =
+      (tournament.lifecycle === "registration" ||
+        tournament.lifecycle === "in_progress") &&
+      registration.entryStatus === "confirmed" &&
+      registration.participationStatus === "dropped";
+    if (!restoringCancelledEntry && !restoringDroppedParticipant) {
+      throw new Error("Registration cannot be reinstated in its current state");
+    }
+    if (restoringCancelledEntry) {
+      requireCapacityAvailable(tournament);
+    }
     const now = Date.now();
-    await setRegistrationStatus(ctx, args.registrationId, {
-      status: "active",
-      updatedAt: now,
-    });
-    if (registration.status !== "active") {
-      await adjustActiveRegistrationCount(ctx, tournament, 1, now);
+    // Reinstating undoes only the withdrawal: a player who was already
+    // eliminated when they were dropped returns to eliminated, never to
+    // active play mid-bracket. Before play there is no bracket — a rewind
+    // back to registration deletes every round and clears the eliminations it
+    // preserved — so the restoration is always to active.
+    const eliminatedByRoundId =
+      restoringDroppedParticipant && tournament.lifecycle === "in_progress"
+        ? registration.eliminatedByRoundId
+        : undefined;
+    await setRegistrationState(
+      ctx,
+      args.registrationId,
+      eliminatedByRoundId !== undefined
+        ? {
+            entryStatus: "confirmed",
+            participationStatus: "eliminated",
+            eliminatedByRoundId,
+            tournamentStartDate: tournament.startDate,
+            updatedAt: now,
+          }
+        : {
+            entryStatus: "confirmed",
+            participationStatus: "active",
+            tournamentStartDate: tournament.startDate,
+            updatedAt: now,
+          },
+    );
+    if (restoringCancelledEntry) {
+      await adjustConfirmedRegistrationCount(ctx, tournament, 1, now);
     }
     await logAuditEvent(ctx, {
       tournamentId: tournament._id,

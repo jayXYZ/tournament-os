@@ -85,7 +85,7 @@ structure and playoff support.
 - [x] Decouple visibility from lifecycle in tournament status: `visibility: public | unlisted | private` is now separate from `lifecycle: setup | registration | in_progress | completed | cancelled` (requires a DB reset; "setup" not "draft" to avoid clashing with the Magic draft format)
 - [ ] Publishing settings per tournament: whether standings, pairings, and (eventually) decklists are publicly visible, during and/or after the event
 - [ ] Invite-only tournaments (join via link/code, or organizer approval of pending registrations)
-- [ ] Enroll players as guests or by email (guest registrations without accounts; claimable later via the public player code)
+- [ ] Enroll players as guests or by email (guest registrations without accounts)
 - [ ] Player profiles with past public/published tournament results
 - [ ] Decklist submission (prerequisite for decklist publishing; text import + basic validation)
 - [ ] Transactional email (staff invites are DB rows matched at sign-in today; registration confirmations, invite emails)

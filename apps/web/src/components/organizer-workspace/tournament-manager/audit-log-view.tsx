@@ -145,7 +145,9 @@ function describeEvent(row: AuditEventRow): string {
     case 'player_registered':
       return `${displayPlayerName(event.player.playerName)} registered for the event`
     case 'registration_cancelled':
-      return `${displayPlayerName(event.player.playerName)} cancelled their registration`
+      return row.actorRole === 'organizer'
+        ? `Cancelled ${displayPlayerName(event.player.playerName)}'s registration`
+        : `${displayPlayerName(event.player.playerName)} cancelled their registration`
     case 'player_dropped':
       return row.actorRole === 'organizer'
         ? `Dropped ${displayPlayerName(event.player.playerName)} from the event`

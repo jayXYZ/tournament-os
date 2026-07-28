@@ -97,8 +97,18 @@ export function PlayerMeetingCard({
                       >
                         {displayPlayerName(seat.playerName)}
                         {seat.registrationStatus !== 'active' ? (
-                          <Badge variant="outline" className="ml-2 no-underline">
-                            Dropped
+                          // Raw status, matching the Registrations view badge:
+                          // a pre-play organizer drop cancels the entry
+                          // ("Cancelled"), while in-play exits read "Dropped"
+                          // / "Eliminated" / "Disqualified". The server
+                          // always sends a defined label here — "removed" for
+                          // a since-deleted registration, "unknown" for a
+                          // malformed one — see effectiveRegistrationStatus.
+                          <Badge
+                            variant="outline"
+                            className="ml-2 capitalize no-underline"
+                          >
+                            {seat.registrationStatus}
                           </Badge>
                         ) : null}
                       </p>

@@ -80,8 +80,8 @@ export async function requireMatch(
   return match;
 }
 
-// Any registration status grants read access: dropped players keep watching
-// standings and pairings. Mutations check registration status themselves.
+// Confirmed participants retain read access after drops and eliminations;
+// cancelled, rejected, pending, and waitlisted entries do not.
 export async function requireRegisteredPlayer(
   ctx: QueryCtx,
   tournamentId: Id<"tournaments">,
@@ -89,7 +89,7 @@ export async function requireRegisteredPlayer(
   const tournament = await requireTournament(ctx, tournamentId);
   const user = await requireCurrentUser(ctx);
   const registration = await registrationForUser(ctx, tournamentId, user._id);
-  if (!registration) {
+  if (!registration || registration.entryStatus !== "confirmed") {
     throw new Error("Not registered for this tournament");
   }
   return { tournament, user, registration };
@@ -172,12 +172,12 @@ export async function createTournament(
     createdBy: user._id,
     visibility: "public",
     lifecycle: "setup",
-    startDate: args.startDate,
+    startDate: validStartDate(args.startDate),
     playerCapacity: validCapacity(args.playerCapacity),
     format: args.format,
     isTestEvent: args.isTestEvent,
     autoPublishPairings: false,
-    activeRegistrationCount: 0,
+    confirmedRegistrationCount: 0,
     seed: Math.floor(Math.random() * 0x7fffffff),
     updatedAt: now,
   });
@@ -216,9 +216,7 @@ export async function completeTournament(
   // tournament could be marked completed while a later phase is still
   // upcoming, permanently stranding it (mirrors pairingsNextStep, which only
   // offers completion once no upcoming phase remains).
-  const laterUpcomingPhases = (
-    await phasesInOrder(ctx, tournament._id)
-  ).filter(
+  const laterUpcomingPhases = (await phasesInOrder(ctx, tournament._id)).filter(
     (p) => p.phaseOrder > phase.phaseOrder && p.phaseStatus === "upcoming",
   );
   const nextPhase = laterUpcomingPhases.at(0);
@@ -321,9 +319,30 @@ export function cleanName(value: string, label: string) {
   return trimmed;
 }
 
+// Convex's v.number() validator accepts every IEEE-754 double, including NaN
+// and the infinities (see model/pagination.ts for the same hole on page
+// sizes). startDate is denormalized onto every registration and drives an
+// index-ordered pagination cursor (by_userId_and_entryStatus_and_
+// tournamentStartDate), so a non-finite value must never reach the tournament
+// document or the fan-out that copies it there.
+export function validStartDate(value: number) {
+  if (!Number.isFinite(value)) {
+    throw new Error("Tournament start date must be a valid date");
+  }
+  return value;
+}
+
 export function validCapacity(value: number) {
   const capacity = Math.trunc(value);
-  if (capacity < 2 || capacity > MAX_TOURNAMENT_PLAYERS) {
+  // Number.isInteger(NaN) and Number.isInteger(±Infinity) are both false, so
+  // this also rejects non-finite input that a bare range check would not:
+  // Math.trunc(NaN) is NaN, and every comparison against NaN is false, so
+  // `NaN < 2 || NaN > MAX_TOURNAMENT_PLAYERS` would otherwise silently pass.
+  if (
+    !Number.isInteger(capacity) ||
+    capacity < 2 ||
+    capacity > MAX_TOURNAMENT_PLAYERS
+  ) {
     throw new Error(
       `Player capacity must be between 2 and ${MAX_TOURNAMENT_PLAYERS}`,
     );

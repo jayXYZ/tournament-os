@@ -6,7 +6,12 @@ export {
   useMyMatchHistory,
   useReportResult,
 } from "./hooks";
-export { displayPlayerName, formatPercent, formatRecord } from "./format";
+export {
+  displayPlayerName,
+  formatPercent,
+  formatRecord,
+  standingStatusLabel,
+} from "./format";
 export { useRoundTimer } from "./use-round-timer";
 export type {
   LatestStandings,

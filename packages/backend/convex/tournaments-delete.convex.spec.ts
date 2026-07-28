@@ -6,46 +6,9 @@ import { expect, test, vi } from "vitest";
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import schema from "./schema";
+import { organizerIdentity, seedOrganizer } from "./specHelpers";
 
 const modules = import.meta.glob("./**/*.ts");
-
-const organizerIdentity = {
-  issuer: "https://convex.test",
-  subject: "organizer",
-  tokenIdentifier: "https://convex.test|organizer",
-  email: "organizer@example.test",
-  name: "Organizer",
-};
-
-async function seedOrganizer(t: ReturnType<typeof convexTest>) {
-  return await t.run(async (ctx) => {
-    const now = Date.now();
-    const userId = await ctx.db.insert("users", {
-      tokenIdentifier: organizerIdentity.tokenIdentifier,
-      publicCode: 1,
-      email: organizerIdentity.email,
-      name: organizerIdentity.name,
-      updatedAt: now,
-    });
-    const organizationId = await ctx.db.insert("organizations", {
-      name: "Test Org",
-      slug: "test-org",
-      createdBy: userId,
-      status: "active",
-      updatedAt: now,
-    });
-    await ctx.db.insert("organizationMemberships", {
-      organizationId,
-      userId,
-      email: organizerIdentity.email,
-      role: "owner",
-      status: "active",
-      updatedAt: now,
-    });
-
-    return { organizationId, userId };
-  });
-}
 
 async function countTournamentRows(
   t: ReturnType<typeof convexTest>,
@@ -55,9 +18,7 @@ async function countTournamentRows(
     const phases = await ctx.db.query("tournamentPhases").collect();
     const rounds = await ctx.db.query("tournamentRounds").collect();
     const matches = await ctx.db.query("tournamentMatches").collect();
-    const matchPlayers = await ctx.db
-      .query("tournamentMatchPlayers")
-      .collect();
+    const matchPlayers = await ctx.db.query("tournamentMatchPlayers").collect();
     const standings = await ctx.db.query("roundStandings").collect();
     const registrations = await ctx.db
       .query("tournamentRegistrations")
@@ -155,7 +116,9 @@ test("deleteTournament drains a large in-progress event via scheduled batches", 
   expect(after.total).toBe(0);
   // Synthetic test users are removed alongside their test player rows; only
   // the organizer remains.
-  const users = await t.run(async (ctx) => await ctx.db.query("users").collect());
+  const users = await t.run(
+    async (ctx) => await ctx.db.query("users").collect(),
+  );
   expect(users).toHaveLength(1);
 });
 
@@ -215,9 +178,12 @@ test("cancelTournament cancels live events but rejects completed and cancelled o
   await authed.mutation(api.tournaments.lifecycle.cancelTournament, {
     tournamentId,
   });
-  const setup = await authed.query(api.tournaments.lifecycle.getTournamentSetup, {
-    tournamentId,
-  });
+  const setup = await authed.query(
+    api.tournaments.lifecycle.getTournamentSetup,
+    {
+      tournamentId,
+    },
+  );
   expect(setup.tournament.lifecycle).toBe("cancelled");
 
   await expect(

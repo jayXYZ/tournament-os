@@ -1,5 +1,10 @@
 import { v } from "convex/values";
 
+import {
+  DELETED_REGISTRATION_STATUS,
+  effectiveRegistrationStatus,
+} from "@tournament-os/shared/registration-status";
+
 import type { Doc } from "../_generated/dataModel";
 import { mutation, query } from "../_generated/server";
 import { logAuditEvent } from "../model/auditLog";
@@ -156,11 +161,19 @@ export const listPlayerMeetingSeats = query({
       seats: await mapAsyncInBatches(
         seats,
         DATABASE_IO_BATCH_SIZE,
-        async (seat) => ({
-          ...seat,
-          registrationStatus:
-            (await ctx.db.get(seat.registrationId))?.status ?? null,
-        }),
+        async (seat) => {
+          const registration = await ctx.db.get(seat.registrationId);
+          return {
+            ...seat,
+            // A deleted registration is a different situation from a
+            // malformed-but-present row (effectiveRegistrationStatus's own
+            // fallback) — label it distinctly so the two never collapse into
+            // the same value for the client.
+            registrationStatus: registration
+              ? effectiveRegistrationStatus(registration)
+              : DELETED_REGISTRATION_STATUS,
+          };
+        },
       ),
     };
   },

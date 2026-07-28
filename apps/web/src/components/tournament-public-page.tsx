@@ -47,11 +47,7 @@ import { cn } from '@/lib/utils'
 
 type Tournament = Doc<'tournaments'>
 
-export function TournamentPublicPage({
-  publicCode,
-}: {
-  publicCode: string
-}) {
+export function TournamentPublicPage({ publicCode }: { publicCode: string }) {
   return (
     <main className="min-h-svh bg-background text-foreground">
       <PublicSiteHeader
@@ -302,7 +298,10 @@ function RegistrationPanel({
     )
   }
 
-  if (registration && registration.status === 'active') {
+  if (
+    registration?.entryStatus === 'confirmed' &&
+    registration.participationStatus === 'active'
+  ) {
     return (
       <div className="flex flex-wrap items-center gap-3">
         <Badge>You&apos;re registered</Badge>
@@ -330,6 +329,41 @@ function RegistrationPanel({
               <Swords data-icon="inline-start" />
               Open player controller
             </Link>
+          </Button>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            The event has started, so registration changes are locked.
+          </p>
+        )}
+      </div>
+    )
+  }
+
+  // A withdrawn player still holds their confirmed seat (a mid-play drop, or
+  // one preserved by a round-one rewind back into registration). The only
+  // self-service action the server accepts here is cancelling to release the
+  // seat; rejoining is an organizer-side reinstatement.
+  if (
+    registration?.entryStatus === 'confirmed' &&
+    registration.participationStatus === 'dropped'
+  ) {
+    return (
+      <div className="flex flex-wrap items-center gap-3">
+        <Badge variant="secondary">You withdrew from this event</Badge>
+        {tournament.lifecycle === 'registration' ? (
+          <Button
+            type="button"
+            variant="outline"
+            disabled={pending}
+            onClick={() =>
+              void runAction(
+                () => cancelRegistration({ tournamentId: tournament._id }),
+                'Your registration has been cancelled.',
+              )
+            }
+          >
+            {pending ? <Spinner /> : null}
+            Cancel registration
           </Button>
         ) : (
           <p className="text-sm text-muted-foreground">

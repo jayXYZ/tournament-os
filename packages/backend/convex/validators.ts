@@ -82,11 +82,31 @@ export const tournamentLifecycleValidator = v.union(
   v.literal("cancelled"),
 );
 
-export const tournamentRegistrationStatusValidator = v.union(
+// Overall admission workflow for an event entry. Only "confirmed" entries
+// occupy capacity and become tournament participants; the remaining states
+// never contribute to standings or public history.
+//
+// "pending", "waitlisted", and "rejected" are reserved for a planned
+// registration-review flow (approval queue, waitlist promotion) and
+// currently have no writer — read-side handling already accounts for them.
+export const tournamentEntryStatusValidator = v.union(
   v.literal("pending"),
+  v.literal("waitlisted"),
+  v.literal("confirmed"),
+  v.literal("cancelled"),
+  v.literal("rejected"),
+);
+
+// Competitive eligibility after an entry is confirmed. "active" means the
+// player remains eligible to be paired; it is initialized on confirmation so
+// starting round one never needs to patch every registration.
+//
+// "disqualified" is reserved for a planned DQ feature and currently has no
+// writer — read-side handling already accounts for it.
+export const tournamentParticipationStatusValidator = v.union(
   v.literal("active"),
-  v.literal("eliminated"),
   v.literal("dropped"),
+  v.literal("eliminated"),
   v.literal("disqualified"),
 );
 

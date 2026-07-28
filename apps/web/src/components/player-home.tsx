@@ -1,6 +1,6 @@
 import { Link } from '@tanstack/react-router'
 import { useQuery } from 'convex/react'
-import { CalendarDays, LogIn, ShieldCheck, Users } from 'lucide-react'
+import { CalendarDays, LogIn, Settings, ShieldCheck, Users } from 'lucide-react'
 import { api } from '@tournament-os/backend/convex/_generated/api'
 
 import { PublicSiteHeader } from '@/components/shared/public-site-header'
@@ -111,6 +111,11 @@ function AuthControls({
         <span className="hidden max-w-48 truncate text-sm text-muted-foreground lg:inline">
           {email}
         </span>
+        <Button asChild type="button" variant="outline" size="icon">
+          <Link to="/settings" aria-label="Account settings">
+            <Settings />
+          </Link>
+        </Button>
         <Button type="button" variant="outline" onClick={onSignOut}>
           Sign out
         </Button>

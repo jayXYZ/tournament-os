@@ -3,6 +3,7 @@ import {
   displayPlayerName,
   formatPercent,
   formatRecord,
+  standingStatusLabel,
   useLatestStandings,
 } from '@tournament-os/core'
 import { ListOrdered } from 'lucide-react'
@@ -79,7 +80,8 @@ export function StandingsList({
 
 function StandingsRow({ row }: { row: StandingRow }) {
   const [expanded, setExpanded] = useState(false)
-  const statusLabel = playoffStatusLabel(row)
+  // Players see a DQ as a plain drop; the organizer view names it.
+  const statusLabel = standingStatusLabel(row, { disqualifiedLabel: 'Dropped' })
 
   return (
     <button
@@ -122,21 +124,6 @@ function StandingsRow({ row }: { row: StandingRow }) {
       ) : null}
     </button>
   )
-}
-
-function playoffStatusLabel(row: StandingRow) {
-  if (row.playoffStatus === 'active') {
-    return 'Still active'
-  }
-  if (row.playoffStatus === 'eliminated') {
-    return row.eliminatedInRoundNumber === null
-      ? 'Eliminated'
-      : `Eliminated R${row.eliminatedInRoundNumber}`
-  }
-  if (row.playoffStatus === 'cut') {
-    return 'Missed cut'
-  }
-  return null
 }
 
 function ordinal(value: number) {

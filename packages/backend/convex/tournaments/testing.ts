@@ -26,6 +26,7 @@ import {
   requireTournament,
   nextTournamentPublicCode,
   validCapacity,
+  validStartDate,
 } from "../model/tournaments";
 import {
   generateTestResults,
@@ -71,12 +72,13 @@ export const createTestTournament = mutation({
       // player controller uses it) without ever appearing in public listings.
       visibility: "unlisted",
       lifecycle: "setup",
-      startDate: args.startDate ?? now,
+      startDate:
+        args.startDate === undefined ? now : validStartDate(args.startDate),
       playerCapacity,
       format: args.format ?? "standard",
       isTestEvent: true,
       autoPublishPairings: false,
-      activeRegistrationCount: 0,
+      confirmedRegistrationCount: 0,
       // Mirror the test-config seed so pairings are reproducible across runs.
       seed,
       updatedAt: now,
@@ -270,7 +272,7 @@ export const resetTestTournament = mutation({
     // seedTestPlayers, so the denormalized count resets to zero here.
     await ctx.db.patch(args.tournamentId, {
       lifecycle: "setup",
-      activeRegistrationCount: 0,
+      confirmedRegistrationCount: 0,
       updatedAt: Date.now(),
     });
 

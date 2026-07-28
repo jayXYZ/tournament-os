@@ -6,16 +6,13 @@ import { expect, test } from "vitest";
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import schema from "./schema";
+import {
+  organizerIdentity,
+  playOutCurrentRound,
+  seedOrganizer,
+} from "./specHelpers";
 
 const modules = import.meta.glob("./**/*.ts");
-
-const organizerIdentity = {
-  issuer: "https://convex.test",
-  subject: "organizer",
-  tokenIdentifier: "https://convex.test|organizer",
-  email: "organizer@example.test",
-  name: "Organizer",
-};
 
 function playerIdentity(playerNumber: number) {
   return {
@@ -174,16 +171,17 @@ test("registration changes and drops are audited with the acting side", async ()
     ["player_dropped", "player", "Player 2"],
     ["tournament_started", "organizer", "Organizer"],
     ["player_reinstated", "organizer", "Organizer"],
-    ["player_dropped", "organizer", "Organizer"],
+    ["registration_cancelled", "organizer", "Organizer"],
     ["registration_cancelled", "player", "Player 5"],
     ["player_registered", "player", "Player 5"],
     ["tournament_published", "organizer", "Organizer"],
   ]);
 
-  // Organizer-initiated drops name the affected player, not the actor.
+  // Organizer-initiated pre-play cancellations name the affected player, not
+  // the actor.
   const organizerDrop = events[3];
-  if (organizerDrop.event.type !== "player_dropped") {
-    throw new Error("Expected a drop event");
+  if (organizerDrop.event.type !== "registration_cancelled") {
+    throw new Error("Expected a registration cancellation event");
   }
   expect(organizerDrop.event.player.registrationId).toBe(registrationIds[0]);
 });
@@ -274,6 +272,60 @@ test("listAuditEvents is organizer-only and paginates newest first", async () =>
   );
 });
 
+test("listAuditEvents clamps an oversized page size instead of reading the whole trail", async () => {
+  const t = convexTest(schema, modules);
+  const { organizationId, userId: organizerId } = await seedOrganizer(t);
+  const tournamentId: Id<"tournaments"> = await t
+    .withIdentity(organizerIdentity)
+    .mutation(api.tournaments.lifecycle.createTournamentWithPhases, {
+      organizationId,
+      name: "Oversized Audit Trail",
+      startDate: Date.now(),
+      playerCapacity: 16,
+      format: "standard",
+      phases: [
+        { phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 3 },
+      ],
+    });
+
+  const ROW_COUNT = 150;
+  await t.run(async (ctx) => {
+    for (let index = 0; index < ROW_COUNT; index += 1) {
+      await ctx.db.insert("tournamentAuditEvents", {
+        tournamentId,
+        actorUserId: organizerId,
+        actorName: organizerIdentity.name,
+        actorRole: "organizer",
+        event: { type: "tournament_published" },
+      });
+    }
+  });
+
+  // Before the fix, paginationOpts was forwarded to .paginate() unmodified,
+  // so a hostile/oversized numItems would attempt to read the whole trail in
+  // one page instead of settling at the server's clamp.
+  const oversized = await t
+    .withIdentity(organizerIdentity)
+    .query(api.tournaments.auditLog.listAuditEvents, {
+      tournamentId,
+      paginationOpts: { numItems: Number.MAX_SAFE_INTEGER, cursor: null },
+    });
+  expect(oversized.page).toHaveLength(100);
+  expect(oversized.isDone).toBe(false);
+
+  const remainder = await t
+    .withIdentity(organizerIdentity)
+    .query(api.tournaments.auditLog.listAuditEvents, {
+      tournamentId,
+      paginationOpts: {
+        numItems: Number.MAX_SAFE_INTEGER,
+        cursor: oversized.continueCursor,
+      },
+    });
+  expect(remainder.page).toHaveLength(ROW_COUNT - 100);
+  expect(remainder.isDone).toBe(true);
+});
+
 test("deleting a tournament removes its audit trail", async () => {
   const t = convexTest(schema, modules);
   const { tournamentId } = await seedStartedTournament(t, 4);
@@ -334,6 +386,10 @@ async function seedTournament(
 
   const registrationIds = await t.run(async (ctx) => {
     const now = Date.now();
+    const tournament = await ctx.db.get(tournamentId);
+    if (!tournament) {
+      throw new Error("Tournament not found in test setup");
+    }
     const ids: Id<"tournamentRegistrations">[] = [];
     for (let playerNumber = 1; playerNumber <= playerCount; playerNumber += 1) {
       const identity = playerIdentity(playerNumber);
@@ -348,13 +404,19 @@ async function seedTournament(
         await ctx.db.insert("tournamentRegistrations", {
           tournamentId,
           userId,
-          status: "active",
+          tournamentStartDate: tournament.startDate,
+          entryStatus: "confirmed",
+          participationStatus: "active",
           playerName: identity.name,
           createdAt: now + playerNumber,
           updatedAt: now,
         }),
       );
     }
+    await ctx.db.patch(tournamentId, {
+      confirmedRegistrationCount: playerCount,
+      updatedAt: now,
+    });
     return ids;
   });
   await t
@@ -375,40 +437,6 @@ async function seedStartedTournament(
       tournamentId: seeded.tournamentId,
     });
   return seeded;
-}
-
-// Records an organizer result for every two-player match in the current round
-// and completes it, so tests can advance rounds without player reports.
-async function playOutCurrentRound(
-  t: TestConvex<typeof schema>,
-  tournamentId: Id<"tournaments">,
-) {
-  const organizer = t.withIdentity(organizerIdentity);
-  const round = await organizer.query(api.tournaments.rounds.getCurrentRound, {
-    tournamentId,
-  });
-  if (!round) {
-    throw new Error("No current round to play out");
-  }
-  const pairings = await organizer.query(
-    api.tournaments.rounds.listRoundPairings,
-    { roundId: round._id },
-  );
-  for (const { match, players } of pairings) {
-    if (players.length !== 2) {
-      continue;
-    }
-    await organizer.mutation(api.tournaments.rounds.recordMatchResult, {
-      matchId: match._id,
-      playerOneRegistrationId: players[0].playerId,
-      playerTwoRegistrationId: players[1].playerId,
-      playerOneGameWins: 2,
-      playerTwoGameWins: 0,
-    });
-  }
-  await organizer.mutation(api.tournaments.rounds.completeRound, {
-    roundId: round._id,
-  });
 }
 
 async function matchForPlayer(
@@ -478,34 +506,4 @@ async function outsiderNumber(
     throw new Error("No outsider available for match");
   }
   return index + 1;
-}
-
-async function seedOrganizer(t: TestConvex<typeof schema>) {
-  return await t.run(async (ctx) => {
-    const now = Date.now();
-    const userId = await ctx.db.insert("users", {
-      tokenIdentifier: organizerIdentity.tokenIdentifier,
-      publicCode: 1,
-      email: organizerIdentity.email,
-      name: organizerIdentity.name,
-      updatedAt: now,
-    });
-    const organizationId = await ctx.db.insert("organizations", {
-      name: "Test Org",
-      slug: "test-org",
-      createdBy: userId,
-      status: "active",
-      updatedAt: now,
-    });
-    await ctx.db.insert("organizationMemberships", {
-      organizationId,
-      userId,
-      email: organizerIdentity.email,
-      role: "owner",
-      status: "active",
-      updatedAt: now,
-    });
-
-    return { organizationId, userId };
-  });
 }
