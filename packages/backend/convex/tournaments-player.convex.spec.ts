@@ -1106,7 +1106,7 @@ test("a cut's elimination batch reaches standings through one index range", asyn
     await eliminateNonQualifiers(
       countingCtx as unknown as MutationCtx,
       tournament,
-      { qualifiers, droppedNonQualifiers: [] },
+      { qualifiers, droppedNonQualifiers: [], heldPlaces: [] },
       finalSwissRound._id,
     );
     return counts;

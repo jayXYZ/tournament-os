@@ -1304,6 +1304,175 @@ test("a cutoff meeting can complete when its seated field drops below two", asyn
   ]);
 });
 
+// Drives the superseded-cut analogue of the "seated field drops below two"
+// dead end: a top-2 cut whose meeting was consumed by pairing, the next
+// phase's first round rewound (stamping the meeting "superseded"), the final
+// round re-completed with its results untouched, and then one of the two seat
+// holders withdraws. The re-drawn boundary still clears them, so their granted
+// entry holds a place: the partition yields one qualifier plus one held place,
+// and the next phase cannot pair as it stands.
+async function supersededCutWithHeldPlaceBelowTwo(
+  t: TestConvex<typeof schema>,
+) {
+  const { tournamentId, registrationIds } = await seedTournament(t, 4, [
+    {
+      phaseOrder: 1,
+      phaseRoundMode: "fixed",
+      phaseTotalRounds: 1,
+      phaseCutoff: { kind: "top_X_players", playerCount: 2 },
+    },
+    {
+      phaseOrder: 2,
+      phaseRoundMode: "fixed",
+      phaseTotalRounds: 1,
+      playerMeeting: true,
+    },
+  ]);
+  const organizer = t.withIdentity(organizerIdentity);
+  await organizer.mutation(api.tournaments.rounds.startTournament, {
+    tournamentId,
+  });
+  await playOutCurrentRound(t, tournamentId);
+
+  const board = await organizer.query(api.tournaments.rounds.getPairingsBoard, {
+    tournamentId,
+  });
+  const phaseTwoId = board.phases[1].phase._id;
+  await organizer.mutation(api.tournaments.playerMeeting.startPlayerMeeting, {
+    phaseId: phaseTwoId,
+  });
+  const seatedIds = (
+    await organizer.query(
+      api.tournaments.playerMeeting.listPlayerMeetingSeats,
+      { phaseId: phaseTwoId },
+    )
+  ).seats.map((seat) => seat.registrationId);
+  expect(seatedIds).toHaveLength(2);
+  await organizer.mutation(api.tournaments.rounds.generateNextRound, {
+    tournamentId,
+  });
+  await organizer.mutation(api.tournaments.rounds.rewindLatestRound, {
+    tournamentId,
+  });
+
+  // The rewind turned out to be a false alarm: re-complete the reopened final
+  // round with its recorded results untouched, so the re-drawn boundary agrees
+  // with the seats.
+  const reopened = await organizer.query(
+    api.tournaments.rounds.getCurrentRound,
+    { tournamentId },
+  );
+  const finalRoundId = reopened!._id;
+  await organizer.mutation(api.tournaments.rounds.completeRound, {
+    roundId: finalRoundId,
+  });
+  expect(
+    (await t.run(async (ctx) => ctx.db.get(phaseTwoId)))?.playerMeetingStatus,
+  ).toBe("superseded");
+
+  // One of the two seat holders withdraws. Their rank still clears the top-2
+  // boundary, so the granted entry holds their place instead of freeing it.
+  const withdrawnSeatedId = seatedIds[0];
+  await organizer.mutation(api.tournaments.registrations.dropRegistration, {
+    registrationId: withdrawnSeatedId,
+  });
+
+  return {
+    organizer,
+    tournamentId,
+    registrationIds,
+    seatedIds,
+    withdrawnSeatedId,
+    finalRoundId,
+  };
+}
+
+test("a superseded cut short of two qualifiers names its recovery, and reinstating fills the held place", async () => {
+  const t = convexTest(schema, modules);
+  const {
+    organizer,
+    tournamentId,
+    registrationIds,
+    seatedIds,
+    withdrawnSeatedId,
+    finalRoundId,
+  } = await supersededCutWithHeldPlaceBelowTwo(t);
+
+  // The board never dead-ends: completing the tournament is offered from this
+  // exact state (pairingsNextStep runs the same superseded partition).
+  const board = await organizer.query(api.tournaments.rounds.getPairingsBoard, {
+    tournamentId,
+  });
+  expect(board.nextStep).toMatchObject({
+    kind: "completeTournament",
+    ready: true,
+  });
+
+  // Pairing anyway refuses — and the error names the one move that makes the
+  // phase playable: the withdrawn seat holder is holding a place only their
+  // reinstatement can fill.
+  await expect(
+    organizer.mutation(api.tournaments.rounds.generateNextRound, {
+      tournamentId,
+    }),
+  ).rejects.toThrow(
+    "reinstate a withdrawn player who still holds a place in the field",
+  );
+
+  // The held place is real: the withdrawal is unstamped, so reinstating
+  // returns them to play...
+  const withdrawn = await t.run(async (ctx) => ctx.db.get(withdrawnSeatedId));
+  expect(withdrawn?.participationStatus).toBe("dropped");
+  expect(withdrawn?.eliminatedByRoundId).toBeUndefined();
+  await organizer.mutation(
+    api.tournaments.registrations.reinstateRegistration,
+    { registrationId: withdrawnSeatedId },
+  );
+
+  // ...and the next phase pairs with exactly the two seat holders: the held
+  // place was never backfilled while it stood empty.
+  await organizer.mutation(api.tournaments.rounds.generateNextRound, {
+    tournamentId,
+  });
+  const round = await organizer.query(api.tournaments.rounds.getCurrentRound, {
+    tournamentId,
+  });
+  const pairedIds = (
+    await organizer.query(api.tournaments.rounds.listRoundPairings, {
+      roundId: round!._id,
+    })
+  ).flatMap(({ players }) => players.map((player) => player.playerId));
+  expect(pairedIds.sort()).toEqual([...seatedIds].sort());
+  // The unseated players stay cut, stamped by the phase-one final round.
+  for (const unseatedId of registrationIds.filter(
+    (id) => !seatedIds.includes(id),
+  )) {
+    expect(await t.run(async (ctx) => ctx.db.get(unseatedId))).toMatchObject({
+      participationStatus: "eliminated",
+      eliminatedByRoundId: finalRoundId,
+    });
+  }
+});
+
+test("a superseded cut short of two qualifiers can complete the tournament", async () => {
+  const t = convexTest(schema, modules);
+  const { organizer, tournamentId } =
+    await supersededCutWithHeldPlaceBelowTwo(t);
+
+  await organizer.mutation(api.tournaments.lifecycle.completeTournament, {
+    tournamentId,
+  });
+  const setup = await organizer.query(
+    api.tournaments.lifecycle.getTournamentSetup,
+    { tournamentId },
+  );
+  expect(setup.tournament.lifecycle).toBe("completed");
+  expect(setup.phases.map((phase) => phase.phaseStatus)).toEqual([
+    "completed",
+    "cancelled",
+  ]);
+});
+
 test("players see their meeting seat, late registrants see none, and pairing is untouched", async () => {
   const t = convexTest(schema, modules);
   const names = ["Alice", "Bob", "Cara", "Dan"];

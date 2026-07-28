@@ -258,8 +258,15 @@ async function startNextPhaseFirstRound(
     );
     registrations = appliedCut.qualifiers;
     if (registrations.length < 2) {
+      // Not a dead end, just not pairable as it stands: pairingsNextStep
+      // offers completeTournament from this exact state (it runs the same
+      // partition), and when withdrawn players still hold places in the field,
+      // reinstating one is the only move that makes the phase playable — say
+      // so instead of leaving the organizer to guess.
       throw new Error(
-        "The phase cutoff leaves fewer than two qualifying players",
+        appliedCut.heldPlaces.length > 0
+          ? "The phase cutoff leaves fewer than two qualifying players; reinstate a withdrawn player who still holds a place in the field, or complete the tournament"
+          : "The phase cutoff leaves fewer than two qualifying players; complete the tournament instead",
       );
     }
   } else {

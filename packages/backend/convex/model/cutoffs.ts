@@ -26,10 +26,12 @@ export type TournamentPhaseCutoff = NonNullable<
 //
 // The invariant is what the older "the two sets are exact complements" wording
 // was reaching for, but complements they are not: exactly one kind of player is
-// deliberately in neither set — a withdrawn player who holds a place they
-// cannot play. Nothing is backfilled into that place, and with no stamp a
-// reinstate returns them to play. Which withdrawals hold a place is the one
-// rule the three partitions differ on:
+// deliberately in neither the qualifying nor the stamped set — a withdrawn
+// player who holds a place they cannot play. Nothing is backfilled into that
+// place, and with no stamp a reinstate returns them to play; the partition
+// names them in `heldPlaces` so a caller staring at a short field can say who
+// to reinstate. Which withdrawals hold a place is the one rule the three
+// partitions differ on:
 //
 //   * no meeting snapshot  none of them. The field freezes at pairing time, so
 //                          a withdrawal always frees its place and the next
@@ -56,9 +58,20 @@ export type TournamentPhaseCutoff = NonNullable<
 // reinstating them restores "eliminated" instead of reviving them past a cut
 // they missed. See the stamping invariant above for how the two sets, plus
 // eliminateNonQualifiers, cover every confirmed participant.
+//
+// `heldPlaces` names the third kind of player the stamping invariant describes:
+// withdrawn players who still hold a place in the entering field. They enter
+// nothing and are stamped with nothing — reinstating one returns them to play,
+// filling the place they held. Each held place shrinks `qualifiers` below the
+// cut size without freeing a seat, so this is the set a caller reaches for when
+// the qualifiers alone are too few to pair: reinstating a held-place player is
+// the one move that grows the field, and completing the tournament is the only
+// alternative. Always empty when no meeting granted entries (the standard cut
+// frees every withdrawn place instead).
 export type CutoffPartition = {
   qualifiers: Doc<"tournamentRegistrations">[];
   droppedNonQualifiers: Doc<"tournamentRegistrations">[];
+  heldPlaces: Doc<"tournamentRegistrations">[];
 };
 
 // The boundary walk shared by every cut that reads standings. Walks the
@@ -76,7 +89,8 @@ export type CutoffPartition = {
 //
 // Can return fewer than two qualifiers (a points bar nobody cleared, or a field
 // thinned by withdrawals); callers decide whether that ends the tournament or
-// is an error.
+// is an error. When held places are what shrank the field, `heldPlaces` names
+// the withdrawn players whose reinstatement would fill it back up.
 async function standingsCutoffPartition(
   ctx: QueryCtx,
   roundId: Id<"tournamentRounds">,
@@ -91,6 +105,7 @@ async function standingsCutoffPartition(
   );
   const qualifiers: Doc<"tournamentRegistrations">[] = [];
   const droppedNonQualifiers: Doc<"tournamentRegistrations">[] = [];
+  const heldPlaces: Doc<"tournamentRegistrations">[] = [];
   let placesTaken = 0;
   standings.forEach((standing, index) => {
     const registration = registrations[index];
@@ -121,6 +136,7 @@ async function standingsCutoffPartition(
       // Granted an entry and still inside the boundary: the place stays
       // occupied and unstamped, so nothing backfills it and reinstating
       // returns them to play.
+      heldPlaces.push(registration);
       placesTaken += 1;
       return;
     }
@@ -129,7 +145,7 @@ async function standingsCutoffPartition(
     }
     placesTaken += 1;
   });
-  return { qualifiers, droppedNonQualifiers };
+  return { qualifiers, droppedNonQualifiers, heldPlaces };
 }
 
 const NO_GRANTED_ENTRIES: ReadonlySet<Id<"tournamentRegistrations">> =
@@ -202,12 +218,19 @@ async function meetingCutoffPartition(
       registration?.entryStatus === "confirmed" &&
       registration.participationStatus === "active",
   );
+  // A seated withdrawal holds its place (see the model note): dropped, so a
+  // reinstate would return them to the seat they still own.
+  const heldPlaces = seated.filter(
+    (registration): registration is Doc<"tournamentRegistrations"> =>
+      registration?.entryStatus === "confirmed" &&
+      registration.participationStatus === "dropped",
+  );
   const seatedIds = new Set(seats.map((seat) => seat.registrationId));
   const dropped = await droppedRegistrations(ctx, phase.tournamentId);
   const droppedNonQualifiers = dropped.filter(
     (registration) => !seatedIds.has(registration._id),
   );
-  return { qualifiers, droppedNonQualifiers };
+  return { qualifiers, droppedNonQualifiers, heldPlaces };
 }
 
 // A rewind reopens the round the cut was drawn from and deletes its standings,
