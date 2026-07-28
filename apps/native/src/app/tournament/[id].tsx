@@ -1,3 +1,4 @@
+import { AuthView } from "@clerk/expo/native";
 import { api } from "@tournament-os/backend/convex/_generated/api";
 import type { Id } from "@tournament-os/backend/convex/_generated/dataModel";
 import {
@@ -8,22 +9,38 @@ import {
   useMyCurrentMatch,
   useRoundTimer,
 } from "@tournament-os/core";
-import { useQuery } from "convex/react";
+import { useConvexAuth, useQuery } from "convex/react";
 import { useLocalSearchParams, useNavigation } from "expo-router";
-import { useEffect } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function TournamentScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const tournamentId = (id ?? null) as Id<"tournaments"> | null;
 
+  // Gate on Convex's auth state, not raw Clerk state: isLoading stays true
+  // through the window where Clerk is signed in but the token hasn't been
+  // confirmed by the Convex backend yet. During that window getMyRegistration
+  // would run unauthenticated and return null — indistinguishable from "not
+  // registered" — so the query must not fire until isAuthenticated.
+  const { isLoading: authLoading, isAuthenticated } = useConvexAuth();
+  const [authOpen, setAuthOpen] = useState(false);
+
   // The player queries reject entries that are not confirmed (e.g. a
   // registration cancelled while this screen is open), so gate them on
   // entryStatus to match the server's requireRegisteredPlayer.
   const registration = useQuery(
     api.tournaments.registrations.getMyRegistration,
-    tournamentId ? { tournamentId } : "skip",
+    isAuthenticated && tournamentId ? { tournamentId } : "skip",
   );
   const confirmedTournamentId =
     registration?.entryStatus === "confirmed" ? tournamentId : null;
@@ -42,7 +59,58 @@ export default function TournamentScreen() {
     }
   }, [navigation, tournamentName]);
 
-  if (registration !== undefined && registration?.entryStatus !== "confirmed") {
+  if (!tournamentId) {
+    return (
+      <SafeAreaView style={styles.container} edges={["bottom"]}>
+        <View style={styles.content}>
+          <Text style={styles.muted}>Tournament not found.</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Auth still resolving, or the registration query in flight.
+  if (authLoading || (isAuthenticated && registration === undefined)) {
+    return (
+      <SafeAreaView style={styles.container} edges={["bottom"]}>
+        <View style={styles.centered}>
+          <ActivityIndicator />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Signed out (a deep link can land here without a session). Note Convex
+  // also treats Clerk sessions with pending tasks (e.g. MFA) as signed out;
+  // AuthView completes those tasks too.
+  if (!isAuthenticated) {
+    return (
+      <SafeAreaView style={styles.container} edges={["bottom"]}>
+        <View style={styles.signedOut}>
+          <Text style={styles.signedOutTitle}>Sign in to view this event</Text>
+          <Text style={styles.muted}>
+            Sign in to see your pairings and standings for this tournament.
+          </Text>
+          <Pressable style={styles.button} onPress={() => setAuthOpen(true)}>
+            <Text style={styles.buttonText}>Sign in</Text>
+          </Pressable>
+        </View>
+
+        <Modal
+          visible={authOpen}
+          presentationStyle="pageSheet"
+          animationType="slide"
+          onRequestClose={() => setAuthOpen(false)}
+        >
+          <AuthView onDismiss={() => setAuthOpen(false)} />
+        </Modal>
+      </SafeAreaView>
+    );
+  }
+
+  // Signed in and the query resolved: null (no registration row) or a row
+  // whose entry isn't confirmed both mean no seat at this event.
+  if (registration?.entryStatus !== "confirmed") {
     return (
       <SafeAreaView style={styles.container} edges={["bottom"]}>
         <View style={styles.content}>
@@ -216,6 +284,22 @@ function Standings({
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#0b0b0f" },
   content: { padding: 20, gap: 12 },
+  centered: { flex: 1, alignItems: "center", justifyContent: "center" },
+  signedOut: {
+    flex: 1,
+    justifyContent: "center",
+    paddingHorizontal: 24,
+    gap: 12,
+  },
+  signedOutTitle: { color: "#fff", fontSize: 22, fontWeight: "700" },
+  button: {
+    backgroundColor: "#5b6bff",
+    borderRadius: 12,
+    paddingVertical: 15,
+    alignItems: "center",
+    marginTop: 12,
+  },
+  buttonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
   sectionTitle: {
     color: "#8b8b96",
     fontSize: 13,
