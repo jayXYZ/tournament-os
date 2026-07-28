@@ -87,6 +87,7 @@ export const startPlayerMeeting = mutation({
         }
         registrations = await cutoffQualifiers(
           ctx,
+          tournament._id,
           previousPhase.phaseCurrentRound,
           previousPhase.phaseCutoff,
         );

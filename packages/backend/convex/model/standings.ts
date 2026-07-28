@@ -5,6 +5,8 @@ import {
   MAX_TOURNAMENT_PLAYERS,
   nonActiveParticipationStatuses,
   participantRegistrations,
+  type StandingsSync,
+  standingsSyncFromRows,
 } from "./registrations";
 import { roundMatchesWithPlayers } from "./tournaments";
 
@@ -145,13 +147,18 @@ export async function deleteStandingsForReopenedRound(
   }
 }
 
+// Returns the freshly written rows keyed as a StandingsSync: the round just
+// became the tournament's latest completed round, so a caller that changes
+// registrations later in the same transaction (completeRound's
+// single-elimination batch) can sync against the rows it just paid to write
+// instead of reading the whole range back.
 export async function replaceStandingsForRound(
   ctx: MutationCtx,
   tournament: Doc<"tournaments">,
   phase: Doc<"tournamentPhases">,
   round: Doc<"tournamentRounds">,
   prefetchedMatches?: RoundMatchWithPlayers[],
-) {
+): Promise<StandingsSync> {
   await deleteStandingsForRound(ctx, round._id);
 
   const matchesWithPlayers =
@@ -171,11 +178,16 @@ export async function replaceStandingsForRound(
   );
   const now = Date.now();
 
+  const insertedRows: Array<{
+    _id: Id<"roundStandings">;
+    playerId: Id<"tournamentRegistrations">;
+    participationStatus: Doc<"roundStandings">["participationStatus"];
+  }> = [];
   for (let index = 0; index < ranked.length; index += 1) {
     const { playerStats, playoffStatus, eliminatedInRoundNumber } =
       ranked[index];
     const comparable = comparableFromStats(playerStats, stats);
-    await ctx.db.insert("roundStandings", {
+    const standingId = await ctx.db.insert("roundStandings", {
       tournamentId: tournament._id,
       tournamentPhaseId: phase._id,
       tournamentRoundId: round._id,
@@ -203,7 +215,13 @@ export async function replaceStandingsForRound(
       sortKey: index + 1,
       updatedAt: now,
     });
+    insertedRows.push({
+      _id: standingId,
+      playerId: playerStats.registration._id,
+      participationStatus: playerStats.registration.participationStatus,
+    });
   }
+  return standingsSyncFromRows(insertedRows);
 }
 
 async function rankedStatsForRound(

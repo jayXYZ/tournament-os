@@ -1,7 +1,13 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "./batching";
-import { droppedRegistrations, MAX_TOURNAMENT_PLAYERS } from "./registrations";
+import {
+  activeRegistrations,
+  droppedRegistrations,
+  MAX_TOURNAMENT_PLAYERS,
+  type StandingsSync,
+  standingsSyncFromRows,
+} from "./registrations";
 
 export type TournamentPhaseCutoff = NonNullable<
   Doc<"tournamentPhases">["phaseCutoff"]
@@ -72,6 +78,21 @@ export type CutoffPartition = {
   qualifiers: Doc<"tournamentRegistrations">[];
   droppedNonQualifiers: Doc<"tournamentRegistrations">[];
   heldPlaces: Doc<"tournamentRegistrations">[];
+  // What eliminateNonQualifiers stamps and the rows it stamps through, carried
+  // out of a partition whose boundary walk already read both so applying the
+  // cut re-reads nothing in the same transaction: `activeNonQualifiers` is the
+  // whole active roster minus `qualifiers` (including any active player the
+  // standings never ranked), and `standingsSync` keys the walked phase-final
+  // rows for the setRegistrationState batches — valid for syncing exactly when
+  // the cut's round is the tournament's latest completed round, the only state
+  // eliminateNonQualifiers runs in. null when the seats decided the cut:
+  // meetingCutoffPartition reads neither the standings nor the active roster,
+  // and fetching them just to fill this field would charge every read-only
+  // caller for data only the applying mutation needs.
+  elimination: {
+    activeNonQualifiers: Doc<"tournamentRegistrations">[];
+    standingsSync: StandingsSync;
+  } | null;
 };
 
 // The boundary walk shared by every cut that reads standings. Walks the
@@ -93,32 +114,35 @@ export type CutoffPartition = {
 // the withdrawn players whose reinstatement would fill it back up.
 async function standingsCutoffPartition(
   ctx: QueryCtx,
+  tournamentId: Id<"tournaments">,
   roundId: Id<"tournamentRounds">,
   cutoff: TournamentPhaseCutoff,
   grantedEntryIds: ReadonlySet<Id<"tournamentRegistrations">>,
 ): Promise<CutoffPartition> {
   const standings = await standingsInRankOrder(ctx, roundId);
-  const registrations = await mapAsyncInBatches(
-    standings,
-    DATABASE_IO_BATCH_SIZE,
-    async (standing) => await ctx.db.get(standing.playerId),
+  // The walk classifies only confirmed active and dropped players — every
+  // other row is passed over below — and the elimination side needs the full
+  // active roster anyway, so registrations come from the two confirmed index
+  // ranges instead of a registration get per standings row.
+  const active = await activeRegistrations(ctx, tournamentId);
+  const dropped = await droppedRegistrations(ctx, tournamentId);
+  const registrationsById = new Map(
+    [...active, ...dropped].map((registration) => [
+      registration._id,
+      registration,
+    ]),
   );
   const qualifiers: Doc<"tournamentRegistrations">[] = [];
   const droppedNonQualifiers: Doc<"tournamentRegistrations">[] = [];
   const heldPlaces: Doc<"tournamentRegistrations">[] = [];
   let placesTaken = 0;
-  standings.forEach((standing, index) => {
-    const registration = registrations[index];
-    if (registration?.entryStatus !== "confirmed") {
-      return;
-    }
-    if (
-      registration.participationStatus !== "active" &&
-      registration.participationStatus !== "dropped"
-    ) {
-      // Already eliminated or disqualified: their record stands, and neither
-      // state is reinstatable into active play.
-      return;
+  for (const standing of standings) {
+    const registration = registrationsById.get(standing.playerId);
+    if (!registration) {
+      // Not confirmed-active or confirmed-dropped: an unconfirmed entry, or a
+      // player already eliminated or disqualified — their record stands, and
+      // neither state is reinstatable into active play.
+      continue;
     }
     const missesCut =
       cutoff.kind === "top_X_players"
@@ -131,21 +155,32 @@ async function standingsCutoffPartition(
         // invariant, records the elimination so a reinstate cannot walk them
         // into a phase they do not belong in.
         droppedNonQualifiers.push(registration);
-        return;
+        continue;
       }
       // Granted an entry and still inside the boundary: the place stays
       // occupied and unstamped, so nothing backfills it and reinstating
       // returns them to play.
       heldPlaces.push(registration);
       placesTaken += 1;
-      return;
+      continue;
     }
     if (!missesCut) {
       qualifiers.push(registration);
     }
     placesTaken += 1;
-  });
-  return { qualifiers, droppedNonQualifiers, heldPlaces };
+  }
+  const qualifierIds = new Set(qualifiers.map((qualifier) => qualifier._id));
+  return {
+    qualifiers,
+    droppedNonQualifiers,
+    heldPlaces,
+    elimination: {
+      activeNonQualifiers: active.filter(
+        (registration) => !qualifierIds.has(registration._id),
+      ),
+      standingsSync: standingsSyncFromRows(standings),
+    },
+  };
 }
 
 const NO_GRANTED_ENTRIES: ReadonlySet<Id<"tournamentRegistrations">> =
@@ -161,11 +196,13 @@ const NO_GRANTED_ENTRIES: ReadonlySet<Id<"tournamentRegistrations">> =
 // survive a withdrawal.)
 export async function cutoffPartition(
   ctx: QueryCtx,
+  tournamentId: Id<"tournaments">,
   roundId: Id<"tournamentRounds">,
   cutoff: TournamentPhaseCutoff,
 ): Promise<CutoffPartition> {
   return await standingsCutoffPartition(
     ctx,
+    tournamentId,
     roundId,
     cutoff,
     NO_GRANTED_ENTRIES,
@@ -176,10 +213,12 @@ export async function cutoffPartition(
 // round's standings.
 export async function cutoffQualifiers(
   ctx: QueryCtx,
+  tournamentId: Id<"tournaments">,
   roundId: Id<"tournamentRounds">,
   cutoff: TournamentPhaseCutoff,
 ) {
-  return (await cutoffPartition(ctx, roundId, cutoff)).qualifiers;
+  return (await cutoffPartition(ctx, tournamentId, roundId, cutoff))
+    .qualifiers;
 }
 
 // While a cutoff phase's player meeting is live its seats are the authoritative
@@ -230,7 +269,10 @@ async function meetingCutoffPartition(
   const droppedNonQualifiers = dropped.filter(
     (registration) => !seatedIds.has(registration._id),
   );
-  return { qualifiers, droppedNonQualifiers, heldPlaces };
+  // No prefetched elimination side: this walk read neither the standings nor
+  // the active roster, so eliminateNonQualifiers fetches both itself — see the
+  // note on CutoffPartition.
+  return { qualifiers, droppedNonQualifiers, heldPlaces, elimination: null };
 }
 
 // A rewind reopens the round the cut was drawn from and deletes its standings,
@@ -253,11 +295,17 @@ async function supersededMeetingCutoffPartition(
   ctx: QueryCtx,
   roundId: Id<"tournamentRounds">,
   cutoff: TournamentPhaseCutoff,
-  phaseId: Id<"tournamentPhases">,
+  phase: Doc<"tournamentPhases">,
 ): Promise<CutoffPartition> {
-  const seats = await meetingSeatRows(ctx, phaseId);
+  const seats = await meetingSeatRows(ctx, phase._id);
   const grantedEntryIds = new Set(seats.map((seat) => seat.registrationId));
-  return await standingsCutoffPartition(ctx, roundId, cutoff, grantedEntryIds);
+  return await standingsCutoffPartition(
+    ctx,
+    phase.tournamentId,
+    roundId,
+    cutoff,
+    grantedEntryIds,
+  );
 }
 
 // Routes on the phase's explicit meeting-snapshot status (the state machine
@@ -288,7 +336,12 @@ export async function cutoffPartitionForNextPhase(
 ): Promise<CutoffPartition> {
   switch (nextPhase.playerMeetingStatus) {
     case undefined:
-      return await cutoffPartition(ctx, roundId, cutoff);
+      return await cutoffPartition(
+        ctx,
+        nextPhase.tournamentId,
+        roundId,
+        cutoff,
+      );
     case "in_progress":
       return await meetingCutoffPartition(ctx, nextPhase);
     case "superseded":
@@ -296,7 +349,7 @@ export async function cutoffPartitionForNextPhase(
         ctx,
         roundId,
         cutoff,
-        nextPhase._id,
+        nextPhase,
       );
     case "completed":
       throw new Error(

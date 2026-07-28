@@ -17,9 +17,10 @@ import { roundMatchesWithPlayers } from "./tournaments";
 // elimination record (see eliminateNonQualifiers).
 export async function topEightCutFromStandings(
   ctx: QueryCtx,
+  tournamentId: Id<"tournaments">,
   roundId: Id<"tournamentRounds">,
 ): Promise<CutoffPartition> {
-  const cut = await cutoffPartition(ctx, roundId, {
+  const cut = await cutoffPartition(ctx, tournamentId, roundId, {
     kind: "top_X_players",
     playerCount: SINGLE_ELIMINATION_PLAYERS,
   });
@@ -35,25 +36,20 @@ export async function eliminateNonQualifiers(
   cut: CutoffPartition,
   eliminatedByRoundId: Id<"tournamentRounds">,
 ) {
-  const qualifierIds = new Set(
-    cut.qualifiers.map((registration) => registration._id),
-  );
-  const active = await activeRegistrations(ctx, tournament._id);
-  const eliminated: Doc<"tournamentRegistrations">[] = [];
-  for (const registration of active) {
-    if (!qualifierIds.has(registration._id)) {
-      eliminated.push(registration);
-    }
-  }
   // The cut is drawn from the round it stamps, and generateNextRound only
   // reaches here with that round completed and the next one not yet played, so
   // it is the tournament's latest completed round — the one whose standings
-  // carry the denormalized status. Read its rows once for both batches below
-  // instead of one index range per player removed.
-  const standingsSync = await prefetchStandingsSync(ctx, eliminatedByRoundId);
+  // carry the denormalized status. A partition that walked those standings
+  // hands back the active players outside the cut and the rows it walked, so
+  // nothing is re-read here; a seat-decided cut read neither, so both are
+  // fetched now — one roster range and one standings range for the whole
+  // batch either way.
+  const { activeNonQualifiers, standingsSync } =
+    cut.elimination ??
+    (await seatDecidedElimination(ctx, tournament, cut, eliminatedByRoundId));
   await eliminateRegistrations(
     ctx,
-    eliminated,
+    activeNonQualifiers,
     eliminatedByRoundId,
     standingsSync,
   );
@@ -65,6 +61,28 @@ export async function eliminateNonQualifiers(
     eliminatedByRoundId,
     standingsSync,
   );
+}
+
+// The elimination side of a cut whose partition never read the standings or
+// the active roster (a live player meeting's seats decided it): everyone
+// active outside the qualifying seats, plus the latest completed round's
+// standings rows for the status sync.
+async function seatDecidedElimination(
+  ctx: MutationCtx,
+  tournament: Doc<"tournaments">,
+  cut: CutoffPartition,
+  eliminatedByRoundId: Id<"tournamentRounds">,
+) {
+  const qualifierIds = new Set(
+    cut.qualifiers.map((registration) => registration._id),
+  );
+  const active = await activeRegistrations(ctx, tournament._id);
+  return {
+    activeNonQualifiers: active.filter(
+      (registration) => !qualifierIds.has(registration._id),
+    ),
+    standingsSync: await prefetchStandingsSync(ctx, eliminatedByRoundId),
+  };
 }
 
 export async function singleEliminationAdvancers(
@@ -147,6 +165,7 @@ export async function eliminateSingleEliminationLosers(
   ctx: MutationCtx,
   matchesWithPlayers: RoundMatchWithPlayers[],
   eliminatedByRoundId: Id<"tournamentRounds">,
+  standingsSync: StandingsSync,
 ) {
   const { advancers, registrationsById, loserIds } =
     await singleEliminationOutcome(ctx, matchesWithPlayers);
@@ -178,8 +197,9 @@ export async function eliminateSingleEliminationLosers(
   }
   // completeRound rewrites this round's standings immediately before calling
   // us, so it is the latest completed round and its rows are the ones the
-  // status changes below have to reach. One range serves both batches.
-  const standingsSync = await prefetchStandingsSync(ctx, eliminatedByRoundId);
+  // status changes below have to reach — which is why it passes those freshly
+  // written rows in as `standingsSync` rather than this helper reading the
+  // range straight back. One sync serves both batches.
   await eliminateRegistrations(
     ctx,
     eliminated,

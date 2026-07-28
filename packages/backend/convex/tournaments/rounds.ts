@@ -247,7 +247,11 @@ async function startNextPhaseFirstRound(
   let registrations: Doc<"tournamentRegistrations">[];
   let appliedCut: CutoffPartition | null = null;
   if (nextPhase.phaseType === SINGLE_ELIMINATION_FORMAT) {
-    appliedCut = await topEightCutFromStandings(ctx, currentRound._id);
+    appliedCut = await topEightCutFromStandings(
+      ctx,
+      tournament._id,
+      currentRound._id,
+    );
     registrations = appliedCut.qualifiers;
   } else if (phase.phaseCutoff !== null) {
     appliedCut = await cutoffPartitionForNextPhase(
@@ -471,7 +475,7 @@ export const completeRound = mutation({
       }
     }
 
-    await replaceStandingsForRound(
+    const standingsSync = await replaceStandingsForRound(
       ctx,
       tournament,
       phase,
@@ -479,10 +483,13 @@ export const completeRound = mutation({
       matchesWithPlayers,
     );
     if (phase.phaseType === SINGLE_ELIMINATION_FORMAT) {
+      // The rows just written above, handed through so the elimination batch
+      // syncs statuses against them instead of reading the range back.
       await eliminateSingleEliminationLosers(
         ctx,
         matchesWithPlayers,
         round._id,
+        standingsSync,
       );
     }
     const now = Date.now();

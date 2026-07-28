@@ -323,13 +323,24 @@ type RegistrationStateUpdate =
 // range and one patch per call — right for the single-registration callers (a
 // self-drop, an organizer drop or reinstate) and wrong for the batches, which
 // change every non-qualifier in one transaction and would pay that per player.
+// The two fields the sync touches on a standings row. Kept this narrow so a
+// caller that already holds the rows can build a sync without re-reading them
+// — in particular replaceStandingsForRound, which knows everything about the
+// rows it just inserted except the _creationTime a full Doc would demand. A
+// full Doc<"roundStandings"> satisfies it.
+export type StandingsSyncRow = Pick<
+  Doc<"roundStandings">,
+  "_id" | "participationStatus"
+>;
+
 export type StandingsSync =
-  // The latest completed round's rows, read once for a whole batch. A player
-  // absent from the map has no row in that round, which is exactly what the
-  // per-registration lookup finds for a player with no standings at all.
+  // The latest completed round's rows, read (or written) once for a whole
+  // batch. A player absent from the map has no row in that round, which is
+  // exactly what the per-registration lookup finds for a player with no
+  // standings at all.
   | {
       kind: "prefetchedRound";
-      rowsByPlayerId: Map<Id<"tournamentRegistrations">, Doc<"roundStandings">>;
+      rowsByPlayerId: Map<Id<"tournamentRegistrations">, StandingsSyncRow>;
     }
   // The caller rewrites or deletes the very rows this would patch, later in
   // the same transaction, and repairs whatever it promotes in their place.
@@ -338,6 +349,27 @@ export type StandingsSync =
 export const DEFERRED_STANDINGS_SYNC: StandingsSync = {
   kind: "deferredToCaller",
 };
+
+// Keys already-held standings rows for the batch of per-registration syncs
+// about to run against them, so a caller that has just read — or just written
+// — the round's rows spends no second index range on the sync. Same contract
+// as prefetchStandingsSync: the rows must be the tournament's LATEST COMPLETED
+// round's, one per ranked player.
+export function standingsSyncFromRows(
+  rows: ReadonlyArray<
+    StandingsSyncRow & { playerId: Id<"tournamentRegistrations"> }
+  >,
+): StandingsSync {
+  return {
+    kind: "prefetchedRound",
+    rowsByPlayerId: new Map(
+      rows.map((row) => [
+        row.playerId,
+        { _id: row._id, participationStatus: row.participationStatus },
+      ]),
+    ),
+  };
+}
 
 // One index range over a whole round's standings, keyed for the batch of
 // per-registration syncs about to run against it. Pass the tournament's LATEST
@@ -354,10 +386,7 @@ export async function prefetchStandingsSync(
       q.eq("tournamentRoundId", latestCompletedRoundId),
     )
     .take(MAX_TOURNAMENT_PLAYERS);
-  return {
-    kind: "prefetchedRound",
-    rowsByPlayerId: new Map(rows.map((row) => [row.playerId, row])),
-  };
+  return standingsSyncFromRows(rows);
 }
 
 export async function setRegistrationState(
@@ -451,8 +480,7 @@ async function syncStandingParticipationStatus(
   // Keep the prefetched copy in step with disk so a second change to the same
   // player inside one batch still short-circuits on an unchanged status.
   standingsSync?.rowsByPlayerId.set(registrationId, {
-    ...latest,
+    _id: latest._id,
     participationStatus,
-    updatedAt,
   });
 }

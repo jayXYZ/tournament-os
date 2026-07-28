@@ -1106,7 +1106,14 @@ test("a cut's elimination batch reaches standings through one index range", asyn
     await eliminateNonQualifiers(
       countingCtx as unknown as MutationCtx,
       tournament,
-      { qualifiers, droppedNonQualifiers: [], heldPlaces: [] },
+      // elimination: null is the seat-decided-cut shape — the partition read
+      // no standings — so the helper's own prefetch is what is being counted.
+      {
+        qualifiers,
+        droppedNonQualifiers: [],
+        heldPlaces: [],
+        elimination: null,
+      },
       finalSwissRound._id,
     );
     return counts;
