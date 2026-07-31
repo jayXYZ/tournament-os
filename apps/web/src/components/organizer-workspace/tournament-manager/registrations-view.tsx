@@ -113,16 +113,44 @@ export function RegistrationsView({
     searching ? { tournamentId, search } : 'skip',
   )
   // Keep the previous matches on screen while a keystroke's query is in
-  // flight so the table doesn't flash empty between results.
-  const lastSearchResults = useRef<Array<RegistrationRow>>([])
+  // flight so the table doesn't flash empty between results. The cache is
+  // only valid for the current uninterrupted search session: emptying the
+  // box clears it (handleSearchTermChange), and it is stamped with the
+  // tournament it belongs to so a tournament switch mid-search can't show
+  // another roster's rows. useQuery's value is looked up by the current
+  // render's args, so `searchResults` here is always rows for exactly this
+  // render's { tournamentId, search } — the stamp can't mislabel.
+  const lastSearchResults = useRef<{
+    tournamentId: Id<'tournaments'>
+    rows: Array<RegistrationRow>
+  } | null>(null)
   useEffect(() => {
     if (searchResults !== undefined) {
-      lastSearchResults.current = searchResults
+      lastSearchResults.current = { tournamentId, rows: searchResults }
     }
-  }, [searchResults])
+  }, [searchResults, tournamentId])
+
+  function handleSearchTermChange(value: string) {
+    if (value.trim() === '') {
+      // Emptying the box ends the search session; the next search must
+      // start from the "Searching registrations…" state, not ghost rows
+      // from the previous term.
+      lastSearchResults.current = null
+    }
+    setSearchTerm(value)
+  }
+
+  const cachedSearchRows =
+    lastSearchResults.current !== null &&
+    lastSearchResults.current.tournamentId === tournamentId
+      ? lastSearchResults.current.rows
+      : undefined
 
   const rows = searching
-    ? (searchResults ?? lastSearchResults.current)
+    ? // On a cache miss the fallback is [] (with searchPending true), not
+      // undefined: undefined would swap in the full loading skeleton and
+      // unmount the search input mid-typing.
+      (searchResults ?? cachedSearchRows ?? [])
     : status === 'LoadingFirstPage'
       ? undefined
       : results
@@ -143,7 +171,7 @@ export function RegistrationsView({
           <RegistrationsTable
             registrations={rows}
             searchTerm={searchTerm}
-            onSearchTermChange={setSearchTerm}
+            onSearchTermChange={handleSearchTermChange}
             searchPending={searching && searchResults === undefined}
           />
           {!searching &&
