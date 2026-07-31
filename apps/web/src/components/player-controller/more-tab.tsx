@@ -8,7 +8,7 @@ import type { MyCurrentMatch } from '@tournament-os/core'
 
 import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
 import { ConfirmActionDialog } from '@/components/shared/confirm-action-dialog'
-import { Badge } from '@/components/ui/badge'
+import { ResultBadge } from '@/components/shared/result-badge'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -64,13 +64,11 @@ function MatchHistoryCard({
               <span className="min-w-0 flex-1 truncate text-sm">
                 {entry.isBye ? 'Bye' : displayPlayerName(entry.opponentName)}
               </span>
-              {entry.result === 'pending' ? (
-                <Badge variant="outline">Pending</Badge>
-              ) : (
+              {entry.result !== 'pending' ? (
                 <span className="text-sm tabular-nums text-muted-foreground">
                   {entry.myGameWins ?? 0}–{entry.myGameLosses ?? 0}
                 </span>
-              )}
+              ) : null}
               <ResultBadge result={entry.result} />
             </div>
           ))
@@ -78,23 +76,6 @@ function MatchHistoryCard({
       </CardContent>
     </Card>
   )
-}
-
-function ResultBadge({
-  result,
-}: {
-  result: 'win' | 'loss' | 'draw' | 'pending'
-}) {
-  if (result === 'pending') {
-    return null
-  }
-  if (result === 'win') {
-    return <Badge>Win</Badge>
-  }
-  if (result === 'loss') {
-    return <Badge variant="secondary">Loss</Badge>
-  }
-  return <Badge variant="outline">Draw</Badge>
 }
 
 function DropCard({

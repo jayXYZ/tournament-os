@@ -3,8 +3,11 @@ import { useQuery } from 'convex/react'
 import { ChevronDown, ChevronUp, Trophy } from 'lucide-react'
 import { useState } from 'react'
 import { api } from '@tournament-os/backend/convex/_generated/api'
-import type { Doc, Id } from '@tournament-os/backend/convex/_generated/dataModel'
+import { displayPlayerName, formatRecord } from '@tournament-os/core'
+import type { FunctionReturnType } from 'convex/server'
+import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
 
+import { ResultBadge } from '@/components/shared/result-badge'
 import { formatTournamentDateShort } from '@/components/tournaments'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -20,22 +23,9 @@ import {
   TableRow,
 } from '@/components/ui/table'
 
-export type PlayerTournamentResult = {
-  tournamentId: Id<'tournaments'>
-  tournamentPublicCode: number
-  tournamentName: string
-  startDate: number
-  format: Doc<'tournaments'>['format']
-  registrationStatus: Exclude<
-    NonNullable<Doc<'tournamentRegistrations'>['participationStatus']>,
-    'disqualified'
-  >
-  finalRank: number | null
-  matchPoints: number
-  matchWins: number
-  matchLosses: number
-  matchDraws: number
-}
+export type PlayerTournamentResult = FunctionReturnType<
+  typeof api.users.getPublicPlayerResults
+>['page'][number]
 
 export function UserPublicTournamentCard({
   publicCode,
@@ -74,7 +64,11 @@ export function UserPublicTournamentCard({
               {result.finalRank !== null ? `#${result.finalRank}` : 'Unranked'}
             </Badge>
             <span className="text-sm tabular-nums text-muted-foreground">
-              {result.matchWins}–{result.matchLosses}–{result.matchDraws}
+              {formatRecord(
+                result.matchWins,
+                result.matchLosses,
+                result.matchDraws,
+              )}
               {' · '}
               {result.matchPoints} pts
             </span>
@@ -148,7 +142,7 @@ function MatchLog({
               {row.roundName}
             </TableCell>
             <TableCell>
-              {row.isBye ? 'Bye' : (row.opponentName ?? 'Unknown player')}
+              {row.isBye ? 'Bye' : displayPlayerName(row.opponentName)}
             </TableCell>
             <TableCell className="tabular-nums">
               {row.myGameWins !== null && row.myGameLosses !== null
@@ -163,21 +157,4 @@ function MatchLog({
       </TableBody>
     </Table>
   )
-}
-
-function ResultBadge({
-  result,
-}: {
-  result: 'win' | 'loss' | 'draw' | 'pending'
-}) {
-  switch (result) {
-    case 'win':
-      return <Badge>Win</Badge>
-    case 'loss':
-      return <Badge variant="destructive">Loss</Badge>
-    case 'draw':
-      return <Badge variant="secondary">Draw</Badge>
-    case 'pending':
-      return <Badge variant="outline">Pending</Badge>
-  }
 }
