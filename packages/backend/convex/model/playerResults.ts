@@ -4,13 +4,10 @@ import type { Doc, Id } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
 import { currentUserOrNull, getActiveMembership } from "./access";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "./batching";
-import { phasesInOrder } from "./phases";
+import { latestCompletedRound } from "./phases";
 import { parsePublicCode } from "./publicCodes";
 import { registrationForUser } from "./registrations";
 import { isPairingsVisibleToPlayers, isPubliclyViewable } from "./tournaments";
-
-// Rounds are capped at 16 per phase.
-export const MAX_ROUNDS = 16;
 
 // A registration plays at most one match per round, so a player's
 // tournamentMatchPlayers rows are bounded by the round cap (16) times the
@@ -259,43 +256,28 @@ export async function finalStandingForRegistration(
   tournamentId: Id<"tournaments">,
   registrationId: Id<"tournamentRegistrations">,
 ) {
-  // Later phases only have rounds once earlier ones finish, so walking the
-  // phases newest-first finds the tournament's latest completed round.
-  const phases = await phasesInOrder(ctx, tournamentId);
-  for (const phase of [...phases].reverse()) {
-    const rounds = await ctx.db
-      .query("tournamentRounds")
-      .withIndex("by_tournamentPhaseId_and_roundNumber", (q) =>
-        q.eq("tournamentPhaseId", phase._id),
-      )
-      .order("desc")
-      .take(MAX_ROUNDS);
-    const latestCompleted = rounds.find(
-      (round) => round.roundStatus === "completed",
-    );
-    if (!latestCompleted) {
-      continue;
-    }
-    const standing = await ctx.db
-      .query("roundStandings")
-      .withIndex("by_tournamentRoundId_and_playerId", (q) =>
-        q
-          .eq("tournamentRoundId", latestCompleted._id)
-          .eq("playerId", registrationId),
-      )
-      .unique();
-    if (!standing) {
-      return null;
-    }
-    return {
-      rank: standing.rank,
-      matchPoints: standing.matchPoints,
-      matchWins: standing.matchWins,
-      matchLosses: standing.matchLosses,
-      matchDraws: standing.matchDraws,
-    };
+  const latestCompleted = await latestCompletedRound(ctx, tournamentId);
+  if (!latestCompleted) {
+    return null;
   }
-  return null;
+  const standing = await ctx.db
+    .query("roundStandings")
+    .withIndex("by_tournamentRoundId_and_playerId", (q) =>
+      q
+        .eq("tournamentRoundId", latestCompleted._id)
+        .eq("playerId", registrationId),
+    )
+    .unique();
+  if (!standing) {
+    return null;
+  }
+  return {
+    rank: standing.rank,
+    matchPoints: standing.matchPoints,
+    matchWins: standing.matchWins,
+    matchLosses: standing.matchLosses,
+    matchDraws: standing.matchDraws,
+  };
 }
 
 // One player's per-round results for a tournament, restricted to rounds whose

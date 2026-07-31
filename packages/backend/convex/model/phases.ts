@@ -7,6 +7,9 @@ export const SINGLE_ELIMINATION_FORMAT = "single_elimination";
 export const SINGLE_ELIMINATION_PLAYERS = 8;
 export const SINGLE_ELIMINATION_ROUNDS = 3;
 
+// Rounds are capped at 16 per phase.
+export const MAX_ROUNDS = 16;
+
 export type TournamentPhaseCutoffInput =
   | { kind: "top_X_players"; playerCount: number }
   | { kind: "X_points_or_more"; matchPoints: number };
@@ -180,6 +183,35 @@ export async function previousTournamentRound(
   return previousPhase?.phaseCurrentRound
     ? await ctx.db.get(previousPhase.phaseCurrentRound)
     : null;
+}
+
+// The tournament's latest completed round, or null before any round finishes.
+// Later phases only have rounds once earlier ones finish, so walking the
+// phases newest-first finds it — including the previous phase's final round
+// while a new phase's first round is still being played. This is the single
+// definition of "which round counts as latest completed": live standings and
+// final profile placements both read it, so the two can never disagree.
+export async function latestCompletedRound(
+  ctx: QueryCtx,
+  tournamentId: Id<"tournaments">,
+) {
+  const phases = await phasesInOrder(ctx, tournamentId);
+  for (const phase of [...phases].reverse()) {
+    const rounds = await ctx.db
+      .query("tournamentRounds")
+      .withIndex("by_tournamentPhaseId_and_roundNumber", (q) =>
+        q.eq("tournamentPhaseId", phase._id),
+      )
+      .order("desc")
+      .take(MAX_ROUNDS);
+    const latestCompleted = rounds.find(
+      (round) => round.roundStatus === "completed",
+    );
+    if (latestCompleted) {
+      return latestCompleted;
+    }
+  }
+  return null;
 }
 
 // A phase's player-meeting seats in table order (the index sorts by

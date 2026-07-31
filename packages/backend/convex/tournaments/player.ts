@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 
-import type { Doc, Id } from "../_generated/dataModel";
+import type { Id } from "../_generated/dataModel";
 import { mutation, query } from "../_generated/server";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import {
@@ -10,6 +10,7 @@ import {
 } from "../model/auditLog";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
 import {
+  latestCompletedRound,
   requireDecisiveEliminationResult,
   requirePhase,
   roundNumberInPhase,
@@ -27,7 +28,6 @@ import {
 } from "../model/registrations";
 import {
   MAX_MATCHES_PER_PLAYER,
-  MAX_ROUNDS,
   matchLogForRegistration,
 } from "../model/playerResults";
 import { matchPointsForResult } from "../model/standings";
@@ -243,27 +243,7 @@ export const getLatestStandings = query({
       ctx,
       args.tournamentId,
     );
-    // Later phases only have rounds once earlier ones finish, so walking the
-    // phases newest-first finds the tournament's latest completed round —
-    // including the previous phase's final round while a new phase's first
-    // round is still being played.
-    let latestCompleted: Doc<"tournamentRounds"> | undefined;
-    const phases = await phasesInOrder(ctx, args.tournamentId);
-    for (const phase of [...phases].reverse()) {
-      const rounds = await ctx.db
-        .query("tournamentRounds")
-        .withIndex("by_tournamentPhaseId_and_roundNumber", (q) =>
-          q.eq("tournamentPhaseId", phase._id),
-        )
-        .order("desc")
-        .take(MAX_ROUNDS);
-      latestCompleted = rounds.find(
-        (round) => round.roundStatus === "completed",
-      );
-      if (latestCompleted) {
-        break;
-      }
-    }
+    const latestCompleted = await latestCompletedRound(ctx, args.tournamentId);
     if (!latestCompleted) {
       return null;
     }
