@@ -1,7 +1,6 @@
-import { useAuth } from "@clerk/expo";
 import { AuthView, UserButton } from "@clerk/expo/native";
 import { api } from "@tournament-os/backend/convex/_generated/api";
-import { useQuery } from "convex/react";
+import { useConvexAuth, useQuery } from "convex/react";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
@@ -16,19 +15,22 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function HomeScreen() {
-  // `treatPendingAsSignedOut: false` keeps users with pending session tasks
-  // (e.g. MFA) from being bounced back to the signed-out view.
-  const { isLoaded, isSignedIn } = useAuth({ treatPendingAsSignedOut: false });
+  // Gate on Convex's auth state, not raw Clerk state: isLoading stays true
+  // through the window where Clerk is signed in but the token hasn't been
+  // confirmed by the Convex backend yet. During that window listMyTournaments
+  // would run unauthenticated and return [] — rendering a false "No active
+  // tournaments" — so the query must not fire until isAuthenticated.
+  const { isLoading: authLoading, isAuthenticated } = useConvexAuth();
   const router = useRouter();
   const [authOpen, setAuthOpen] = useState(false);
 
   // Player's active tournaments. `undefined` while loading (Convex convention).
   const tournaments = useQuery(
     api.tournaments.registrations.listMyTournaments,
-    isSignedIn ? {} : "skip",
+    isAuthenticated ? {} : "skip",
   );
 
-  if (!isLoaded) {
+  if (authLoading) {
     return (
       <View style={styles.centered}>
         <ActivityIndicator />
@@ -36,7 +38,10 @@ export default function HomeScreen() {
     );
   }
 
-  if (!isSignedIn) {
+  // Signed out. Convex also treats Clerk sessions with pending tasks (e.g.
+  // MFA) as signed out; AuthView completes those tasks too, so this branch
+  // is the path back to a working session rather than a dead end.
+  if (!isAuthenticated) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.signedOut}>
