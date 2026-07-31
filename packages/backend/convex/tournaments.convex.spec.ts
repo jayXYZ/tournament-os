@@ -760,6 +760,94 @@ test("unlisted registration events are direct-link accessible but absent from di
   expect(counts.tournament.confirmedRegistrationCount).toBe(1);
 });
 
+// F8: registerSelf's guard used to lump every non-cancelled row into a
+// blanket "Already registered". The reserved review-flow entry statuses
+// (pending, waitlisted, rejected — deliberate placeholders on
+// tournamentEntryStatusValidator with no writer yet) must each surface their
+// own honest error instead: none of them is a confirmed seat, and for a
+// rejected player the old message described the organizer's decision as the
+// player's own completed registration. The states are seeded directly via
+// ctx.db because no mutation writes them yet.
+test("registerSelf reports each entry status honestly instead of a blanket 'Already registered'", async () => {
+  const t = convexTest(schema, modules);
+  const { organizationId } = await seedOrganizer(t);
+  const organizer = t.withIdentity(organizerIdentity);
+  const tournamentId = await organizer.mutation(
+    api.tournaments.lifecycle.createTournamentWithPhases,
+    {
+      organizationId,
+      name: "Reserved Entry States",
+      startDate: Date.now(),
+      playerCapacity: 8,
+      format: "standard",
+      phases: [{ phaseOrder: 1, phaseRoundMode: "dynamic" }],
+    },
+  );
+  await organizer.mutation(api.tournaments.lifecycle.publishTournament, {
+    tournamentId,
+  });
+  const player = t.withIdentity({
+    issuer: "https://convex.test",
+    subject: "reserved-states-player",
+    tokenIdentifier: "https://convex.test|reserved-states-player",
+    email: "reserved-states@example.test",
+    name: "Reserved States Player",
+  });
+  const registrationId = await player.mutation(
+    api.tournaments.registrations.registerSelf,
+    { tournamentId },
+  );
+
+  // A confirmed seat still reads as already registered.
+  await expect(
+    player.mutation(api.tournaments.registrations.registerSelf, {
+      tournamentId,
+    }),
+  ).rejects.toThrow("Already registered");
+
+  // Stamp each reserved state the way setRegistrationState would (a
+  // non-confirmed entry carries no participation status) and pin its message.
+  const stampEntryStatus = async (
+    entryStatus: "pending" | "waitlisted" | "rejected",
+  ) =>
+    await t.run(async (ctx) => {
+      await ctx.db.patch(registrationId, {
+        entryStatus,
+        participationStatus: undefined,
+      });
+    });
+
+  await stampEntryStatus("pending");
+  await expect(
+    player.mutation(api.tournaments.registrations.registerSelf, {
+      tournamentId,
+    }),
+  ).rejects.toThrow("Your registration is pending review");
+
+  await stampEntryStatus("waitlisted");
+  await expect(
+    player.mutation(api.tournaments.registrations.registerSelf, {
+      tournamentId,
+    }),
+  ).rejects.toThrow("You are on the waitlist for this event");
+
+  // A rejection is an organizer decision: registerSelf must neither bypass it
+  // nor misreport it as the player's own completed registration.
+  await stampEntryStatus("rejected");
+  await expect(
+    player.mutation(api.tournaments.registrations.registerSelf, {
+      tournamentId,
+    }),
+  ).rejects.toThrow("Your registration was declined");
+
+  // The blocked attempts left the row exactly as stamped — no confirmed
+  // re-entry slipped through. (Every attempt above rejected, so the insert
+  // branch past the guard was never reached either.)
+  const row = await t.run(async (ctx) => await ctx.db.get(registrationId));
+  expect(row).toMatchObject({ entryStatus: "rejected" });
+  expect(row?.participationStatus).toBeUndefined();
+});
+
 test("updateTournamentDetails stores trimmed markdown and clears it when emptied", async () => {
   const t = convexTest(schema, modules);
   const now = Date.now();

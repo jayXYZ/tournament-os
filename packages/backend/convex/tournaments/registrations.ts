@@ -49,6 +49,41 @@ async function registrationRows(
   );
 }
 
+// What finding an existing registration row means for a new registerSelf
+// attempt, per entry status: the error that blocks it, or null for
+// "cancelled" — the one state whose released seat the re-registration path
+// reuses. The reserved review-flow states (pending/waitlisted/rejected — see
+// tournamentEntryStatusValidator; no writer exists yet) each get their own
+// honest message rather than a blanket "Already registered": a pending or
+// waitlisted row is a live application a second submission would duplicate,
+// and a rejected row records an organizer decision that silently
+// re-registering would overturn with one click — the way back from a
+// rejection is a deliberate future path (organizer reversal or an explicit
+// reapply), never this mutation quietly stamping the entry confirmed.
+function existingEntryBlocksRegistration(
+  entryStatus: Doc<"tournamentRegistrations">["entryStatus"],
+): string | null {
+  switch (entryStatus) {
+    case "confirmed":
+      return "Already registered";
+    case "pending":
+      return "Your registration is pending review";
+    case "waitlisted":
+      return "You are on the waitlist for this event";
+    case "rejected":
+      return "Your registration was declined";
+    case "cancelled":
+      return null;
+    default:
+      // A new entry status must decide what registerSelf does with it: the
+      // `satisfies never` fails the build until this switch handles it, and
+      // this throw catches a rogue runtime value.
+      throw new Error(
+        `Unhandled registration entry status: ${entryStatus satisfies never}`,
+      );
+  }
+}
+
 export const registerSelf = mutation({
   args: { tournamentId: v.id("tournaments") },
   handler: async (ctx, args): Promise<Id<"tournamentRegistrations">> => {
@@ -66,8 +101,13 @@ export const registerSelf = mutation({
       args.tournamentId,
       user._id,
     );
-    if (existing && existing.entryStatus !== "cancelled") {
-      throw new Error("Already registered");
+    if (existing) {
+      const blockedBecause = existingEntryBlocksRegistration(
+        existing.entryStatus,
+      );
+      if (blockedBecause !== null) {
+        throw new Error(blockedBecause);
+      }
     }
 
     requireCapacityAvailable(tournament);
