@@ -1,3 +1,5 @@
+import { ConvexError } from "convex/values";
+
 import type { Doc, Id } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
 import { currentUserOrNull, getActiveMembership } from "./access";
@@ -20,6 +22,122 @@ export const MAX_MATCHES_PER_PLAYER = 256;
 // enrichment (tournament, phases, rounds, and standings reads) comfortably
 // below transaction limits even when a caller requests an enormous page.
 export const MAX_PROFILE_RESULTS_PAGE_SIZE = 50;
+
+// getPublicPlayerResults tops up hidden rows server-side: it keeps walking the
+// registrations index past rows the viewer can't see until the page is full.
+// This caps how many raw index rows one request may examine, because every raw
+// row costs a tournament read (plus membership/registration checks for
+// non-public events) and a viewer-hidden stretch can be arbitrarily long.
+// Hitting the cap with nothing visible returns an empty page with
+// isDone: false and a cursor advanced past every examined row, so each retry
+// makes budget-sized progress instead of dead-ending. Worst case per request:
+// ~3 cheap reads per raw row plus full enrichment for at most
+// MAX_PROFILE_RESULTS_PAGE_SIZE visible rows — comfortably inside Convex's
+// 16k-document query read limit.
+export const PROFILE_RESULTS_RAW_READ_BUDGET = 300;
+
+// getPublicPlayerResults pages with an explicit index position instead of
+// ctx.db's .paginate() cursor: Convex allows only one .paginate() call per
+// query, so a server-side top-up loop has to seek the index itself. The
+// position is the (tournamentStartDate, _creationTime) of the last raw row
+// examined — _creationTime is the index's implicit final column and unique
+// within a table, so the pair totally orders one user's confirmed rows.
+export type ProfileResultsCursorPosition = {
+  startDate: number;
+  creationTime: number;
+};
+
+const PROFILE_RESULTS_CURSOR_PREFIX = "profileResults.v1.";
+
+export function encodeProfileResultsCursor(
+  position: ProfileResultsCursorPosition,
+): string {
+  return (
+    PROFILE_RESULTS_CURSOR_PREFIX +
+    JSON.stringify([position.startDate, position.creationTime])
+  );
+}
+
+// Malformed cursors (hand-edited, or a stale tab holding a cursor from before
+// this format existed) throw the InvalidCursor handshake that convex/react's
+// usePaginatedQuery recognizes — by ConvexError data shape and by message
+// substring — and answers by resetting pagination from the first page, the
+// same recovery a corrupt native paginate cursor gets.
+export function decodeProfileResultsCursor(
+  cursor: string,
+): ProfileResultsCursorPosition {
+  if (cursor.startsWith(PROFILE_RESULTS_CURSOR_PREFIX)) {
+    try {
+      const parsed: unknown = JSON.parse(
+        cursor.slice(PROFILE_RESULTS_CURSOR_PREFIX.length),
+      );
+      if (
+        Array.isArray(parsed) &&
+        parsed.length === 2 &&
+        typeof parsed[0] === "number" &&
+        Number.isFinite(parsed[0]) &&
+        typeof parsed[1] === "number" &&
+        Number.isFinite(parsed[1])
+      ) {
+        return { startDate: parsed[0], creationTime: parsed[1] };
+      }
+    } catch {
+      // Fall through to the InvalidCursor throw below.
+    }
+  }
+  throw new ConvexError({
+    isConvexSystemError: true,
+    paginationError: "InvalidCursor",
+    message: "InvalidCursor: malformed player results cursor",
+  });
+}
+
+// Raw index rows strictly after `position` in profile-history order
+// (tournamentStartDate desc, then _creationTime desc). A composite-key seek
+// needs up to two ranges: the remainder of the cursor row's start date, then
+// strictly older start dates. Returning fewer than `limit` rows means the
+// index has no rows past the ones returned.
+export async function takeConfirmedRegistrationsAfter(
+  ctx: QueryCtx,
+  userId: Id<"users">,
+  position: ProfileResultsCursorPosition | null,
+  limit: number,
+) {
+  if (position === null) {
+    return await ctx.db
+      .query("tournamentRegistrations")
+      .withIndex("by_userId_and_entryStatus_and_tournamentStartDate", (q) =>
+        q.eq("userId", userId).eq("entryStatus", "confirmed"),
+      )
+      .order("desc")
+      .take(limit);
+  }
+  const sameStartDate = await ctx.db
+    .query("tournamentRegistrations")
+    .withIndex("by_userId_and_entryStatus_and_tournamentStartDate", (q) =>
+      q
+        .eq("userId", userId)
+        .eq("entryStatus", "confirmed")
+        .eq("tournamentStartDate", position.startDate)
+        .lt("_creationTime", position.creationTime),
+    )
+    .order("desc")
+    .take(limit);
+  if (sameStartDate.length >= limit) {
+    return sameStartDate;
+  }
+  const olderStartDates = await ctx.db
+    .query("tournamentRegistrations")
+    .withIndex("by_userId_and_entryStatus_and_tournamentStartDate", (q) =>
+      q
+        .eq("userId", userId)
+        .eq("entryStatus", "confirmed")
+        .lt("tournamentStartDate", position.startDate),
+    )
+    .order("desc")
+    .take(limit - sameStartDate.length);
+  return [...sameStartDate, ...olderStartDates];
+}
 
 // Every public profile query authorizes through this single gate so
 // enforcement never depends on what the client already fetched. Returns null

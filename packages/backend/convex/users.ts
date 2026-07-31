@@ -7,11 +7,15 @@ import { requireIdentity } from "./auth";
 import { clampPageSize } from "./model/pagination";
 import {
   MAX_PROFILE_RESULTS_PAGE_SIZE,
+  PROFILE_RESULTS_RAW_READ_BUDGET,
   canViewHistory,
+  decodeProfileResultsCursor,
+  encodeProfileResultsCursor,
   finalStandingForRegistration,
   matchLogForRegistration,
   qualifyingCompletedTournament,
   resolvePublicPlayer,
+  takeConfirmedRegistrationsAfter,
 } from "./model/playerResults";
 import {
   playerVisibleParticipationStatus,
@@ -88,18 +92,28 @@ export const getPublicPlayer = query({
   },
 });
 
-// Past tournament results for a profile page. Pages with .paginate() so
-// reactive re-runs keep the client's journal-pinned page boundaries (rows
-// appearing or disappearing between loaded pages can't be skipped or shown
-// twice) and malformed cursors surface as Convex InvalidCursor errors, which
-// usePaginatedQuery answers by resetting instead of crashing. Visibility is
-// applied per row AFTER pagination, so hidden registrations shrink their page
-// — possibly to empty — rather than being topped up; usePaginatedQuery
-// handles short pages, and Convex cursors are opaque, so a boundary that
-// lands on a hidden row reveals nothing about it. Note this means a returned
-// page can be entirely empty while `isDone` is still false (a hollow page) —
-// callers (see TournamentHistory in user-public-page.tsx) must keep loading
-// further pages rather than rendering the empty page as "no history".
+// Past tournament results for a profile page. Rows the viewer can't see
+// (in-progress events, test events, private/unlisted tournaments without
+// their own access — see qualifyingCompletedTournament, whose rules this
+// query never bends) are topped up SERVER-SIDE: the handler seeks the
+// registrations index itself, skipping hidden rows until the page is full,
+// the index is exhausted, or PROFILE_RESULTS_RAW_READ_BUDGET raw rows have
+// been examined. The paging contract callers get:
+//   - a non-empty page: up to numItems visible results, newest first;
+//   - an empty page with isDone: true — the history is truly exhausted;
+//   - an empty page with isDone: false — ONLY when the read budget ran out
+//     inside an all-hidden stretch; continueCursor has then advanced past
+//     every examined row, so simply loading more always makes budget-sized
+//     progress and terminates (see TournamentHistory in user-public-page.tsx).
+// Convex permits one .paginate() per query, so the top-up loop uses an
+// explicit cursor (encoded index position) instead of the native paginate
+// cursor. Trade-off: no query journal, so reactive re-runs don't pin loaded
+// page boundaries — a row completing mid-session can transiently vanish or
+// duplicate at a boundary until pagination resets. Completed-tournament
+// history churns rarely, and in exchange every consumer (web today, native
+// next) gets "empty means done" without client-side compensation loops.
+// Malformed cursors throw the InvalidCursor handshake usePaginatedQuery
+// answers by resetting.
 export const getPublicPlayerResults = query({
   args: {
     publicCode: v.string(),
@@ -120,53 +134,91 @@ export const getPublicPlayerResults = query({
       args.paginationOpts.numItems,
       MAX_PROFILE_RESULTS_PAGE_SIZE,
     );
-
-    const paginated = await ctx.db
-      .query("tournamentRegistrations")
-      .withIndex("by_userId_and_entryStatus_and_tournamentStartDate", (q) =>
-        q.eq("userId", user._id).eq("entryStatus", "confirmed"),
-      )
-      .order("desc")
-      .paginate({ ...args.paginationOpts, numItems });
+    let position =
+      args.paginationOpts.cursor === null
+        ? null
+        : decodeProfileResultsCursor(args.paginationOpts.cursor);
 
     const membershipCache = new Map<Id<"organizations">, boolean>();
     const results = [];
-    for (const registration of paginated.page) {
-      const tournament = await qualifyingCompletedTournament(
-        ctx,
-        registration,
-        viewer,
-        membershipCache,
+    let rowsExamined = 0;
+    let exhausted = false;
+    // Batches start at the requested page size (the common case: everything
+    // visible, one batch) and double after each miss so a hidden stretch
+    // costs O(log budget) index seeks rather than one per page-sized bite.
+    let batchSize = numItems;
+
+    while (
+      results.length < numItems &&
+      rowsExamined < PROFILE_RESULTS_RAW_READ_BUDGET &&
+      !exhausted
+    ) {
+      const limit = Math.min(
+        batchSize,
+        PROFILE_RESULTS_RAW_READ_BUDGET - rowsExamined,
       );
-      if (!tournament) {
-        continue;
+      const batch = await takeConfirmedRegistrationsAfter(
+        ctx,
+        user._id,
+        position,
+        limit,
+      );
+      for (const registration of batch) {
+        rowsExamined += 1;
+        position = {
+          startDate: registration.tournamentStartDate,
+          creationTime: registration._creationTime,
+        };
+        const tournament = await qualifyingCompletedTournament(
+          ctx,
+          registration,
+          viewer,
+          membershipCache,
+        );
+        if (!tournament) {
+          continue;
+        }
+        const standing = await finalStandingForRegistration(
+          ctx,
+          tournament._id,
+          registration._id,
+        );
+        results.push({
+          tournamentId: tournament._id,
+          tournamentPublicCode: tournament.publicCode,
+          tournamentName: tournament.name,
+          startDate: tournament.startDate,
+          format: tournament.format,
+          registrationStatus:
+            playerVisibleParticipationStatus(
+              registration.participationStatus ?? null,
+            ) ?? "active",
+          finalRank: standing?.rank ?? null,
+          matchPoints: standing?.matchPoints ?? 0,
+          matchWins: standing?.matchWins ?? 0,
+          matchLosses: standing?.matchLosses ?? 0,
+          matchDraws: standing?.matchDraws ?? 0,
+        });
+        if (results.length >= numItems) {
+          // Position sits on the last enriched row; the unprocessed tail of
+          // this batch is re-read by the next page rather than skipped.
+          break;
+        }
       }
-      const standing = await finalStandingForRegistration(
-        ctx,
-        tournament._id,
-        registration._id,
-      );
-      results.push({
-        tournamentId: tournament._id,
-        tournamentPublicCode: tournament.publicCode,
-        tournamentName: tournament.name,
-        startDate: tournament.startDate,
-        format: tournament.format,
-        registrationStatus:
-          playerVisibleParticipationStatus(
-            registration.participationStatus ?? null,
-          ) ?? "active",
-        finalRank: standing?.rank ?? null,
-        matchPoints: standing?.matchPoints ?? 0,
-        matchWins: standing?.matchWins ?? 0,
-        matchLosses: standing?.matchLosses ?? 0,
-        matchDraws: standing?.matchDraws ?? 0,
-      });
+      // Reaching here without a full page means the whole batch was
+      // processed, so a short batch proves the index holds nothing further.
+      if (results.length < numItems && batch.length < limit) {
+        exhausted = true;
+      }
+      batchSize = Math.min(batchSize * 2, PROFILE_RESULTS_RAW_READ_BUDGET);
     }
 
-    // Spread keeps the paginate contract's extra fields (splitCursor,
-    // pageStatus) intact for the client's page-splitting machinery.
-    return { ...paginated, page: results };
+    return {
+      page: results,
+      isDone: exhausted,
+      continueCursor:
+        position === null ? "" : encodeProfileResultsCursor(position),
+    };
   },
 });
 

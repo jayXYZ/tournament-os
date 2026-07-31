@@ -1,7 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import { usePaginatedQuery, useQuery } from 'convex/react'
 import { ArrowLeft, EyeOff, SearchX, Settings } from 'lucide-react'
-import { useEffect, useRef } from 'react'
+import { useEffect } from 'react'
 import { api } from '@tournament-os/backend/convex/_generated/api'
 import { PublicSiteHeader } from '@/components/shared/public-site-header'
 import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'
@@ -23,15 +23,6 @@ import {
 import { UserPublicTournamentCard } from '@/components/user-public-tournament-card'
 
 const HISTORY_PAGE_SIZE = 10
-
-// getPublicPlayerResults filters registrations (test events, unfinished
-// tournaments, visibility) AFTER pagination, so a fetched page can come back
-// empty without the cursor being exhausted — e.g. a player whose most recent
-// entries are all in-progress. Rather than showing a bare heading over zero
-// cards, auto-load additional pages while the accumulated result set is still
-// empty. Bounded so a player with a long run of non-qualifying registrations
-// can't trigger unbounded fetching.
-const HISTORY_AUTO_LOAD_LIMIT = 5
 
 type PublicPlayer = {
   publicCode: number
@@ -193,39 +184,36 @@ function TournamentHistory({ publicCode }: { publicCode: string }) {
     { initialNumItems: HISTORY_PAGE_SIZE },
   )
 
-  // Counts automatic loadMore calls so a run of non-qualifying registrations
-  // can't auto-fetch forever. Reset whenever the profile changes, since this
-  // component instance can be reused across a client-side navigation.
-  const autoLoadCountRef = useRef(0)
+  // getPublicPlayerResults tops up hidden rows server-side, so an empty page
+  // means the history is exhausted — with one exception: a hidden stretch
+  // longer than the server's read budget returns an empty not-done page whose
+  // cursor has already advanced past the whole stretch. Continue
+  // automatically; no cap is needed because every call makes budget-sized
+  // progress through a finite index, so this always terminates.
   useEffect(() => {
-    autoLoadCountRef.current = 0
-  }, [publicCode])
-
-  const canAutoLoadMore =
-    status === 'CanLoadMore' &&
-    autoLoadCountRef.current < HISTORY_AUTO_LOAD_LIMIT
-
-  useEffect(() => {
-    if (results.length === 0 && canAutoLoadMore) {
-      autoLoadCountRef.current += 1
+    if (results.length === 0 && status === 'CanLoadMore') {
       loadMore(HISTORY_PAGE_SIZE)
     }
-  }, [results.length, canAutoLoadMore, loadMore])
+  }, [results.length, status, loadMore])
 
-  if (status === 'LoadingFirstPage') {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Tournament history</CardTitle>
-          <CardDescription>Fetching past results.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <TableLoadingSkeleton />
-        </CardContent>
-      </Card>
-    )
-  }
-  if (results.length === 0 && status === 'Exhausted') {
+  // Never render the "Tournament history" heading/grid over zero cards:
+  // while anything is still loading (first page, or the rare budget-bounded
+  // continuation above) show the skeleton, and only an exhausted cursor may
+  // declare the history empty.
+  if (results.length === 0) {
+    if (status !== 'Exhausted') {
+      return (
+        <Card>
+          <CardHeader>
+            <CardTitle>Tournament history</CardTitle>
+            <CardDescription>Fetching past results.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <TableLoadingSkeleton />
+          </CardContent>
+        </Card>
+      )
+    }
     return (
       <Empty className="border bg-card">
         <EmptyHeader>
@@ -236,46 +224,6 @@ function TournamentHistory({ publicCode }: { publicCode: string }) {
           </EmptyDescription>
         </EmptyHeader>
       </Empty>
-    )
-  }
-
-  // Nothing qualifying has turned up yet, but the cursor isn't exhausted —
-  // either still auto-checking further back, or the auto-load budget ran out
-  // and the visitor has to opt in to keep checking. Either way, never render
-  // the "Tournament history" heading/grid over zero cards.
-  if (results.length === 0) {
-    if (status === 'LoadingMore' || canAutoLoadMore) {
-      return (
-        <Card>
-          <CardHeader>
-            <CardTitle>Tournament history</CardTitle>
-            <CardDescription>Checking older tournaments…</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <TableLoadingSkeleton />
-          </CardContent>
-        </Card>
-      )
-    }
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Tournament history</CardTitle>
-          <CardDescription>
-            No completed tournaments found yet in this player&apos;s most
-            recent entries — there may be more further back.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex justify-center">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => loadMore(HISTORY_PAGE_SIZE)}
-          >
-            Keep checking for older tournaments
-          </Button>
-        </CardContent>
-      </Card>
     )
   }
 

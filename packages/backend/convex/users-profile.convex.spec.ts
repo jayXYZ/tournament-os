@@ -5,7 +5,10 @@ import { expect, test, vi } from "vitest";
 
 import { api } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
-import { MAX_PROFILE_RESULTS_PAGE_SIZE } from "./model/playerResults";
+import {
+  MAX_PROFILE_RESULTS_PAGE_SIZE,
+  PROFILE_RESULTS_RAW_READ_BUDGET,
+} from "./model/playerResults";
 import { START_DATE_SYNC_BATCH_SIZE } from "./model/registrations";
 import schema from "./schema";
 import {
@@ -402,10 +405,10 @@ test("getPublicPlayerResults pages through tournaments sharing a start date", as
   ]);
 });
 
-// Visibility filters each page AFTER pagination, so a page whose index rows
-// are all hidden comes back short or empty (with isDone: false) rather than
-// topped up — usePaginatedQuery keeps paging through short pages, and the
-// opaque system cursor reveals nothing about the hidden rows it crossed.
+// Hidden rows are topped up server-side: the query seeks past registrations
+// the viewer can't see until the page fills, so every returned page holds
+// only visible results and the cursor silently crosses hidden rows without
+// revealing anything about them.
 test("getPublicPlayerResults filters hidden registrations out of every page", async () => {
   const t = convexTest(schema, modules);
   const { organizationId, userId: organizerId } = await seedOrganizer(
@@ -526,6 +529,192 @@ test("getPublicPlayerResults exhausts an entirely hidden history in one page", a
     cursor: null,
   });
   expect(page).toMatchObject({ page: [], isDone: true });
+});
+
+// The server-side top-up contract: visible rows buried behind a hidden
+// stretch far wider than the requested page still arrive in ONE request, and
+// the same request reports exhaustion — a consumer that renders an empty page
+// as "no history" is never wrong while the budget holds.
+test("getPublicPlayerResults surfaces sparse visible rows in a single request", async () => {
+  const t = convexTest(schema, modules);
+  const { organizationId, userId: organizerId } = await seedOrganizer(
+    t,
+    ORGANIZER_PUBLIC_CODE,
+  );
+  const [userId] = await seedUsers(t, 1);
+  const now = Date.now();
+  const hiddenRows = 25;
+
+  await t.run(async (ctx) => {
+    const hiddenTournamentId = await ctx.db.insert("tournaments", {
+      name: "Hidden Club Event",
+      publicCode: 6_000,
+      organizationId,
+      createdBy: organizerId,
+      visibility: "private",
+      lifecycle: "completed",
+      startDate: now,
+      playerCapacity: 64,
+      format: "standard",
+      isTestEvent: false,
+      autoPublishPairings: false,
+      confirmedRegistrationCount: hiddenRows,
+      updatedAt: now,
+    });
+    // Newest 25 index rows are all hidden from anonymous viewers.
+    for (let index = 0; index < hiddenRows; index += 1) {
+      await ctx.db.insert("tournamentRegistrations", {
+        tournamentId: hiddenTournamentId,
+        userId,
+        tournamentStartDate: now - index * 1_000,
+        entryStatus: "confirmed",
+        participationStatus: "active",
+        createdAt: now + index,
+        updatedAt: now,
+      });
+    }
+    for (const [index, name] of [
+      "Visible Beyond Hidden A",
+      "Visible Beyond Hidden B",
+    ].entries()) {
+      const startDate = now - 100_000 - index * 1_000;
+      const tournamentId = await ctx.db.insert("tournaments", {
+        name,
+        publicCode: 6_100 + index,
+        organizationId,
+        createdBy: organizerId,
+        visibility: "public",
+        lifecycle: "completed",
+        startDate,
+        playerCapacity: 16,
+        format: "standard",
+        isTestEvent: false,
+        autoPublishPairings: false,
+        confirmedRegistrationCount: 1,
+        updatedAt: now,
+      });
+      await ctx.db.insert("tournamentRegistrations", {
+        tournamentId,
+        userId,
+        tournamentStartDate: startDate,
+        entryStatus: "confirmed",
+        participationStatus: "active",
+        createdAt: now + hiddenRows + index,
+        updatedAt: now,
+      });
+    }
+  });
+
+  const page = await playerResultsPage(t, playerPublicCode(1), {
+    numItems: 10,
+    cursor: null,
+  });
+  expect(page.page.map((result) => result.tournamentName)).toEqual([
+    "Visible Beyond Hidden A",
+    "Visible Beyond Hidden B",
+  ]);
+  expect(page.isDone).toBe(true);
+});
+
+// The one case where an empty page may carry isDone: false — a hidden stretch
+// wider than the raw read budget. The cursor must still have advanced past
+// every examined row so the follow-up call lands on the visible remainder,
+// and the visibility verdict for each row is unchanged: nothing hidden leaks,
+// nothing visible is dropped.
+test("getPublicPlayerResults caps an all-hidden scan at the read budget but keeps advancing", async () => {
+  const t = convexTest(schema, modules);
+  const { organizationId, userId: organizerId } = await seedOrganizer(
+    t,
+    ORGANIZER_PUBLIC_CODE,
+  );
+  const [userId] = await seedUsers(t, 1);
+  const now = Date.now();
+  const hiddenRows = PROFILE_RESULTS_RAW_READ_BUDGET + 1;
+
+  await t.run(async (ctx) => {
+    const hiddenTournamentId = await ctx.db.insert("tournaments", {
+      name: "Hidden Marathon Event",
+      publicCode: 7_000,
+      organizationId,
+      createdBy: organizerId,
+      visibility: "private",
+      lifecycle: "completed",
+      startDate: now,
+      playerCapacity: 64,
+      format: "standard",
+      isTestEvent: false,
+      autoPublishPairings: false,
+      confirmedRegistrationCount: hiddenRows,
+      updatedAt: now,
+    });
+    for (let index = 0; index < hiddenRows; index += 1) {
+      await ctx.db.insert("tournamentRegistrations", {
+        tournamentId: hiddenTournamentId,
+        userId,
+        tournamentStartDate: now - index * 1_000,
+        entryStatus: "confirmed",
+        participationStatus: "active",
+        createdAt: now + index,
+        updatedAt: now,
+      });
+    }
+    const visibleStartDate = now - 1_000_000;
+    const visibleTournamentId = await ctx.db.insert("tournaments", {
+      name: "Visible Beyond Budget",
+      publicCode: 7_100,
+      organizationId,
+      createdBy: organizerId,
+      visibility: "public",
+      lifecycle: "completed",
+      startDate: visibleStartDate,
+      playerCapacity: 16,
+      format: "standard",
+      isTestEvent: false,
+      autoPublishPairings: false,
+      confirmedRegistrationCount: 1,
+      updatedAt: now,
+    });
+    await ctx.db.insert("tournamentRegistrations", {
+      tournamentId: visibleTournamentId,
+      userId,
+      tournamentStartDate: visibleStartDate,
+      entryStatus: "confirmed",
+      participationStatus: "active",
+      createdAt: now + hiddenRows,
+      updatedAt: now,
+    });
+  });
+
+  const first = await playerResultsPage(t, playerPublicCode(1), {
+    numItems: 10,
+    cursor: null,
+  });
+  expect(first.page).toEqual([]);
+  expect(first.isDone).toBe(false);
+  expect(first.continueCursor).not.toBe("");
+
+  const second = await playerResultsPage(t, playerPublicCode(1), {
+    numItems: 10,
+    cursor: first.continueCursor,
+  });
+  expect(second.page.map((result) => result.tournamentName)).toEqual([
+    "Visible Beyond Budget",
+  ]);
+  expect(second.isDone).toBe(true);
+});
+
+// Custom cursors must fail the same way native paginate cursors do:
+// usePaginatedQuery recognizes the InvalidCursor handshake and resets
+// pagination instead of crashing the page.
+test("getPublicPlayerResults rejects malformed cursors with InvalidCursor", async () => {
+  const t = convexTest(schema, modules);
+  await seedUsers(t, 1);
+  await expect(
+    playerResultsPage(t, playerPublicCode(1), {
+      numItems: 10,
+      cursor: "garbage",
+    }),
+  ).rejects.toThrow(/InvalidCursor/);
 });
 
 test("tournament date edits keep registration history ordering synchronized", async () => {
