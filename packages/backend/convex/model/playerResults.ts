@@ -184,12 +184,15 @@ export function canViewHistory({
 // behind — so only "public" events show unconditionally, while unlisted and
 // private ones stay visible to the viewer's own registrations and org
 // memberships. The membership cache spans a results loop so several such
-// events from one organization cost a single membership read.
+// events from one organization cost a single membership read; it memoizes the
+// in-flight promise (set synchronously, before the first await) so gates
+// evaluated concurrently for one batch share that single read instead of
+// racing duplicate fetches.
 export async function viewerCanSeeTournament(
   ctx: QueryCtx,
   tournament: Doc<"tournaments">,
   viewer: Doc<"users"> | null,
-  membershipCache: Map<Id<"organizations">, boolean>,
+  membershipCache: Map<Id<"organizations">, Promise<boolean>>,
 ) {
   if (tournament.visibility === "public" && isPubliclyViewable(tournament)) {
     return true;
@@ -200,15 +203,14 @@ export async function viewerCanSeeTournament(
 
   let isMember = membershipCache.get(tournament.organizationId);
   if (isMember === undefined) {
-    isMember =
-      (await getActiveMembership(
-        ctx,
-        tournament.organizationId,
-        viewer._id,
-      )) !== null;
+    isMember = getActiveMembership(
+      ctx,
+      tournament.organizationId,
+      viewer._id,
+    ).then((membership) => membership !== null);
     membershipCache.set(tournament.organizationId, isMember);
   }
-  if (isMember) {
+  if (await isMember) {
     return true;
   }
 
@@ -228,7 +230,7 @@ export async function qualifyingCompletedTournament(
   ctx: QueryCtx,
   registration: Doc<"tournamentRegistrations">,
   viewer: Doc<"users"> | null,
-  membershipCache: Map<Id<"organizations">, boolean>,
+  membershipCache: Map<Id<"organizations">, Promise<boolean>>,
 ) {
   if (registration.entryStatus !== "confirmed") {
     return null;

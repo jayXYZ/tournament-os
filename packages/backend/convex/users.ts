@@ -4,6 +4,7 @@ import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
 import { requireIdentity } from "./auth";
+import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "./model/batching";
 import { clampPageSize } from "./model/pagination";
 import {
   MAX_PROFILE_RESULTS_PAGE_SIZE,
@@ -139,7 +140,7 @@ export const getPublicPlayerResults = query({
         ? null
         : decodeProfileResultsCursor(args.paginationOpts.cursor);
 
-    const membershipCache = new Map<Id<"organizations">, boolean>();
+    const membershipCache = new Map<Id<"organizations">, Promise<boolean>>();
     const results = [];
     let rowsExamined = 0;
     let exhausted = false;
@@ -163,48 +164,84 @@ export const getPublicPlayerResults = query({
         position,
         limit,
       );
-      for (const registration of batch) {
-        rowsExamined += 1;
-        position = {
-          startDate: registration.tournamentStartDate,
-          creationTime: registration._creationTime,
-        };
-        const tournament = await qualifyingCompletedTournament(
-          ctx,
-          registration,
-          viewer,
-          membershipCache,
-        );
+      // The visibility gate runs over the whole fetched batch concurrently:
+      // per-row verdicts are independent, and concurrent misses on one
+      // organization share a single membership read through the
+      // promise-memoizing membershipCache. Verdicts are consumed strictly in
+      // index order below, so page contents, cursor placement, and budget
+      // accounting match the previous row-at-a-time walk exactly; the only
+      // extra work is gate reads for a batch tail past the fill point, which
+      // never influences the returned page, cursor, or isDone.
+      const verdicts = await mapAsyncInBatches(
+        batch,
+        DATABASE_IO_BATCH_SIZE,
+        (registration) =>
+          qualifyingCompletedTournament(
+            ctx,
+            registration,
+            viewer,
+            membershipCache,
+          ),
+      );
+
+      const pageRows = [];
+      let consumed = 0;
+      for (let index = 0; index < batch.length; index += 1) {
+        consumed = index + 1;
+        const tournament = verdicts[index];
         if (!tournament) {
           continue;
         }
-        const standing = await finalStandingForRegistration(
-          ctx,
-          tournament._id,
-          registration._id,
-        );
-        results.push({
-          tournamentId: tournament._id,
-          tournamentPublicCode: tournament.publicCode,
-          tournamentName: tournament.name,
-          startDate: tournament.startDate,
-          format: tournament.format,
-          registrationStatus:
-            playerVisibleParticipationStatus(
-              registration.participationStatus ?? null,
-            ) ?? "active",
-          finalRank: standing?.rank ?? null,
-          matchPoints: standing?.matchPoints ?? 0,
-          matchWins: standing?.matchWins ?? 0,
-          matchLosses: standing?.matchLosses ?? 0,
-          matchDraws: standing?.matchDraws ?? 0,
-        });
-        if (results.length >= numItems) {
-          // Position sits on the last enriched row; the unprocessed tail of
-          // this batch is re-read by the next page rather than skipped.
+        pageRows.push({ registration: batch[index], tournament });
+        if (results.length + pageRows.length >= numItems) {
+          // Position sits on the last row consumed onto the page; the
+          // unconsumed tail of this batch is re-read by the next page rather
+          // than skipped.
           break;
         }
       }
+      rowsExamined += consumed;
+      if (consumed > 0) {
+        const lastConsumed = batch[consumed - 1];
+        position = {
+          startDate: lastConsumed.tournamentStartDate,
+          creationTime: lastConsumed._creationTime,
+        };
+      }
+
+      // Enrichment runs concurrently but only for rows that actually landed
+      // on the page — the fill decision above is already final, so hidden
+      // rows and the unconsumed tail never cost a standings walk.
+      results.push(
+        ...(await mapAsyncInBatches(
+          pageRows,
+          DATABASE_IO_BATCH_SIZE,
+          async ({ registration, tournament }) => {
+            const standing = await finalStandingForRegistration(
+              ctx,
+              tournament._id,
+              registration._id,
+            );
+            return {
+              tournamentId: tournament._id,
+              tournamentPublicCode: tournament.publicCode,
+              tournamentName: tournament.name,
+              startDate: tournament.startDate,
+              format: tournament.format,
+              registrationStatus:
+                playerVisibleParticipationStatus(
+                  registration.participationStatus ?? null,
+                ) ?? "active",
+              finalRank: standing?.rank ?? null,
+              matchPoints: standing?.matchPoints ?? 0,
+              matchWins: standing?.matchWins ?? 0,
+              matchLosses: standing?.matchLosses ?? 0,
+              matchDraws: standing?.matchDraws ?? 0,
+            };
+          },
+        )),
+      );
+
       // Reaching here without a full page means the whole batch was
       // processed, so a short batch proves the index holds nothing further.
       if (results.length < numItems && batch.length < limit) {
