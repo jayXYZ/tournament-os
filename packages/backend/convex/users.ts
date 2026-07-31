@@ -107,8 +107,12 @@ export const getPublicPlayer = query({
 //     every examined row, so simply loading more always makes budget-sized
 //     progress and terminates (see TournamentHistory in user-public-page.tsx).
 // Convex permits one .paginate() per query, so the top-up loop uses an
-// explicit cursor (encoded index position) instead of the native paginate
-// cursor. Trade-off: no query journal, so reactive re-runs don't pin loaded
+// explicit cursor instead of the native paginate cursor: the last examined
+// index position, AEAD-encrypted server-side (see
+// encodeProfileResultsCursor) because that position is often a row the
+// viewer is not allowed to see — native cursors get the same opacity from
+// the backend's own cursor encryption, and this one must not do worse.
+// Trade-off: no query journal, so reactive re-runs don't pin loaded
 // page boundaries — a row completing mid-session can transiently vanish or
 // duplicate at a boundary until pagination resets. Completed-tournament
 // history churns rarely, and in exchange every consumer (web today, native
@@ -138,7 +142,7 @@ export const getPublicPlayerResults = query({
     let position =
       args.paginationOpts.cursor === null
         ? null
-        : decodeProfileResultsCursor(args.paginationOpts.cursor);
+        : await decodeProfileResultsCursor(args.paginationOpts.cursor);
 
     const membershipCache = new Map<Id<"organizations">, Promise<boolean>>();
     const results = [];
@@ -254,7 +258,7 @@ export const getPublicPlayerResults = query({
       page: results,
       isDone: exhausted,
       continueCursor:
-        position === null ? "" : encodeProfileResultsCursor(position),
+        position === null ? "" : await encodeProfileResultsCursor(position),
     };
   },
 });

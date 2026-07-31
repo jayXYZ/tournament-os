@@ -408,7 +408,9 @@ test("getPublicPlayerResults pages through tournaments sharing a start date", as
 // Hidden rows are topped up server-side: the query seeks past registrations
 // the viewer can't see until the page fills, so every returned page holds
 // only visible results and the cursor silently crosses hidden rows without
-// revealing anything about them.
+// revealing anything about them — the cursor payload is encrypted precisely
+// because it can encode a hidden row's index position (see the opacity
+// assertions in the read-budget test below).
 test("getPublicPlayerResults filters hidden registrations out of every page", async () => {
   const t = convexTest(schema, modules);
   const { organizationId, userId: organizerId } = await seedOrganizer(
@@ -620,7 +622,11 @@ test("getPublicPlayerResults surfaces sparse visible rows in a single request", 
 // wider than the raw read budget. The cursor must still have advanced past
 // every examined row so the follow-up call lands on the visible remainder,
 // and the visibility verdict for each row is unchanged: nothing hidden leaks,
-// nothing visible is dropped.
+// nothing visible is dropped. The mid-stretch cursor here encodes a HIDDEN
+// row's index position, which is exactly why the payload is encrypted — the
+// assertions below pin that it carries no plaintext, that equal positions
+// encrypt identically (Convex queries must be deterministic), and that a
+// tampered cursor fails the AEAD check into the InvalidCursor reset.
 test("getPublicPlayerResults caps an all-hidden scan at the read budget but keeps advancing", async () => {
   const t = convexTest(schema, modules);
   const { organizationId, userId: organizerId } = await seedOrganizer(
@@ -693,6 +699,44 @@ test("getPublicPlayerResults caps an all-hidden scan at the read budget but keep
   expect(first.isDone).toBe(false);
   expect(first.continueCursor).not.toBe("");
 
+  // Opacity: the whole payload after the version prefix is one base64url
+  // ciphertext blob — no plaintext JSON, and in particular not the hidden
+  // position row's tournamentStartDate (budget = 300 rows examined, so the
+  // cursor sits on the hidden row seeded with startDate now - 299 * 1_000).
+  expect(first.continueCursor).toMatch(
+    /^profileResults\.v2\.[A-Za-z0-9_-]+$/,
+  );
+  expect(first.continueCursor).not.toContain(
+    String(now - (PROFILE_RESULTS_RAW_READ_BUDGET - 1) * 1_000),
+  );
+
+  // Determinism: identical database state and arguments must reproduce the
+  // cursor byte-for-byte (the nonce is derived, not random) — Convex caches
+  // and re-runs queries assuming exactly this.
+  const rerun = await playerResultsPage(t, playerPublicCode(1), {
+    numItems: 10,
+    cursor: null,
+  });
+  expect(rerun.continueCursor).toBe(first.continueCursor);
+
+  // Integrity: flipping one payload character must fail the AEAD tag and
+  // land in the InvalidCursor reset handshake, not decode to a shifted scan
+  // position. The first payload character is flipped (it encodes nonce bits,
+  // and every bit of a non-final base64 group is significant, so the change
+  // always alters the decoded bytes).
+  const prefixLength = "profileResults.v2.".length;
+  const payloadStart = first.continueCursor[prefixLength];
+  const tampered =
+    first.continueCursor.slice(0, prefixLength) +
+    (payloadStart === "A" ? "B" : "A") +
+    first.continueCursor.slice(prefixLength + 1);
+  await expect(
+    playerResultsPage(t, playerPublicCode(1), {
+      numItems: 10,
+      cursor: tampered,
+    }),
+  ).rejects.toThrow(/InvalidCursor/);
+
   const second = await playerResultsPage(t, playerPublicCode(1), {
     numItems: 10,
     cursor: first.continueCursor,
@@ -705,16 +749,107 @@ test("getPublicPlayerResults caps an all-hidden scan at the read budget but keep
 
 // Custom cursors must fail the same way native paginate cursors do:
 // usePaginatedQuery recognizes the InvalidCursor handshake and resets
-// pagination instead of crashing the page.
+// pagination instead of crashing the page. That includes cursors from the
+// retired v1 plaintext format and well-prefixed junk that is not a
+// ciphertext this deployment minted.
 test("getPublicPlayerResults rejects malformed cursors with InvalidCursor", async () => {
   const t = convexTest(schema, modules);
   await seedUsers(t, 1);
-  await expect(
-    playerResultsPage(t, playerPublicCode(1), {
-      numItems: 10,
-      cursor: "garbage",
-    }),
-  ).rejects.toThrow(/InvalidCursor/);
+  for (const cursor of [
+    "garbage",
+    "profileResults.v1.[1700000000000,1700000000001]",
+    "profileResults.v2.!!!not-base64url!!!",
+    "profileResults.v2.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+  ]) {
+    await expect(
+      playerResultsPage(t, playerPublicCode(1), {
+        numItems: 10,
+        cursor,
+      }),
+    ).rejects.toThrow(/InvalidCursor/);
+  }
+});
+
+// The cursor encryption key comes from the deployment environment
+// (PROFILE_RESULTS_CURSOR_KEY): cursors minted under one key are unreadable
+// under another — rotation invalidates them into the same InvalidCursor
+// reset — and pagination round-trips identically under an env-provided key.
+// This pins the env sourcing itself; a typo'd variable name would silently
+// fall back to the baked-in dev secret and fail the rotation assertion.
+test("getPublicPlayerResults cursor keys come from the deployment environment", async () => {
+  const t = convexTest(schema, modules);
+  const { organizationId, userId: organizerId } = await seedOrganizer(
+    t,
+    ORGANIZER_PUBLIC_CODE,
+  );
+  const [userId] = await seedUsers(t, 1);
+  const now = Date.now();
+  const events = [
+    { name: "Rotation Newest Event", startDate: now - 10_000 },
+    { name: "Rotation Middle Event", startDate: now - 20_000 },
+    { name: "Rotation Oldest Event", startDate: now - 30_000 },
+  ];
+
+  await t.run(async (ctx) => {
+    for (const [index, event] of events.entries()) {
+      const tournamentId = await ctx.db.insert("tournaments", {
+        name: event.name,
+        publicCode: 8_000 + index,
+        organizationId,
+        createdBy: organizerId,
+        visibility: "public",
+        lifecycle: "completed",
+        startDate: event.startDate,
+        playerCapacity: 16,
+        format: "standard",
+        isTestEvent: false,
+        autoPublishPairings: false,
+        confirmedRegistrationCount: 1,
+        updatedAt: now,
+      });
+      await ctx.db.insert("tournamentRegistrations", {
+        tournamentId,
+        userId,
+        tournamentStartDate: event.startDate,
+        entryStatus: "confirmed",
+        participationStatus: "active",
+        createdAt: now + index,
+        updatedAt: now,
+      });
+    }
+  });
+
+  const underFallbackKey = await playerResultsPage(t, playerPublicCode(1), {
+    numItems: 2,
+    cursor: null,
+  });
+  expect(underFallbackKey.isDone).toBe(false);
+
+  vi.stubEnv("PROFILE_RESULTS_CURSOR_KEY", "spec-only-rotated-secret");
+  try {
+    await expect(
+      playerResultsPage(t, playerPublicCode(1), {
+        numItems: 2,
+        cursor: underFallbackKey.continueCursor,
+      }),
+    ).rejects.toThrow(/InvalidCursor/);
+
+    const first = await playerResultsPage(t, playerPublicCode(1), {
+      numItems: 2,
+      cursor: null,
+    });
+    expect(first.continueCursor).not.toBe(underFallbackKey.continueCursor);
+    const second = await playerResultsPage(t, playerPublicCode(1), {
+      numItems: 2,
+      cursor: first.continueCursor,
+    });
+    expect(second.page.map((result) => result.tournamentName)).toEqual([
+      "Rotation Oldest Event",
+    ]);
+    expect(second.isDone).toBe(true);
+  } finally {
+    vi.unstubAllEnvs();
+  }
 });
 
 test("tournament date edits keep registration history ordering synchronized", async () => {
