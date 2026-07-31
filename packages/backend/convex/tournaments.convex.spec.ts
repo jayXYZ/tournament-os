@@ -6,7 +6,11 @@ import { expect, test } from "vitest";
 
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { MAX_TOURNAMENT_PLAYERS, setRegistrationState } from "./model/registrations";
+import {
+  DEFERRED_STANDINGS_SYNC,
+  MAX_TOURNAMENT_PLAYERS,
+  setRegistrationState,
+} from "./model/registrations";
 import { generateTestResults } from "./model/testing";
 import schema from "./schema";
 import { organizerIdentity, seedOrganizer } from "./specHelpers";
@@ -3065,6 +3069,119 @@ test("disqualifying an eliminated player preserves the elimination record", asyn
   expect(
     (await registrationsById()).get(loserId)?.eliminatedByRoundId,
   ).toBeUndefined();
+});
+
+// Every non-confirmed transition today runs in lifecycle "registration",
+// where no standings rows exist, so no mutation can reach this yet. This pins
+// setRegistrationState's contract ahead of the flows that will (an
+// approval/rejection of a mid-play entry, a mid-play cancel): a standings row
+// has no value meaning "not entered" — readers render an absent status as
+// Active — so leaving the confirmed state while a row exists must throw
+// rather than silently stamp a dropped player's row back to Active.
+test("a registration cannot leave the confirmed state while it holds a standings row", async () => {
+  const t = convexTest(schema, modules);
+  const { organizationId } = await seedOrganizer(t);
+  const authed = t.withIdentity(organizerIdentity);
+  const tournamentId = await authed.mutation(
+    api.tournaments.lifecycle.createTournamentWithPhases,
+    {
+      organizationId,
+      name: "Cancel With Standings",
+      startDate: Date.now(),
+      playerCapacity: 8,
+      format: "standard",
+      phases: [{ phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 2 }],
+    },
+  );
+  await seedActiveRegistrations(t, tournamentId, 4);
+  await authed.mutation(api.tournaments.lifecycle.publishTournament, {
+    tournamentId,
+  });
+  await authed.mutation(api.tournaments.rounds.startTournament, {
+    tournamentId,
+  });
+  await playOutCurrentRound(authed, tournamentId);
+
+  const [{ registration: target }] = await listRegistrations(
+    authed,
+    tournamentId,
+  );
+  const latestStandingsRow = async () =>
+    await t.run(
+      async (ctx) =>
+        (
+          await ctx.db
+            .query("roundStandings")
+            .withIndex("by_playerId", (q) => q.eq("playerId", target._id))
+            .order("desc")
+            .take(1)
+        )[0],
+    );
+  expect((await latestStandingsRow())?.participationStatus).toBe("active");
+
+  // The default sync would stamp the cleared status onto the row — rendered
+  // as Active by every reader — so the transition throws instead, before
+  // touching the row.
+  await expect(
+    t.run(async (ctx) => {
+      await setRegistrationState(ctx, target._id, {
+        entryStatus: "cancelled",
+      });
+    }),
+  ).rejects.toThrow(/cannot leave the confirmed state/);
+  expect((await latestStandingsRow())?.participationStatus).toBe("active");
+
+  // The guard is about standings rows, not lifecycles: a confirmed entry
+  // with no row (confirmed after the round completed, so never ranked) can
+  // still leave the confirmed state.
+  const lateRegistrationId = await t.run(async (ctx) => {
+    const now = Date.now();
+    const tournament = await ctx.db.get(tournamentId);
+    if (!tournament) {
+      throw new Error("Tournament not found in test setup");
+    }
+    const userId = await ctx.db.insert("users", {
+      tokenIdentifier: "player:late",
+      publicCode: 99,
+      email: "late@example.test",
+      name: "Late Player",
+      updatedAt: now,
+    });
+    return await ctx.db.insert("tournamentRegistrations", {
+      tournamentId,
+      userId,
+      tournamentStartDate: tournament.startDate,
+      entryStatus: "confirmed",
+      participationStatus: "active",
+      createdAt: now,
+      updatedAt: now,
+    });
+  });
+  await t.run(async (ctx) => {
+    await setRegistrationState(ctx, lateRegistrationId, {
+      entryStatus: "cancelled",
+    });
+  });
+  expect(
+    await t.run(async (ctx) => await ctx.db.get(lateRegistrationId)),
+  ).toMatchObject({ entryStatus: "cancelled" });
+
+  // DEFERRED_STANDINGS_SYNC stays the explicit escape hatch: passing it is
+  // the caller claiming it rewrites or deletes the rows itself in the same
+  // transaction, so the guard does not second-guess it and the row is left
+  // untouched for that repair.
+  await t.run(async (ctx) => {
+    await setRegistrationState(
+      ctx,
+      target._id,
+      { entryStatus: "cancelled" },
+      DEFERRED_STANDINGS_SYNC,
+    );
+  });
+  expect(
+    await t.run(async (ctx) => await ctx.db.get(target._id)),
+  ).toMatchObject({ entryStatus: "cancelled" });
+  expect((await latestStandingsRow())?.participationStatus).toBe("active");
 });
 
 test("re-running a rewound cutoff re-records a dropped non-qualifier's elimination", async () => {

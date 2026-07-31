@@ -423,9 +423,13 @@ export async function setRegistrationState(
     (update.participationStatus === "dropped" ||
       update.participationStatus === "disqualified") &&
     eliminatedByRoundId === undefined;
-  // A non-confirmed entry carries no competitive state, and standings read a
-  // missing status as "active" — the same value the non-active index ranges
-  // used to report for such a row.
+  // A non-confirmed entry carries no competitive state, so the registration
+  // document legitimately clears its participationStatus. The standings copy
+  // is another matter: a cleared status renders as "Active" there, so the
+  // sync below refuses to stamp it onto a row (see the guard in
+  // syncStandingParticipationStatus) — a player who still holds a standings
+  // row cannot leave the confirmed state without the caller deciding what
+  // happens to that row.
   const participationStatus =
     update.entryStatus === "confirmed" ? update.participationStatus : undefined;
   await ctx.db.patch(registrationId, {
@@ -487,7 +491,36 @@ async function syncStandingParticipationStatus(
           .order("desc")
           .take(1)
       )[0];
-  if (!latest || latest.participationStatus === participationStatus) {
+  if (!latest) {
+    return;
+  }
+  // A registration leaving the confirmed state clears its participation
+  // status (see setRegistrationState), but a standings row has no way to say
+  // "no longer entered": every reader renders an absent status as "Active" —
+  // the one thing a cancelled or rejected player is not — and the rewind
+  // repair in deleteStandingsForReopenedRound would re-derive the same
+  // "active" for a row whose registration is in no confirmed index range. No
+  // stampable value is honest, and skipping the patch would freeze a stale
+  // status instead, so a standings row implies a confirmed registration and
+  // this refuses to break that invariant silently. Every non-confirmed
+  // transition today runs in lifecycle "registration", where no standings
+  // rows exist and the lookup above already returned; a caller adding one
+  // that can reach a row (approval/rejection of a mid-play entry, a mid-play
+  // cancel) trips this and must decide the row's fate explicitly — keep the
+  // entry confirmed (e.g. "dropped"), or delete/rewrite the standings in the
+  // same transaction and pass DEFERRED_STANDINGS_SYNC to claim that repair.
+  // Checked before the unchanged-status short-circuit below: a row whose
+  // stored status is absent (reads as active) would compare equal to the
+  // cleared status and slip through exactly this case.
+  if (participationStatus === undefined) {
+    throw new Error(
+      "Registration cannot leave the confirmed state while it holds a standings row: " +
+        "standings render a missing participation status as active. Delete or rewrite " +
+        "the player's standings in the same transaction and pass DEFERRED_STANDINGS_SYNC, " +
+        "or keep the entry confirmed.",
+    );
+  }
+  if (latest.participationStatus === participationStatus) {
     return;
   }
   await ctx.db.patch(latest._id, { participationStatus, updatedAt });
