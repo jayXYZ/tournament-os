@@ -179,11 +179,6 @@ export default defineSchema({
       "entryStatus",
       "participationStatus",
     ])
-    .index("by_userId_and_entryStatus_and_participationStatus", [
-      "userId",
-      "entryStatus",
-      "participationStatus",
-    ])
     .index("by_userId_and_entryStatus_and_tournamentStartDate", [
       "userId",
       "entryStatus",

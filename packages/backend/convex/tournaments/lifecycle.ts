@@ -149,7 +149,13 @@ export const getPublicTournament = query({
         tournament.lifecycle !== "setup" && !membership && user
           ? await registrationForUser(ctx, tournament._id, user._id)
           : null;
-      if (!membership && registration?.entryStatus !== "confirmed") {
+      // Any registration row resolves the code, not only a confirmed one.
+      // Cancelling now leaves a "cancelled" row behind instead of deleting it,
+      // so gating on "confirmed" would swap the page a player is standing on
+      // for "Tournament not found" the moment they cancel — and registerSelf
+      // accepts that same row as the invitation back in, which they could
+      // never act on from a page they can no longer open.
+      if (!membership && !registration) {
         return null;
       }
     }

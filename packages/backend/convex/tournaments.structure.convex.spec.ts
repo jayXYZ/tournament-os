@@ -82,8 +82,15 @@ test("tournament schema includes operational indexes and test config tables", ()
   expect(schemaSource).toMatch(
     /\.index\("by_tournamentId_and_entryStatus_and_participationStatus", \[\s*"tournamentId",\s*"entryStatus",\s*"participationStatus",?\s*\]\)/,
   );
+  // A player's own registrations are read newest-event-first: the third
+  // column is the denormalized start date, never participationStatus, so a
+  // long history cannot bury the event they are currently in (see
+  // listMyTournaments).
   expect(schemaSource).toMatch(
-    /\.index\("by_userId_and_entryStatus_and_participationStatus", \[\s*"userId",\s*"entryStatus",\s*"participationStatus",?\s*\]\)/,
+    /\.index\("by_userId_and_entryStatus_and_tournamentStartDate", \[\s*"userId",\s*"entryStatus",\s*"tournamentStartDate",?\s*\]\)/,
+  );
+  expect(schemaSource).not.toMatch(
+    /\.index\("by_userId_and_entryStatus_and_participationStatus"/,
   );
   expect(schemaSource).toMatch(/roundNumber: v\.number\(\)/);
   expect(schemaSource).toMatch(

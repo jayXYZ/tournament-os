@@ -324,6 +324,10 @@ test("getPublicTournament keeps private events resolvable for registered players
       }),
   ).toBeNull();
 
+  // Cancelling keeps the page open. The row survives the cancellation, and it
+  // is what registerSelf accepts as the invitation back into an invite-only
+  // event, so hiding the tournament here would make "Cancel registration" a
+  // one-way door with no screen left to act from.
   await t.run(async (ctx) => {
     await ctx.db.patch(seeded.registrationId, {
       entryStatus: "cancelled",
@@ -336,12 +340,122 @@ test("getPublicTournament keeps private events resolvable for registered players
     });
   });
   expect(
-    await t
-      .withIdentity(playerIdentity)
-      .query(api.tournaments.lifecycle.getPublicTournament, {
-        publicCode: "100001",
-      }),
-  ).toBeNull();
+    (
+      await t
+        .withIdentity(playerIdentity)
+        .query(api.tournaments.lifecycle.getPublicTournament, {
+          publicCode: "100001",
+        })
+    )?.tournament.name,
+  ).toBe("Private Live Event");
+});
+
+// A private event refuses registrations from the public page, but a player who
+// cancelled one still holds a row for it: that row is the record of an
+// invitation already extended, so the cancel is reversible. Strangers still
+// have no way in, and a row in any other entry status is refused by the status
+// guard rather than the visibility one.
+test("registerSelf lets a cancelled player rejoin a private event but admits no one new", async () => {
+  const t = convexTest(schema, modules);
+  const now = Date.now();
+  const { organizationId, userId } = await seedOrganizer(t);
+  const playerIdentity = {
+    issuer: "https://convex.test",
+    subject: "private-rejoin",
+    tokenIdentifier: "https://convex.test|private-rejoin",
+    email: "rejoin@example.test",
+    name: "Rejoining Player",
+  };
+  const strangerIdentity = {
+    issuer: "https://convex.test",
+    subject: "private-stranger",
+    tokenIdentifier: "https://convex.test|private-stranger",
+    email: "outsider@example.test",
+    name: "Outsider",
+  };
+
+  const tournamentId = await t.run(async (ctx) => {
+    for (const identity of [playerIdentity, strangerIdentity]) {
+      await ctx.db.insert("users", {
+        tokenIdentifier: identity.tokenIdentifier,
+        publicCode: identity === playerIdentity ? 2 : 3,
+        email: identity.email,
+        name: identity.name,
+        updatedAt: now,
+      });
+    }
+    return await ctx.db.insert("tournaments", {
+      organizationId,
+      createdBy: userId,
+      publicCode: 100_002,
+      playerCapacity: 32,
+      format: "standard",
+      isTestEvent: false,
+      autoPublishPairings: false,
+      confirmedRegistrationCount: 0,
+      updatedAt: now,
+      name: "Private Invitational",
+      visibility: "private",
+      lifecycle: "registration",
+      startDate: now + 60_000,
+    });
+  });
+
+  const player = t.withIdentity(playerIdentity);
+  // No row yet: even the invited player cannot self-register into a private
+  // event. The organizer seeds the seat, exactly as they do today.
+  await expect(
+    player.mutation(api.tournaments.registrations.registerSelf, {
+      tournamentId,
+    }),
+  ).rejects.toThrow("Tournament is not open for registration");
+
+  const registrationId = await t.run(async (ctx) => {
+    const playerUser = await ctx.db
+      .query("users")
+      .withIndex("by_tokenIdentifier", (q) =>
+        q.eq("tokenIdentifier", playerIdentity.tokenIdentifier),
+      )
+      .unique();
+    if (!playerUser) {
+      throw new Error("Seeded player missing");
+    }
+    await ctx.db.patch(tournamentId, { confirmedRegistrationCount: 1 });
+    return await ctx.db.insert("tournamentRegistrations", {
+      tournamentId,
+      userId: playerUser._id,
+      tournamentStartDate: now + 60_000,
+      entryStatus: "confirmed",
+      participationStatus: "active",
+      createdAt: now,
+      updatedAt: now,
+    });
+  });
+
+  await player.mutation(api.tournaments.registrations.cancelMyRegistration, {
+    tournamentId,
+  });
+  await expect(
+    player.mutation(api.tournaments.registrations.registerSelf, {
+      tournamentId,
+    }),
+  ).resolves.toBe(registrationId);
+  expect(
+    await player.query(api.tournaments.registrations.getMyRegistration, {
+      tournamentId,
+    }),
+  ).toMatchObject({ entryStatus: "confirmed", participationStatus: "active" });
+  expect(
+    (
+      await t.run(async (ctx) => await ctx.db.get(tournamentId))
+    )?.confirmedRegistrationCount,
+  ).toBe(1);
+
+  await expect(
+    t
+      .withIdentity(strangerIdentity)
+      .mutation(api.tournaments.registrations.registerSelf, { tournamentId }),
+  ).rejects.toThrow("Tournament is not open for registration");
 });
 
 // Every confirmed seat is listed, whatever its participation status: the

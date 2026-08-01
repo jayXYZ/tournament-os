@@ -89,18 +89,24 @@ export const registerSelf = mutation({
   handler: async (ctx, args): Promise<Id<"tournamentRegistrations">> => {
     const user = await ensureCurrentUser(ctx);
     const tournament = await requireTournament(ctx, args.tournamentId);
-    if (
-      tournament.lifecycle !== "registration" ||
-      tournament.visibility === "private"
-    ) {
-      throw new Error("Tournament is not open for registration");
-    }
-
     const existing = await registrationForUser(
       ctx,
       args.tournamentId,
       user._id,
     );
+    // A private event takes no registrations off the public page, but a player
+    // who already holds a row for it was admitted once and still resolves its
+    // code, so cancelling is not a one-way door out of an invite-only event:
+    // the cancelled row is the standing invitation that lets them back in.
+    // Nothing else slips through — every other entry status is rejected just
+    // below, so a live row can only ever re-enter the event it belongs to.
+    if (
+      tournament.lifecycle !== "registration" ||
+      (tournament.visibility === "private" && existing === null)
+    ) {
+      throw new Error("Tournament is not open for registration");
+    }
+
     if (existing) {
       const blockedBecause = existingEntryBlocksRegistration(
         existing.entryStatus,
@@ -225,11 +231,19 @@ export const listMyTournaments = query({
     // entryStatus === "confirmed"), so this listing must keep the event
     // discoverable while it runs. Filtering to active here would leave a cut
     // player with no route back to their standings and match history.
+    //
+    // Ordered by start date descending rather than by participation status:
+    // the status index groups every "active" row (which completed events keep
+    // forever) ahead of the "eliminated"/"dropped" ones, so a player with a
+    // long history would spend the whole take on finished events and never
+    // reach the running one they were cut from. Live and upcoming events have
+    // the newest start dates, so they lead here.
     const registrations = await ctx.db
       .query("tournamentRegistrations")
-      .withIndex("by_userId_and_entryStatus_and_participationStatus", (q) =>
+      .withIndex("by_userId_and_entryStatus_and_tournamentStartDate", (q) =>
         q.eq("userId", user._id).eq("entryStatus", "confirmed"),
       )
+      .order("desc")
       .take(100);
 
     const rows = [];

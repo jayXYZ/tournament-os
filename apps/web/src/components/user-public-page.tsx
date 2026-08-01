@@ -1,7 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import { usePaginatedQuery, useQuery } from 'convex/react'
 import { ArrowLeft, EyeOff, SearchX, Settings } from 'lucide-react'
-import { useEffect } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { api } from '@tournament-os/backend/convex/_generated/api'
 import { PublicSiteHeader } from '@/components/shared/public-site-header'
 import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'
@@ -187,14 +187,31 @@ function TournamentHistory({ publicCode }: { publicCode: string }) {
   // getPublicPlayerResults tops up hidden rows server-side, so an empty page
   // means the history is exhausted — with one exception: a hidden stretch
   // longer than the server's read budget returns an empty not-done page whose
-  // cursor has already advanced past the whole stretch. Continue
+  // cursor has already advanced past the rows it did read. Continue
   // automatically; no cap is needed because every call makes budget-sized
   // progress through a finite index, so this always terminates.
+  //
+  // That empty page can land at any depth, not just on the first one, so the
+  // loaded count at the moment each page was requested is what identifies it:
+  // if the count is unchanged once the request settles, nothing came back.
+  // Without this a "Load older tournaments" click would look dead once per
+  // budget-sized run of hidden history.
+  const requestedAtCount = useRef<number | null>(null)
+  const requestMore = useCallback(() => {
+    requestedAtCount.current = results.length
+    loadMore(HISTORY_PAGE_SIZE)
+  }, [loadMore, results.length])
+
   useEffect(() => {
-    if (results.length === 0 && status === 'CanLoadMore') {
-      loadMore(HISTORY_PAGE_SIZE)
+    if (status !== 'CanLoadMore') {
+      return
     }
-  }, [results.length, status, loadMore])
+    // The first page arrives with no request of ours behind it, so an empty
+    // one is recognised by the count alone.
+    if (results.length === 0 || requestedAtCount.current === results.length) {
+      requestMore()
+    }
+  }, [results.length, status, requestMore])
 
   // Never render the "Tournament history" heading/grid over zero cards:
   // while anything is still loading (first page, or the rare budget-bounded
@@ -243,7 +260,7 @@ function TournamentHistory({ publicCode }: { publicCode: string }) {
             type="button"
             variant="outline"
             disabled={status === 'LoadingMore'}
-            onClick={() => loadMore(HISTORY_PAGE_SIZE)}
+            onClick={requestMore}
           >
             {status === 'LoadingMore'
               ? 'Loading older tournaments…'
