@@ -230,9 +230,10 @@ export default defineSchema({
     // by_registrationId; re-registering after a cancel reuses the same
     // registration row, so the player's list survives the round trip.
     registrationId: v.id("tournamentRegistrations"),
-    // Denormalized from the registration at submission time so the organizer
-    // deck-check list renders without per-row registration joins.
-    playerName: v.union(v.string(), v.null()),
+    // Deliberately no playerName copy: the deck-check surface opens a list
+    // from a roster row that already carries the live registration.playerName,
+    // and a snapshot taken at submission time would go stale across the
+    // cancel → rename → re-register path that keeps this row alive.
     // Player-facing label for the deck (e.g. "Boros Burn"). Absent when the
     // player didn't name it.
     deckName: v.optional(v.string()),

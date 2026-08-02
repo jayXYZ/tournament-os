@@ -124,7 +124,6 @@ test("submitMyDecklist normalizes the boards and getMyDecklist returns them", as
   expect(result?.submissionOpen).toBe(true);
   expect(result?.decklist?._id).toBe(decklistId);
   expect(result?.decklist?.registrationId).toBe(registrationIds[0]);
-  expect(result?.decklist?.playerName).toBe("Player 1");
   expect(result?.decklist?.deckName).toBe("Burn");
   expect(result?.decklist?.maindeck).toEqual([
     { name: "Lightning Bolt", quantity: 4 },
@@ -375,6 +374,65 @@ test("events that don't collect decklists refuse submissions until the flag turn
   expect(result?.decklist?.maindeck).toEqual([
     { name: "Island", quantity: 60 },
   ]);
+});
+
+test("a list surviving cancel → rename → re-register carries no stale name copy", async () => {
+  const t = convexTest(schema, modules);
+  const { tournamentId, registrationIds } = await seedOpenTournament(t, 1);
+
+  await t
+    .withIdentity(playerIdentity(1))
+    .mutation(api.tournaments.decklists.submitMyDecklist, {
+      tournamentId,
+      maindeck: [{ name: "Island", quantity: 60 }],
+      sideboard: [],
+    });
+  await t
+    .withIdentity(playerIdentity(1))
+    .mutation(api.tournaments.registrations.cancelMyRegistration, {
+      tournamentId,
+    });
+
+  // The player renames their profile, then re-registers: registerSelf reuses
+  // the cancelled row (keeping the decklist alive) and rewrites its
+  // playerName from the fresh identity.
+  const renamed = t.withIdentity({
+    ...playerIdentity(1),
+    name: "Player One Renamed",
+  });
+  await renamed.mutation(api.tournaments.registrations.registerSelf, {
+    tournamentId,
+  });
+
+  const registration = await t.run(
+    async (ctx) => await ctx.db.get(registrationIds[0]),
+  );
+  expect(registration?.playerName).toBe("Player One Renamed");
+
+  // The surviving decklist row stores no name of its own — the field a
+  // stale snapshot used to live in must not reappear.
+  const decklistRow = await t.run(
+    async (ctx) =>
+      await ctx.db
+        .query("tournamentDecklists")
+        .withIndex("by_registrationId", (q) =>
+          q.eq("registrationId", registrationIds[0]),
+        )
+        .unique(),
+  );
+  expect(decklistRow).not.toBeNull();
+  expect(decklistRow !== null && "playerName" in decklistRow).toBe(false);
+
+  // The organizer deck-check surface still serves the surviving list; any
+  // name it displays comes from the roster row, which is fresh by the
+  // assertion above, so it can never disagree with the roster.
+  const result = await t
+    .withIdentity(organizerIdentity)
+    .query(api.tournaments.decklists.getDecklistForRegistration, {
+      registrationId: registrationIds[0],
+    });
+  expect(result.decklist?.maindeck).toEqual([{ name: "Island", quantity: 60 }]);
+  expect(result.submissionOpen).toBe(true);
 });
 
 test("getDecklistForRegistration serves organizers and rejects everyone else", async () => {

@@ -14,7 +14,6 @@ import {
   normalizeBoard,
 } from "../model/decklists";
 import {
-  playerDisplayName,
   registrationForUser,
   requireRegistration,
 } from "../model/registrations";
@@ -79,7 +78,6 @@ export const submitMyDecklist = mutation({
     const decklist = {
       tournamentId: tournament._id,
       registrationId: registration._id,
-      playerName: registration.playerName ?? playerDisplayName(user) ?? null,
       deckName,
       maindeck,
       sideboard,
