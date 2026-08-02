@@ -40,14 +40,16 @@ export function PlayerController({ publicCode }: { publicCode: string }) {
     publicCode,
   })
   const typedTournamentId = event?.tournament._id ?? null
-  // getMyRegistration returns null for signed-in users who never registered,
-  // so it gates the player queries (which reject unregistered users).
+  // getMyRegistration returns any registration row — including cancelled
+  // ones — while the player queries reject entries that are not confirmed,
+  // so gate them on entryStatus to match the server's requireRegisteredPlayer.
   const registration = useQuery(
     api.tournaments.registrations.getMyRegistration,
     user && typedTournamentId ? { tournamentId: typedTournamentId } : 'skip',
   )
+  const hasConfirmedEntry = registration?.entryStatus === 'confirmed'
   const currentMatch = useMyCurrentMatch(
-    user && registration && typedTournamentId ? typedTournamentId : null,
+    user && hasConfirmedEntry && typedTournamentId ? typedTournamentId : null,
   )
   const [tab, setTab] = useState<ControllerTab>('match')
 
@@ -119,7 +121,7 @@ export function PlayerController({ publicCode }: { publicCode: string }) {
     )
   }
 
-  if (registration === null) {
+  if (!hasConfirmedEntry) {
     return (
       <ControllerFrame>
         <Empty className="min-h-80 border bg-card">
@@ -129,8 +131,8 @@ export function PlayerController({ publicCode }: { publicCode: string }) {
             </EmptyMedia>
             <EmptyTitle>You are not registered</EmptyTitle>
             <EmptyDescription>
-              Only registered players can use the player controller for this
-              event.
+              Only players with a confirmed registration can use the player
+              controller for this event.
             </EmptyDescription>
           </EmptyHeader>
           <Button asChild type="button" variant="outline">

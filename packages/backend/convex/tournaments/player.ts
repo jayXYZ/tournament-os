@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 
-import type { Doc, Id } from "../_generated/dataModel";
+import type { Id } from "../_generated/dataModel";
 import { mutation, query } from "../_generated/server";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import {
@@ -10,6 +10,7 @@ import {
 } from "../model/auditLog";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
 import {
+  latestCompletedRound,
   requireDecisiveEliminationResult,
   requirePhase,
   roundNumberInPhase,
@@ -19,11 +20,16 @@ import {
 } from "../model/phases";
 import {
   MAX_TOURNAMENT_PLAYERS,
-  adjustActiveRegistrationCount,
+  playerVisibleParticipationStatus,
+  playerVisibleRegistration,
   registrationForUser,
   resolveRegistrationDisplayName,
-  setRegistrationStatus,
+  setRegistrationState,
 } from "../model/registrations";
+import {
+  MAX_MATCHES_PER_PLAYER,
+  matchLogForRegistration,
+} from "../model/playerResults";
 import { matchPointsForResult } from "../model/standings";
 import {
   isPairingsVisibleToPlayers,
@@ -35,14 +41,6 @@ import {
 } from "../model/tournaments";
 import { ensureCurrentUser } from "../model/users";
 
-// Rounds are capped at 16 per phase.
-const MAX_ROUNDS = 16;
-
-// A registration plays at most one match per round, so a player's
-// tournamentMatchPlayers rows are bounded by the round cap (16) times the
-// phase cap (16).
-const MAX_MATCHES_PER_PLAYER = 256;
-
 type OpponentSummary = {
   registrationId: Id<"tournamentRegistrations">;
   name: string | null;
@@ -52,17 +50,20 @@ type OpponentSummary = {
 export const getMyCurrentMatch = query({
   args: { tournamentId: v.id("tournaments") },
   handler: async (ctx, args) => {
-    const { tournament, registration } = await requireRegisteredPlayer(
-      ctx,
-      args.tournamentId,
-    );
+    const { tournament, registration: storedRegistration } =
+      await requireRegisteredPlayer(ctx, args.tournamentId);
+    // The rest of the handler only distinguishes active from non-active, so
+    // building the whole payload from the masked row changes nothing but the
+    // reported status: a disqualified player reads as dropped, and the
+    // clients' existing dropped branches render the removed-from-event state.
+    const registration = playerVisibleRegistration(storedRegistration);
     const base = {
       tournament: {
         name: tournament.name,
         lifecycle: tournament.lifecycle,
         roundTimer: tournament.roundTimer ?? null,
       },
-      myRegistrationStatus: registration.status,
+      myRegistrationStatus: registration.participationStatus,
       myRegistrationId: registration._id,
     };
 
@@ -90,31 +91,46 @@ export const getMyCurrentMatch = query({
             .eq("registrationId", registration._id),
         )
         .unique();
-      let seatmateName: string | null = null;
-      if (seat) {
-        const tableSeats = await ctx.db
-          .query("playerMeetingSeats")
-          .withIndex("by_tournamentPhaseId_and_tableNumber", (q) =>
-            q
-              .eq("tournamentPhaseId", meetingPhase._id)
-              .eq("tableNumber", seat.tableNumber),
-          )
-          .take(2);
-        seatmateName =
-          tableSeats.find((other) => other._id !== seat._id)?.playerName ??
-          null;
+      // A later meeting fed by a cutoff is invitation-only: an active player
+      // without a seat did not qualify and should remain on the completed-round
+      // view. Phase-1 meetings preserve the existing late-registration fallback.
+      const previousPhase =
+        !seat && meetingPhase.phaseOrder > 1
+          ? await phaseByOrder(
+              ctx,
+              args.tournamentId,
+              meetingPhase.phaseOrder - 1,
+            )
+          : null;
+      const excludedByCutoff =
+        !seat && (previousPhase?.phaseCutoff ?? null) !== null;
+      if (!excludedByCutoff) {
+        let seatmateName: string | null = null;
+        if (seat) {
+          const tableSeats = await ctx.db
+            .query("playerMeetingSeats")
+            .withIndex("by_tournamentPhaseId_and_tableNumber", (q) =>
+              q
+                .eq("tournamentPhaseId", meetingPhase._id)
+                .eq("tableNumber", seat.tableNumber),
+            )
+            .take(2);
+          seatmateName =
+            tableSeats.find((other) => other._id !== seat._id)?.playerName ??
+            null;
+        }
+        return {
+          kind: "player_meeting" as const,
+          ...base,
+          meeting: {
+            phaseName:
+              meetingPhase.phaseName ?? `Phase ${meetingPhase.phaseOrder}`,
+            // null: registered after a non-cutoff seating snapshot.
+            tableNumber: seat?.tableNumber ?? null,
+            seatmateName,
+          },
+        };
       }
-      return {
-        kind: "player_meeting" as const,
-        ...base,
-        meeting: {
-          phaseName:
-            meetingPhase.phaseName ?? `Phase ${meetingPhase.phaseOrder}`,
-          // null: registered after the seating snapshot — see the organizer.
-          tableNumber: seat?.tableNumber ?? null,
-          seatmateName,
-        },
-      };
     }
 
     if (
@@ -148,7 +164,7 @@ export const getMyCurrentMatch = query({
       // those players, but do not promise a future pairing to dropped or
       // eliminated players who were excluded before this round was paired.
       if (
-        registration.status !== "active" &&
+        registration.participationStatus !== "active" &&
         !(await playerMatchInRound(ctx, registration._id, round._id))
       ) {
         return { kind: "no_match" as const, ...base, round: roundSummary };
@@ -212,54 +228,11 @@ export const getMyMatchHistory = query({
       ctx,
       args.tournamentId,
     );
-    const playerRows = await ctx.db
-      .query("tournamentMatchPlayers")
-      .withIndex("by_playerId", (q) => q.eq("playerId", registration._id))
-      .take(MAX_MATCHES_PER_PLAYER);
-
-    const historyRows = await mapAsyncInBatches(
-      playerRows,
-      DATABASE_IO_BATCH_SIZE,
-      async (playerRow) => {
-        const match = await ctx.db.get(playerRow.tournamentMatchId);
-        if (!match || match.tournamentId !== args.tournamentId) {
-          return null;
-        }
-        const round = await ctx.db.get(match.tournamentRoundId);
-        if (!round || !isPairingsVisibleToPlayers(round)) {
-          return null;
-        }
-
-        let opponentName: string | null = null;
-        if (playerRow.opponentPlayerId) {
-          const opponentRegistration = await ctx.db.get(
-            playerRow.opponentPlayerId,
-          );
-          const opponentUser = opponentRegistration
-            ? await ctx.db.get(opponentRegistration.userId)
-            : null;
-          opponentName = opponentUser?.name ?? null;
-        }
-
-        return {
-          roundNumber: round.roundNumber,
-          roundName: round.roundName,
-          opponentName,
-          isBye: playerRow.isBye,
-          myGameWins: playerRow.gameWins ?? null,
-          myGameLosses: playerRow.gameLosses ?? null,
-          result: matchResultForRow(match, playerRow),
-        };
-      },
+    return await matchLogForRegistration(
+      ctx,
+      args.tournamentId,
+      registration._id,
     );
-    const history = historyRows.filter(
-      (row): row is NonNullable<typeof row> => row !== null,
-    );
-
-    // Round numbers are global across phases, so this orders the whole
-    // tournament's history.
-    history.sort((left, right) => left.roundNumber - right.roundNumber);
-    return history;
   },
 });
 
@@ -270,27 +243,7 @@ export const getLatestStandings = query({
       ctx,
       args.tournamentId,
     );
-    // Later phases only have rounds once earlier ones finish, so walking the
-    // phases newest-first finds the tournament's latest completed round —
-    // including the previous phase's final round while a new phase's first
-    // round is still being played.
-    let latestCompleted: Doc<"tournamentRounds"> | undefined;
-    const phases = await phasesInOrder(ctx, args.tournamentId);
-    for (const phase of [...phases].reverse()) {
-      const rounds = await ctx.db
-        .query("tournamentRounds")
-        .withIndex("by_tournamentPhaseId_and_roundNumber", (q) =>
-          q.eq("tournamentPhaseId", phase._id),
-        )
-        .order("desc")
-        .take(MAX_ROUNDS);
-      latestCompleted = rounds.find(
-        (round) => round.roundStatus === "completed",
-      );
-      if (latestCompleted) {
-        break;
-      }
-    }
+    const latestCompleted = await latestCompletedRound(ctx, args.tournamentId);
     if (!latestCompleted) {
       return null;
     }
@@ -301,6 +254,14 @@ export const getLatestStandings = query({
         q.eq("tournamentRoundId", latestCompleted._id),
       )
       .take(MAX_TOURNAMENT_PLAYERS);
+    // Every player in the event subscribes to this query, so it reads no
+    // registration documents at all: participation status is denormalized onto
+    // the standings row, and setRegistrationState writes each change through to
+    // the latest completed round's rows (see syncStandingParticipationStatus).
+    // A drop or reinstate between rounds therefore still shows immediately —
+    // it patches the very rows this query reads — while a 500-player field no
+    // longer costs one read and one subscription dependency per non-active
+    // player on every execution.
     const rows = await mapAsyncInBatches(
       standings,
       DATABASE_IO_BATCH_SIZE,
@@ -321,8 +282,10 @@ export const getLatestStandings = query({
           gameWinPct: standing.gameWinPct,
           opponentGameWinPct: standing.opponentGameWinPct,
           playoffStatus: standing.playoffStatus,
-          eliminatedInRoundNumber:
-            standing.eliminatedInRoundNumber ?? null,
+          eliminatedInRoundNumber: standing.eliminatedInRoundNumber ?? null,
+          registrationStatus: playerVisibleParticipationStatus(
+            standing.participationStatus ?? "active",
+          ),
           isMe: standing.playerId === registration._id,
         };
       },
@@ -443,16 +406,20 @@ export const dropSelf = mutation({
       args.tournamentId,
       user._id,
     );
-    if (!registration || registration.status !== "active") {
+    if (
+      !registration ||
+      registration.entryStatus !== "confirmed" ||
+      registration.participationStatus !== "active"
+    ) {
       throw new Error("Active registration not found");
     }
 
     const now = Date.now();
-    await setRegistrationStatus(ctx, registration._id, {
-      status: "dropped",
+    await setRegistrationState(ctx, registration._id, {
+      entryStatus: "confirmed",
+      participationStatus: "dropped",
       updatedAt: now,
     });
-    await adjustActiveRegistrationCount(ctx, tournament, -1, now);
     await logAuditEvent(ctx, {
       tournamentId: tournament._id,
       actor: user,
@@ -520,21 +487,6 @@ async function requireMatchParticipant(
   }
 
   return { match, tournament, registration, players, myRow, opponentRow, user };
-}
-
-function matchResultForRow(
-  match: Doc<"tournamentMatches">,
-  playerRow: Doc<"tournamentMatchPlayers">,
-) {
-  if (match.matchStatus !== "completed" && match.matchStatus !== "confirmed") {
-    return "pending" as const;
-  }
-  const gameWins = playerRow.gameWins ?? 0;
-  const gameLosses = playerRow.gameLosses ?? 0;
-  if (playerRow.isBye || gameWins > gameLosses) {
-    return "win" as const;
-  }
-  return gameWins < gameLosses ? ("loss" as const) : ("draw" as const);
 }
 
 function validGameWins(value: number) {

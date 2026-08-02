@@ -1,5 +1,6 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
+import { cutoffQualifiersForNextPhase } from "./cutoffs";
 import {
   SINGLE_ELIMINATION_FORMAT,
   SINGLE_ELIMINATION_PLAYERS,
@@ -200,6 +201,18 @@ export async function pairingsNextStep(
     if (nextPhase.phaseType === SINGLE_ELIMINATION_FORMAT) {
       const registrations = await activeRegistrations(ctx, tournament._id);
       if (registrations.length < SINGLE_ELIMINATION_PLAYERS) {
+        return { kind: "completeTournament", ready: true, reason: null };
+      }
+    } else if (phase.phaseCutoff !== null) {
+      // A cutoff that fewer than two players cleared leaves the next phase
+      // unpairable; completing the tournament is the only move left.
+      const qualifiers = await cutoffQualifiersForNextPhase(
+        ctx,
+        round._id,
+        phase.phaseCutoff,
+        nextPhase,
+      );
+      if (qualifiers.length < 2) {
         return { kind: "completeTournament", ready: true, reason: null };
       }
     }

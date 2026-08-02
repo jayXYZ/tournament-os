@@ -55,7 +55,10 @@ export async function upsertUser(
     : await ctx.db.insert("users", {
         tokenIdentifier: fields.tokenIdentifier,
         publicCode: await nextUserPublicCode(ctx, now),
+        // Visibility fields are set only on insert: the sign-in patch above
+        // must never touch them or it would clobber saved privacy settings.
         profileVisibility: "public",
+        historyVisibility: "public",
         ...patch,
       });
 

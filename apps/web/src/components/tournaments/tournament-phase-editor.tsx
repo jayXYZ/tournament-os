@@ -3,6 +3,7 @@ import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react'
 import {
   MAX_TOURNAMENT_PHASES,
   addTournamentCreationPhase,
+  canConfigureTournamentCreationPhaseCutoff,
   canMoveTournamentCreationPhase,
   canRemoveTournamentCreationPhase,
   moveTournamentCreationPhase,
@@ -12,6 +13,7 @@ import { RoundConfigurationFields } from './tournament-fields'
 import type { TournamentCreationPhaseForm } from '@tournament-os/shared/tournament-creation-utils'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Input } from '@/components/ui/input'
 import {
   Field,
   FieldContent,
@@ -93,6 +95,10 @@ function TournamentPhaseField({
   phases: Array<TournamentCreationPhaseForm>
 }) {
   const isSingleElimination = phase.phaseType === 'single_elimination'
+  const cutoffConfigurable = canConfigureTournamentCreationPhaseCutoff(
+    phases,
+    index,
+  )
 
   return (
     <Field className="rounded-md border border-border p-3">
@@ -216,6 +222,76 @@ function TournamentPhaseField({
           </Button>
         </div>
       </div>
+
+      {cutoffConfigurable ? (
+        <FieldGroup className="grid gap-3 md:grid-cols-[180px_120px]">
+          <Field data-disabled={disabled || undefined}>
+            <FieldLabel>Cut after this phase</FieldLabel>
+            <Select
+              value={phase.phaseCutoffKind}
+              onValueChange={(phaseCutoffKind) =>
+                onPhasesChange(
+                  phases.map((current) =>
+                    current.id === phase.id
+                      ? {
+                          ...current,
+                          phaseCutoffKind:
+                            phaseCutoffKind as TournamentCreationPhaseForm['phaseCutoffKind'],
+                        }
+                      : current,
+                  ),
+                )
+              }
+              disabled={disabled}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem value="none">No cut</SelectItem>
+                  <SelectItem value="top_X_players">Top players</SelectItem>
+                  <SelectItem value="X_points_or_more">
+                    Points or more
+                  </SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+            <FieldDescription>
+              Players who miss the cut are eliminated when the next phase
+              starts.
+            </FieldDescription>
+          </Field>
+          <Field
+            data-disabled={
+              disabled || phase.phaseCutoffKind === 'none' ? true : undefined
+            }
+          >
+            <FieldLabel htmlFor={`${phase.id}-cutoff-value`}>
+              {phase.phaseCutoffKind === 'X_points_or_more'
+                ? 'Points'
+                : 'Players'}
+            </FieldLabel>
+            <Input
+              id={`${phase.id}-cutoff-value`}
+              value={phase.phaseCutoffValue}
+              onChange={(event) =>
+                onPhasesChange(
+                  phases.map((current) =>
+                    current.id === phase.id
+                      ? { ...current, phaseCutoffValue: event.target.value }
+                      : current,
+                  ),
+                )
+              }
+              type="number"
+              min={phase.phaseCutoffKind === 'X_points_or_more' ? 1 : 2}
+              disabled={disabled || phase.phaseCutoffKind === 'none'}
+              required={phase.phaseCutoffKind !== 'none'}
+            />
+          </Field>
+        </FieldGroup>
+      ) : null}
 
       <Field
         orientation="horizontal"

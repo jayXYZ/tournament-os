@@ -3,8 +3,7 @@ import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { requireDecisiveEliminationResult, requirePhase } from "./phases";
 import { createSeededRandom } from "./random";
 import {
-  activeRegistrations,
-  adjustActiveRegistrationCount,
+  adjustConfirmedRegistrationCount,
   registrationForUser,
 } from "./registrations";
 import { matchPointsForResult } from "./standings";
@@ -81,8 +80,10 @@ export async function seedTestPlayers(
     return 0;
   }
 
-  const active = await activeRegistrations(ctx, tournamentId);
-  const remainingCapacity = Math.max(tournament.playerCapacity - active.length, 0);
+  const remainingCapacity = Math.max(
+    tournament.playerCapacity - tournament.confirmedRegistrationCount,
+    0,
+  );
   const playersToCreate = Math.min(requestedCount, remainingCapacity);
   if (playersToCreate <= 0) {
     return 0;
@@ -137,7 +138,9 @@ export async function seedTestPlayers(
       await ctx.db.insert("tournamentRegistrations", {
         tournamentId,
         userId,
-        status: "active",
+        tournamentStartDate: tournament.startDate,
+        entryStatus: "confirmed",
+        participationStatus: "active",
         playerName: existingUser?.name ?? `Test Player ${playerNumber}`,
         createdAt: now + playerNumber,
         updatedAt: now,
@@ -146,7 +149,7 @@ export async function seedTestPlayers(
     created += 1;
     playerNumber += 1;
   }
-  await adjustActiveRegistrationCount(ctx, tournament, created, now);
+  await adjustConfirmedRegistrationCount(ctx, tournament, created, now);
   return created;
 }
 

@@ -1,8 +1,15 @@
 import { v } from "convex/values";
 
+import {
+  DELETED_REGISTRATION_STATUS,
+  effectiveRegistrationStatus,
+} from "@tournament-os/shared/registration-status";
+
+import type { Doc } from "../_generated/dataModel";
 import { mutation, query } from "../_generated/server";
 import { logAuditEvent } from "../model/auditLog";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
+import { cutoffQualifiers } from "../model/cutoffs";
 import {
   SWISS_FORMAT,
   meetingSeats,
@@ -16,11 +23,15 @@ import {
 } from "../model/registrations";
 import { requireOrganizerAccess } from "../model/tournaments";
 
-// Seats every active player for a phase's player meeting: alphabetical order,
+// Seats the phase's player pool for its player meeting: alphabetical order,
 // two per table (players 1&2 at table 1, 3&4 at table 2, an odd player alone
-// at the last table). The snapshot is taken exactly once — attendance drops
-// happen through the normal dropRegistration flow and readers live-join
-// registration status, so seat rows are never rewritten.
+// at the last table). The pool is every active player, unless the previous
+// phase configured a cutoff — then only its qualifiers are seated, matching
+// the cut startNextPhaseFirstRound applies when round 1 is paired. That cutoff
+// meeting snapshot remains authoritative through pairing, while live status
+// still removes dropped qualifiers. Attendance drops happen through the normal
+// dropRegistration flow and readers live-join registration status, so seat
+// rows are never rewritten.
 export const startPlayerMeeting = mutation({
   args: { phaseId: v.id("tournamentPhases") },
   handler: async (ctx, args) => {
@@ -47,12 +58,14 @@ export const startPlayerMeeting = mutation({
     if (phase.playerMeetingStatus !== undefined) {
       throw new Error("Player meeting has already started");
     }
+    let registrations: Doc<"tournamentRegistrations">[];
     if (phase.phaseOrder === 1) {
       if (tournament.lifecycle !== "registration") {
         throw new Error(
           "Tournament must be published before the meeting starts",
         );
       }
+      registrations = await activeRegistrations(ctx, tournament._id);
     } else {
       if (tournament.lifecycle !== "in_progress") {
         throw new Error("Tournament is not in progress");
@@ -65,9 +78,28 @@ export const startPlayerMeeting = mutation({
       if (previousPhase?.phaseStatus !== "completed") {
         throw new Error("Previous phase must be completed first");
       }
+      // The cut is enforced on registrations only when round 1 is paired, but
+      // the meeting freezes its entry field from the previous phase's final
+      // standings — seat only the players who made it.
+      if (previousPhase.phaseCutoff !== null) {
+        if (!previousPhase.phaseCurrentRound) {
+          throw new Error("Previous phase's final round not found");
+        }
+        registrations = await cutoffQualifiers(
+          ctx,
+          tournament._id,
+          previousPhase.phaseCurrentRound,
+          previousPhase.phaseCutoff,
+        );
+        if (registrations.length < 2) {
+          throw new Error(
+            "The phase cutoff leaves fewer than two qualifying players",
+          );
+        }
+      } else {
+        registrations = await activeRegistrations(ctx, tournament._id);
+      }
     }
-
-    const registrations = await activeRegistrations(ctx, tournament._id);
     if (registrations.length < 2) {
       throw new Error("At least two active players are required");
     }
@@ -130,11 +162,19 @@ export const listPlayerMeetingSeats = query({
       seats: await mapAsyncInBatches(
         seats,
         DATABASE_IO_BATCH_SIZE,
-        async (seat) => ({
-          ...seat,
-          registrationStatus:
-            (await ctx.db.get(seat.registrationId))?.status ?? null,
-        }),
+        async (seat) => {
+          const registration = await ctx.db.get(seat.registrationId);
+          return {
+            ...seat,
+            // A deleted registration is a different situation from a
+            // malformed-but-present row (effectiveRegistrationStatus's own
+            // fallback) — label it distinctly so the two never collapse into
+            // the same value for the client.
+            registrationStatus: registration
+              ? effectiveRegistrationStatus(registration)
+              : DELETED_REGISTRATION_STATUS,
+          };
+        },
       ),
     };
   },

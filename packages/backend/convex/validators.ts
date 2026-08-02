@@ -82,11 +82,31 @@ export const tournamentLifecycleValidator = v.union(
   v.literal("cancelled"),
 );
 
-export const tournamentRegistrationStatusValidator = v.union(
+// Overall admission workflow for an event entry. Only "confirmed" entries
+// occupy capacity and become tournament participants; the remaining states
+// never contribute to standings or public history.
+//
+// "pending", "waitlisted", and "rejected" are reserved for a planned
+// registration-review flow (approval queue, waitlist promotion) and
+// currently have no writer — read-side handling already accounts for them.
+export const tournamentEntryStatusValidator = v.union(
   v.literal("pending"),
+  v.literal("waitlisted"),
+  v.literal("confirmed"),
+  v.literal("cancelled"),
+  v.literal("rejected"),
+);
+
+// Competitive eligibility after an entry is confirmed. "active" means the
+// player remains eligible to be paired; it is initialized on confirmation so
+// starting round one never needs to patch every registration.
+//
+// "disqualified" is reserved for a planned DQ feature and currently has no
+// writer — read-side handling already accounts for it.
+export const tournamentParticipationStatusValidator = v.union(
   v.literal("active"),
-  v.literal("eliminated"),
   v.literal("dropped"),
+  v.literal("eliminated"),
   v.literal("disqualified"),
 );
 
@@ -107,17 +127,41 @@ export const tournamentPhaseRoundModeValidator = v.union(
   v.literal("fixed"),
 );
 
+// How a phase cuts the field when it completes: keep only the top N ranked
+// players, or everyone at or above a match-point bar. Null means no cut —
+// every active player advances. Only configurable on a Swiss phase followed by
+// another Swiss phase; a top-8 playoff always applies its own fixed cut.
+const topPlayersCutoffValidator = v.object({
+  kind: v.literal("top_X_players"),
+  playerCount: v.number(),
+});
+const pointsCutoffValidator = v.object({
+  kind: v.literal("X_points_or_more"),
+  matchPoints: v.number(),
+});
+
 export const tournamentPhaseCutoffValidator = v.union(
-  v.literal("top_X_players"),
-  v.literal("X_points_or_more"),
+  topPlayersCutoffValidator,
+  pointsCutoffValidator,
   v.null(),
 );
 
 // Lifecycle of a phase's player meeting. Absent on the phase = not started;
 // "in_progress" is the only state in which seats are shown to players.
+//
+// The remaining two states say what the meeting's seat snapshot is worth:
+// pairing the phase's first round stamps "completed" (from "in_progress" or
+// "superseded") in the same patch that sets the phase "in_progress", and
+// rewindLatestRound stamps "superseded" when it un-pairs that round — the
+// snapshot outlived the standings it was drawn from, and
+// cutoffPartitionForNextPhase reads the stamp to re-draw the cut boundary
+// instead of taking the seats verbatim. "completed" therefore always means
+// the phase's first round is paired; it can never coexist with an "upcoming"
+// phase.
 export const playerMeetingStatusValidator = v.union(
   v.literal("in_progress"),
   v.literal("completed"),
+  v.literal("superseded"),
 );
 
 export const tournamentRoundStatusValidator = v.union(

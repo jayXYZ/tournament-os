@@ -13,20 +13,31 @@ export type TournamentFormat = (typeof tournamentFormats)[number];
 
 export type TournamentCreationPhaseRoundMode = "dynamic" | "fixed";
 export type TournamentCreationPhaseType = "swiss" | "single_elimination";
+export type TournamentCreationPhaseCutoffKind =
+  | "none"
+  | "top_X_players"
+  | "X_points_or_more";
 
 export type TournamentCreationPhaseForm = {
   id: string;
   phaseType: TournamentCreationPhaseType;
   phaseRoundMode: TournamentCreationPhaseRoundMode;
   phaseTotalRounds: string;
+  phaseCutoffKind: TournamentCreationPhaseCutoffKind;
+  phaseCutoffValue: string;
   playerMeeting: boolean;
 };
+
+export type TournamentCreationPhaseCutoffPayload =
+  | { kind: "top_X_players"; playerCount: number }
+  | { kind: "X_points_or_more"; matchPoints: number };
 
 export type TournamentCreationPhasePayload = {
   phaseOrder: number;
   phaseType: TournamentCreationPhaseType;
   phaseRoundMode: TournamentCreationPhaseRoundMode;
   phaseTotalRounds?: number;
+  phaseCutoff?: TournamentCreationPhaseCutoffPayload;
   playerMeeting?: boolean;
 };
 
@@ -40,8 +51,23 @@ export function createDefaultTournamentCreationPhase(
     phaseType: "swiss",
     phaseRoundMode: "dynamic",
     phaseTotalRounds: "3",
+    phaseCutoffKind: "none",
+    phaseCutoffValue: "8",
     playerMeeting: false,
   };
+}
+
+// A cutoff cuts the field when its phase completes, so it is configurable
+// only on a Swiss phase followed by another Swiss phase — the top-8 playoff
+// applies its own fixed cut.
+export function canConfigureTournamentCreationPhaseCutoff(
+  phases: TournamentCreationPhaseForm[],
+  index: number,
+) {
+  return (
+    phases[index]?.phaseType === "swiss" &&
+    phases[index + 1]?.phaseType === "swiss"
+  );
 }
 
 export function addTournamentCreationPhase(
@@ -147,6 +173,25 @@ export function toTournamentCreationPhasePayload(
     const playerMeeting = phase.playerMeeting
       ? { playerMeeting: true as const }
       : {};
+    // Dropped rather than sent for phases that cannot carry one (last phase,
+    // or feeding the playoff), so a cutoff configured before a reorder or
+    // phase-type change does not fail backend validation.
+    const phaseCutoff =
+      phase.phaseCutoffKind !== "none" &&
+      canConfigureTournamentCreationPhaseCutoff(phases, index)
+        ? {
+            phaseCutoff:
+              phase.phaseCutoffKind === "top_X_players"
+                ? {
+                    kind: "top_X_players" as const,
+                    playerCount: Number(phase.phaseCutoffValue),
+                  }
+                : {
+                    kind: "X_points_or_more" as const,
+                    matchPoints: Number(phase.phaseCutoffValue),
+                  },
+          }
+        : {};
     if (phase.phaseType === "single_elimination") {
       return {
         phaseOrder,
@@ -159,6 +204,7 @@ export function toTournamentCreationPhasePayload(
         phaseOrder,
         phaseType: "swiss" as const,
         phaseRoundMode: "dynamic" as const,
+        ...phaseCutoff,
         ...playerMeeting,
       };
     }
@@ -167,7 +213,8 @@ export function toTournamentCreationPhasePayload(
       phaseOrder,
       phaseType: "swiss",
       phaseRoundMode: "fixed",
-      phaseTotalRounds: Number.parseInt(phase.phaseTotalRounds, 10),
+      phaseTotalRounds: Number(phase.phaseTotalRounds),
+      ...phaseCutoff,
       ...playerMeeting,
     };
   });

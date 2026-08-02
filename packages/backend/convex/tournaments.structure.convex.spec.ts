@@ -5,7 +5,10 @@ import { expect, test } from "vitest";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "./model/batching";
 import { roundHasRecordedResult } from "./model/tournaments";
 
-const schemaSource = readFileSync(new URL("./schema.ts", import.meta.url), "utf8");
+const schemaSource = readFileSync(
+  new URL("./schema.ts", import.meta.url),
+  "utf8",
+);
 const validatorsSource = readFileSync(
   new URL("./validators.ts", import.meta.url),
   "utf8",
@@ -77,10 +80,17 @@ test("tournament schema includes operational indexes and test config tables", ()
     /\.index\("by_tournamentId_and_userId", \["tournamentId", "userId"\]\)/,
   );
   expect(schemaSource).toMatch(
-    /\.index\("by_tournamentId_and_status", \["tournamentId", "status"\]\)/,
+    /\.index\("by_tournamentId_and_entryStatus_and_participationStatus", \[\s*"tournamentId",\s*"entryStatus",\s*"participationStatus",?\s*\]\)/,
   );
+  // A player's own registrations are read newest-event-first: the third
+  // column is the denormalized start date, never participationStatus, so a
+  // long history cannot bury the event they are currently in (see
+  // listMyTournaments).
   expect(schemaSource).toMatch(
-    /\.index\("by_userId_and_status", \["userId", "status"\]\)/,
+    /\.index\("by_userId_and_entryStatus_and_tournamentStartDate", \[\s*"userId",\s*"entryStatus",\s*"tournamentStartDate",?\s*\]\)/,
+  );
+  expect(schemaSource).not.toMatch(
+    /\.index\("by_userId_and_entryStatus_and_participationStatus"/,
   );
   expect(schemaSource).toMatch(/roundNumber: v\.number\(\)/);
   expect(schemaSource).toMatch(
@@ -89,7 +99,9 @@ test("tournament schema includes operational indexes and test config tables", ()
   expect(schemaSource).toMatch(
     /\.index\("by_tournamentRoundId_and_tableNumber", \[\s*"tournamentRoundId",\s*"tableNumber",\s*\]\)/,
   );
-  expect(schemaSource).toMatch(/phaseRoundMode: tournamentPhaseRoundModeValidator/);
+  expect(schemaSource).toMatch(
+    /phaseRoundMode: tournamentPhaseRoundModeValidator/,
+  );
   expect(schemaSource).toMatch(
     /phaseTotalRounds: v\.union\(v\.number\(\), v\.null\(\)\)/,
   );
@@ -101,14 +113,66 @@ test("tournament schema includes operational indexes and test config tables", ()
   expect(schemaSource).toMatch(/testTournamentPlayers: defineTable/);
 });
 
-test("registration statuses exclude payment-only states", () => {
-  const registrationValidator = validatorsSource.match(
-    /export const tournamentRegistrationStatusValidator = v\.union\(([\s\S]*?)\);/,
+// Every player in an event subscribes to tournaments/player.ts's standings
+// query, so a per-tournament scan of non-active registrations there costs a
+// document read and a subscription dependency per non-active player, per
+// viewer — after a cut that is nearly the whole field, invalidated by any one
+// drop. Participation status is denormalized onto the standings row instead
+// (setRegistrationState writes each change through), which no behavioural test
+// can protect because both designs return the same rows.
+test("player-facing queries never scan non-active registrations", () => {
+  const playerModule = readFileSync(
+    new URL("./tournaments/player.ts", import.meta.url),
+    "utf8",
+  );
+  expect(playerModule).toMatch(/standing\.participationStatus/);
+  expect(playerModule).not.toMatch(/nonActiveParticipationStatuses/);
+  expect(playerModule).not.toMatch(/participantRegistrations/);
+});
+
+// A rewind un-eliminates the players the reopened round removed, then deletes
+// that round's standings and rebuilds the promoted round's denormalized
+// statuses from the live registrations. Writing each restored player's status
+// onto the standings in between patches rows the same transaction is about to
+// delete — up to one per player in the field. The obvious alternative, moving
+// the restore after the deletion, is wrong: the rebuild has to observe the
+// un-eliminations, so the write is skipped rather than reordered. Neither the
+// waste nor the ordering is observable behaviourally — the wasted rows are
+// gone by the time the mutation returns, and both shapes leave the same rows
+// on disk — so the ordering and the skip are pinned here instead.
+test("a rewind does not sync standings it is about to delete", () => {
+  const roundsModule = readFileSync(tournamentModules.rounds, "utf8");
+  const rewind = roundsModule.match(
+    /export const rewindLatestRound[\s\S]*?^}\);$/m,
+  )?.[0];
+  expect(rewind).toBeDefined();
+  const restoreCall = (rewind ?? "").indexOf("restoreEliminationsForRewind(");
+  const deleteCall = (rewind ?? "").indexOf("deleteStandingsForReopenedRound(");
+  expect(restoreCall).toBeGreaterThanOrEqual(0);
+  expect(deleteCall).toBeGreaterThan(restoreCall);
+
+  const restore = roundsModule.match(
+    /async function restoreEliminationsForRewind\([\s\S]*$/,
+  )?.[0];
+  expect(restore).toBeDefined();
+  const stateWrites = (restore ?? "").match(/setRegistrationState\(/g) ?? [];
+  const deferred = (restore ?? "").match(/DEFERRED_STANDINGS_SYNC,/g) ?? [];
+  expect(stateWrites.length).toBeGreaterThan(0);
+  expect(deferred).toHaveLength(stateWrites.length);
+});
+
+test("registration concerns use independent validators", () => {
+  const entryValidator = validatorsSource.match(
+    /export const tournamentEntryStatusValidator = v\.union\(([\s\S]*?)\);/,
+  );
+  const participationValidator = validatorsSource.match(
+    /export const tournamentParticipationStatusValidator = v\.union\(([\s\S]*?)\);/,
   );
 
-  expect(registrationValidator).not.toBeNull();
-  expect(registrationValidator![1]).not.toMatch(/"paid"/);
-  expect(registrationValidator![1]).not.toMatch(/"unpaid"/);
+  expect(entryValidator?.[1]).toMatch(/"confirmed"/);
+  expect(entryValidator?.[1]).toMatch(/"waitlisted"/);
+  expect(participationValidator?.[1]).toMatch(/"dropped"/);
+  expect(entryValidator?.[1]).not.toMatch(/"dropped"/);
 });
 
 test("tournament domain helpers define Swiss MVP behavior", () => {
@@ -122,6 +186,11 @@ test("tournament domain helpers define Swiss MVP behavior", () => {
 
   const standingsModel = readFileSync(modelModules.standings, "utf8");
   expect(standingsModel).toMatch(/export function compareStandingRows/);
+
+  const registrationsModel = readFileSync(modelModules.registrations, "utf8");
+  expect(registrationsModel).toMatch(
+    /export async function participantRegistrations[\s\S]*by_tournamentId_and_entryStatus_and_participationStatus[\s\S]*eq\("entryStatus", "confirmed"\)[\s\S]*take\(MAX_TOURNAMENT_PLAYERS\)/,
+  );
 
   const randomModel = readFileSync(modelModules.random, "utf8");
   expect(randomModel).toMatch(/export function createSeededRandom/);
@@ -147,7 +216,8 @@ test("tournament functions expose setup registration operation and test APIs", (
       "registerSelf",
       "cancelMyRegistration",
       "getMyRegistration",
-      "listRegistrations",
+      "listRegistrationPage",
+      "searchRegistrations",
       "dropRegistration",
       "reinstateRegistration",
     ],
@@ -170,7 +240,8 @@ test("tournament functions expose setup registration operation and test APIs", (
   };
 
   for (const [moduleName, functionNames] of Object.entries(expectedExports)) {
-    const path = tournamentModules[moduleName as keyof typeof tournamentModules];
+    const path =
+      tournamentModules[moduleName as keyof typeof tournamentModules];
     expect(existsSync(path)).toBe(true);
     const source = readFileSync(path, "utf8");
 
@@ -185,5 +256,7 @@ test("tournament functions expose setup registration operation and test APIs", (
   expect(tournamentsModel).toMatch(/tournament\.isTestEvent !== true/);
 
   const testingModel = readFileSync(modelModules.testing, "utf8");
-  expect(testingModel).toMatch(/test:\$\{tournamentId\}:player:\$\{playerNumber\}/);
+  expect(testingModel).toMatch(
+    /test:\$\{tournamentId\}:player:\$\{playerNumber\}/,
+  );
 });

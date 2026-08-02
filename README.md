@@ -72,7 +72,7 @@ structure and playoff support.
 
 - [x] Phase management after creation: add / remove / reorder phases while the tournament is still editable
 - [x] Single elimination phase type + proper top-8 seeding from swiss standings (1v8, 4v5, 2v7, 3v6)
-- [ ] Wire up phase cutoffs (`top_X_players` / `X_points_or_more` exist in the schema but are unused): completing a phase should eliminate non-qualifiers and seed the next phase
+- [x] Wire up phase cutoffs: a Swiss phase followed by another Swiss phase can cut to the top X players or to everyone at X+ match points; non-qualifiers are eliminated when the next phase's first round is generated (rewindable, like the top-8 cut)
 - [ ] Harden swiss for real-event situations
   - [ ] Draws: intentional draws and game draws (only gameWins/gameLosses are tracked today)
   - [ ] Late entry after round 1 (join with byes or losses per policy)
@@ -85,7 +85,7 @@ structure and playoff support.
 - [x] Decouple visibility from lifecycle in tournament status: `visibility: public | unlisted | private` is now separate from `lifecycle: setup | registration | in_progress | completed | cancelled` (requires a DB reset; "setup" not "draft" to avoid clashing with the Magic draft format)
 - [ ] Publishing settings per tournament: whether standings, pairings, and (eventually) decklists are publicly visible, during and/or after the event
 - [ ] Invite-only tournaments (join via link/code, or organizer approval of pending registrations)
-- [ ] Enroll players as guests or by email (guest registrations without accounts; claimable later via the public player code)
+- [ ] Enroll players as guests or by email (guest registrations without accounts)
 - [ ] Player profiles with past public/published tournament results
 - [ ] Decklist submission (prerequisite for decklist publishing; text import + basic validation)
 - [ ] Transactional email (staff invites are DB rows matched at sign-in today; registration confirmations, invite emails)

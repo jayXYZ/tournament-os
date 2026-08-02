@@ -5,18 +5,18 @@ import { expect, test } from "vitest";
 
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import type { MutationCtx } from "./_generated/server";
+import { setRegistrationState } from "./model/registrations";
+import { eliminateNonQualifiers } from "./model/singleElimination";
 import { compareStandingRows } from "./model/standings";
 import schema from "./schema";
+import {
+  organizerIdentity,
+  playOutCurrentRound,
+  seedOrganizer,
+} from "./specHelpers";
 
 const modules = import.meta.glob("./**/*.ts");
-
-const organizerIdentity = {
-  issuer: "https://convex.test",
-  subject: "organizer",
-  tokenIdentifier: "https://convex.test|organizer",
-  email: "organizer@example.test",
-  name: "Organizer",
-};
 
 function playerIdentity(playerNumber: number) {
   return {
@@ -584,11 +584,11 @@ test("unpublished rounds do not promise pairings to excluded players", async () 
       .withIdentity(playerIdentity(1))
       .query(api.tournaments.player.getMyCurrentMatch, { tournamentId }),
   ).toMatchObject({ kind: "pairings_pending" });
-  expect(
-    await t
+  await expect(
+    t
       .withIdentity(playerIdentity(4))
       .query(api.tournaments.player.getMyCurrentMatch, { tournamentId }),
-  ).toMatchObject({ kind: "no_match", myRegistrationStatus: "dropped" });
+  ).rejects.toThrow("Not registered for this tournament");
 });
 
 test("completing unpublished pairings preserves the round in match history", async () => {
@@ -811,7 +811,8 @@ test("dropSelf removes the player from future rounds but keeps read access", asy
   expect(roundTwoPlayerIds).not.toContain(registrationIds[3]);
   expect(roundTwoPlayerIds).toHaveLength(3);
 
-  // Dropped players keep read access; their loss still feeds standings.
+  // Dropped players keep read access and stay ranked with their frozen
+  // record, marked by their live registration status.
   const current = await playerFour.query(
     api.tournaments.player.getMyCurrentMatch,
     { tournamentId },
@@ -821,9 +822,388 @@ test("dropSelf removes the player from future rounds but keeps read access", asy
     api.tournaments.player.getLatestStandings,
     { tournamentId },
   );
-  expect(standings?.rows).toHaveLength(3);
-  expect(standings?.rows.some((row) => row.isMe)).toBe(false);
+  expect(standings?.rows).toHaveLength(4);
+  const myRow = standings?.rows.find((row) => row.isMe);
+  expect(myRow).toMatchObject({
+    registrationStatus: "dropped",
+    matchWins: 0,
+    matchLosses: 1,
+  });
+
+  // An organizer DQ reads as a plain drop in player-facing standings; only
+  // the organizer standings query exposes the real status. Disqualification
+  // has no mutation of its own yet, so this stands in for the planned one by
+  // going through the single transition funnel a writer would use — which is
+  // also what keeps the standings row's denormalized copy current.
+  await t.run(async (ctx) => {
+    await setRegistrationState(ctx, registrationIds[3], {
+      entryStatus: "confirmed",
+      participationStatus: "disqualified",
+    });
+  });
+  const maskedStandings = await playerFour.query(
+    api.tournaments.player.getLatestStandings,
+    { tournamentId },
+  );
+  expect(
+    maskedStandings?.rows.find((row) => row.isMe)?.registrationStatus,
+  ).toBe("dropped");
+  // The controller query masks the player's own status the same way, so the
+  // clients' existing dropped branches cover a disqualification with no
+  // dedicated handling of their own.
+  const maskedCurrent = await playerFour.query(
+    api.tournaments.player.getMyCurrentMatch,
+    { tournamentId },
+  );
+  expect(maskedCurrent.myRegistrationStatus).toBe("dropped");
+  const organizerStandings = await organizer.query(
+    api.tournaments.rounds.listRoundStandings,
+    { roundId: round._id },
+  );
+  expect(
+    organizerStandings.find(
+      (row) => row.standing.playerId === registrationIds[3],
+    )?.registrationStatus,
+  ).toBe("disqualified");
 });
+
+// getLatestStandings reads participation status from the copy denormalized onto
+// the standings row instead of scanning every non-active registration, so the
+// cases that matter are the ones where the status changes AFTER the standings
+// that display it were written: a drop, a reinstate, and a cut's elimination
+// batch. Each test checks both what the player sees and what is stored on the
+// row, since a stale stored value is what would break the query.
+test("standings track a drop and a reinstate made between rounds", async () => {
+  const t = convexTest(schema, modules);
+  const { tournamentId, registrationIds } = await seedStartedTournament(t, 4);
+  const organizer = t.withIdentity(organizerIdentity);
+  const viewer = t.withIdentity(playerIdentity(1));
+  const droppedId = registrationIds[3];
+
+  await playOutCurrentRound(t, tournamentId);
+  const roundOne = await currentRound(t, tournamentId);
+  expect(
+    (
+      await viewer.query(api.tournaments.player.getLatestStandings, {
+        tournamentId,
+      })
+    )?.rows.map((row) => row.registrationStatus),
+  ).toEqual(["active", "active", "active", "active"]);
+
+  // Between rounds: round one's standings are already written and are what
+  // every player is looking at when the drop lands.
+  await organizer.mutation(api.tournaments.registrations.dropRegistration, {
+    registrationId: droppedId,
+  });
+  let standings = await viewer.query(
+    api.tournaments.player.getLatestStandings,
+    { tournamentId },
+  );
+  expect(standings?.roundNumber).toBe(1);
+  expect(
+    standings?.rows.find((row) => row.name === "Player 4")?.registrationStatus,
+  ).toBe("dropped");
+  expect(await storedStandingStatus(t, roundOne._id, droppedId)).toBe(
+    "dropped",
+  );
+
+  // ...and the reinstate has to travel the same way back.
+  await organizer.mutation(
+    api.tournaments.registrations.reinstateRegistration,
+    { registrationId: droppedId },
+  );
+  standings = await viewer.query(api.tournaments.player.getLatestStandings, {
+    tournamentId,
+  });
+  expect(standings?.roundNumber).toBe(1);
+  expect(
+    standings?.rows.find((row) => row.name === "Player 4")?.registrationStatus,
+  ).toBe("active");
+  expect(await storedStandingStatus(t, roundOne._id, droppedId)).toBe("active");
+
+  // A drop taken while the next round is being played still has to show on the
+  // last completed round's standings, which are the ones on screen.
+  await organizer.mutation(api.tournaments.rounds.generateNextRound, {
+    tournamentId,
+  });
+  await organizer.mutation(api.tournaments.registrations.dropRegistration, {
+    registrationId: registrationIds[2],
+  });
+  standings = await viewer.query(api.tournaments.player.getLatestStandings, {
+    tournamentId,
+  });
+  expect(standings?.roundNumber).toBe(1);
+  expect(
+    standings?.rows.find((row) => row.name === "Player 3")?.registrationStatus,
+  ).toBe("dropped");
+  expect(await storedStandingStatus(t, roundOne._id, registrationIds[2])).toBe(
+    "dropped",
+  );
+
+  // Completing that round writes fresh standings, which must carry the drop
+  // forward rather than reverting to the status held when play began.
+  await playOutCurrentRound(t, tournamentId);
+  const roundTwo = await currentRound(t, tournamentId);
+  standings = await viewer.query(api.tournaments.player.getLatestStandings, {
+    tournamentId,
+  });
+  expect(standings?.roundNumber).toBe(2);
+  expect(
+    standings?.rows.find((row) => row.name === "Player 3")?.registrationStatus,
+  ).toBe("dropped");
+  expect(await storedStandingStatus(t, roundTwo._id, registrationIds[2])).toBe(
+    "dropped",
+  );
+});
+
+test("standings show a cut's elimination batch on the round that produced it", async () => {
+  const t = convexTest(schema, modules);
+  const { tournamentId, registrationIds } = await seedTournament(t, 4, [
+    {
+      phaseOrder: 1,
+      phaseRoundMode: "fixed",
+      phaseTotalRounds: 1,
+      phaseCutoff: { kind: "top_X_players", playerCount: 2 },
+    },
+    { phaseOrder: 2, phaseRoundMode: "fixed", phaseTotalRounds: 1 },
+  ]);
+  const organizer = t.withIdentity(organizerIdentity);
+  const viewer = t.withIdentity(playerIdentity(1));
+  await organizer.mutation(api.tournaments.rounds.startTournament, {
+    tournamentId,
+  });
+
+  await playOutCurrentRound(t, tournamentId);
+  const finalSwissRound = await currentRound(t, tournamentId);
+  const qualifierIds = (
+    await organizer.query(api.tournaments.rounds.listRoundStandings, {
+      roundId: finalSwissRound._id,
+    })
+  )
+    .slice(0, 2)
+    .map(({ standing }) => standing.playerId);
+  const eliminatedIds = registrationIds.filter(
+    (registrationId) => !qualifierIds.includes(registrationId),
+  );
+  expect(eliminatedIds).toHaveLength(2);
+
+  // The cut is applied while the next phase's first round is paired — after
+  // this round's standings were written, and before the next round has any.
+  await organizer.mutation(api.tournaments.rounds.generateNextRound, {
+    tournamentId,
+  });
+  const standings = await viewer.query(
+    api.tournaments.player.getLatestStandings,
+    { tournamentId },
+  );
+  expect(standings?.roundNumber).toBe(finalSwissRound.roundNumber);
+  for (const eliminatedId of eliminatedIds) {
+    expect(await storedStandingStatus(t, finalSwissRound._id, eliminatedId)).toBe(
+      "eliminated",
+    );
+  }
+  for (const qualifierId of qualifierIds) {
+    expect(await storedStandingStatus(t, finalSwissRound._id, qualifierId)).toBe(
+      "active",
+    );
+  }
+  // The organizer view of the same round still live-joins the registration, so
+  // the denormalized copy the players read has to agree with it row for row.
+  const liveStatusByName = new Map(
+    (
+      await organizer.query(api.tournaments.rounds.listRoundStandings, {
+        roundId: finalSwissRound._id,
+      })
+    ).map((row) => [row.playerName, row.registrationStatus]),
+  );
+  expect(liveStatusByName.size).toBe(4);
+  expect(standings?.rows.map((row) => row.registrationStatus)).toEqual(
+    standings?.rows.map((row) => liveStatusByName.get(row.name ?? undefined)),
+  );
+  expect(
+    standings?.rows.filter((row) => row.registrationStatus === "eliminated"),
+  ).toHaveLength(2);
+});
+
+// The elimination batch a cut applies removes the whole field bar the
+// qualifiers in one transaction. Writing each of those status changes through
+// to the standings by looking the player's row up on its own would cost an
+// index range per eliminated player — at MAX_TOURNAMENT_PLAYERS, half the
+// 4,096-range-per-transaction budget from one helper. The rows it needs all
+// belong to the round the cut was drawn from, so one range serves the batch
+// however large the field is. Counting the reads is the only way to see this:
+// both shapes leave exactly the same rows on disk.
+test("a cut's elimination batch reaches standings through one index range", async () => {
+  const t = convexTest(schema, modules);
+  const { tournamentId, registrationIds } = await seedTournament(t, 8, [
+    {
+      phaseOrder: 1,
+      phaseRoundMode: "fixed",
+      phaseTotalRounds: 1,
+      phaseCutoff: { kind: "top_X_players", playerCount: 2 },
+    },
+    { phaseOrder: 2, phaseRoundMode: "fixed", phaseTotalRounds: 1 },
+  ]);
+  const organizer = t.withIdentity(organizerIdentity);
+  await organizer.mutation(api.tournaments.rounds.startTournament, {
+    tournamentId,
+  });
+  await playOutCurrentRound(t, tournamentId);
+  const finalSwissRound = await currentRound(t, tournamentId);
+  const qualifierIds = (
+    await organizer.query(api.tournaments.rounds.listRoundStandings, {
+      roundId: finalSwissRound._id,
+    })
+  )
+    .slice(0, 2)
+    .map(({ standing }) => standing.playerId);
+  const eliminatedIds = registrationIds.filter(
+    (registrationId) => !qualifierIds.includes(registrationId),
+  );
+  expect(eliminatedIds).toHaveLength(6);
+
+  const tally = await t.run(async (ctx) => {
+    const tournament = await ctx.db.get(tournamentId);
+    if (!tournament) {
+      throw new Error("Tournament missing in test setup");
+    }
+    const qualifiers = [];
+    for (const qualifierId of qualifierIds) {
+      const registration = await ctx.db.get(qualifierId);
+      if (!registration) {
+        throw new Error("Qualifier missing in test setup");
+      }
+      qualifiers.push(registration);
+    }
+    const standingIds = new Set(
+      (
+        await ctx.db
+          .query("roundStandings")
+          .withIndex("by_tournamentRoundId_and_rank", (q) =>
+            q.eq("tournamentRoundId", finalSwissRound._id),
+          )
+          .collect()
+      ).map((standing) => standing._id as string),
+    );
+
+    // Every roundStandings query opens exactly one index range, so counting the
+    // calls counts the ranges; patches are attributed by row id.
+    const counts = { standingsRanges: 0, standingsPatches: 0 };
+    const db = new Proxy(ctx.db, {
+      get(target, property) {
+        const value = Reflect.get(target, property, target);
+        if (typeof value !== "function") {
+          return value;
+        }
+        return (...args: unknown[]) => {
+          if (property === "query" && args[0] === "roundStandings") {
+            counts.standingsRanges += 1;
+          }
+          if (property === "patch" && standingIds.has(args[0] as string)) {
+            counts.standingsPatches += 1;
+          }
+          return (value as (...inner: unknown[]) => unknown).apply(target, args);
+        };
+      },
+    });
+    const countingCtx = new Proxy(ctx, {
+      get: (target, property) =>
+        property === "db" ? db : Reflect.get(target, property, target),
+    });
+
+    await eliminateNonQualifiers(
+      countingCtx as unknown as MutationCtx,
+      tournament,
+      // elimination: null is the seat-decided-cut shape — the partition read
+      // no standings — so the helper's own prefetch is what is being counted.
+      {
+        qualifiers,
+        droppedNonQualifiers: [],
+        heldPlaces: [],
+        elimination: null,
+      },
+      finalSwissRound._id,
+    );
+    return counts;
+  });
+
+  expect(tally.standingsRanges).toBe(1);
+  expect(tally.standingsPatches).toBe(eliminatedIds.length);
+  // …and the denormalized copy is still exact, which is what the range buys.
+  for (const eliminatedId of eliminatedIds) {
+    expect(await storedStandingStatus(t, finalSwissRound._id, eliminatedId)).toBe(
+      "eliminated",
+    );
+  }
+  for (const qualifierId of qualifierIds) {
+    expect(await storedStandingStatus(t, finalSwissRound._id, qualifierId)).toBe(
+      "active",
+    );
+  }
+});
+
+test("a rewind past a drop does not resurrect the dropped player", async () => {
+  const t = convexTest(schema, modules);
+  const { tournamentId, registrationIds } = await seedStartedTournament(t, 4);
+  const organizer = t.withIdentity(organizerIdentity);
+  const viewer = t.withIdentity(playerIdentity(1));
+  const droppedId = registrationIds[3];
+
+  await playOutCurrentRound(t, tournamentId);
+  const roundOne = await currentRound(t, tournamentId);
+  await organizer.mutation(api.tournaments.rounds.generateNextRound, {
+    tournamentId,
+  });
+  await playOutCurrentRound(t, tournamentId);
+  await organizer.mutation(api.tournaments.rounds.generateNextRound, {
+    tournamentId,
+  });
+
+  // The drop lands while round two's standings are the ones on screen, so only
+  // they record it — round one's were frozen before it happened.
+  await organizer.mutation(api.tournaments.registrations.dropRegistration, {
+    registrationId: droppedId,
+  });
+  expect(await storedStandingStatus(t, roundOne._id, droppedId)).toBe("active");
+
+  // Rewinding round three reopens round two and deletes its standings, handing
+  // round one's back to every player.
+  await organizer.mutation(api.tournaments.rounds.rewindLatestRound, {
+    tournamentId,
+  });
+  const standings = await viewer.query(
+    api.tournaments.player.getLatestStandings,
+    { tournamentId },
+  );
+  expect(standings?.roundNumber).toBe(1);
+  expect(
+    standings?.rows.find((row) => row.name === "Player 4")?.registrationStatus,
+  ).toBe("dropped");
+  expect(await storedStandingStatus(t, roundOne._id, droppedId)).toBe(
+    "dropped",
+  );
+});
+
+// The participation status stored on a round's standings row, which is what
+// getLatestStandings reports.
+async function storedStandingStatus(
+  t: TestConvex<typeof schema>,
+  roundId: Id<"tournamentRounds">,
+  registrationId: Id<"tournamentRegistrations">,
+) {
+  return await t.run(async (ctx) => {
+    const standing = await ctx.db
+      .query("roundStandings")
+      .withIndex("by_tournamentRoundId_and_playerId", (q) =>
+        q.eq("tournamentRoundId", roundId).eq("playerId", registrationId),
+      )
+      .unique();
+    if (!standing) {
+      throw new Error("Standings row not found in test setup");
+    }
+    return standing.participationStatus ?? null;
+  });
+}
 
 test("player queries reject users who never registered", async () => {
   const t = convexTest(schema, modules);
@@ -856,6 +1236,9 @@ async function seedTournament(
     phaseType?: "swiss" | "single_elimination";
     phaseRoundMode: "fixed" | "dynamic";
     phaseTotalRounds?: number;
+    phaseCutoff?:
+      | { kind: "top_X_players"; playerCount: number }
+      | { kind: "X_points_or_more"; matchPoints: number };
   }[] = [{ phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 3 }],
   autoPublishPairings = true,
 ) {
@@ -881,6 +1264,10 @@ async function seedTournament(
 
   const registrationIds = await t.run(async (ctx) => {
     const now = Date.now();
+    const tournament = await ctx.db.get(tournamentId);
+    if (!tournament) {
+      throw new Error("Tournament not found in test setup");
+    }
     const ids: Id<"tournamentRegistrations">[] = [];
     for (let playerNumber = 1; playerNumber <= playerCount; playerNumber += 1) {
       const identity = playerIdentity(playerNumber);
@@ -895,12 +1282,18 @@ async function seedTournament(
         await ctx.db.insert("tournamentRegistrations", {
           tournamentId,
           userId,
-          status: "active",
+          tournamentStartDate: tournament.startDate,
+          entryStatus: "confirmed",
+          participationStatus: "active",
           createdAt: now + playerNumber,
           updatedAt: now,
         }),
       );
     }
+    await ctx.db.patch(tournamentId, {
+      confirmedRegistrationCount: playerCount,
+      updatedAt: now,
+    });
     return ids;
   });
   await t
@@ -944,38 +1337,6 @@ async function currentRound(
 
 // Records an organizer result for every two-player match in the current round
 // and completes it, so tests can advance rounds without player reports.
-async function playOutCurrentRound(
-  t: TestConvex<typeof schema>,
-  tournamentId: Id<"tournaments">,
-) {
-  const organizer = t.withIdentity(organizerIdentity);
-  const round = await organizer.query(api.tournaments.rounds.getCurrentRound, {
-    tournamentId,
-  });
-  if (!round) {
-    throw new Error("No current round to play out");
-  }
-  const pairings = await organizer.query(
-    api.tournaments.rounds.listRoundPairings,
-    { roundId: round._id },
-  );
-  for (const { match, players } of pairings) {
-    if (players.length !== 2) {
-      continue;
-    }
-    await organizer.mutation(api.tournaments.rounds.recordMatchResult, {
-      matchId: match._id,
-      playerOneRegistrationId: players[0].playerId,
-      playerTwoRegistrationId: players[1].playerId,
-      playerOneGameWins: 2,
-      playerTwoGameWins: 0,
-    });
-  }
-  await organizer.mutation(api.tournaments.rounds.completeRound, {
-    roundId: round._id,
-  });
-}
-
 async function matchForPlayer(
   t: TestConvex<typeof schema>,
   tournamentId: Id<"tournaments">,
@@ -1049,34 +1410,4 @@ async function outsiderNumber(
     throw new Error("No outsider available for match");
   }
   return index + 1;
-}
-
-async function seedOrganizer(t: TestConvex<typeof schema>) {
-  return await t.run(async (ctx) => {
-    const now = Date.now();
-    const userId = await ctx.db.insert("users", {
-      tokenIdentifier: organizerIdentity.tokenIdentifier,
-      publicCode: 1,
-      email: organizerIdentity.email,
-      name: organizerIdentity.name,
-      updatedAt: now,
-    });
-    const organizationId = await ctx.db.insert("organizations", {
-      name: "Test Org",
-      slug: "test-org",
-      createdBy: userId,
-      status: "active",
-      updatedAt: now,
-    });
-    await ctx.db.insert("organizationMemberships", {
-      organizationId,
-      userId,
-      email: organizerIdentity.email,
-      role: "owner",
-      status: "active",
-      updatedAt: now,
-    });
-
-    return { organizationId, userId };
-  });
 }

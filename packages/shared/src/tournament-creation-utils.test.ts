@@ -17,6 +17,8 @@ test("createDefaultTournamentCreationPhase creates a dynamic Swiss phase", () =>
     phaseType: "swiss",
     phaseRoundMode: "dynamic",
     phaseTotalRounds: "3",
+    phaseCutoffKind: "none",
+    phaseCutoffValue: "8",
     playerMeeting: false,
   });
 });
@@ -111,11 +113,9 @@ test("toTournamentCreationPhasePayload sends contiguous phase orders", () => {
   const phases = [
     createDefaultTournamentCreationPhase("phase-1"),
     {
-      id: "phase-2",
-      phaseType: "swiss" as const,
+      ...createDefaultTournamentCreationPhase("phase-2"),
       phaseRoundMode: "fixed" as const,
       phaseTotalRounds: "5",
-      playerMeeting: false,
     },
   ];
 
@@ -143,6 +143,55 @@ test("toTournamentCreationPhasePayload emits playerMeeting only when enabled", (
       phaseType: "swiss",
       phaseRoundMode: "dynamic",
       playerMeeting: true,
+    },
+  ]);
+});
+
+test("toTournamentCreationPhasePayload emits a cutoff only where one can apply", () => {
+  const phases = [
+    {
+      ...createDefaultTournamentCreationPhase("phase-1"),
+      phaseCutoffKind: "top_X_players" as const,
+      phaseCutoffValue: "16",
+    },
+    {
+      ...createDefaultTournamentCreationPhase("phase-2"),
+      phaseCutoffKind: "X_points_or_more" as const,
+      phaseCutoffValue: "9",
+    },
+  ];
+
+  // Phase 2 is the final phase, so its configured cutoff is dropped rather
+  // than sent to fail backend validation.
+  assert.deepEqual(toTournamentCreationPhasePayload(phases), [
+    {
+      phaseOrder: 1,
+      phaseType: "swiss",
+      phaseRoundMode: "dynamic",
+      phaseCutoff: { kind: "top_X_players", playerCount: 16 },
+    },
+    { phaseOrder: 2, phaseType: "swiss", phaseRoundMode: "dynamic" },
+  ]);
+});
+
+test("toTournamentCreationPhasePayload drops a cutoff on the phase feeding a playoff", () => {
+  const phases = [
+    {
+      ...createDefaultTournamentCreationPhase("phase-1"),
+      phaseCutoffKind: "top_X_players" as const,
+    },
+    {
+      ...createDefaultTournamentCreationPhase("playoff"),
+      phaseType: "single_elimination" as const,
+    },
+  ];
+
+  assert.deepEqual(toTournamentCreationPhasePayload(phases), [
+    { phaseOrder: 1, phaseType: "swiss", phaseRoundMode: "dynamic" },
+    {
+      phaseOrder: 2,
+      phaseType: "single_elimination",
+      phaseRoundMode: "fixed",
     },
   ]);
 });

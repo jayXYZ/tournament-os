@@ -8,9 +8,9 @@ import { matchPlayers, roundMatches } from "./tournaments";
 const DELETE_BATCH_SIZE = 512;
 
 // Deletes up to DELETE_BATCH_SIZE operational documents for a tournament:
-// phases with their rounds, matches, match players, and standings, then
-// registrations, test players (and their synthetic users), audit events, and
-// test configs.
+// phases with their rounds, matches, match players, standings, and
+// player-meeting seats, then registrations, test players (and their
+// synthetic users), audit events, and test configs.
 // Returns true once everything is cleared; false means more data remains and
 // the caller should run another batch (e.g. by rescheduling itself via
 // ctx.scheduler.runAfter).
@@ -95,7 +95,9 @@ export async function deleteTournamentOperationalDataBatch(
 
   const registrations = await ctx.db
     .query("tournamentRegistrations")
-    .withIndex("by_tournamentId", (q) => q.eq("tournamentId", tournamentId))
+    .withIndex("by_tournamentId_and_tournamentStartDate", (q) =>
+      q.eq("tournamentId", tournamentId),
+    )
     .take(512);
   sawFullPage ||= registrations.length === 512;
   for (const registration of registrations) {

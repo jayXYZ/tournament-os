@@ -576,7 +576,9 @@ function PhaseSection({
           const filled =
             (previous?.kind === 'round' &&
               previous.round.roundStatus === 'completed') ||
-            (index === 0 && phase.playerMeetingStatus === 'completed')
+            (index === 0 &&
+              phase.playerMeetingStatus !== undefined &&
+              phase.playerMeetingStatus !== 'in_progress')
           return (
             <li
               // A timeline position keeps its identity when a planned round
@@ -658,7 +660,9 @@ function PlayerMeetingNode({
     )
   }
 
-  const completed = status === 'completed'
+  // "superseded" (the phase's first round was rewound after the meeting)
+  // renders as completed: the meeting itself did finish.
+  const completed = status !== 'in_progress'
   return (
     <Tooltip>
       <TooltipTrigger asChild>
