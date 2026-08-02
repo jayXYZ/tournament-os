@@ -36,9 +36,11 @@ export function MoreTab({
 }) {
   return (
     <div className="grid gap-4">
-      {collectsDecklists ? (
-        <DecklistCard tournamentId={tournamentId} publicCode={publicCode} />
-      ) : null}
+      <DecklistCard
+        tournamentId={tournamentId}
+        publicCode={publicCode}
+        collectsDecklists={collectsDecklists}
+      />
       <MatchHistoryCard tournamentId={tournamentId} />
       <DropCard tournamentId={tournamentId} currentMatch={currentMatch} />
     </div>
@@ -48,22 +50,33 @@ export function MoreTab({
 function DecklistCard({
   tournamentId,
   publicCode,
+  collectsDecklists,
 }: {
   tournamentId: Id<'tournaments'>
   publicCode: string
+  collectsDecklists: boolean
 }) {
   const data = useQuery(api.tournaments.decklists.getMyDecklist, {
     tournamentId,
   })
 
   if (data === undefined) {
-    return <Skeleton className="h-24" />
+    // No skeleton when the event doesn't collect decklists — the card is
+    // usually about to resolve to nothing (it only survives for a list kept
+    // from before the organizer turned collection off).
+    return collectsDecklists ? <Skeleton className="h-24" /> : null
   }
   if (data === null) {
     return null
   }
 
   const { decklist, submissionOpen } = data
+  // The settings copy promises "Turning this off keeps any submitted lists",
+  // so a stored list stays reachable after collection is turned off; players
+  // without one just see no decklist card.
+  if (!collectsDecklists && decklist === null) {
+    return null
+  }
   const description = decklist
     ? [
         decklist.deckName,

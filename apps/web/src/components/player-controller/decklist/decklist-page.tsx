@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { useQuery } from 'convex/react'
 import {
@@ -39,15 +40,21 @@ export function DecklistPage({ publicCode }: { publicCode: string }) {
     user && typedTournamentId ? { tournamentId: typedTournamentId } : 'skip',
   )
   const hasConfirmedEntry = registration?.entryStatus === 'confirmed'
+  // Fetched even when the tournament no longer collects decklists: the
+  // organizer settings copy promises "Turning this off keeps any submitted
+  // lists", and getMyDecklist has no decklistRequired gate — it returns the
+  // stored list with submissionOpen: false, so the player can still view it.
   const decklistData = useQuery(
     api.tournaments.decklists.getMyDecklist,
-    user &&
-      typedTournamentId &&
-      hasConfirmedEntry &&
-      event?.tournament.decklistRequired
+    user && typedTournamentId && hasConfirmedEntry
       ? { tournamentId: typedTournamentId }
       : 'skip',
   )
+  // Whether the mounted editor holds unsaved changes, reported live via
+  // onDirtyChange. The no-decklist-needed gate below checks it so flipping
+  // decklistRequired off mid-edit never unmounts a dirty editor and silently
+  // destroys the draft.
+  const [editorDirty, setEditorDirty] = useState(false)
 
   if (loading || event === undefined) {
     return (
@@ -144,7 +151,27 @@ export function DecklistPage({ publicCode }: { publicCode: string }) {
     )
   }
 
-  if (!event.tournament.decklistRequired) {
+  if (decklistData === undefined || decklistData === null) {
+    return (
+      <DecklistFrame publicCode={publicCode} eventName={event.tournament.name}>
+        <div className="grid gap-3 pt-4">
+          {[0, 1, 2].map((row) => (
+            <Skeleton key={row} className="h-24" />
+          ))}
+        </div>
+      </DecklistFrame>
+    )
+  }
+
+  // "No decklist needed" only when there is truly nothing to show: an event
+  // that stopped collecting decklists keeps a submitted list viewable (the
+  // editor renders it read-only from submissionOpen: false), and a dirty
+  // editor stays mounted so an in-progress draft survives the flag flipping.
+  if (
+    !event.tournament.decklistRequired &&
+    decklistData.decklist === null &&
+    !editorDirty
+  ) {
     return (
       <DecklistFrame publicCode={publicCode} eventName={event.tournament.name}>
         <Empty className="mt-4 min-h-80 border bg-card">
@@ -171,21 +198,13 @@ export function DecklistPage({ publicCode }: { publicCode: string }) {
     )
   }
 
-  if (decklistData === undefined || decklistData === null) {
-    return (
-      <DecklistFrame publicCode={publicCode} eventName={event.tournament.name}>
-        <div className="grid gap-3 pt-4">
-          {[0, 1, 2].map((row) => (
-            <Skeleton key={row} className="h-24" />
-          ))}
-        </div>
-      </DecklistFrame>
-    )
-  }
-
   return (
     <DecklistFrame publicCode={publicCode} eventName={event.tournament.name}>
-      <DecklistEditor tournamentId={typedTournamentId} data={decklistData} />
+      <DecklistEditor
+        tournamentId={typedTournamentId}
+        data={decklistData}
+        onDirtyChange={setEditorDirty}
+      />
     </DecklistFrame>
   )
 }

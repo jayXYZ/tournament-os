@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { useBlocker } from '@tanstack/react-router'
 import { useMutation } from 'convex/react'
 import { ArrowRightLeft, EllipsisVertical, Lock, Minus, Plus, Trash2 } from 'lucide-react'
@@ -59,11 +59,16 @@ function draftFromDecklist(decklist: MyDecklist['decklist']): DecklistDraft {
 export function DecklistEditor({
   tournamentId,
   data,
+  onDirtyChange,
 }: {
   tournamentId: Id<'tournaments'>
   // `data.submissionOpen` stays live through query updates; `data.decklist`
   // only seeds the local draft, which is the source of truth from then on.
   data: MyDecklist
+  // Live unsaved-changes signal for the page, which refuses to unmount a
+  // dirty editor (destroying the draft) when the organizer turns decklist
+  // collection off mid-edit.
+  onDirtyChange: (dirty: boolean) => void
 }) {
   const deckNameId = useId()
   const submitDecklist = useMutation(api.tournaments.decklists.submitMyDecklist)
@@ -80,6 +85,10 @@ export function DecklistEditor({
 
   const dirty = !draftsEqual(draft, baseline)
   const submissionOpen = data.submissionOpen
+
+  useEffect(() => {
+    onDirtyChange(dirty)
+  }, [dirty, onDirtyChange])
 
   // A 75-card draft is minutes of typing — don't let one stray tap on the
   // back button discard it silently.
