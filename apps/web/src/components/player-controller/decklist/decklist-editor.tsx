@@ -90,6 +90,16 @@ export function DecklistEditor({
     onDirtyChange(dirty)
   }, [dirty, onDirtyChange])
 
+  // The flash is one-shot: clear it once the 0.9s highlight animation (see
+  // .deck-row-added in styles/app.css) has finished, so the row returns to
+  // its resting key/class and a later remount (e.g. switching board tabs)
+  // doesn't replay the animation or re-scroll.
+  useEffect(() => {
+    if (flash === null) return
+    const timer = window.setTimeout(() => setFlash(null), 1000)
+    return () => window.clearTimeout(timer)
+  }, [flash])
+
   // A 75-card draft is minutes of typing — don't let one stray tap on the
   // back button discard it silently.
   useBlocker({
@@ -296,6 +306,17 @@ function BoardList({
   onRemove: (board: BoardId, name: string) => void
   onMove: (board: BoardId, name: string) => void
 }) {
+  // Scroll to the row the add bar just touched — exactly once per add, from
+  // an effect keyed on the flash target. An inline ref callback would get a
+  // new identity every render, so React would detach/re-attach it and re-run
+  // scrollIntoView on every unrelated state update (typing the deck name,
+  // +/- on another row), yanking the viewport back to this row.
+  const flashedRowRef = useRef<HTMLLIElement | null>(null)
+  useEffect(() => {
+    if (flash === null || flash.board !== board) return
+    flashedRowRef.current?.scrollIntoView({ block: 'nearest' })
+  }, [flash, board])
+
   if (entries.length === 0) {
     return (
       <div className="rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
@@ -319,11 +340,7 @@ function BoardList({
             // The nonce in the key remounts the flashed row so the animation
             // replays when the same card is added again back to back.
             key={flashed ? `${key}:${flash.nonce}` : key}
-            ref={
-              flashed
-                ? (element) => element?.scrollIntoView({ block: 'nearest' })
-                : undefined
-            }
+            ref={flashed ? flashedRowRef : undefined}
             className={cn(
               'flex items-center gap-2 rounded-md border border-border px-2.5 py-1.5',
               flashed && 'deck-row-added',
