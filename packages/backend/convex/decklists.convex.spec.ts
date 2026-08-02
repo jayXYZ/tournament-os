@@ -135,6 +135,13 @@ test("submitMyDecklist normalizes the boards and getMyDecklist returns them", as
     "3 Lightning Bolt\n20 Mountain\n1 lightning bolt\n\n4 Pyroblast",
   );
 
+  // The roster's denormalized copy is written through in the same mutation.
+  const registration = await t.run(
+    async (ctx) => await ctx.db.get(registrationIds[0]),
+  );
+  expect(registration?.decklistId).toBe(decklistId);
+  expect(registration?.deckName).toBe("Burn");
+
   const audited = await decklistAuditEvents(t, tournamentId);
   expect(audited).toHaveLength(1);
   expect(audited[0].actorRole).toBe("player");
@@ -191,6 +198,14 @@ test("resubmitting replaces the list in place and clears omitted fields", async 
     return rows.length;
   });
   expect(rowCount).toBe(1);
+
+  // The denormalized copy tracks the resubmission: the id survives, the
+  // dropped name clears.
+  const registration = await t.run(
+    async (ctx) => await ctx.db.get(registrationIds[0]),
+  );
+  expect(registration?.decklistId).toBe(firstId);
+  expect(registration?.deckName).toBeUndefined();
 
   const audited = await decklistAuditEvents(t, tournamentId);
   expect(audited).toHaveLength(2);
@@ -323,4 +338,49 @@ test("getMyDecklist is null for signed-out, unregistered, and cancelled callers"
       tournamentId,
     }),
   ).toBeNull();
+});
+
+test("getDecklistForRegistration serves organizers and rejects everyone else", async () => {
+  const t = convexTest(schema, modules);
+  const { tournamentId, registrationIds } = await seedOpenTournament(t, 2);
+
+  const decklistId = await t
+    .withIdentity(playerIdentity(1))
+    .mutation(api.tournaments.decklists.submitMyDecklist, {
+      tournamentId,
+      deckName: "Burn",
+      maindeck: [{ name: "Lightning Bolt", quantity: 4 }],
+      sideboard: [],
+    });
+
+  const result = await t
+    .withIdentity(organizerIdentity)
+    .query(api.tournaments.decklists.getDecklistForRegistration, {
+      registrationId: registrationIds[0],
+    });
+  expect(result.decklist?._id).toBe(decklistId);
+  expect(result.decklist?.deckName).toBe("Burn");
+  expect(result.submissionOpen).toBe(true);
+
+  // A registration with nothing submitted reads as an open, empty editor.
+  const empty = await t
+    .withIdentity(organizerIdentity)
+    .query(api.tournaments.decklists.getDecklistForRegistration, {
+      registrationId: registrationIds[1],
+    });
+  expect(empty).toEqual({ decklist: null, submissionOpen: true });
+
+  // Players — including the list's owner — are not tournament staff.
+  await expect(
+    t
+      .withIdentity(playerIdentity(1))
+      .query(api.tournaments.decklists.getDecklistForRegistration, {
+        registrationId: registrationIds[0],
+      }),
+  ).rejects.toThrow("Unauthorized");
+  await expect(
+    t.query(api.tournaments.decklists.getDecklistForRegistration, {
+      registrationId: registrationIds[0],
+    }),
+  ).rejects.toThrow("Not authenticated");
 });

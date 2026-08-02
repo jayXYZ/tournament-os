@@ -7,13 +7,21 @@ import { auditPlayerRef, logAuditEvent } from "../model/auditLog";
 import {
   boardCardCount,
   decklistForRegistration,
-  decklistSubmissionOpen,
+  getDecklist,
   MAX_DECK_NAME_LENGTH,
   MAX_RAW_TEXT_LENGTH,
+  decklistSubmissionOpen,
   normalizeBoard,
 } from "../model/decklists";
-import { playerDisplayName, registrationForUser } from "../model/registrations";
-import { requireTournament } from "../model/tournaments";
+import {
+  playerDisplayName,
+  registrationForUser,
+  requireRegistration,
+} from "../model/registrations";
+import {
+  requireOrganizerAccess,
+  requireTournament,
+} from "../model/tournaments";
 import { ensureCurrentUser } from "../model/users";
 import { decklistCardEntryValidator } from "../validators";
 
@@ -83,6 +91,14 @@ export const submitMyDecklist = mutation({
     } else {
       decklistId = await ctx.db.insert("tournamentDecklists", decklist);
     }
+    // Write the roster's denormalized copy through (see the schema comment on
+    // tournamentRegistrations). deckName is patched even when undefined so a
+    // resubmission that dropped the name clears the copy too.
+    await ctx.db.patch(registration._id, {
+      decklistId,
+      deckName,
+      updatedAt: decklist.updatedAt,
+    });
     await logAuditEvent(ctx, {
       tournamentId: tournament._id,
       actor: user,
@@ -123,9 +139,22 @@ export const getMyDecklist = query({
     if (!registration || registration.entryStatus !== "confirmed") {
       return null;
     }
-    return {
-      decklist: await decklistForRegistration(ctx, registration._id),
-      submissionOpen: decklistSubmissionOpen(tournament, registration),
-    };
+    return await getDecklist(ctx, tournament, registration);
+  },
+});
+
+// One player's decklist as the organizer deck-check surface opens it from a
+// roster row. Same shape as getMyDecklist; only the authorization differs.
+// No confirmed-entry gate: a cancelled row's surviving list stays readable to
+// staff, and submissionOpen already reports it frozen.
+export const getDecklistForRegistration = query({
+  args: { registrationId: v.id("tournamentRegistrations") },
+  handler: async (ctx, args) => {
+    const registration = await requireRegistration(ctx, args.registrationId);
+    const { tournament } = await requireOrganizerAccess(
+      ctx,
+      registration.tournamentId,
+    );
+    return await getDecklist(ctx, tournament, registration);
   },
 });

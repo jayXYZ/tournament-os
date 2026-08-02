@@ -161,6 +161,14 @@ export default defineSchema({
     // user document per row. Optional only for rows written before this field
     // existed; readers fall back to a live user lookup when it is missing.
     playerName: v.optional(v.string()),
+    // Denormalized from the player's decklist at submission time (see
+    // submitMyDecklist, the only writer of both) so the organizer roster
+    // shows who has submitted — and which deck — without a per-row decklist
+    // join. decklistId is present iff the registration has a submitted list;
+    // deckName mirrors the list's optional name, so "has a decklist" must
+    // key off decklistId — an unnamed list has no deckName here either.
+    decklistId: v.optional(v.id("tournamentDecklists")),
+    deckName: v.optional(v.string()),
     // Kept alongside _creationTime: pairing and standings tie-break on this,
     // and test seeding deliberately offsets it per player for determinism.
     createdAt: v.number(),

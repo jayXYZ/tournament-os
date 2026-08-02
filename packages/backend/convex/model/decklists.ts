@@ -78,6 +78,22 @@ export async function decklistForRegistration(
     .unique();
 }
 
+// The decklist surface for one registration: the stored list (null before a
+// submission) and the server's verdict on whether submitMyDecklist would
+// accept a (re)submission right now. Shared by the player and organizer
+// getters — getMyDecklist and getDecklistForRegistration — which differ only
+// in how they authorize their way to the registration.
+export async function getDecklist(
+  ctx: QueryCtx,
+  tournament: Doc<"tournaments">,
+  registration: Doc<"tournamentRegistrations">,
+) {
+  return {
+    decklist: await decklistForRegistration(ctx, registration._id),
+    submissionOpen: decklistSubmissionOpen(tournament, registration),
+  };
+}
+
 // Whether this registration may submit (or replace) its decklist right now.
 // Open exactly while the tournament is in the "registration" lifecycle: round
 // 1 is paired in the same transaction that moves the tournament to
