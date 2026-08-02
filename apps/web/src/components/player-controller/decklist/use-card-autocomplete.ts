@@ -53,7 +53,19 @@ export function useCardAutocomplete(query: string): {
         }
       } catch {
         // Suggestions are an accelerator, not a gate — on failure the add bar
-        // still accepts the typed name verbatim, so stay quiet here.
+        // still accepts the typed name verbatim. For that fallback to appear,
+        // loading must resolve, so record an empty result in component state.
+        // Deliberately skip the module cache: caching would pin a transient
+        // outage as "no suggestions" for the whole session, whereas an
+        // uncached failure lets any retype of the query retry the fetch.
+        if (controller.signal.aborted) {
+          // Cancelled by cleanup (newer keystroke or unmount), not a failure —
+          // whatever replaced this effect owns the loading state now.
+          return
+        }
+        if (latestQuery.current === normalized) {
+          setResults({ query: normalized, suggestions: [] })
+        }
       }
     }, DEBOUNCE_MS)
     return () => {
