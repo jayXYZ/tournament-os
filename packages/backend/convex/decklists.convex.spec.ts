@@ -27,6 +27,7 @@ function playerIdentity(playerNumber: number) {
 async function seedOpenTournament(
   t: TestConvex<typeof schema>,
   playerCount: number,
+  decklistRequired = true,
 ) {
   const { organizationId } = await seedOrganizer(t, 999);
   const organizer = t.withIdentity(organizerIdentity);
@@ -38,6 +39,7 @@ async function seedOpenTournament(
       startDate: Date.now(),
       playerCapacity: 16,
       format: "standard",
+      decklistRequired,
       phases: [{ phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 3 }],
     },
   );
@@ -338,6 +340,41 @@ test("getMyDecklist is null for signed-out, unregistered, and cancelled callers"
       tournamentId,
     }),
   ).toBeNull();
+});
+
+test("events that don't collect decklists refuse submissions until the flag turns on", async () => {
+  const t = convexTest(schema, modules);
+  const { tournamentId } = await seedOpenTournament(t, 1, false);
+  const player = t.withIdentity(playerIdentity(1));
+  const boards = {
+    tournamentId,
+    maindeck: [{ name: "Island", quantity: 60 }],
+    sideboard: [],
+  };
+
+  await expect(
+    player.mutation(api.tournaments.decklists.submitMyDecklist, boards),
+  ).rejects.toThrow("This tournament does not collect decklists");
+  expect(
+    await player.query(api.tournaments.decklists.getMyDecklist, {
+      tournamentId,
+    }),
+  ).toEqual({ decklist: null, submissionOpen: false });
+
+  // The organizer flips the flag pre-start and the editor opens.
+  await t
+    .withIdentity(organizerIdentity)
+    .mutation(api.tournaments.lifecycle.updateTournamentSetup, {
+      tournamentId,
+      decklistRequired: true,
+    });
+  await player.mutation(api.tournaments.decklists.submitMyDecklist, boards);
+  const result = await player.query(api.tournaments.decklists.getMyDecklist, {
+    tournamentId,
+  });
+  expect(result?.decklist?.maindeck).toEqual([
+    { name: "Island", quantity: 60 },
+  ]);
 });
 
 test("getDecklistForRegistration serves organizers and rejects everyone else", async () => {

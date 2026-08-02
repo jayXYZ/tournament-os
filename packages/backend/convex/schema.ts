@@ -102,6 +102,13 @@ export default defineSchema({
     // When enabled, newly generated rounds are immediately visible on player
     // surfaces. Disabled by default so organizers can review pairings first.
     autoPublishPairings: v.boolean(),
+    // Whether this event collects decklists: submission is open to players
+    // while registration is, and the decklist surfaces (player editor,
+    // organizer deck-check) exist at all. Optional; readers treat a missing
+    // value as false (see tournamentCollectsDecklists) and creation sets it
+    // explicitly. Toggleable pre-start via updateTournamentSetup — turning it
+    // off keeps already-submitted lists stored but freezes them.
+    decklistRequired: v.optional(v.boolean()),
     // Organizer-authored event details (description, prizes, logistics) as
     // markdown, rendered on the public tournament page. Absent means the
     // organizer has not written any.
