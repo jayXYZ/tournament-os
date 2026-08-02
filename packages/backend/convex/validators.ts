@@ -245,6 +245,19 @@ export const tournamentAuditEventValidator = v.union(
     player: auditPlayerRefValidator,
   }),
   v.object({
+    type: v.literal("decklist_submitted"),
+    player: auditPlayerRefValidator,
+    // Card totals only, not the list itself: enough for a dispute timeline
+    // ("resubmitted as 61+14 at 7:41pm") without copying the decklist into
+    // every log row — the current list is one join away, and what an edit
+    // changed is a deck-check conversation, not a log rendering concern.
+    maindeckCardCount: v.number(),
+    sideboardCardCount: v.number(),
+    // False for the first submission, true when it replaced an earlier list —
+    // the resubmissions are the rows deck-check disputes care about.
+    isUpdate: v.boolean(),
+  }),
+  v.object({
     type: v.literal("registration_cancelled"),
     player: auditPlayerRefValidator,
   }),
