@@ -33,7 +33,6 @@ import { Toaster } from '@/components/ui/sonner'
 import { Spinner } from '@/components/ui/spinner'
 import { cn } from '@/lib/utils'
 
-
 type ControllerTab = 'match' | 'standings' | 'more'
 
 export function PlayerController({ publicCode }: { publicCode: string }) {
@@ -53,10 +52,12 @@ export function PlayerController({ publicCode }: { publicCode: string }) {
   const currentMatch = useMyCurrentMatch(
     user && hasConfirmedEntry && typedTournamentId ? typedTournamentId : null,
   )
-  const collectsDecklists = event?.tournament.decklistRequired ?? false
   const myDecklist = useQuery(
     api.tournaments.decklists.getMyDecklist,
-    user && hasConfirmedEntry && collectsDecklists && typedTournamentId
+    user &&
+      hasConfirmedEntry &&
+      event?.tournament.decklistRequired &&
+      typedTournamentId
       ? { tournamentId: typedTournamentId }
       : 'skip',
   )
@@ -171,9 +172,7 @@ export function PlayerController({ publicCode }: { publicCode: string }) {
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
-              <RoundTimerIndicator
-                timer={currentMatch.tournament.roundTimer}
-              />
+              <RoundTimerIndicator timer={currentMatch.tournament.roundTimer} />
               <HeaderBadge currentMatch={currentMatch} />
             </div>
           </div>
@@ -198,7 +197,7 @@ export function PlayerController({ publicCode }: { publicCode: string }) {
           <MoreTab
             tournamentId={typedTournamentId}
             publicCode={publicCode}
-            collectsDecklists={collectsDecklists}
+            collectsDecklists={event.tournament.decklistRequired}
             currentMatch={currentMatch}
           />
         ) : null}

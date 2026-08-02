@@ -62,7 +62,7 @@ export function TournamentSettingsCard({
   })
   const [format, setFormat] = useState<TournamentFormat>(tournament.format)
   const [decklistRequired, setDecklistRequired] = useState(
-    tournament.decklistRequired ?? false,
+    tournament.decklistRequired,
   )
   const { busy, run } = useBusyAction()
 

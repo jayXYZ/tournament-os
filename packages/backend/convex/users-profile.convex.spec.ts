@@ -237,6 +237,7 @@ test("getPublicPlayerResults paginates completed tournaments newest first", asyn
         format: "standard",
         isTestEvent: false,
         autoPublishPairings: false,
+        decklistRequired: false,
         confirmedRegistrationCount: 1,
         updatedAt: now,
       });
@@ -297,6 +298,7 @@ test("getPublicPlayerResults bounds hostile and non-finite page sizes", async ()
         format: "standard",
         isTestEvent: false,
         autoPublishPairings: false,
+        decklistRequired: false,
         confirmedRegistrationCount: 1,
         updatedAt: now,
       });
@@ -370,6 +372,7 @@ test("getPublicPlayerResults pages through tournaments sharing a start date", as
         format: "standard",
         isTestEvent: false,
         autoPublishPairings: false,
+        decklistRequired: false,
         confirmedRegistrationCount: 1,
         updatedAt: now,
       });
@@ -460,6 +463,7 @@ test("getPublicPlayerResults filters hidden registrations out of every page", as
         format: "standard",
         isTestEvent: false,
         autoPublishPairings: false,
+        decklistRequired: false,
         confirmedRegistrationCount: 1,
         updatedAt: now,
       });
@@ -512,6 +516,7 @@ test("getPublicPlayerResults exhausts an entirely hidden history in one page", a
       format: "standard",
       isTestEvent: false,
       autoPublishPairings: false,
+      decklistRequired: false,
       confirmedRegistrationCount: 1,
       updatedAt: now,
     });
@@ -560,6 +565,7 @@ test("getPublicPlayerResults surfaces sparse visible rows in a single request", 
       format: "standard",
       isTestEvent: false,
       autoPublishPairings: false,
+      decklistRequired: false,
       confirmedRegistrationCount: hiddenRows,
       updatedAt: now,
     });
@@ -592,6 +598,7 @@ test("getPublicPlayerResults surfaces sparse visible rows in a single request", 
         format: "standard",
         isTestEvent: false,
         autoPublishPairings: false,
+        decklistRequired: false,
         confirmedRegistrationCount: 1,
         updatedAt: now,
       });
@@ -650,6 +657,7 @@ test("getPublicPlayerResults caps an all-hidden scan at the read budget but keep
       format: "standard",
       isTestEvent: false,
       autoPublishPairings: false,
+      decklistRequired: false,
       confirmedRegistrationCount: hiddenRows,
       updatedAt: now,
     });
@@ -677,6 +685,7 @@ test("getPublicPlayerResults caps an all-hidden scan at the read budget but keep
       format: "standard",
       isTestEvent: false,
       autoPublishPairings: false,
+      decklistRequired: false,
       confirmedRegistrationCount: 1,
       updatedAt: now,
     });
@@ -804,6 +813,7 @@ test("getPublicPlayerResults cursor keys come from the deployment environment", 
         format: "standard",
         isTestEvent: false,
         autoPublishPairings: false,
+        decklistRequired: false,
         confirmedRegistrationCount: 1,
         updatedAt: now,
       });

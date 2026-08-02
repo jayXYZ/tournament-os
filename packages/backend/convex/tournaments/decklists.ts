@@ -12,7 +12,6 @@ import {
   MAX_RAW_TEXT_LENGTH,
   decklistSubmissionOpen,
   normalizeBoard,
-  tournamentCollectsDecklists,
 } from "../model/decklists";
 import {
   playerDisplayName,
@@ -52,7 +51,7 @@ export const submitMyDecklist = mutation({
     }
     // Checked separately from the open/closed gate below so an event that
     // never collects decklists doesn't report itself as merely "closed".
-    if (!tournamentCollectsDecklists(tournament)) {
+    if (!tournament.decklistRequired) {
       throw new Error("This tournament does not collect decklists");
     }
     if (!decklistSubmissionOpen(tournament, registration)) {

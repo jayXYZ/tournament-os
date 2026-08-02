@@ -104,11 +104,10 @@ export default defineSchema({
     autoPublishPairings: v.boolean(),
     // Whether this event collects decklists: submission is open to players
     // while registration is, and the decklist surfaces (player editor,
-    // organizer deck-check) exist at all. Optional; readers treat a missing
-    // value as false (see tournamentCollectsDecklists) and creation sets it
-    // explicitly. Toggleable pre-start via updateTournamentSetup — turning it
-    // off keeps already-submitted lists stored but freezes them.
-    decklistRequired: v.optional(v.boolean()),
+    // organizer deck-check) exist at all. Toggleable pre-start via
+    // updateTournamentSetup — turning it off keeps already-submitted lists
+    // stored but freezes them.
+    decklistRequired: v.boolean(),
     // Organizer-authored event details (description, prizes, logistics) as
     // markdown, rendered on the public tournament page. Absent means the
     // organizer has not written any.

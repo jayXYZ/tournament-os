@@ -39,10 +39,12 @@ export function DecklistPage({ publicCode }: { publicCode: string }) {
     user && typedTournamentId ? { tournamentId: typedTournamentId } : 'skip',
   )
   const hasConfirmedEntry = registration?.entryStatus === 'confirmed'
-  const collectsDecklists = event?.tournament.decklistRequired ?? false
   const decklistData = useQuery(
     api.tournaments.decklists.getMyDecklist,
-    user && typedTournamentId && hasConfirmedEntry && collectsDecklists
+    user &&
+      typedTournamentId &&
+      hasConfirmedEntry &&
+      event?.tournament.decklistRequired
       ? { tournamentId: typedTournamentId }
       : 'skip',
   )
@@ -142,7 +144,7 @@ export function DecklistPage({ publicCode }: { publicCode: string }) {
     )
   }
 
-  if (!collectsDecklists) {
+  if (!event.tournament.decklistRequired) {
     return (
       <DecklistFrame publicCode={publicCode} eventName={event.tournament.name}>
         <Empty className="mt-4 min-h-80 border bg-card">
@@ -152,8 +154,8 @@ export function DecklistPage({ publicCode }: { publicCode: string }) {
             </EmptyMedia>
             <EmptyTitle>No decklist needed</EmptyTitle>
             <EmptyDescription>
-              This event does not collect decklists. You are all set — just
-              show up and play.
+              This event does not collect decklists. You are all set — just show
+              up and play.
             </EmptyDescription>
           </EmptyHeader>
           <Button asChild type="button" variant="outline">

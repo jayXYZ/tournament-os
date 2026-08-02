@@ -78,16 +78,6 @@ export async function decklistForRegistration(
     .unique();
 }
 
-// The one place the optional decklistRequired flag's missing-means-false
-// reading lives. False means the event runs without decklists: submission is
-// closed and the client shows no decklist surfaces at all (it reads this same
-// field off the tournament doc it already holds).
-export function tournamentCollectsDecklists(
-  tournament: Doc<"tournaments">,
-): boolean {
-  return tournament.decklistRequired ?? false;
-}
-
 // The decklist surface for one registration: the stored list (null before a
 // submission) and the server's verdict on whether submitMyDecklist would
 // accept a (re)submission right now. Shared by the player and organizer
@@ -118,7 +108,7 @@ export function decklistSubmissionOpen(
   registration: Doc<"tournamentRegistrations">,
 ): boolean {
   return (
-    tournamentCollectsDecklists(tournament) &&
+    tournament.decklistRequired &&
     tournament.lifecycle === "registration" &&
     registration.entryStatus === "confirmed" &&
     registration.participationStatus === "active"
