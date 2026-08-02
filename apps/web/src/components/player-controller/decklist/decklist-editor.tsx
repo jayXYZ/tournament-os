@@ -4,6 +4,7 @@ import { useMutation } from 'convex/react'
 import { ArrowRightLeft, EllipsisVertical, Lock, Minus, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@tournament-os/backend/convex/_generated/api'
+import { MAX_DECK_NAME_LENGTH } from '@tournament-os/shared/decklist-limits'
 import { CardSearchInput } from './card-search-input'
 import {
   MAX_QUANTITY,
@@ -205,7 +206,7 @@ export function DecklistEditor({
             <Input
               id={deckNameId}
               value={draft.deckName}
-              maxLength={200}
+              maxLength={MAX_DECK_NAME_LENGTH}
               placeholder="Optional — e.g. Boros Energy"
               onChange={(event) =>
                 setDraft((current) => ({

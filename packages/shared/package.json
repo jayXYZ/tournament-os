@@ -8,6 +8,7 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
+    "./decklist-limits": "./src/decklist-limits.ts",
     "./organizer-utils": "./src/organizer-utils.ts",
     "./registration-status": "./src/registration-status.ts",
     "./timer-utils": "./src/timer-utils.ts",

@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { Plus } from 'lucide-react'
+import { MAX_CARD_NAME_LENGTH } from '@tournament-os/shared/decklist-limits'
 
 import { parseCardInput } from './decklist-draft'
 import { useCardAutocomplete } from './use-card-autocomplete'
@@ -108,7 +109,7 @@ export function CardSearchInput({
           autoCorrect="off"
           spellCheck={false}
           enterKeyHint="go"
-          maxLength={220}
+          maxLength={MAX_CARD_NAME_LENGTH}
           placeholder={`Add to ${board} — try “4 Lightning Bolt”`}
           value={value}
           onChange={(event) => {
