@@ -63,6 +63,7 @@ export function CreateTournamentDialog() {
     startDateTime: '',
   })
   const [format, setFormat] = useState<TournamentFormat>('standard')
+  const [decklistRequired, setDecklistRequired] = useState(false)
   const [isTestEvent, setIsTestEvent] = useState(false)
   const [phases, setPhases] = useState<Array<TournamentCreationPhaseForm>>([
     createDefaultTournamentCreationPhase('phase-1'),
@@ -77,6 +78,7 @@ export function CreateTournamentDialog() {
       startDateTime: '',
     })
     setFormat('standard')
+    setDecklistRequired(false)
     setIsTestEvent(false)
     setPhases([createDefaultTournamentCreationPhase('phase-1')])
   }
@@ -94,6 +96,7 @@ export function CreateTournamentDialog() {
         startDate: new Date(basics.startDateTime).getTime(),
         playerCapacity: Number.parseInt(basics.playerCapacity, 10),
         format,
+        decklistRequired,
         isTestEvent,
         phases: toTournamentCreationPhasePayload(phases),
       })
@@ -156,6 +159,26 @@ export function CreateTournamentDialog() {
                   </SelectGroup>
                 </SelectContent>
               </Select>
+            </Field>
+
+            <Field orientation="horizontal" data-disabled={disabled}>
+              <Checkbox
+                id="tournament-decklist-required"
+                checked={decklistRequired}
+                onCheckedChange={(checked) =>
+                  setDecklistRequired(checked === true)
+                }
+                disabled={disabled}
+              />
+              <FieldContent>
+                <FieldLabel htmlFor="tournament-decklist-required">
+                  Require decklists
+                </FieldLabel>
+                <FieldDescription>
+                  Players submit a decklist while registration is open. You can
+                  change this later in tournament settings.
+                </FieldDescription>
+              </FieldContent>
             </Field>
 
             <Field orientation="horizontal" data-disabled={disabled}>
