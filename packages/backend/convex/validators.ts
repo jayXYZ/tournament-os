@@ -179,6 +179,16 @@ export const tournamentMatchStatusValidator = v.union(
   v.literal("cancelled"),
 );
 
+// One decklist line: how many copies of a named card. Card names are stored
+// as the player submitted them — there is no card database to normalize
+// against (yet), so legality checking is a human deck-check concern. Convex
+// has no numeric refinement validators, so the submission mutation enforces
+// that quantity is a positive integer.
+export const decklistCardEntryValidator = v.object({
+  name: v.string(),
+  quantity: v.number(),
+});
+
 // Who performed an audited action: an organizer acting on the event, or a
 // player acting on their own registration/match.
 export const auditActorRoleValidator = v.union(
