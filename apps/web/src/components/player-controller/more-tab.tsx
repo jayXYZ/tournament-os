@@ -1,12 +1,16 @@
+import { Link } from '@tanstack/react-router'
 import {
   displayPlayerName,
   useDropSelf,
   useMyMatchHistory,
 } from '@tournament-os/core'
+import { useQuery } from 'convex/react'
 import { toast } from 'sonner'
+import { api } from '@tournament-os/backend/convex/_generated/api'
 import type { MyCurrentMatch } from '@tournament-os/core'
 
 import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
+import { boardCount } from '@/components/player-controller/decklist/decklist-draft'
 import { ConfirmActionDialog } from '@/components/shared/confirm-action-dialog'
 import { ResultBadge } from '@/components/shared/result-badge'
 import { Button } from '@/components/ui/button'
@@ -21,16 +25,83 @@ import { Skeleton } from '@/components/ui/skeleton'
 
 export function MoreTab({
   tournamentId,
+  publicCode,
+  collectsDecklists,
   currentMatch,
 }: {
   tournamentId: Id<'tournaments'>
+  publicCode: string
+  collectsDecklists: boolean
   currentMatch: MyCurrentMatch | undefined
 }) {
   return (
     <div className="grid gap-4">
+      {collectsDecklists ? (
+        <DecklistCard tournamentId={tournamentId} publicCode={publicCode} />
+      ) : null}
       <MatchHistoryCard tournamentId={tournamentId} />
       <DropCard tournamentId={tournamentId} currentMatch={currentMatch} />
     </div>
+  )
+}
+
+function DecklistCard({
+  tournamentId,
+  publicCode,
+}: {
+  tournamentId: Id<'tournaments'>
+  publicCode: string
+}) {
+  const data = useQuery(api.tournaments.decklists.getMyDecklist, {
+    tournamentId,
+  })
+
+  if (data === undefined) {
+    return <Skeleton className="h-24" />
+  }
+  if (data === null) {
+    return null
+  }
+
+  const { decklist, submissionOpen } = data
+  const description = decklist
+    ? [
+        decklist.deckName,
+        `${boardCount(decklist.maindeck)} main · ${boardCount(decklist.sideboard)} side`,
+      ]
+        .filter(Boolean)
+        .join(' — ')
+    : submissionOpen
+      ? 'This event requires a decklist. Submit yours before the tournament starts.'
+      : 'Submission is closed and no decklist is on file. Talk to the organizer if you still need to register one.'
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Decklist</CardTitle>
+        <CardDescription>{description}</CardDescription>
+      </CardHeader>
+      {decklist || submissionOpen ? (
+        <CardContent>
+          <Button
+            asChild
+            type="button"
+            variant={decklist ? 'outline' : 'default'}
+          >
+            <Link
+              to="/tournaments/$tournamentId/decklist"
+              params={{ tournamentId: publicCode }}
+            >
+              {submissionOpen
+                ? decklist
+                  ? 'Edit decklist'
+                  : 'Submit decklist'
+                : 'View decklist'}
+            </Link>
+          </Button>
+        </CardContent>
+      ) : null}
+    </Card>
   )
 }
 

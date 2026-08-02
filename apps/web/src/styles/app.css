@@ -258,6 +258,24 @@
   }
 }
 
+/* A decklist row the add bar just created (or merged into) flashes once, so
+   heads-down card entry gets visible confirmation of where each add landed
+   (components/player-controller/decklist/decklist-editor.tsx). */
+@keyframes deck-row-added {
+  0% {
+    background-color: color-mix(in oklch, var(--primary) 16%, transparent);
+    border-color: color-mix(in oklch, var(--primary) 45%, var(--border));
+  }
+}
+.deck-row-added {
+  animation: deck-row-added 0.9s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .deck-row-added {
+    animation: none;
+  }
+}
+
 /* Fonts were provided by next/font in the Next.js app; Fontsource supplies
    them here. These vars feed the @theme inline font mappings above. */
 :root {

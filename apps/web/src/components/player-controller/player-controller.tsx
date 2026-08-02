@@ -3,9 +3,11 @@ import { Link } from '@tanstack/react-router'
 import { useMyCurrentMatch } from '@tournament-os/core'
 import { useQuery } from 'convex/react'
 import {
+  ChevronRight,
   ListOrdered,
   LogIn,
   Menu,
+  ScrollText,
   SearchX,
   Swords,
   UserRound,
@@ -50,6 +52,13 @@ export function PlayerController({ publicCode }: { publicCode: string }) {
   const hasConfirmedEntry = registration?.entryStatus === 'confirmed'
   const currentMatch = useMyCurrentMatch(
     user && hasConfirmedEntry && typedTournamentId ? typedTournamentId : null,
+  )
+  const collectsDecklists = event?.tournament.decklistRequired ?? false
+  const myDecklist = useQuery(
+    api.tournaments.decklists.getMyDecklist,
+    user && hasConfirmedEntry && collectsDecklists && typedTournamentId
+      ? { tournamentId: typedTournamentId }
+      : 'skip',
   )
   const [tab, setTab] = useState<ControllerTab>('match')
 
@@ -173,7 +182,12 @@ export function PlayerController({ publicCode }: { publicCode: string }) {
         )
       }
     >
-      <div className="pt-4">
+      <div className="grid gap-4 pt-4">
+        {myDecklist &&
+        myDecklist.decklist === null &&
+        myDecklist.submissionOpen ? (
+          <DecklistCallout publicCode={publicCode} />
+        ) : null}
         {tab === 'match' ? (
           <CurrentMatchCard currentMatch={currentMatch} />
         ) : null}
@@ -183,6 +197,8 @@ export function PlayerController({ publicCode }: { publicCode: string }) {
         {tab === 'more' ? (
           <MoreTab
             tournamentId={typedTournamentId}
+            publicCode={publicCode}
+            collectsDecklists={collectsDecklists}
             currentMatch={currentMatch}
           />
         ) : null}
@@ -211,6 +227,31 @@ export function PlayerController({ publicCode }: { publicCode: string }) {
         </div>
       </nav>
     </ControllerFrame>
+  )
+}
+
+// One-tap path to the decklist page while a required list is still missing
+// and submission is open; disappears on its own once the list is in (or the
+// window closes), so it never nags mid-event.
+function DecklistCallout({ publicCode }: { publicCode: string }) {
+  return (
+    <Link
+      to="/tournaments/$tournamentId/decklist"
+      params={{ tournamentId: publicCode }}
+      className="flex items-center gap-3 rounded-lg border border-primary/40 bg-primary/5 px-3 py-2.5 transition-colors hover:bg-primary/10"
+    >
+      <ScrollText className="size-4 shrink-0 text-primary" aria-hidden="true" />
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-medium">Submit your decklist</span>
+        <span className="block text-xs text-muted-foreground">
+          This event requires one before it starts.
+        </span>
+      </span>
+      <ChevronRight
+        className="size-4 shrink-0 text-muted-foreground"
+        aria-hidden="true"
+      />
+    </Link>
   )
 }
 
