@@ -26,6 +26,7 @@ import {
 } from '@/components/ui/card'
 import {
   Field,
+  FieldContent,
   FieldDescription,
   FieldGroup,
   FieldLabel,
@@ -42,6 +43,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Spinner } from '@/components/ui/spinner'
+import { Switch } from '@/components/ui/switch'
 import { useBusyAction } from '@/hooks/use-busy-action'
 
 export function TournamentSettingsCard({
@@ -59,6 +61,9 @@ export function TournamentSettingsCard({
     startDateTime: toDatetimeLocalValue(tournament.startDate),
   })
   const [format, setFormat] = useState<TournamentFormat>(tournament.format)
+  const [decklistRequired, setDecklistRequired] = useState(
+    tournament.decklistRequired ?? false,
+  )
   const { busy, run } = useBusyAction()
 
   const locked = isPreStartLocked(tournament)
@@ -88,6 +93,7 @@ export function TournamentSettingsCard({
         startDate,
         playerCapacity: Number.parseInt(basics.playerCapacity, 10),
         format,
+        decklistRequired,
       })
       toast.success('Tournament settings saved.')
     }, 'Could not save tournament settings.')
@@ -146,6 +152,26 @@ export function TournamentSettingsCard({
                   </SelectGroup>
                 </SelectContent>
               </Select>
+            </Field>
+
+            <Field orientation="horizontal" data-disabled={disabled}>
+              <FieldContent>
+                <FieldLabel htmlFor="settings-decklist-required">
+                  Require decklists
+                </FieldLabel>
+                <FieldDescription>
+                  Players submit a decklist while registration is open;
+                  submissions freeze when the tournament starts. Turning this
+                  off keeps any submitted lists but closes submission.
+                </FieldDescription>
+              </FieldContent>
+              <Switch
+                id="settings-decklist-required"
+                checked={decklistRequired}
+                disabled={disabled}
+                onCheckedChange={setDecklistRequired}
+                aria-label="Require decklists"
+              />
             </Field>
 
             <FieldSet>
