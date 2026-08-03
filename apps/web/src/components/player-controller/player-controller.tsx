@@ -183,8 +183,9 @@ export function PlayerController({ publicCode }: { publicCode: string }) {
     )
   }
 
-  // Rendered twice — sticky app bar on phones, page heading on desktop — so
-  // the live round state stays visible in whichever chrome is active.
+  // Rendered twice — in the sticky phone app bar below `lg`, and in the
+  // sticky status strip under the desktop heading from `lg` up — so the live
+  // round state stays pinned in view at every viewport width.
   const liveStatus = (
     <>
       <RoundTimerIndicator timer={event.tournament.roundTimer} />
@@ -244,10 +245,18 @@ export function PlayerController({ publicCode }: { publicCode: string }) {
         <WorkspacePageHeader
           eyebrow={event.organizationName ?? 'Player controller'}
           title={event.tournament.name}
-          actions={
-            <div className="flex shrink-0 items-center gap-2">{liveStatus}</div>
-          }
         />
+      </div>
+
+      {/* Desktop stand-in for the phone app bar: no site chrome is sticky at
+          `lg`, so the live round status rides this slim strip, which pins to
+          the viewport top while long content (standings) scrolls. It must
+          hold nothing but the status pills — the `empty:` variant is what
+          collapses the strip (rule and all) whenever the timer is idle and
+          there is no badge, the same conditions that blank the app bar's
+          status slot on phones. */}
+      <div className="sticky top-0 z-10 mt-6 hidden items-center justify-end gap-2 border-b border-border bg-background py-2 lg:flex lg:empty:hidden">
+        {liveStatus}
       </div>
 
       {/* One column of cards behind a tab bar on phones; a two-column grid
