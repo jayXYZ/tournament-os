@@ -216,6 +216,29 @@ export function PlayerController({ publicCode }: { publicCode: string }) {
           <div className="flex shrink-0 items-center gap-2">{liveStatus}</div>
         </div>
       }
+      bottomBarLgHidden
+      bottomBar={
+        <nav className="grid grid-cols-3">
+          <TabButton
+            icon={Swords}
+            label="Match"
+            active={tab === 'match'}
+            onClick={() => setTab('match')}
+          />
+          <TabButton
+            icon={ListOrdered}
+            label="Standings"
+            active={tab === 'standings'}
+            onClick={() => setTab('standings')}
+          />
+          <TabButton
+            icon={Menu}
+            label="More"
+            active={tab === 'more'}
+            onClick={() => setTab('more')}
+          />
+        </nav>
+      }
     >
       <div className="hidden pt-8 lg:block">
         <WorkspacePageHeader
@@ -271,29 +294,6 @@ export function PlayerController({ publicCode }: { publicCode: string }) {
           </section>
         </div>
       </div>
-
-      <nav className="fixed inset-x-0 bottom-0 z-10 border-t border-border bg-background pb-[env(safe-area-inset-bottom)] lg:hidden">
-        <div className="mx-auto grid max-w-md grid-cols-3">
-          <TabButton
-            icon={Swords}
-            label="Match"
-            active={tab === 'match'}
-            onClick={() => setTab('match')}
-          />
-          <TabButton
-            icon={ListOrdered}
-            label="Standings"
-            active={tab === 'standings'}
-            onClick={() => setTab('standings')}
-          />
-          <TabButton
-            icon={Menu}
-            label="More"
-            active={tab === 'more'}
-            onClick={() => setTab('more')}
-          />
-        </div>
-      </nav>
     </SiteShell>
   )
 }

@@ -1,7 +1,14 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { useBlocker } from '@tanstack/react-router'
 import { useMutation } from 'convex/react'
-import { ArrowRightLeft, EllipsisVertical, Lock, Minus, Plus, Trash2 } from 'lucide-react'
+import {
+  ArrowRightLeft,
+  EllipsisVertical,
+  Lock,
+  Minus,
+  Plus,
+  Trash2,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@tournament-os/backend/convex/_generated/api'
 import { MAX_DECK_NAME_LENGTH } from '@tournament-os/shared/decklist-limits'
@@ -16,6 +23,7 @@ import {
   removeFromBoard,
   setBoardQuantity,
 } from './decklist-draft'
+import type { ReactNode } from 'react'
 import type { FunctionReturnType } from 'convex/server'
 
 import type { BoardId, DecklistDraft, DraftEntry } from './decklist-draft'
@@ -61,6 +69,7 @@ export function DecklistEditor({
   tournamentId,
   data,
   onDirtyChange,
+  children,
 }: {
   tournamentId: Id<'tournaments'>
   // `data.submissionOpen` stays live through query updates; `data.decklist`
@@ -70,6 +79,13 @@ export function DecklistEditor({
   // dirty editor (destroying the draft) when the organizer turns decklist
   // collection off mid-edit.
   onDirtyChange: (dirty: boolean) => void
+  // The editor owns the form state that both its body and the fixed submit
+  // bar render from, but the submit bar must be pinned by the page's shell
+  // (SiteShell's `bottomBar` slot), which wraps the editor. This render prop
+  // squares that circle: the editor produces both pieces and the page
+  // composes them into its frame. `submitBar` is null when submission is
+  // closed and there is nothing to submit.
+  children: (editor: ReactNode, submitBar: ReactNode | null) => ReactNode
 }) {
   const deckNameId = useId()
   const submitDecklist = useMutation(api.tournaments.decklists.submitMyDecklist)
@@ -167,7 +183,7 @@ export function DecklistEditor({
   }
 
   if (!submissionOpen && !hasSubmitted) {
-    return (
+    return children(
       <Empty className="mt-4 min-h-80 border bg-card">
         <EmptyHeader>
           <EmptyMedia variant="icon">
@@ -180,113 +196,112 @@ export function DecklistEditor({
             one.
           </EmptyDescription>
         </EmptyHeader>
-      </Empty>
+      </Empty>,
+      null,
     )
   }
 
   const mainCount = boardCount(draft.maindeck)
   const sideCount = boardCount(draft.sideboard)
 
-  return (
-    <>
-      <div className="grid gap-4 pt-4">
-        {!submissionOpen ? (
-          <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/50 px-3 py-2.5">
-            <Lock className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-            <p className="text-sm text-muted-foreground">
-              Submission is closed. This is the list the organizer has on
-              file.
-            </p>
-          </div>
-        ) : null}
-
-        {submissionOpen ? (
-          <Field>
-            <FieldLabel htmlFor={deckNameId}>Deck name</FieldLabel>
-            <Input
-              id={deckNameId}
-              value={draft.deckName}
-              maxLength={MAX_DECK_NAME_LENGTH}
-              placeholder="Optional — e.g. Boros Energy"
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  deckName: event.target.value,
-                }))
-              }
-            />
-          </Field>
-        ) : draft.deckName.trim() ? (
-          <h2 className="text-lg font-semibold">{draft.deckName.trim()}</h2>
-        ) : null}
-
-        <Tabs
-          value={board}
-          onValueChange={(value) => setBoard(value as BoardId)}
-          className="gap-3"
-        >
-          <TabsList className="w-full">
-            <TabsTrigger value="maindeck">
-              Maindeck ·&nbsp;<span className="tabular-nums">{mainCount}</span>
-            </TabsTrigger>
-            <TabsTrigger value="sideboard">
-              Sideboard ·&nbsp;<span className="tabular-nums">{sideCount}</span>
-            </TabsTrigger>
-          </TabsList>
-          {submissionOpen ? (
-            <CardSearchInput board={board} onAdd={handleAdd} />
-          ) : null}
-          {(['maindeck', 'sideboard'] as const).map((boardId) => (
-            <TabsContent key={boardId} value={boardId}>
-              <BoardList
-                board={boardId}
-                entries={draft[boardId]}
-                flash={flash}
-                readOnly={!submissionOpen}
-                onQuantity={handleQuantity}
-                onRemove={handleRemove}
-                onMove={handleMove}
-              />
-            </TabsContent>
-          ))}
-        </Tabs>
-      </div>
+  return children(
+    <div className="grid gap-4 pt-4">
+      {!submissionOpen ? (
+        <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/50 px-3 py-2.5">
+          <Lock
+            className="size-4 shrink-0 text-muted-foreground"
+            aria-hidden="true"
+          />
+          <p className="text-sm text-muted-foreground">
+            Submission is closed. This is the list the organizer has on file.
+          </p>
+        </div>
+      ) : null}
 
       {submissionOpen ? (
-        <footer className="fixed inset-x-0 bottom-0 z-10 border-t border-border bg-background pb-[env(safe-area-inset-bottom)]">
-          <div className="mx-auto flex max-w-md items-center justify-between gap-3 px-4 py-3 sm:max-w-2xl sm:px-6">
-            <div className="text-xs text-muted-foreground">
-              <p>
-                <span className="font-medium text-foreground tabular-nums">
-                  {mainCount}
-                </span>{' '}
-                main ·{' '}
-                <span className="font-medium text-foreground tabular-nums">
-                  {sideCount}
-                </span>{' '}
-                side
-              </p>
-              <p className="mt-0.5 text-[11px]">
-                {dirty
-                  ? 'Unsaved changes'
-                  : hasSubmitted
-                    ? 'Submitted'
-                    : 'Not submitted yet'}
-              </p>
-            </div>
-            <Button
-              type="button"
-              size="lg"
-              disabled={!dirty || submitting || draft.maindeck.length === 0}
-              onClick={() => void handleSubmit()}
-            >
-              {submitting ? <Spinner data-icon="inline-start" /> : null}
-              {hasSubmitted ? 'Update decklist' : 'Submit decklist'}
-            </Button>
-          </div>
-        </footer>
+        <Field>
+          <FieldLabel htmlFor={deckNameId}>Deck name</FieldLabel>
+          <Input
+            id={deckNameId}
+            value={draft.deckName}
+            maxLength={MAX_DECK_NAME_LENGTH}
+            placeholder="Optional — e.g. Boros Energy"
+            onChange={(event) =>
+              setDraft((current) => ({
+                ...current,
+                deckName: event.target.value,
+              }))
+            }
+          />
+        </Field>
+      ) : draft.deckName.trim() ? (
+        <h2 className="text-lg font-semibold">{draft.deckName.trim()}</h2>
       ) : null}
-    </>
+
+      <Tabs
+        value={board}
+        onValueChange={(value) => setBoard(value as BoardId)}
+        className="gap-3"
+      >
+        <TabsList className="w-full">
+          <TabsTrigger value="maindeck">
+            Maindeck ·&nbsp;<span className="tabular-nums">{mainCount}</span>
+          </TabsTrigger>
+          <TabsTrigger value="sideboard">
+            Sideboard ·&nbsp;<span className="tabular-nums">{sideCount}</span>
+          </TabsTrigger>
+        </TabsList>
+        {submissionOpen ? (
+          <CardSearchInput board={board} onAdd={handleAdd} />
+        ) : null}
+        {(['maindeck', 'sideboard'] as const).map((boardId) => (
+          <TabsContent key={boardId} value={boardId}>
+            <BoardList
+              board={boardId}
+              entries={draft[boardId]}
+              flash={flash}
+              readOnly={!submissionOpen}
+              onQuantity={handleQuantity}
+              onRemove={handleRemove}
+              onMove={handleMove}
+            />
+          </TabsContent>
+        ))}
+      </Tabs>
+    </div>,
+
+    submissionOpen ? (
+      <footer className="flex items-center justify-between gap-3 py-3">
+        <div className="text-xs text-muted-foreground">
+          <p>
+            <span className="font-medium text-foreground tabular-nums">
+              {mainCount}
+            </span>{' '}
+            main ·{' '}
+            <span className="font-medium text-foreground tabular-nums">
+              {sideCount}
+            </span>{' '}
+            side
+          </p>
+          <p className="mt-0.5 text-[11px]">
+            {dirty
+              ? 'Unsaved changes'
+              : hasSubmitted
+                ? 'Submitted'
+                : 'Not submitted yet'}
+          </p>
+        </div>
+        <Button
+          type="button"
+          size="lg"
+          disabled={!dirty || submitting || draft.maindeck.length === 0}
+          onClick={() => void handleSubmit()}
+        >
+          {submitting ? <Spinner data-icon="inline-start" /> : null}
+          {hasSubmitted ? 'Update decklist' : 'Submit decklist'}
+        </Button>
+      </footer>
+    ) : null,
   )
 }
 

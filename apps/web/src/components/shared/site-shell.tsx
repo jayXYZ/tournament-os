@@ -22,6 +22,12 @@ const lgMaxWidthClasses: {
   '7xl': 'lg:max-w-7xl',
 }
 
+// The centered column of the app chrome. The content column and the fixed
+// bottom bar both render exactly these classes (plus the `lg:` width above),
+// so a bar always lines up with the cards it sits under at every breakpoint.
+const appColumnClasses =
+  'mx-auto w-full max-w-md px-4 sm:max-w-2xl sm:px-6 lg:px-8'
+
 // Shared shell for the player-facing pages: the public site header over a
 // centered content column, with the page-level Toaster.
 //
@@ -30,11 +36,15 @@ const lgMaxWidthClasses: {
 // sticky app bar carrying the page's live status, and the content column
 // tightens to app widths above a single column of cards. From `lg` up the
 // site's standard chrome returns, so the page matches the rest of the website.
+// These pages can also pin a `bottomBar` to the viewport bottom; the shell
+// aligns it with the content column and keeps the content clear of it.
 export function SiteShell({
   subtitle,
   actions,
   width = '4xl',
   appBar,
+  bottomBar,
+  bottomBarLgHidden = false,
   contentClassName,
   toaster = false,
   children,
@@ -45,6 +55,15 @@ export function SiteShell({
   // Content for the phone app bar; pass `true` for the default brand row.
   // Omit it entirely to keep the site header at every viewport.
   appBar?: ReactNode
+  // Content for a bar pinned to the viewport bottom (tab bar, submit
+  // footer). The shell owns the fixed chrome, centers the content on the
+  // same column as the page content, and pads the content bottom so nothing
+  // ends up hidden under the bar. Part of the app chrome: only rendered for
+  // pages that pass `appBar`.
+  bottomBar?: ReactNode
+  // Hide the bottom bar from `lg` up (and drop its content clearance
+  // there), for bars that belong to the phone chrome only.
+  bottomBarLgHidden?: boolean
   contentClassName?: string
   toaster?: boolean
   children: ReactNode
@@ -74,13 +93,30 @@ export function SiteShell({
           <div className="hidden lg:block">{siteHeader}</div>
           <div
             className={cn(
-              'mx-auto w-full max-w-md px-4 pb-24 sm:max-w-2xl sm:px-6 lg:px-8 lg:pb-16',
+              appColumnClasses,
               lgMaxWidthClasses[width],
+              // Below `lg` the column always ends in pb-24: clearance for the
+              // fixed bottom bar when one is pinned there, and the app
+              // chrome's resting bottom padding otherwise. From `lg` up the
+              // clearance stays only while a bar is still visible.
+              bottomBar && !bottomBarLgHidden ? 'pb-24' : 'pb-24 lg:pb-16',
               contentClassName,
             )}
           >
             {children}
           </div>
+          {bottomBar ? (
+            <div
+              className={cn(
+                'fixed inset-x-0 bottom-0 z-10 border-t border-border bg-background pb-[env(safe-area-inset-bottom)]',
+                bottomBarLgHidden && 'lg:hidden',
+              )}
+            >
+              <div className={cn(appColumnClasses, lgMaxWidthClasses[width])}>
+                {bottomBar}
+              </div>
+            </div>
+          ) : null}
         </>
       ) : (
         <>

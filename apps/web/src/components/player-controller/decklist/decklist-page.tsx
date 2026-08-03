@@ -200,32 +200,49 @@ export function DecklistPage({ publicCode }: { publicCode: string }) {
   }
 
   return (
-    <DecklistFrame publicCode={publicCode} eventName={event.tournament.name}>
-      <DecklistEditor
-        tournamentId={typedTournamentId}
-        data={decklistData}
-        onDirtyChange={setEditorDirty}
-      />
-    </DecklistFrame>
+    <DecklistEditor
+      tournamentId={typedTournamentId}
+      data={decklistData}
+      onDirtyChange={setEditorDirty}
+    >
+      {(editor, submitBar) => (
+        <DecklistFrame
+          publicCode={publicCode}
+          eventName={event.tournament.name}
+          bottomBar={submitBar}
+        >
+          {editor}
+        </DecklistFrame>
+      )}
+    </DecklistEditor>
   )
 }
+
+// The editor is a single-column form, so it — and the submit bar pinned
+// under it — stays at a comfortable reading width and centers inside the
+// wider site chrome.
+const formColumnClasses = 'lg:mx-auto lg:w-full lg:max-w-2xl'
 
 function DecklistFrame({
   publicCode,
   eventName,
+  bottomBar,
   children,
 }: {
   publicCode: string
   eventName?: string
+  bottomBar?: React.ReactNode
   children: React.ReactNode
 }) {
   return (
     <SiteShell
       subtitle="Decklist"
       toaster
-      // The editor's fixed submit bar stays on every viewport, so keep the
-      // bottom clearance that the shell normally drops at `lg`.
-      contentClassName="lg:pb-24"
+      bottomBar={
+        bottomBar ? (
+          <div className={formColumnClasses}>{bottomBar}</div>
+        ) : undefined
+      }
       actions={
         <SiteShellBackLink
           to="/tournaments/$tournamentId/play"
@@ -256,9 +273,7 @@ function DecklistFrame({
         </div>
       }
     >
-      {/* The editor is a single-column form, so it stays at a comfortable
-          reading width and centers inside the wider site chrome. */}
-      <div className="lg:mx-auto lg:w-full lg:max-w-2xl">
+      <div className={formColumnClasses}>
         {eventName ? (
           <div className="hidden pt-8 lg:block">
             <WorkspacePageHeader eyebrow="Decklist" title={eventName} />
