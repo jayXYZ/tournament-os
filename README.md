@@ -93,6 +93,12 @@ structure and playoff support.
 ### 4. Player experience (web)
 
 - [ ] Fix web view of player controller — currently renders the mobile layout on desktop; add a responsive desktop layout
+- [ ] Real safe-area (notch / home-indicator) support for the app chrome — deliberately deferred: the site's viewport meta does not opt into the notch, so `env(safe-area-inset-*)` resolves to `0px` everywhere and the padding that referenced it was stripped as inert. To revisit, all of the following must land together:
+  - [ ] Add `viewport-fit=cover` to the root viewport meta in `apps/web/src/routes/__root.tsx` (the `name: 'viewport'` entry in the route's `head`, currently `width=device-width, initial-scale=1`) — without it every `env(safe-area-inset-*)` below stays `0px`
+  - [ ] Re-add `pb-[env(safe-area-inset-bottom)]` to SiteShell's shell-owned fixed bottom-bar chrome in `apps/web/src/components/shared/site-shell.tsx` (the `bottomBar` wrapper: `fixed inset-x-0 bottom-0 z-10 border-t …`), so the tab bar and decklist submit footer clear the home indicator
+  - [ ] Size SiteShell's content bottom clearance to footer height + inset: the `pb-24` ternary in `site-shell.tsx` hardcodes the bar's height, so once the bar grows by the inset, content scrolls under it — while a bottom bar is visible use something like `pb-[calc(6rem+env(safe-area-inset-bottom))]` (6rem = the current `pb-24`) instead of the fixed `pb-24`
+  - [ ] Pad sticky top bars for the status bar with `pt-[env(safe-area-inset-top)]` site-wide — today the only one is SiteShell's phone app bar (the `sticky top-0` header in `site-shell.tsx`); grep `apps/web/src` for `sticky top-0` before flipping the meta to catch any added since
+  - [ ] Audit before enabling: `viewport-fit=cover` is site-wide, not per-page — every page (not just the player-controller surfaces) must be checked for status-bar/notch intrusion at the top, home-indicator overlap at the bottom, and left/right inset intrusion in landscape, before the meta change ships
 - [ ] Filtering for the upcoming-tournaments table (format first; then date range and location)
 - [ ] Player-facing match history and round-by-round results on the tournament page
 - [ ] Notifications in the player controller when new pairings post or the timer starts

@@ -108,7 +108,7 @@ export function SiteShell({
           {bottomBar ? (
             <div
               className={cn(
-                'fixed inset-x-0 bottom-0 z-10 border-t border-border bg-background pb-[env(safe-area-inset-bottom)]',
+                'fixed inset-x-0 bottom-0 z-10 border-t border-border bg-background',
                 bottomBarLgHidden && 'lg:hidden',
               )}
             >
