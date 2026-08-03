@@ -39,6 +39,12 @@ import { cn } from '@/lib/utils'
 
 type ControllerTab = 'match' | 'standings' | 'more'
 
+// One shell width for the whole player surface. Every PlayerController state
+// passes this token — and DecklistFrame (decklist-page.tsx) hardcodes the
+// same one — so the desktop header rail and content column never resize
+// while queries resolve or when navigating between /play and /decklist.
+const shellWidth = '6xl'
+
 export function PlayerController({ publicCode }: { publicCode: string }) {
   const { user, loading, refreshAuth } = useAppAuth()
   const event = useQuery(api.tournaments.lifecycle.getPublicTournament, {
@@ -87,9 +93,28 @@ export function PlayerController({ publicCode }: { publicCode: string }) {
   const panelMounted = (panel: ControllerTab) =>
     isDesktop || visitedTabs.has(panel)
 
+  // publicCode comes synchronously from the route, so the header's
+  // event-page link can render from the very first paint instead of popping
+  // in once queries resolve. Every state passes it except
+  // tournament-not-found below.
+  const eventPageAction = (
+    <SiteShellBackLink
+      to="/tournaments/$tournamentId"
+      params={{ tournamentId: publicCode }}
+    >
+      Event page
+    </SiteShellBackLink>
+  )
+
   if (loading || event === undefined) {
     return (
-      <SiteShell subtitle="Player controller" appBar toaster>
+      <SiteShell
+        width={shellWidth}
+        subtitle="Player controller"
+        actions={eventPageAction}
+        appBar
+        toaster
+      >
         <div className="flex min-h-60 items-center justify-center lg:min-h-80">
           <Spinner className="size-6" />
         </div>
@@ -98,8 +123,12 @@ export function PlayerController({ publicCode }: { publicCode: string }) {
   }
 
   if (event === null || typedTournamentId === null) {
+    // Deliberately no header action: there is no event page for a code that
+    // resolved to nothing. The link shows while the outcome is unknown and
+    // drops out only once not-found is certain — a pop-out on this error
+    // path, never a pop-in on the happy path.
     return (
-      <SiteShell subtitle="Player controller" appBar toaster>
+      <SiteShell width={shellWidth} subtitle="Player controller" appBar toaster>
         <Empty className="mt-4 min-h-80 border bg-card lg:mt-10">
           <EmptyHeader>
             <EmptyMedia variant="icon">
@@ -118,18 +147,10 @@ export function PlayerController({ publicCode }: { publicCode: string }) {
     )
   }
 
-  const eventPageAction = (
-    <SiteShellBackLink
-      to="/tournaments/$tournamentId"
-      params={{ tournamentId: publicCode }}
-    >
-      Event page
-    </SiteShellBackLink>
-  )
-
   if (!user) {
     return (
       <SiteShell
+        width={shellWidth}
         subtitle="Player controller"
         actions={eventPageAction}
         appBar
@@ -160,6 +181,7 @@ export function PlayerController({ publicCode }: { publicCode: string }) {
   if (registration === undefined) {
     return (
       <SiteShell
+        width={shellWidth}
         subtitle="Player controller"
         actions={eventPageAction}
         appBar
@@ -177,6 +199,7 @@ export function PlayerController({ publicCode }: { publicCode: string }) {
   if (!hasConfirmedEntry) {
     return (
       <SiteShell
+        width={shellWidth}
         subtitle="Player controller"
         actions={eventPageAction}
         appBar
@@ -227,7 +250,7 @@ export function PlayerController({ publicCode }: { publicCode: string }) {
   return (
     <RoundTimerProvider timer={event.tournament.roundTimer}>
       <SiteShell
-        width="6xl"
+        width={shellWidth}
         subtitle="Player controller"
         actions={eventPageAction}
         toaster

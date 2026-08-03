@@ -59,7 +59,14 @@ export function DecklistPage({ publicCode }: { publicCode: string }) {
 
   if (loading || event === undefined) {
     return (
-      <DecklistFrame publicCode={publicCode}>
+      // `undefined` keeps the desktop heading reserved while the name is
+      // pending; once the code is known bad (the event query can settle to
+      // null while auth is still loading) pass `null` so the heading drops
+      // out here exactly as it will in the not-found state below.
+      <DecklistFrame
+        publicCode={publicCode}
+        eventName={event === null ? null : undefined}
+      >
         <div className="flex min-h-60 items-center justify-center">
           <Spinner className="size-6" />
         </div>
@@ -69,7 +76,7 @@ export function DecklistPage({ publicCode }: { publicCode: string }) {
 
   if (event === null || typedTournamentId === null) {
     return (
-      <DecklistFrame publicCode={publicCode}>
+      <DecklistFrame publicCode={publicCode} eventName={null}>
         <Empty className="mt-4 min-h-80 border bg-card">
           <EmptyHeader>
             <EmptyMedia variant="icon">
@@ -230,12 +237,24 @@ function DecklistFrame({
   children,
 }: {
   publicCode: string
-  eventName?: string
+  // Feeds the desktop heading and the phone app-bar subtitle. Tri-state: a
+  // string renders the heading with the name, `undefined` (name still
+  // loading) renders the heading shell with a placeholder title so nothing
+  // below it shifts when the name arrives, and `null` (tournament not
+  // found) omits the heading — matching the controller's not-found state,
+  // which shows no heading either.
+  eventName?: string | null
   bottomBar?: React.ReactNode
   children: React.ReactNode
 }) {
   return (
     <SiteShell
+      // Must stay in lockstep with PlayerController's shellWidth
+      // (player-controller.tsx): /play and /decklist share one header rail,
+      // and matching tokens keep it from reflowing when navigating between
+      // the two pages. Only the frame widens — the form column below caps
+      // the content itself at lg:max-w-2xl.
+      width="6xl"
       subtitle="Decklist"
       toaster
       bottomBar={
@@ -274,9 +293,18 @@ function DecklistFrame({
       }
     >
       <div className={formColumnClasses}>
-        {eventName ? (
+        {eventName !== null ? (
           <div className="hidden pt-8 lg:block">
-            <WorkspacePageHeader eyebrow="Decklist" title={eventName} />
+            <WorkspacePageHeader
+              eyebrow="Decklist"
+              title={
+                // The placeholder reserves exactly the real title's box:
+                // h-9 (2.25rem) equals text-3xl's line height (1.875rem x
+                // 1.2), so the h1 keeps its height and the content under
+                // the heading holds still when the name lands.
+                eventName ?? <Skeleton className="h-9 w-64" />
+              }
+            />
           </div>
         ) : null}
         {children}
