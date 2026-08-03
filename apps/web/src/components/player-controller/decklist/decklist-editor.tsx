@@ -184,7 +184,7 @@ export function DecklistEditor({
 
   if (!submissionOpen && !hasSubmitted) {
     return children(
-      <Empty className="mt-4 min-h-80 border bg-card">
+      <Empty className="mt-4 min-h-80 border bg-card lg:mt-10">
         <EmptyHeader>
           <EmptyMedia variant="icon">
             <Lock aria-hidden="true" />
@@ -358,7 +358,12 @@ function BoardList({
             key={flashed ? `${key}:${flash.nonce}` : key}
             ref={flashed ? flashedRowRef : undefined}
             className={cn(
-              'flex items-center gap-2 rounded-md border border-border px-2.5 py-1.5',
+              // The scroll outsets keep the add bar's scrollIntoView from
+              // parking this row behind the fixed chrome, where the 0.9s
+              // confirmation flash would play invisibly: scroll-mb-20 clears
+              // the ~65px submit bar the shell pins to the viewport bottom,
+              // scroll-mt-16 the ~61px sticky phone app bar.
+              'flex scroll-mt-16 scroll-mb-20 items-center gap-2 rounded-md border border-border px-2.5 py-1.5',
               flashed && 'deck-row-added',
             )}
           >

@@ -59,15 +59,14 @@ export function DecklistPage({ publicCode }: { publicCode: string }) {
 
   if (loading || event === undefined) {
     return (
-      // `undefined` keeps the desktop heading reserved while the name is
-      // pending; once the code is known bad (the event query can settle to
-      // null while auth is still loading) pass `null` so the heading drops
-      // out here exactly as it will in the not-found state below.
-      <DecklistFrame
-        publicCode={publicCode}
-        eventName={event === null ? null : undefined}
-      >
-        <div className="flex min-h-60 items-center justify-center">
+      // Always `undefined` while loading: a null event is ambiguous here —
+      // getPublicTournament is viewer-gated, so a private event resolves
+      // null until Convex auth catches up with Clerk — so the desktop
+      // heading stays reserved instead of flickering out and back in.
+      // Not-found certainty (and the heading's drop-out) belongs to the
+      // post-loading branch below.
+      <DecklistFrame publicCode={publicCode} eventName={undefined}>
+        <div className="flex min-h-60 items-center justify-center lg:min-h-80">
           <Spinner className="size-6" />
         </div>
       </DecklistFrame>
@@ -77,7 +76,7 @@ export function DecklistPage({ publicCode }: { publicCode: string }) {
   if (event === null || typedTournamentId === null) {
     return (
       <DecklistFrame publicCode={publicCode} eventName={null}>
-        <Empty className="mt-4 min-h-80 border bg-card">
+        <Empty className="mt-4 min-h-80 border bg-card lg:mt-10">
           <EmptyHeader>
             <EmptyMedia variant="icon">
               <SearchX aria-hidden="true" />
@@ -98,7 +97,7 @@ export function DecklistPage({ publicCode }: { publicCode: string }) {
   if (!user) {
     return (
       <DecklistFrame publicCode={publicCode} eventName={event.tournament.name}>
-        <Empty className="mt-4 min-h-80 border bg-card">
+        <Empty className="mt-4 min-h-80 border bg-card lg:mt-10">
           <EmptyHeader>
             <EmptyMedia variant="icon">
               <UserRound aria-hidden="true" />
@@ -123,7 +122,7 @@ export function DecklistPage({ publicCode }: { publicCode: string }) {
   if (registration === undefined) {
     return (
       <DecklistFrame publicCode={publicCode} eventName={event.tournament.name}>
-        <div className="grid gap-3 pt-4">
+        <div className="grid gap-3 pt-4 lg:pt-10">
           {[0, 1, 2].map((row) => (
             <Skeleton key={row} className="h-24" />
           ))}
@@ -135,7 +134,7 @@ export function DecklistPage({ publicCode }: { publicCode: string }) {
   if (!hasConfirmedEntry) {
     return (
       <DecklistFrame publicCode={publicCode} eventName={event.tournament.name}>
-        <Empty className="mt-4 min-h-80 border bg-card">
+        <Empty className="mt-4 min-h-80 border bg-card lg:mt-10">
           <EmptyHeader>
             <EmptyMedia variant="icon">
               <ScrollText aria-hidden="true" />
@@ -162,7 +161,7 @@ export function DecklistPage({ publicCode }: { publicCode: string }) {
   if (decklistData === undefined || decklistData === null) {
     return (
       <DecklistFrame publicCode={publicCode} eventName={event.tournament.name}>
-        <div className="grid gap-3 pt-4">
+        <div className="grid gap-3 pt-4 lg:pt-10">
           {[0, 1, 2].map((row) => (
             <Skeleton key={row} className="h-24" />
           ))}
@@ -182,7 +181,7 @@ export function DecklistPage({ publicCode }: { publicCode: string }) {
   ) {
     return (
       <DecklistFrame publicCode={publicCode} eventName={event.tournament.name}>
-        <Empty className="mt-4 min-h-80 border bg-card">
+        <Empty className="mt-4 min-h-80 border bg-card lg:mt-10">
           <EmptyHeader>
             <EmptyMedia variant="icon">
               <ScrollText aria-hidden="true" />
@@ -263,12 +262,20 @@ function DecklistFrame({
         ) : undefined
       }
       actions={
-        <SiteShellBackLink
-          to="/tournaments/$tournamentId/play"
-          params={{ tournamentId: publicCode }}
-        >
-          Player controller
-        </SiteShellBackLink>
+        // No header action once the code resolved to nothing: there is no
+        // player controller for a nonexistent event, so the link would only
+        // land on a second not-found screen. `eventName === null` means
+        // exactly that (the loading state always passes `undefined`), so one
+        // condition drives both this and the heading gate below — mirroring
+        // PlayerController's deliberate pop-out in its own not-found state.
+        eventName !== null ? (
+          <SiteShellBackLink
+            to="/tournaments/$tournamentId/play"
+            params={{ tournamentId: publicCode }}
+          >
+            Player controller
+          </SiteShellBackLink>
+        ) : undefined
       }
       appBar={
         <div className="flex items-center gap-2">

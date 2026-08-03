@@ -269,7 +269,11 @@ export function PlayerController({ publicCode }: { publicCode: string }) {
         }
         bottomBarLgHidden
         bottomBar={
-          <nav className="grid grid-cols-3">
+          // -mx-4 bleeds the tab buttons across the bar column's px-4 inset
+          // on phones, restoring full-width native-tab-bar tap targets; from
+          // `sm` up they realign with the content column like the rest of
+          // the bar.
+          <nav className="-mx-4 grid grid-cols-3 sm:mx-0">
             <TabButton
               icon={Swords}
               label="Match"

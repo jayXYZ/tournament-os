@@ -7,5 +7,7 @@ export const Route = createFileRoute('/tournaments/$tournamentId/decklist')({
 
 function RouteComponent() {
   const { tournamentId: publicCode } = Route.useParams()
-  return <DecklistPage publicCode={publicCode} />
+  // Keyed so per-tournament UI state (the editor's dirty flag) resets when
+  // navigating between different tournaments' decklist pages.
+  return <DecklistPage key={publicCode} publicCode={publicCode} />
 }

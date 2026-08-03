@@ -69,12 +69,38 @@ function DecklistCard({
   data: MyDecklistData | undefined
 }) {
   if (data === undefined) {
-    // Loading skeleton only while the event collects decklists. Otherwise the
-    // controller's query is skipped and `data` stays undefined for good, so
-    // render nothing — a list kept from before the organizer turned
-    // collection off is still viewable on the decklist page, which queries
-    // getMyDecklist without the decklistRequired gate.
-    return collectsDecklists ? <Skeleton className="h-24" /> : null
+    if (collectsDecklists) {
+      // The controller's query is still in flight; hold the card's slot.
+      return <Skeleton className="h-24" />
+    }
+    // The event does not collect decklists, so the controller's query is
+    // skipped and `data` stays undefined for good. A list kept from before
+    // the organizer turned collection off is still viewable on the decklist
+    // page (its getMyDecklist has no decklistRequired gate), so link there
+    // statically rather than subscribing on /play just to check for one.
+    // The link shows even with no list on file; the decklist page's own
+    // empty state covers that.
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Decklist</CardTitle>
+          <CardDescription>
+            This event does not collect decklists. Any list you already
+            submitted is still on file.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button asChild type="button" variant="outline">
+            <Link
+              to="/tournaments/$tournamentId/decklist"
+              params={{ tournamentId: publicCode }}
+            >
+              View your decklist
+            </Link>
+          </Button>
+        </CardContent>
+      </Card>
+    )
   }
   if (data === null) {
     return null
