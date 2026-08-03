@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { createContext, useContext, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { useMyCurrentMatch, useRoundTimer } from '@tournament-os/core'
 import { useQuery } from 'convex/react'
@@ -16,9 +16,12 @@ import { api } from '@tournament-os/backend/convex/_generated/api'
 import { CurrentMatchCard } from './current-match-card'
 import { MoreTab } from './more-tab'
 import { StandingsList } from './standings-list'
+import type { ReactNode } from 'react'
+import type { RoundTimer } from '@tournament-os/core'
 import { RoundTimerPill } from '@/components/shared/round-timer-indicator'
 import { SiteShell, SiteShellBackLink } from '@/components/shared/site-shell'
 import { WorkspacePageHeader } from '@/components/shared/workspace-page-header'
+import { useIsDesktop } from '@/hooks/use-desktop'
 import { useAppAuth } from '@/lib/use-app-auth'
 
 import { Badge } from '@/components/ui/badge'
@@ -53,6 +56,9 @@ export function PlayerController({ publicCode }: { publicCode: string }) {
   const currentMatch = useMyCurrentMatch(
     user && hasConfirmedEntry && typedTournamentId ? typedTournamentId : null,
   )
+  // The page's only getMyDecklist subscription — it feeds both the phone
+  // decklist callout and the More tab's DecklistCard (passed down as a prop),
+  // and it is skipped entirely while the event does not collect decklists.
   const myDecklist = useQuery(
     api.tournaments.decklists.getMyDecklist,
     user &&
@@ -63,10 +69,23 @@ export function PlayerController({ publicCode }: { publicCode: string }) {
       : 'skip',
   )
   const [tab, setTab] = useState<ControllerTab>('match')
-  // Single ticking source for the round timer: liveStatus below renders into
-  // two chrome slots, so the pills are presentational and this is the page's
-  // only useRoundTimer (one interval, not one per slot).
-  const roundTimerSnapshot = useRoundTimer(event?.tournament.roundTimer)
+  // Tabs the player has opened at least once. Below `lg` a panel mounts only
+  // after its tab is first visited, so a phone parked on the Match tab holds
+  // no live subscriptions for standings or match history it never looks at;
+  // once visited, a panel stays mounted (CSS-hidden) so returning to its tab
+  // is instant. From `lg` up all three panels are visible at once, so
+  // isDesktop mounts everything regardless of the tab state.
+  const [visitedTabs, setVisitedTabs] = useState<ReadonlySet<ControllerTab>>(
+    () => new Set(['match']),
+  )
+  const isDesktop = useIsDesktop()
+
+  const selectTab = (next: ControllerTab) => {
+    setTab(next)
+    setVisitedTabs((prev) => (prev.has(next) ? prev : new Set(prev).add(next)))
+  }
+  const panelMounted = (panel: ControllerTab) =>
+    isDesktop || visitedTabs.has(panel)
 
   if (loading || event === undefined) {
     return (
@@ -190,11 +209,12 @@ export function PlayerController({ publicCode }: { publicCode: string }) {
   // Rendered twice — in the sticky phone app bar below `lg`, and in the
   // sticky status strip under the desktop heading from `lg` up — so the live
   // round state stays pinned in view at every viewport width. Both copies
-  // read the shared roundTimerSnapshot above; when the timer is idle and no
-  // badge applies this renders nothing at all, which both slots rely on.
+  // read the RoundTimerProvider wrapped around the layout below through
+  // LiveTimerPill; when the timer is idle and no badge applies this renders
+  // nothing at all, which both slots rely on.
   const liveStatus = (
     <>
-      <RoundTimerPill snapshot={roundTimerSnapshot} />
+      <LiveTimerPill />
       {currentMatch ? <HeaderBadge currentMatch={currentMatch} /> : null}
     </>
   )
@@ -205,112 +225,160 @@ export function PlayerController({ publicCode }: { publicCode: string }) {
     myDecklist.submissionOpen
 
   return (
-    <SiteShell
-      width="6xl"
-      subtitle="Player controller"
-      actions={eventPageAction}
-      toaster
-      appBar={
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <p className="truncate text-sm font-semibold">
-              {event.tournament.name}
-            </p>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              Player controller
-            </p>
+    <RoundTimerProvider timer={event.tournament.roundTimer}>
+      <SiteShell
+        width="6xl"
+        subtitle="Player controller"
+        actions={eventPageAction}
+        toaster
+        appBar={
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold">
+                {event.tournament.name}
+              </p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Player controller
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">{liveStatus}</div>
           </div>
-          <div className="flex shrink-0 items-center gap-2">{liveStatus}</div>
-        </div>
-      }
-      bottomBarLgHidden
-      bottomBar={
-        <nav className="grid grid-cols-3">
-          <TabButton
-            icon={Swords}
-            label="Match"
-            active={tab === 'match'}
-            onClick={() => setTab('match')}
-          />
-          <TabButton
-            icon={ListOrdered}
-            label="Standings"
-            active={tab === 'standings'}
-            onClick={() => setTab('standings')}
-          />
-          <TabButton
-            icon={Menu}
-            label="More"
-            active={tab === 'more'}
-            onClick={() => setTab('more')}
-          />
-        </nav>
-      }
-    >
-      <div className="hidden pt-8 lg:block">
-        <WorkspacePageHeader
-          eyebrow={event.organizationName ?? 'Player controller'}
-          title={event.tournament.name}
-        />
-      </div>
-
-      {/* Desktop stand-in for the phone app bar: no site chrome is sticky at
-          `lg`, so the live round status rides this slim strip, which pins to
-          the viewport top while long content (standings) scrolls. It must
-          hold nothing but the status pills — the `empty:` variant is what
-          collapses the strip (rule and all) whenever the timer is idle and
-          there is no badge, the same conditions that blank the app bar's
-          status slot on phones. */}
-      <div className="sticky top-0 z-10 mt-6 hidden items-center justify-end gap-2 border-b border-border bg-background py-2 lg:flex lg:empty:hidden">
-        {liveStatus}
-      </div>
-
-      {/* One column of cards behind a tab bar on phones; a two-column grid
-          with everything visible at once from `lg` up. The column wrappers
-          use `contents` below `lg` so sections hidden with the tab bar never
-          leave stray grid rows (and gaps) behind. */}
-      <div className="grid gap-4 pt-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:items-start lg:gap-6 lg:pt-8">
-        <div className="contents lg:grid lg:gap-6">
-          {showDecklistCallout ? (
-            <DecklistCallout publicCode={publicCode} className="lg:hidden" />
-          ) : null}
-          <section
-            aria-label="Current match"
-            className={cn(
-              tab === 'match' ? 'grid gap-4' : 'hidden lg:grid',
-              'lg:gap-6',
-            )}
-          >
-            <CurrentMatchCard currentMatch={currentMatch} />
-          </section>
-          <section
-            aria-label="Tournament options"
-            className={cn(
-              tab === 'more' ? 'grid gap-4' : 'hidden lg:grid',
-              'lg:gap-6',
-            )}
-          >
-            <MoreTab
-              tournamentId={typedTournamentId}
-              publicCode={publicCode}
-              collectsDecklists={event.tournament.decklistRequired}
-              currentMatch={currentMatch}
+        }
+        bottomBarLgHidden
+        bottomBar={
+          <nav className="grid grid-cols-3">
+            <TabButton
+              icon={Swords}
+              label="Match"
+              active={tab === 'match'}
+              onClick={() => selectTab('match')}
             />
-          </section>
+            <TabButton
+              icon={ListOrdered}
+              label="Standings"
+              active={tab === 'standings'}
+              onClick={() => selectTab('standings')}
+            />
+            <TabButton
+              icon={Menu}
+              label="More"
+              active={tab === 'more'}
+              onClick={() => selectTab('more')}
+            />
+          </nav>
+        }
+      >
+        <div className="hidden pt-8 lg:block">
+          <WorkspacePageHeader
+            eyebrow={event.organizationName ?? 'Player controller'}
+            title={event.tournament.name}
+          />
         </div>
-        <div className="contents lg:block">
-          <section
-            aria-label="Standings"
-            className={cn(
-              tab === 'standings' ? 'grid gap-4' : 'hidden lg:grid',
-            )}
-          >
-            <StandingsList tournamentId={typedTournamentId} />
-          </section>
+
+        {/* Desktop stand-in for the phone app bar: no site chrome is sticky
+            at `lg`, so the live round status rides this slim strip, which
+            pins to the viewport top while long content (standings) scrolls.
+            It must hold nothing but the status pills — the `empty:` variant
+            is what collapses the strip (rule and all) whenever the timer is
+            idle and there is no badge, the same conditions that blank the app
+            bar's status slot on phones. */}
+        <div className="sticky top-0 z-10 mt-6 hidden items-center justify-end gap-2 border-b border-border bg-background py-2 lg:flex lg:empty:hidden">
+          {liveStatus}
         </div>
-      </div>
-    </SiteShell>
+
+        {/* One column of cards behind a tab bar on phones; a two-column grid
+            with everything visible at once from `lg` up. Sections render only
+            where panelMounted says so — see the visitedTabs comment — while
+            the class ternaries keep visited-but-inactive sections CSS-hidden
+            below `lg`. The column wrappers use `contents` below `lg` so
+            hidden or unmounted sections never leave stray grid rows (and
+            gaps) behind. */}
+        <div className="grid gap-4 pt-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:items-start lg:gap-6 lg:pt-8">
+          <div className="contents lg:grid lg:gap-6">
+            {showDecklistCallout ? (
+              <DecklistCallout publicCode={publicCode} className="lg:hidden" />
+            ) : null}
+            {panelMounted('match') ? (
+              <section
+                aria-label="Current match"
+                className={cn(
+                  tab === 'match' ? 'grid gap-4' : 'hidden lg:grid',
+                  'lg:gap-6',
+                )}
+              >
+                <CurrentMatchCard currentMatch={currentMatch} />
+              </section>
+            ) : null}
+            {panelMounted('more') ? (
+              <section
+                aria-label="Tournament options"
+                className={cn(
+                  tab === 'more' ? 'grid gap-4' : 'hidden lg:grid',
+                  'lg:gap-6',
+                )}
+              >
+                <MoreTab
+                  tournamentId={typedTournamentId}
+                  publicCode={publicCode}
+                  collectsDecklists={event.tournament.decklistRequired}
+                  currentMatch={currentMatch}
+                  myDecklist={myDecklist}
+                />
+              </section>
+            ) : null}
+          </div>
+          <div className="contents lg:block">
+            {panelMounted('standings') ? (
+              <section
+                aria-label="Standings"
+                className={cn(
+                  tab === 'standings' ? 'grid gap-4' : 'hidden lg:grid',
+                )}
+              >
+                <StandingsList tournamentId={typedTournamentId} />
+              </section>
+            ) : null}
+          </div>
+        </div>
+      </SiteShell>
+    </RoundTimerProvider>
   )
+}
+
+// The page's only ticking round-timer state. Keeping the useRoundTimer call
+// (and its 500ms setNow interval) inside this provider instead of
+// PlayerController means a tick re-renders just the provider — and, because
+// PlayerController hands it an unchanged `children` element, React bails out
+// of the whole layout subtree and re-renders only the LiveTimerPill context
+// consumers in the two status slots. F12's one-interval property still holds:
+// this is the /play subtree's single useRoundTimer, mounted once around the
+// confirmed-entry layout; the earlier states render no status slot and no
+// provider, so no timer state ticks there at all.
+const RoundTimerContext = createContext<ReturnType<
+  typeof useRoundTimer
+> | null>(null)
+
+function RoundTimerProvider({
+  timer,
+  children,
+}: {
+  timer: RoundTimer | null | undefined
+  children: ReactNode
+}) {
+  const snapshot = useRoundTimer(timer)
+  return (
+    <RoundTimerContext.Provider value={snapshot}>
+      {children}
+    </RoundTimerContext.Provider>
+  )
+}
+
+// Presentational pill fed from RoundTimerContext, one per status slot. Like
+// RoundTimerPill it renders nothing while the timer is idle, so the `:empty`
+// collapse of the slots keeps working.
+function LiveTimerPill() {
+  const snapshot = useContext(RoundTimerContext)
+  return snapshot ? <RoundTimerPill snapshot={snapshot} /> : null
 }
 
 // One-tap path to the decklist page while a required list is still missing

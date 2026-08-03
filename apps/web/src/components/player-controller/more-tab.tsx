@@ -4,9 +4,9 @@ import {
   useDropSelf,
   useMyMatchHistory,
 } from '@tournament-os/core'
-import { useQuery } from 'convex/react'
 import { toast } from 'sonner'
-import { api } from '@tournament-os/backend/convex/_generated/api'
+import type { api } from '@tournament-os/backend/convex/_generated/api'
+import type { FunctionReturnType } from 'convex/server'
 import type { MyCurrentMatch } from '@tournament-os/core'
 
 import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
@@ -23,25 +23,35 @@ import {
 } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 
+type MyDecklistData = FunctionReturnType<
+  typeof api.tournaments.decklists.getMyDecklist
+>
+
 export function MoreTab({
   tournamentId,
   publicCode,
   collectsDecklists,
   currentMatch,
+  myDecklist,
 }: {
   tournamentId: Id<'tournaments'>
   publicCode: string
   collectsDecklists: boolean
   currentMatch: MyCurrentMatch | undefined
+  // The controller's getMyDecklist result, subscribed there only while the
+  // event collects decklists ('skip' otherwise). This tab holds no
+  // getMyDecklist subscription of its own, so mounting it never widens what
+  // the page reads from the server.
+  myDecklist: MyDecklistData | undefined
 }) {
   // No wrapper of its own: the controller lays these cards out in whichever
   // grid is active (the More tab's column on phones, the left desktop column).
   return (
     <>
       <DecklistCard
-        tournamentId={tournamentId}
         publicCode={publicCode}
         collectsDecklists={collectsDecklists}
+        data={myDecklist}
       />
       <MatchHistoryCard tournamentId={tournamentId} />
       <DropCard tournamentId={tournamentId} currentMatch={currentMatch} />
@@ -50,22 +60,20 @@ export function MoreTab({
 }
 
 function DecklistCard({
-  tournamentId,
   publicCode,
   collectsDecklists,
+  data,
 }: {
-  tournamentId: Id<'tournaments'>
   publicCode: string
   collectsDecklists: boolean
+  data: MyDecklistData | undefined
 }) {
-  const data = useQuery(api.tournaments.decklists.getMyDecklist, {
-    tournamentId,
-  })
-
   if (data === undefined) {
-    // No skeleton when the event doesn't collect decklists — the card is
-    // usually about to resolve to nothing (it only survives for a list kept
-    // from before the organizer turned collection off).
+    // Loading skeleton only while the event collects decklists. Otherwise the
+    // controller's query is skipped and `data` stays undefined for good, so
+    // render nothing — a list kept from before the organizer turned
+    // collection off is still viewable on the decklist page, which queries
+    // getMyDecklist without the decklistRequired gate.
     return collectsDecklists ? <Skeleton className="h-24" /> : null
   }
   if (data === null) {
@@ -73,12 +81,6 @@ function DecklistCard({
   }
 
   const { decklist, submissionOpen } = data
-  // The settings copy promises "Turning this off keeps any submitted lists",
-  // so a stored list stays reachable after collection is turned off; players
-  // without one just see no decklist card.
-  if (!collectsDecklists && decklist === null) {
-    return null
-  }
   const description = decklist
     ? [
         decklist.deckName,
