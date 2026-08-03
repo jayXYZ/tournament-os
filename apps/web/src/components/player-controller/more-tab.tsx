@@ -34,8 +34,10 @@ export function MoreTab({
   collectsDecklists: boolean
   currentMatch: MyCurrentMatch | undefined
 }) {
+  // No wrapper of its own: the controller lays these cards out in whichever
+  // grid is active (the More tab's column on phones, the left desktop column).
   return (
-    <div className="grid gap-4">
+    <>
       <DecklistCard
         tournamentId={tournamentId}
         publicCode={publicCode}
@@ -43,7 +45,7 @@ export function MoreTab({
       />
       <MatchHistoryCard tournamentId={tournamentId} />
       <DropCard tournamentId={tournamentId} currentMatch={currentMatch} />
-    </div>
+    </>
   )
 }
 

@@ -253,8 +253,8 @@ export function DecklistEditor({
       </div>
 
       {submissionOpen ? (
-        <footer className="fixed inset-x-0 bottom-0 border-t border-border bg-background">
-          <div className="mx-auto flex max-w-md items-center justify-between gap-3 px-4 py-3">
+        <footer className="fixed inset-x-0 bottom-0 z-10 border-t border-border bg-background pb-[env(safe-area-inset-bottom)]">
+          <div className="mx-auto flex max-w-md items-center justify-between gap-3 px-4 py-3 sm:max-w-2xl sm:px-6">
             <div className="text-xs text-muted-foreground">
               <p>
                 <span className="font-medium text-foreground tabular-nums">

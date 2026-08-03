@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { useQuery } from 'convex/react'
 import {
+  ArrowLeft,
   ChevronLeft,
   LogIn,
   ScrollText,
@@ -11,6 +12,8 @@ import {
 
 import { api } from '@tournament-os/backend/convex/_generated/api'
 import { DecklistEditor } from './decklist-editor'
+import { ControllerFrame } from '../controller-frame'
+import { WorkspacePageHeader } from '@/components/shared/workspace-page-header'
 import { Button } from '@/components/ui/button'
 import {
   Empty,
@@ -20,7 +23,6 @@ import {
   EmptyTitle,
 } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Toaster } from '@/components/ui/sonner'
 import { Spinner } from '@/components/ui/spinner'
 import { useAppAuth } from '@/lib/use-app-auth'
 
@@ -219,9 +221,24 @@ function DecklistFrame({
   children: React.ReactNode
 }) {
   return (
-    <main className="min-h-svh bg-background text-foreground">
-      <header className="sticky top-0 z-10 border-b border-border bg-background">
-        <div className="mx-auto flex max-w-md items-center gap-2 px-4 py-3">
+    <ControllerFrame
+      subtitle="Decklist"
+      // The editor's fixed submit bar stays on every viewport, so keep the
+      // bottom clearance that the frame normally drops at `lg`.
+      contentClassName="lg:pb-24"
+      actions={
+        <Button asChild type="button" variant="ghost">
+          <Link
+            to="/tournaments/$tournamentId/play"
+            params={{ tournamentId: publicCode }}
+          >
+            <ArrowLeft data-icon="inline-start" />
+            Player controller
+          </Link>
+        </Button>
+      }
+      mobileHeader={
+        <div className="flex items-center gap-2">
           <Button asChild type="button" variant="ghost" size="icon">
             <Link
               to="/tournaments/$tournamentId/play"
@@ -240,9 +257,18 @@ function DecklistFrame({
             ) : null}
           </div>
         </div>
-      </header>
-      <div className="mx-auto max-w-md px-4 pb-24">{children}</div>
-      <Toaster />
-    </main>
+      }
+    >
+      {/* The editor is a single-column form, so it stays at a comfortable
+          reading width and centers inside the wider site chrome. */}
+      <div className="lg:mx-auto lg:w-full lg:max-w-2xl">
+        {eventName ? (
+          <div className="hidden pt-8 lg:block">
+            <WorkspacePageHeader eyebrow="Decklist" title={eventName} />
+          </div>
+        ) : null}
+        {children}
+      </div>
+    </ControllerFrame>
   )
 }

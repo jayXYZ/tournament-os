@@ -3,6 +3,7 @@ import { Link } from '@tanstack/react-router'
 import { useMyCurrentMatch } from '@tournament-os/core'
 import { useQuery } from 'convex/react'
 import {
+  ArrowLeft,
   ChevronRight,
   ListOrdered,
   LogIn,
@@ -13,10 +14,12 @@ import {
   UserRound,
 } from 'lucide-react'
 import { api } from '@tournament-os/backend/convex/_generated/api'
+import { ControllerFrame } from './controller-frame'
 import { CurrentMatchCard } from './current-match-card'
 import { MoreTab } from './more-tab'
 import { StandingsList } from './standings-list'
 import { RoundTimerIndicator } from '@/components/shared/round-timer-indicator'
+import { WorkspacePageHeader } from '@/components/shared/workspace-page-header'
 import { useAppAuth } from '@/lib/use-app-auth'
 
 import { Badge } from '@/components/ui/badge'
@@ -29,7 +32,6 @@ import {
   EmptyTitle,
 } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Toaster } from '@/components/ui/sonner'
 import { Spinner } from '@/components/ui/spinner'
 import { cn } from '@/lib/utils'
 
@@ -65,8 +67,8 @@ export function PlayerController({ publicCode }: { publicCode: string }) {
 
   if (loading || event === undefined) {
     return (
-      <ControllerFrame>
-        <div className="flex min-h-60 items-center justify-center">
+      <ControllerFrame subtitle="Player controller">
+        <div className="flex min-h-60 items-center justify-center lg:min-h-80">
           <Spinner className="size-6" />
         </div>
       </ControllerFrame>
@@ -75,8 +77,8 @@ export function PlayerController({ publicCode }: { publicCode: string }) {
 
   if (event === null || typedTournamentId === null) {
     return (
-      <ControllerFrame>
-        <Empty className="min-h-80 border bg-card">
+      <ControllerFrame subtitle="Player controller">
+        <Empty className="mt-4 min-h-80 border bg-card lg:mt-10">
           <EmptyHeader>
             <EmptyMedia variant="icon">
               <SearchX aria-hidden="true" />
@@ -94,10 +96,22 @@ export function PlayerController({ publicCode }: { publicCode: string }) {
     )
   }
 
+  const eventPageAction = (
+    <Button asChild type="button" variant="ghost">
+      <Link
+        to="/tournaments/$tournamentId"
+        params={{ tournamentId: publicCode }}
+      >
+        <ArrowLeft data-icon="inline-start" />
+        Event page
+      </Link>
+    </Button>
+  )
+
   if (!user) {
     return (
-      <ControllerFrame>
-        <Empty className="min-h-80 border bg-card">
+      <ControllerFrame subtitle="Player controller" actions={eventPageAction}>
+        <Empty className="mt-4 min-h-80 border bg-card lg:mt-10">
           <EmptyHeader>
             <EmptyMedia variant="icon">
               <UserRound aria-hidden="true" />
@@ -121,8 +135,8 @@ export function PlayerController({ publicCode }: { publicCode: string }) {
 
   if (registration === undefined) {
     return (
-      <ControllerFrame>
-        <div className="grid gap-3 pt-4">
+      <ControllerFrame subtitle="Player controller" actions={eventPageAction}>
+        <div className="grid gap-3 pt-4 lg:pt-10">
           {[0, 1, 2].map((row) => (
             <Skeleton key={row} className="h-24" />
           ))}
@@ -133,8 +147,8 @@ export function PlayerController({ publicCode }: { publicCode: string }) {
 
   if (!hasConfirmedEntry) {
     return (
-      <ControllerFrame>
-        <Empty className="min-h-80 border bg-card">
+      <ControllerFrame subtitle="Player controller" actions={eventPageAction}>
+        <Empty className="mt-4 min-h-80 border bg-card lg:mt-10">
           <EmptyHeader>
             <EmptyMedia variant="icon">
               <Swords aria-hidden="true" />
@@ -158,52 +172,95 @@ export function PlayerController({ publicCode }: { publicCode: string }) {
     )
   }
 
+  // Rendered twice — sticky app bar on phones, page heading on desktop — so
+  // the live round state stays visible in whichever chrome is active.
+  const liveStatus = (
+    <>
+      <RoundTimerIndicator timer={event.tournament.roundTimer} />
+      {currentMatch ? <HeaderBadge currentMatch={currentMatch} /> : null}
+    </>
+  )
+  const showDecklistCallout =
+    myDecklist !== undefined &&
+    myDecklist !== null &&
+    myDecklist.decklist === null &&
+    myDecklist.submissionOpen
+
   return (
     <ControllerFrame
-      header={
-        currentMatch ? (
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold">
-                {currentMatch.tournament.name}
-              </p>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                Player controller
-              </p>
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <RoundTimerIndicator timer={currentMatch.tournament.roundTimer} />
-              <HeaderBadge currentMatch={currentMatch} />
-            </div>
+      width="6xl"
+      subtitle="Player controller"
+      actions={eventPageAction}
+      mobileHeader={
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold">
+              {event.tournament.name}
+            </p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Player controller
+            </p>
           </div>
-        ) : (
-          <Skeleton className="h-9" />
-        )
+          <div className="flex shrink-0 items-center gap-2">{liveStatus}</div>
+        </div>
       }
     >
-      <div className="grid gap-4 pt-4">
-        {myDecklist &&
-        myDecklist.decklist === null &&
-        myDecklist.submissionOpen ? (
-          <DecklistCallout publicCode={publicCode} />
-        ) : null}
-        {tab === 'match' ? (
-          <CurrentMatchCard currentMatch={currentMatch} />
-        ) : null}
-        {tab === 'standings' ? (
-          <StandingsList tournamentId={typedTournamentId} />
-        ) : null}
-        {tab === 'more' ? (
-          <MoreTab
-            tournamentId={typedTournamentId}
-            publicCode={publicCode}
-            collectsDecklists={event.tournament.decklistRequired}
-            currentMatch={currentMatch}
-          />
-        ) : null}
+      <div className="hidden pt-8 lg:block">
+        <WorkspacePageHeader
+          eyebrow={event.organizationName ?? 'Player controller'}
+          title={event.tournament.name}
+          actions={
+            <div className="flex shrink-0 items-center gap-2">{liveStatus}</div>
+          }
+        />
       </div>
 
-      <nav className="fixed inset-x-0 bottom-0 border-t border-border bg-background">
+      {/* One column of cards behind a tab bar on phones; a two-column grid
+          with everything visible at once from `lg` up. The column wrappers
+          use `contents` below `lg` so sections hidden with the tab bar never
+          leave stray grid rows (and gaps) behind. */}
+      <div className="grid gap-4 pt-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:items-start lg:gap-6 lg:pt-8">
+        <div className="contents lg:grid lg:gap-6">
+          {showDecklistCallout ? (
+            <DecklistCallout publicCode={publicCode} className="lg:hidden" />
+          ) : null}
+          <section
+            aria-label="Current match"
+            className={cn(
+              tab === 'match' ? 'grid gap-4' : 'hidden lg:grid',
+              'lg:gap-6',
+            )}
+          >
+            <CurrentMatchCard currentMatch={currentMatch} />
+          </section>
+          <section
+            aria-label="Tournament options"
+            className={cn(
+              tab === 'more' ? 'grid gap-4' : 'hidden lg:grid',
+              'lg:gap-6',
+            )}
+          >
+            <MoreTab
+              tournamentId={typedTournamentId}
+              publicCode={publicCode}
+              collectsDecklists={event.tournament.decklistRequired}
+              currentMatch={currentMatch}
+            />
+          </section>
+        </div>
+        <div className="contents lg:block">
+          <section
+            aria-label="Standings"
+            className={cn(
+              tab === 'standings' ? 'grid gap-4' : 'hidden lg:grid',
+            )}
+          >
+            <StandingsList tournamentId={typedTournamentId} />
+          </section>
+        </div>
+      </div>
+
+      <nav className="fixed inset-x-0 bottom-0 z-10 border-t border-border bg-background pb-[env(safe-area-inset-bottom)] lg:hidden">
         <div className="mx-auto grid max-w-md grid-cols-3">
           <TabButton
             icon={Swords}
@@ -231,13 +288,24 @@ export function PlayerController({ publicCode }: { publicCode: string }) {
 
 // One-tap path to the decklist page while a required list is still missing
 // and submission is open; disappears on its own once the list is in (or the
-// window closes), so it never nags mid-event.
-function DecklistCallout({ publicCode }: { publicCode: string }) {
+// window closes), so it never nags mid-event. Phone-only: the desktop grid
+// always shows the decklist card with its submit button, so a second prompt
+// would be noise.
+function DecklistCallout({
+  publicCode,
+  className,
+}: {
+  publicCode: string
+  className?: string
+}) {
   return (
     <Link
       to="/tournaments/$tournamentId/decklist"
       params={{ tournamentId: publicCode }}
-      className="flex items-center gap-3 rounded-lg border border-primary/40 bg-primary/5 px-3 py-2.5 transition-colors hover:bg-primary/10"
+      className={cn(
+        'flex items-center gap-3 rounded-lg border border-primary/40 bg-primary/5 px-3 py-2.5 transition-colors hover:bg-primary/10',
+        className,
+      )}
     >
       <ScrollText className="size-4 shrink-0 text-primary" aria-hidden="true" />
       <span className="min-w-0 flex-1">
@@ -251,33 +319,6 @@ function DecklistCallout({ publicCode }: { publicCode: string }) {
         aria-hidden="true"
       />
     </Link>
-  )
-}
-
-function ControllerFrame({
-  header,
-  children,
-}: {
-  header?: React.ReactNode
-  children: React.ReactNode
-}) {
-  return (
-    <main className="min-h-svh bg-background text-foreground">
-      <header className="sticky top-0 z-10 border-b border-border bg-background">
-        <div className="mx-auto max-w-md px-4 py-3">
-          {header ?? (
-            <div className="flex items-center gap-3">
-              <div className="flex size-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
-                <Swords className="size-4" aria-hidden="true" />
-              </div>
-              <p className="text-sm font-semibold">Player controller</p>
-            </div>
-          )}
-        </div>
-      </header>
-      <div className="mx-auto max-w-md px-4 pb-24">{children}</div>
-      <Toaster />
-    </main>
   )
 }
 
@@ -322,7 +363,7 @@ function TabButton({
       onClick={onClick}
       aria-current={active ? 'page' : undefined}
       className={cn(
-        'flex flex-col items-center gap-1 py-2.5 text-xs',
+        'flex flex-col items-center gap-1 py-2.5 text-xs transition-colors',
         active ? 'text-foreground' : 'text-muted-foreground',
       )}
     >
