@@ -15,7 +15,24 @@ export function RoundTimerIndicator({
   timer: RoundTimer | null | undefined
   className?: string
 }) {
-  const { phase, remainingMs, formatted } = useRoundTimer(timer)
+  const snapshot = useRoundTimer(timer)
+  return <RoundTimerPill snapshot={snapshot} className={className} />
+}
+
+// Presentational half of RoundTimerIndicator, for surfaces that show one
+// timer in several slots at once (the player controller's phone app bar and
+// desktop status strip): call useRoundTimer once and hand its snapshot to a
+// pill per slot, instead of mounting a ticking interval per copy. Returns
+// null — no wrapper element — while idle, so `:empty`-collapsed containers
+// still see nothing.
+export function RoundTimerPill({
+  snapshot,
+  className,
+}: {
+  snapshot: ReturnType<typeof useRoundTimer>
+  className?: string
+}) {
+  const { phase, remainingMs, formatted } = snapshot
   if (phase === 'idle') {
     return null
   }

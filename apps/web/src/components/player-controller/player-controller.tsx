@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
-import { useMyCurrentMatch } from '@tournament-os/core'
+import { useMyCurrentMatch, useRoundTimer } from '@tournament-os/core'
 import { useQuery } from 'convex/react'
 import {
   ChevronRight,
@@ -16,7 +16,7 @@ import { api } from '@tournament-os/backend/convex/_generated/api'
 import { CurrentMatchCard } from './current-match-card'
 import { MoreTab } from './more-tab'
 import { StandingsList } from './standings-list'
-import { RoundTimerIndicator } from '@/components/shared/round-timer-indicator'
+import { RoundTimerPill } from '@/components/shared/round-timer-indicator'
 import { SiteShell, SiteShellBackLink } from '@/components/shared/site-shell'
 import { WorkspacePageHeader } from '@/components/shared/workspace-page-header'
 import { useAppAuth } from '@/lib/use-app-auth'
@@ -63,6 +63,10 @@ export function PlayerController({ publicCode }: { publicCode: string }) {
       : 'skip',
   )
   const [tab, setTab] = useState<ControllerTab>('match')
+  // Single ticking source for the round timer: liveStatus below renders into
+  // two chrome slots, so the pills are presentational and this is the page's
+  // only useRoundTimer (one interval, not one per slot).
+  const roundTimerSnapshot = useRoundTimer(event?.tournament.roundTimer)
 
   if (loading || event === undefined) {
     return (
@@ -185,10 +189,12 @@ export function PlayerController({ publicCode }: { publicCode: string }) {
 
   // Rendered twice — in the sticky phone app bar below `lg`, and in the
   // sticky status strip under the desktop heading from `lg` up — so the live
-  // round state stays pinned in view at every viewport width.
+  // round state stays pinned in view at every viewport width. Both copies
+  // read the shared roundTimerSnapshot above; when the timer is idle and no
+  // badge applies this renders nothing at all, which both slots rely on.
   const liveStatus = (
     <>
-      <RoundTimerIndicator timer={event.tournament.roundTimer} />
+      <RoundTimerPill snapshot={roundTimerSnapshot} />
       {currentMatch ? <HeaderBadge currentMatch={currentMatch} /> : null}
     </>
   )
