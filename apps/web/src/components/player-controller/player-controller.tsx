@@ -3,7 +3,6 @@ import { Link } from '@tanstack/react-router'
 import { useMyCurrentMatch } from '@tournament-os/core'
 import { useQuery } from 'convex/react'
 import {
-  ArrowLeft,
   ChevronRight,
   ListOrdered,
   LogIn,
@@ -14,11 +13,11 @@ import {
   UserRound,
 } from 'lucide-react'
 import { api } from '@tournament-os/backend/convex/_generated/api'
-import { ControllerFrame } from './controller-frame'
 import { CurrentMatchCard } from './current-match-card'
 import { MoreTab } from './more-tab'
 import { StandingsList } from './standings-list'
 import { RoundTimerIndicator } from '@/components/shared/round-timer-indicator'
+import { SiteShell, SiteShellBackLink } from '@/components/shared/site-shell'
 import { WorkspacePageHeader } from '@/components/shared/workspace-page-header'
 import { useAppAuth } from '@/lib/use-app-auth'
 
@@ -67,17 +66,17 @@ export function PlayerController({ publicCode }: { publicCode: string }) {
 
   if (loading || event === undefined) {
     return (
-      <ControllerFrame subtitle="Player controller">
+      <SiteShell subtitle="Player controller" appBar toaster>
         <div className="flex min-h-60 items-center justify-center lg:min-h-80">
           <Spinner className="size-6" />
         </div>
-      </ControllerFrame>
+      </SiteShell>
     )
   }
 
   if (event === null || typedTournamentId === null) {
     return (
-      <ControllerFrame subtitle="Player controller">
+      <SiteShell subtitle="Player controller" appBar toaster>
         <Empty className="mt-4 min-h-80 border bg-card lg:mt-10">
           <EmptyHeader>
             <EmptyMedia variant="icon">
@@ -92,25 +91,27 @@ export function PlayerController({ publicCode }: { publicCode: string }) {
             <Link to="/">Browse upcoming tournaments</Link>
           </Button>
         </Empty>
-      </ControllerFrame>
+      </SiteShell>
     )
   }
 
   const eventPageAction = (
-    <Button asChild type="button" variant="ghost">
-      <Link
-        to="/tournaments/$tournamentId"
-        params={{ tournamentId: publicCode }}
-      >
-        <ArrowLeft data-icon="inline-start" />
-        Event page
-      </Link>
-    </Button>
+    <SiteShellBackLink
+      to="/tournaments/$tournamentId"
+      params={{ tournamentId: publicCode }}
+    >
+      Event page
+    </SiteShellBackLink>
   )
 
   if (!user) {
     return (
-      <ControllerFrame subtitle="Player controller" actions={eventPageAction}>
+      <SiteShell
+        subtitle="Player controller"
+        actions={eventPageAction}
+        appBar
+        toaster
+      >
         <Empty className="mt-4 min-h-80 border bg-card lg:mt-10">
           <EmptyHeader>
             <EmptyMedia variant="icon">
@@ -129,25 +130,35 @@ export function PlayerController({ publicCode }: { publicCode: string }) {
             Sign in
           </Button>
         </Empty>
-      </ControllerFrame>
+      </SiteShell>
     )
   }
 
   if (registration === undefined) {
     return (
-      <ControllerFrame subtitle="Player controller" actions={eventPageAction}>
+      <SiteShell
+        subtitle="Player controller"
+        actions={eventPageAction}
+        appBar
+        toaster
+      >
         <div className="grid gap-3 pt-4 lg:pt-10">
           {[0, 1, 2].map((row) => (
             <Skeleton key={row} className="h-24" />
           ))}
         </div>
-      </ControllerFrame>
+      </SiteShell>
     )
   }
 
   if (!hasConfirmedEntry) {
     return (
-      <ControllerFrame subtitle="Player controller" actions={eventPageAction}>
+      <SiteShell
+        subtitle="Player controller"
+        actions={eventPageAction}
+        appBar
+        toaster
+      >
         <Empty className="mt-4 min-h-80 border bg-card lg:mt-10">
           <EmptyHeader>
             <EmptyMedia variant="icon">
@@ -168,7 +179,7 @@ export function PlayerController({ publicCode }: { publicCode: string }) {
             </Link>
           </Button>
         </Empty>
-      </ControllerFrame>
+      </SiteShell>
     )
   }
 
@@ -187,11 +198,12 @@ export function PlayerController({ publicCode }: { publicCode: string }) {
     myDecklist.submissionOpen
 
   return (
-    <ControllerFrame
+    <SiteShell
       width="6xl"
       subtitle="Player controller"
       actions={eventPageAction}
-      mobileHeader={
+      toaster
+      appBar={
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold">
@@ -282,7 +294,7 @@ export function PlayerController({ publicCode }: { publicCode: string }) {
           />
         </div>
       </nav>
-    </ControllerFrame>
+    </SiteShell>
   )
 }
 

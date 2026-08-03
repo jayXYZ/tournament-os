@@ -1,9 +1,9 @@
 import { Link } from '@tanstack/react-router'
 import { usePaginatedQuery, useQuery } from 'convex/react'
-import { ArrowLeft, EyeOff, SearchX, Settings } from 'lucide-react'
+import { EyeOff, SearchX, Settings } from 'lucide-react'
 import { useCallback, useEffect, useRef } from 'react'
 import { api } from '@tournament-os/backend/convex/_generated/api'
-import { PublicSiteHeader } from '@/components/shared/public-site-header'
+import { SiteShell, SiteShellBackLink } from '@/components/shared/site-shell'
 import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'
 import { Button } from '@/components/ui/button'
 import {
@@ -38,30 +38,18 @@ export function UserPublicPage({ publicCode }: { publicCode: string }) {
   const player = useQuery(api.users.getPublicPlayer, { publicCode })
 
   return (
-    <main className="min-h-svh bg-background text-foreground">
-      <PublicSiteHeader
-        maxWidth="4xl"
-        subtitle="Player profile"
-        actions={
-          <Button asChild type="button" variant="ghost">
-            <Link to="/">
-              <ArrowLeft data-icon="inline-start" />
-              All tournaments
-            </Link>
-          </Button>
-        }
-      />
-
-      <section className="mx-auto grid max-w-4xl gap-6 px-4 py-8 sm:px-6 lg:px-8">
-        {player === undefined ? (
-          <LoadingCard />
-        ) : player === null ? (
-          <NotFound />
-        ) : (
-          <PlayerProfile player={player} publicCode={publicCode} />
-        )}
-      </section>
-    </main>
+    <SiteShell
+      subtitle="Player profile"
+      actions={<SiteShellBackLink to="/">All tournaments</SiteShellBackLink>}
+    >
+      {player === undefined ? (
+        <LoadingCard />
+      ) : player === null ? (
+        <NotFound />
+      ) : (
+        <PlayerProfile player={player} publicCode={publicCode} />
+      )}
+    </SiteShell>
   )
 }
 

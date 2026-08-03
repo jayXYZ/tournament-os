@@ -2,7 +2,6 @@ import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
 import { useMutation, useQuery } from 'convex/react'
 import {
-  ArrowLeft,
   Building2,
   CalendarDays,
   LogIn,
@@ -14,8 +13,8 @@ import { toast } from 'sonner'
 import { api } from '@tournament-os/backend/convex/_generated/api'
 import type { Doc } from '@tournament-os/backend/convex/_generated/dataModel'
 import { MarkdownContent } from '@/components/shared/markdown-content'
-import { PublicSiteHeader } from '@/components/shared/public-site-header'
 import { RoundTimerIndicator } from '@/components/shared/round-timer-indicator'
+import { SiteShell, SiteShellBackLink } from '@/components/shared/site-shell'
 import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'
 import {
   TournamentLifecycleBadge,
@@ -42,32 +41,19 @@ import {
 } from '@/components/ui/empty'
 import { Separator } from '@/components/ui/separator'
 import { Spinner } from '@/components/ui/spinner'
-import { Toaster } from '@/components/ui/sonner'
 import { cn } from '@/lib/utils'
 
 type Tournament = Doc<'tournaments'>
 
 export function TournamentPublicPage({ publicCode }: { publicCode: string }) {
   return (
-    <main className="min-h-svh bg-background text-foreground">
-      <PublicSiteHeader
-        maxWidth="4xl"
-        subtitle="Tournament details"
-        actions={
-          <Button asChild type="button" variant="ghost">
-            <Link to="/">
-              <ArrowLeft data-icon="inline-start" />
-              All tournaments
-            </Link>
-          </Button>
-        }
-      />
-
-      <section className="mx-auto grid max-w-4xl gap-6 px-4 py-8 sm:px-6 lg:px-8">
-        <TournamentPublicPageContent publicCode={publicCode} />
-      </section>
-      <Toaster />
-    </main>
+    <SiteShell
+      subtitle="Tournament details"
+      toaster
+      actions={<SiteShellBackLink to="/">All tournaments</SiteShellBackLink>}
+    >
+      <TournamentPublicPageContent publicCode={publicCode} />
+    </SiteShell>
   )
 }
 

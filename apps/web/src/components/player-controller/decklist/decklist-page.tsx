@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { useQuery } from 'convex/react'
 import {
-  ArrowLeft,
   ChevronLeft,
   LogIn,
   ScrollText,
@@ -12,7 +11,7 @@ import {
 
 import { api } from '@tournament-os/backend/convex/_generated/api'
 import { DecklistEditor } from './decklist-editor'
-import { ControllerFrame } from '../controller-frame'
+import { SiteShell, SiteShellBackLink } from '@/components/shared/site-shell'
 import { WorkspacePageHeader } from '@/components/shared/workspace-page-header'
 import { Button } from '@/components/ui/button'
 import {
@@ -221,23 +220,21 @@ function DecklistFrame({
   children: React.ReactNode
 }) {
   return (
-    <ControllerFrame
+    <SiteShell
       subtitle="Decklist"
+      toaster
       // The editor's fixed submit bar stays on every viewport, so keep the
-      // bottom clearance that the frame normally drops at `lg`.
+      // bottom clearance that the shell normally drops at `lg`.
       contentClassName="lg:pb-24"
       actions={
-        <Button asChild type="button" variant="ghost">
-          <Link
-            to="/tournaments/$tournamentId/play"
-            params={{ tournamentId: publicCode }}
-          >
-            <ArrowLeft data-icon="inline-start" />
-            Player controller
-          </Link>
-        </Button>
+        <SiteShellBackLink
+          to="/tournaments/$tournamentId/play"
+          params={{ tournamentId: publicCode }}
+        >
+          Player controller
+        </SiteShellBackLink>
       }
-      mobileHeader={
+      appBar={
         <div className="flex items-center gap-2">
           <Button asChild type="button" variant="ghost" size="icon">
             <Link
@@ -269,6 +266,6 @@ function DecklistFrame({
         ) : null}
         {children}
       </div>
-    </ControllerFrame>
+    </SiteShell>
   )
 }
