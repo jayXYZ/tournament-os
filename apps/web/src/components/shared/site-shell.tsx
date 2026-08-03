@@ -72,8 +72,27 @@ export function SiteShell({
     <PublicSiteHeader maxWidth={width} subtitle={subtitle} actions={actions} />
   )
 
+  // The fixed bottom bar only renders in the app chrome (the `appBar`
+  // branch below), so toast clearance keys off both props together.
+  const hasBottomBar = Boolean(appBar && bottomBar)
+
   return (
-    <main className="min-h-svh bg-background text-foreground">
+    <main
+      className={cn(
+        'min-h-svh bg-background text-foreground',
+        // Bottom clearance for the Toaster while a bar is pinned to the
+        // viewport bottom: 5rem clears the taller bar (the ~65px decklist
+        // submit footer) with room to spare. Sonner applies `offset` above
+        // 600px and `mobileOffset` at or below it — its own breakpoint, not
+        // Tailwind's — so both Toaster props read this one variable, and the
+        // `lg:` reset here is what returns lg-hidden bars to sonner's stock
+        // 24px desktop offset once the bar disappears.
+        hasBottomBar &&
+          (bottomBarLgHidden
+            ? '[--site-shell-toast-offset:5rem] lg:[--site-shell-toast-offset:1.5rem]'
+            : '[--site-shell-toast-offset:5rem]'),
+      )}
+    >
       {appBar ? (
         <>
           <header className="sticky top-0 z-10 border-b border-border bg-background lg:hidden">
@@ -132,7 +151,24 @@ export function SiteShell({
           </section>
         </>
       )}
-      {toaster ? <Toaster /> : null}
+      {toaster ? (
+        <Toaster
+          // Sonner renders the toaster inline (no portal), so it inherits the
+          // clearance variable set on <main> above. Object form keeps the
+          // other sides on sonner's defaults; pages without a bottom bar get
+          // the stock Toaster.
+          offset={
+            hasBottomBar
+              ? { bottom: 'var(--site-shell-toast-offset)' }
+              : undefined
+          }
+          mobileOffset={
+            hasBottomBar
+              ? { bottom: 'var(--site-shell-toast-offset)' }
+              : undefined
+          }
+        />
+      ) : null}
     </main>
   )
 }
