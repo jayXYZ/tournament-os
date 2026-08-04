@@ -179,6 +179,16 @@ export const tournamentMatchStatusValidator = v.union(
   v.literal("cancelled"),
 );
 
+// One decklist line: how many copies of a named card. Card names are stored
+// as the player submitted them — there is no card database to normalize
+// against (yet), so legality checking is a human deck-check concern. Convex
+// has no numeric refinement validators, so the submission mutation enforces
+// that quantity is a positive integer.
+export const decklistCardEntryValidator = v.object({
+  name: v.string(),
+  quantity: v.number(),
+});
+
 // Who performed an audited action: an organizer acting on the event, or a
 // player acting on their own registration/match.
 export const auditActorRoleValidator = v.union(
@@ -233,6 +243,19 @@ export const tournamentAuditEventValidator = v.union(
   v.object({
     type: v.literal("player_registered"),
     player: auditPlayerRefValidator,
+  }),
+  v.object({
+    type: v.literal("decklist_submitted"),
+    player: auditPlayerRefValidator,
+    // Card totals only, not the list itself: enough for a dispute timeline
+    // ("resubmitted as 61+14 at 7:41pm") without copying the decklist into
+    // every log row — the current list is one join away, and what an edit
+    // changed is a deck-check conversation, not a log rendering concern.
+    maindeckCardCount: v.number(),
+    sideboardCardCount: v.number(),
+    // False for the first submission, true when it replaced an earlier list —
+    // the resubmissions are the rows deck-check disputes care about.
+    isUpdate: v.boolean(),
   }),
   v.object({
     type: v.literal("registration_cancelled"),

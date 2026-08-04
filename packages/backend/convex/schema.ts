@@ -17,6 +17,7 @@ import {
   tournamentPhaseRoundModeValidator,
   tournamentPhaseCutoffValidator,
   playerMeetingStatusValidator,
+  decklistCardEntryValidator,
   tournamentAuditEventValidator,
   tournamentRoundStatusValidator,
   tournamentRoundTimerValidator,
@@ -101,6 +102,12 @@ export default defineSchema({
     // When enabled, newly generated rounds are immediately visible on player
     // surfaces. Disabled by default so organizers can review pairings first.
     autoPublishPairings: v.boolean(),
+    // Whether this event collects decklists: submission is open to players
+    // while registration is, and the decklist surfaces (player editor,
+    // organizer deck-check) exist at all. Toggleable pre-start via
+    // updateTournamentSetup — turning it off keeps already-submitted lists
+    // stored but freezes them.
+    decklistRequired: v.boolean(),
     // Organizer-authored event details (description, prizes, logistics) as
     // markdown, rendered on the public tournament page. Absent means the
     // organizer has not written any.
@@ -160,6 +167,14 @@ export default defineSchema({
     // user document per row. Optional only for rows written before this field
     // existed; readers fall back to a live user lookup when it is missing.
     playerName: v.optional(v.string()),
+    // Denormalized from the player's decklist at submission time (see
+    // submitMyDecklist, the only writer of both) so the organizer roster
+    // shows who has submitted — and which deck — without a per-row decklist
+    // join. decklistId is present iff the registration has a submitted list;
+    // deckName mirrors the list's optional name, so "has a decklist" must
+    // key off decklistId — an unnamed list has no deckName here either.
+    decklistId: v.optional(v.id("tournamentDecklists")),
+    deckName: v.optional(v.string()),
     // Kept alongside _creationTime: pairing and standings tie-break on this,
     // and test seeding deliberately offsets it per player for determinism.
     createdAt: v.number(),
@@ -191,6 +206,51 @@ export default defineSchema({
       searchField: "playerName",
       filterFields: ["tournamentId"],
     }),
+
+  // One decklist per registration, submitted by the player for the event.
+  // The parsed maindeck/sideboard entries are the canonical form — legality
+  // checks, organizer deck-check views, and any later metagame analytics read
+  // structured fields instead of re-parsing text at every call site.
+  //
+  // The boards are embedded arrays rather than a child cards table: unlike
+  // the unbounded lists the schema guidelines warn about, a decklist is
+  // small and bounded (tournament decks run ~75 cards across at most a few
+  // hundred distinct names, far under the 8192-element / 1MB document
+  // limits) and is always read and written as one unit, so a child table
+  // would only add per-card reads and multi-document writes.
+  //
+  // Deliberately no lock/status field: whether a list is still editable
+  // derives from the tournament lifecycle (editable during "registration",
+  // frozen once play starts), so storing it would just be a second copy that
+  // could disagree.
+  tournamentDecklists: defineTable({
+    tournamentId: v.id("tournaments"),
+    // The owning registration. Uniqueness (one list per registration) is
+    // enforced by the submission mutation upserting through
+    // by_registrationId; re-registering after a cancel reuses the same
+    // registration row, so the player's list survives the round trip.
+    registrationId: v.id("tournamentRegistrations"),
+    // Deliberately no playerName copy: the deck-check surface opens a list
+    // from a roster row that already carries the live registration.playerName,
+    // and a snapshot taken at submission time would go stale across the
+    // cancel → rename → re-register path that keeps this row alive.
+    // Player-facing label for the deck (e.g. "Boros Burn"). Absent when the
+    // player didn't name it.
+    deckName: v.optional(v.string()),
+    maindeck: v.array(decklistCardEntryValidator),
+    // Constructed sideboards are 0–15 cards; for limited (sealed/draft) this
+    // holds the rest of the pool. Size rules are per-format submission-time
+    // validation, not schema shape.
+    sideboard: v.array(decklistCardEntryValidator),
+    // The submission exactly as the player typed or pasted it (ordering,
+    // set codes, comments), so the editor round-trips their input and
+    // disputes can reference the original text. Absent when the list was
+    // built structurally rather than from text.
+    rawText: v.optional(v.string()),
+    updatedAt: v.number(),
+  })
+    .index("by_registrationId", ["registrationId"])
+    .index("by_tournamentId", ["tournamentId"]),
 
   tournamentPhases: defineTable({
     tournamentId: v.id("tournaments"),

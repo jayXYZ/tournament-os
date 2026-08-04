@@ -1,24 +1,11 @@
 import { internalMutation } from "./_generated/server";
 import type { TableNames } from "./_generated/dataModel";
+import schema from "./schema";
 
-const allTables: TableNames[] = [
-  "users",
-  "organizations",
-  "organizationMemberships",
-  "organizationInvitations",
-  "appCounters",
-  "tournaments",
-  "tournamentRegistrations",
-  "tournamentPhases",
-  "playerMeetingSeats",
-  "tournamentRounds",
-  "tournamentMatches",
-  "tournamentMatchPlayers",
-  "roundStandings",
-  "tournamentAuditEvents",
-  "tournamentTestConfigs",
-  "testTournamentPlayers",
-];
+// Every table in the schema, derived rather than hard-coded so a newly added
+// table can never be forgotten here. The cast is sound because TableNames is
+// generated from this same schema definition.
+const allTables = Object.keys(schema.tables) as TableNames[];
 
 // Dev-only reset. Internal so it is not callable from clients; run it from the
 // repository root with `pnpm db:wipe`.

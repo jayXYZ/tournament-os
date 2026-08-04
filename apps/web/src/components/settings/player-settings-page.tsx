@@ -1,15 +1,14 @@
-import { Link } from '@tanstack/react-router'
 import {
   AuthLoading,
   Authenticated,
   Unauthenticated,
   useQuery,
 } from 'convex/react'
-import { ArrowLeft, LogIn, RotateCcw } from 'lucide-react'
+import { LogIn, RotateCcw } from 'lucide-react'
 import { api } from '@tournament-os/backend/convex/_generated/api'
 
 import { ProfilePrivacyCard } from '@/components/settings/profile-privacy-card'
-import { PublicSiteHeader } from '@/components/shared/public-site-header'
+import { SiteShell, SiteShellBackLink } from '@/components/shared/site-shell'
 import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'
 import { Button } from '@/components/ui/button'
 import {
@@ -19,39 +18,26 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { Toaster } from '@/components/ui/sonner'
 import { useEnsureUserRow } from '@/hooks/use-ensure-user-row'
 import { useAppAuth } from '@/lib/use-app-auth'
 
 export function PlayerSettingsPage() {
   return (
-    <main className="min-h-svh bg-background text-foreground">
-      <PublicSiteHeader
-        maxWidth="4xl"
-        subtitle="Account settings"
-        actions={
-          <Button asChild type="button" variant="ghost">
-            <Link to="/">
-              <ArrowLeft data-icon="inline-start" />
-              All tournaments
-            </Link>
-          </Button>
-        }
-      />
-
-      <section className="mx-auto grid max-w-4xl gap-6 px-4 py-8 sm:px-6 lg:px-8">
-        <AuthLoading>
-          <LoadingCard />
-        </AuthLoading>
-        <Unauthenticated>
-          <SignedOutSettings />
-        </Unauthenticated>
-        <Authenticated>
-          <SettingsContent />
-        </Authenticated>
-      </section>
-      <Toaster />
-    </main>
+    <SiteShell
+      subtitle="Account settings"
+      toaster
+      actions={<SiteShellBackLink to="/">All tournaments</SiteShellBackLink>}
+    >
+      <AuthLoading>
+        <LoadingCard />
+      </AuthLoading>
+      <Unauthenticated>
+        <SignedOutSettings />
+      </Unauthenticated>
+      <Authenticated>
+        <SettingsContent />
+      </Authenticated>
+    </SiteShell>
   )
 }
 

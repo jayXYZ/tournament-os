@@ -7,5 +7,8 @@ export const Route = createFileRoute('/tournaments/$tournamentId/play')({
 
 function RouteComponent() {
   const { tournamentId: publicCode } = Route.useParams()
-  return <PlayerController publicCode={publicCode} />
+  // Keyed so per-tournament UI state (selected tab, visited-tab panel
+  // mounts and their subscriptions) resets when navigating between
+  // different tournaments' play pages.
+  return <PlayerController key={publicCode} publicCode={publicCode} />
 }

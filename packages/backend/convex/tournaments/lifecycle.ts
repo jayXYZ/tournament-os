@@ -218,6 +218,7 @@ export const createTournament = mutation({
     startDate: v.number(),
     playerCapacity: v.number(),
     format: tournamentFormatValidator,
+    decklistRequired: v.optional(v.boolean()),
   },
   handler: async (ctx, args): Promise<Id<"tournaments">> => {
     return await createTournamentModel(ctx, {
@@ -227,6 +228,7 @@ export const createTournament = mutation({
       isTestEvent: false,
       playerCapacity: args.playerCapacity,
       format: args.format,
+      decklistRequired: args.decklistRequired ?? false,
       phases: validPhaseInputs([{ phaseOrder: 1, phaseRoundMode: "dynamic" }]),
     });
   },
@@ -240,6 +242,7 @@ export const createTournamentWithPhases = mutation({
     playerCapacity: v.number(),
     format: tournamentFormatValidator,
     isTestEvent: v.optional(v.boolean()),
+    decklistRequired: v.optional(v.boolean()),
     phases: v.array(
       v.object({
         phaseOrder: v.number(),
@@ -259,6 +262,7 @@ export const createTournamentWithPhases = mutation({
       playerCapacity: args.playerCapacity,
       format: args.format,
       isTestEvent: args.isTestEvent ?? false,
+      decklistRequired: args.decklistRequired ?? false,
       phases: validPhaseInputs(args.phases),
     });
   },
@@ -271,6 +275,7 @@ export const updateTournamentSetup = mutation({
     startDate: v.optional(v.number()),
     playerCapacity: v.optional(v.number()),
     format: v.optional(tournamentFormatValidator),
+    decklistRequired: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
@@ -318,6 +323,9 @@ export const updateTournamentSetup = mutation({
     }
     if (args.format !== undefined) {
       patch.format = args.format;
+    }
+    if (args.decklistRequired !== undefined) {
+      patch.decklistRequired = args.decklistRequired;
     }
 
     await ctx.db.patch(args.tournamentId, patch);

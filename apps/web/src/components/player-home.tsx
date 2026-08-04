@@ -3,7 +3,7 @@ import { useQuery } from 'convex/react'
 import { CalendarDays, LogIn, Settings, ShieldCheck, Users } from 'lucide-react'
 import { api } from '@tournament-os/backend/convex/_generated/api'
 
-import { PublicSiteHeader } from '@/components/shared/public-site-header'
+import { SiteShell } from '@/components/shared/site-shell'
 import { TournamentTable } from '@/components/tournaments'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
@@ -33,55 +33,50 @@ export function PlayerHome() {
   }))
 
   return (
-    <main className="min-h-svh bg-background text-foreground">
-      <PublicSiteHeader
-        subtitle="Player tournament finder"
-        actions={
-          <>
-            <Button asChild type="button" variant="outline">
-              <Link to="/admin">
-                <ShieldCheck data-icon="inline-start" />
-                Admin
-              </Link>
-            </Button>
-            <AuthControls
-              loading={loading}
-              email={user?.email}
-              onSignIn={() => void refreshAuth({ ensureSignedIn: true })}
-              onSignOut={() => void signOut()}
-            />
-          </>
-        }
-      />
+    <SiteShell
+      subtitle="Player tournament finder"
+      width="7xl"
+      contentClassName="gap-8"
+      actions={
+        <>
+          <Button asChild type="button" variant="outline">
+            <Link to="/admin">
+              <ShieldCheck data-icon="inline-start" />
+              Admin
+            </Link>
+          </Button>
+          <AuthControls
+            loading={loading}
+            email={user?.email}
+            onSignIn={() => void refreshAuth({ ensureSignedIn: true })}
+            onSignOut={() => void signOut()}
+          />
+        </>
+      }
+    >
+      {user ? (
+        <TournamentTable variant="registered" items={registeredItems} />
+      ) : null}
 
-      <section className="mx-auto grid max-w-7xl gap-8 px-4 py-8 sm:px-6 lg:px-8">
-        {user ? (
-          <TournamentTable variant="registered" items={registeredItems} />
-        ) : null}
-
-        <div className="flex flex-col justify-between gap-5 md:flex-row md:items-end">
-          <div>
-            <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
-              Player view
-            </p>
-            <h1 className="mt-2 text-3xl font-semibold tracking-normal sm:text-4xl">
-              Upcoming tournaments
-            </h1>
-          </div>
-          <div className="grid gap-2 text-sm text-muted-foreground sm:grid-cols-2 md:min-w-80">
-            <StatusLine
-              icon={CalendarDays}
-              label="Showing public future events"
-            />
-            <StatusLine icon={Users} label="Open an event to register" />
-          </div>
+      <div className="flex flex-col justify-between gap-5 md:flex-row md:items-end">
+        <div>
+          <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
+            Player view
+          </p>
+          <h1 className="mt-2 text-3xl font-semibold tracking-normal sm:text-4xl">
+            Upcoming tournaments
+          </h1>
         </div>
+        <div className="grid gap-2 text-sm text-muted-foreground sm:grid-cols-2 md:min-w-80">
+          <StatusLine icon={CalendarDays} label="Showing public future events" />
+          <StatusLine icon={Users} label="Open an event to register" />
+        </div>
+      </div>
 
-        <Separator />
+      <Separator />
 
-        <TournamentTable variant="public" items={publicItems} />
-      </section>
-    </main>
+      <TournamentTable variant="public" items={publicItems} />
+    </SiteShell>
   )
 }
 

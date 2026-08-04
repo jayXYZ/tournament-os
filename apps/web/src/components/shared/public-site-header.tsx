@@ -3,8 +3,11 @@ import type { ReactNode } from 'react'
 
 import { cn } from '@/lib/utils'
 
-const maxWidthClasses = {
+// Width tokens shared by the header rail and SiteShell's content column, so
+// the two can never disagree about what a token means.
+export const maxWidthClasses = {
   '4xl': 'max-w-4xl',
+  '6xl': 'max-w-6xl',
   '7xl': 'max-w-7xl',
 } as const
 

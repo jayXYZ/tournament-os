@@ -159,6 +159,7 @@ export async function createTournament(
     playerCapacity: number;
     format: TournamentFormat;
     isTestEvent: boolean;
+    decklistRequired: boolean;
     phases: ReturnType<typeof validPhaseInputs>;
   },
 ) {
@@ -177,6 +178,7 @@ export async function createTournament(
     format: args.format,
     isTestEvent: args.isTestEvent,
     autoPublishPairings: false,
+    decklistRequired: args.decklistRequired,
     confirmedRegistrationCount: 0,
     seed: Math.floor(Math.random() * 0x7fffffff),
     updatedAt: now,
