@@ -58,14 +58,21 @@ export function DecklistPage({ publicCode }: { publicCode: string }) {
   // destroys the draft.
   const [editorDirty, setEditorDirty] = useState(false)
 
-  if (loading || convexAuthLoading || event === undefined) {
+  // A resolved event never depends on Convex auth — getPublicTournament only
+  // consults the viewer for non-public events — so a defined result renders
+  // immediately. Only a `null` result for a signed-in viewer is ambiguous: a
+  // private event resolves null until Convex auth catches up with Clerk, so
+  // that one case waits for auth before the not-found branch may claim it.
+  if (
+    loading ||
+    event === undefined ||
+    (event === null && user !== null && convexAuthLoading)
+  ) {
     return (
-      // Always `undefined` while loading: a null event is ambiguous here —
-      // getPublicTournament is viewer-gated, so a private event resolves
-      // null until Convex auth catches up with Clerk — so the desktop
-      // heading stays reserved instead of flickering out and back in.
-      // Not-found certainty (and the heading's drop-out) belongs to the
-      // post-loading branch below.
+      // The heading passes `undefined` while loading so the desktop heading
+      // stays reserved instead of flickering out and back in. Not-found
+      // certainty (and the heading's drop-out) belongs to the post-loading
+      // branch below.
       <DecklistFrame publicCode={publicCode} eventName={undefined}>
         <div className="flex min-h-60 items-center justify-center lg:min-h-80">
           <Spinner className="size-6" />
