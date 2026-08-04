@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { useMyCurrentMatch, useRoundTimer } from '@tournament-os/core'
-import { useQuery } from 'convex/react'
+import { useConvexAuth, useQuery } from 'convex/react'
 import {
   ChevronRight,
   ListOrdered,
@@ -47,6 +47,7 @@ const shellWidth = '6xl'
 
 export function PlayerController({ publicCode }: { publicCode: string }) {
   const { user, loading, refreshAuth } = useAppAuth()
+  const { isAuthenticated: convexAuthed } = useConvexAuth()
   const event = useQuery(api.tournaments.lifecycle.getPublicTournament, {
     publicCode,
   })
@@ -54,9 +55,16 @@ export function PlayerController({ publicCode }: { publicCode: string }) {
   // getMyRegistration returns any registration row — including cancelled
   // ones — while the player queries reject entries that are not confirmed,
   // so gate them on entryStatus to match the server's requireRegisteredPlayer.
+  // Also gated on Convex auth, not just the Clerk user: the server resolves
+  // the registration from its own identity, so running this while Convex is
+  // still exchanging tokens returns null — which the branches below would
+  // misread as "not registered". Skipping keeps it undefined (the skeleton
+  // state) until an answer can be trusted.
   const registration = useQuery(
     api.tournaments.registrations.getMyRegistration,
-    user && typedTournamentId ? { tournamentId: typedTournamentId } : 'skip',
+    user && typedTournamentId && convexAuthed
+      ? { tournamentId: typedTournamentId }
+      : 'skip',
   )
   const hasConfirmedEntry = registration?.entryStatus === 'confirmed'
   const currentMatch = useMyCurrentMatch(

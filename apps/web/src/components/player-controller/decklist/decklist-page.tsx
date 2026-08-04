@@ -32,14 +32,22 @@ import { useAppAuth } from '@/lib/use-app-auth'
 // submissionOpen verdict.
 export function DecklistPage({ publicCode }: { publicCode: string }) {
   const { user, loading, refreshAuth } = useAppAuth()
-  const { isLoading: convexAuthLoading } = useConvexAuth()
+  const { isLoading: convexAuthLoading, isAuthenticated: convexAuthed } =
+    useConvexAuth()
   const event = useQuery(api.tournaments.lifecycle.getPublicTournament, {
     publicCode,
   })
   const typedTournamentId = event?.tournament._id ?? null
+  // Gated on Convex auth, not just the Clerk user: the server resolves the
+  // registration from its own identity, so running this while Convex is
+  // still exchanging tokens returns null — which the branches below would
+  // misread as "not registered". Skipping keeps it undefined (the skeleton
+  // state) until an answer can be trusted.
   const registration = useQuery(
     api.tournaments.registrations.getMyRegistration,
-    user && typedTournamentId ? { tournamentId: typedTournamentId } : 'skip',
+    user && typedTournamentId && convexAuthed
+      ? { tournamentId: typedTournamentId }
+      : 'skip',
   )
   const hasConfirmedEntry = registration?.entryStatus === 'confirmed'
   // Fetched even when the tournament no longer collects decklists: the
