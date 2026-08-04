@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
-import { useQuery } from 'convex/react'
+import { useConvexAuth, useQuery } from 'convex/react'
 import {
   ChevronLeft,
   LogIn,
@@ -32,6 +32,7 @@ import { useAppAuth } from '@/lib/use-app-auth'
 // submissionOpen verdict.
 export function DecklistPage({ publicCode }: { publicCode: string }) {
   const { user, loading, refreshAuth } = useAppAuth()
+  const { isLoading: convexAuthLoading } = useConvexAuth()
   const event = useQuery(api.tournaments.lifecycle.getPublicTournament, {
     publicCode,
   })
@@ -57,7 +58,7 @@ export function DecklistPage({ publicCode }: { publicCode: string }) {
   // destroys the draft.
   const [editorDirty, setEditorDirty] = useState(false)
 
-  if (loading || event === undefined) {
+  if (loading || convexAuthLoading || event === undefined) {
     return (
       // Always `undefined` while loading: a null event is ambiguous here —
       // getPublicTournament is viewer-gated, so a private event resolves

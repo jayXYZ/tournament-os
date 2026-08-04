@@ -43,7 +43,8 @@ export function CardSearchInput({
       : !loading && name.length >= 2
         ? [name]
         : []
-  const open = !dismissed && name.length >= 2 && (loading || options.length > 0)
+  const suggestionsPending = !dismissed && name.length >= 2 && loading
+  const open = !dismissed && name.length >= 2 && options.length > 0
   const activeIndex = Math.min(highlight, Math.max(options.length - 1, 0))
   const activeOptionId = open ? `${listboxId}-option-${activeIndex}` : undefined
 
@@ -84,7 +85,7 @@ export function CardSearchInput({
       add(open && options.length > 0 ? options[activeIndex] : name)
       return
     }
-    if (event.key === 'Escape' && open) {
+    if (event.key === 'Escape' && (open || suggestionsPending)) {
       event.preventDefault()
       setDismissed(true)
     }
@@ -103,6 +104,7 @@ export function CardSearchInput({
           aria-controls={open ? listboxId : undefined}
           aria-activedescendant={activeOptionId}
           aria-autocomplete="list"
+          aria-busy={loading}
           aria-label={`Add cards to ${board}`}
           autoComplete="off"
           autoCapitalize="none"
