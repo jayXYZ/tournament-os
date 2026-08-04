@@ -1,4 +1,4 @@
-import { createContext, useContext, useState } from 'react'
+import { createContext, useContext, useEffect, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { useMyCurrentMatch, useRoundTimer } from '@tournament-os/core'
 import { useQuery } from 'convex/react'
@@ -79,12 +79,22 @@ export function PlayerController({ publicCode }: { publicCode: string }) {
   // after its tab is first visited, so a phone parked on the Match tab holds
   // no live subscriptions for standings or match history it never looks at;
   // once visited, a panel stays mounted (CSS-hidden) so returning to its tab
-  // is instant. From `lg` up all three panels are visible at once, so
-  // isDesktop mounts everything regardless of the tab state.
+  // is instant. From `lg` up all three panels are visible at once and count
+  // as visited, so they remain mounted if the viewport later shrinks.
   const [visitedTabs, setVisitedTabs] = useState<ReadonlySet<ControllerTab>>(
     () => new Set(['match']),
   )
   const isDesktop = useIsDesktop()
+
+  useEffect(() => {
+    if (!isDesktop) return
+
+    setVisitedTabs((prev) =>
+      prev.size === 3
+        ? prev
+        : new Set<ControllerTab>(['match', 'standings', 'more']),
+    )
+  }, [isDesktop])
 
   const selectTab = (next: ControllerTab) => {
     setTab(next)
