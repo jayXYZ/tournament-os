@@ -182,7 +182,11 @@ export function DecklistEditor({
     }
   }
 
-  if (!submissionOpen && !hasSubmitted) {
+  // A live settings update can close submission while this mounted editor
+  // still owns an unsaved draft. Keep that draft visible instead of replacing
+  // it with the no-decklist empty state; it becomes editable/submittable again
+  // if submission reopens.
+  if (!submissionOpen && !hasSubmitted && !dirty) {
     return children(
       <Empty className="mt-4 min-h-80 border bg-card lg:mt-10">
         <EmptyHeader>
@@ -213,7 +217,9 @@ export function DecklistEditor({
             aria-hidden="true"
           />
           <p className="text-sm text-muted-foreground">
-            Submission is closed. This is the list the organizer has on file.
+            {dirty
+              ? 'Submission is closed. Your unsaved draft is preserved here and can be submitted if submissions reopen.'
+              : 'Submission is closed. This is the list the organizer has on file.'}
           </p>
         </div>
       ) : null}
