@@ -23,6 +23,7 @@ const tournamentModules = {
 const modelModules = {
   tournaments: new URL("./model/tournaments.ts", import.meta.url),
   phases: new URL("./model/phases.ts", import.meta.url),
+  progression: new URL("./model/progression.ts", import.meta.url),
   registrations: new URL("./model/registrations.ts", import.meta.url),
   nextStep: new URL("./model/nextStep.ts", import.meta.url),
   deletion: new URL("./model/deletion.ts", import.meta.url),
@@ -134,25 +135,17 @@ test("player-facing queries never scan non-active registrations", () => {
 // that round's standings and rebuilds the promoted round's denormalized
 // statuses from the live registrations. Writing each restored player's status
 // onto the standings in between patches rows the same transaction is about to
-// delete — up to one per player in the field. The obvious alternative, moving
-// the restore after the deletion, is wrong: the rebuild has to observe the
-// un-eliminations, so the write is skipped rather than reordered. Neither the
-// waste nor the ordering is observable behaviourally — the wasted rows are
-// gone by the time the mutation returns, and both shapes leave the same rows
-// on disk — so the ordering and the skip are pinned here instead.
+// delete — up to one per player in the field — so the restore defers the sync
+// instead. The restore-before-delete ordering itself is observable (the
+// rebuild has to see the un-eliminations) and is covered behaviourally in
+// tournaments.convex.spec.ts ("a cross-phase rewind leaves restored players
+// active on the promoted round's standings"). The skipped sync is not: the
+// wasted rows would be gone by the time the mutation returns, so the skip is
+// pinned here instead.
 test("a rewind does not sync standings it is about to delete", () => {
-  const roundsModule = readFileSync(tournamentModules.rounds, "utf8");
-  const rewind = roundsModule.match(
-    /export const rewindLatestRound[\s\S]*?^}\);$/m,
-  )?.[0];
-  expect(rewind).toBeDefined();
-  const restoreCall = (rewind ?? "").indexOf("restoreEliminationsForRewind(");
-  const deleteCall = (rewind ?? "").indexOf("deleteStandingsForReopenedRound(");
-  expect(restoreCall).toBeGreaterThanOrEqual(0);
-  expect(deleteCall).toBeGreaterThan(restoreCall);
-
-  const restore = roundsModule.match(
-    /async function restoreEliminationsForRewind\([\s\S]*$/,
+  const progressionModule = readFileSync(modelModules.progression, "utf8");
+  const restore = progressionModule.match(
+    /async function restoreEliminationsForRewind\([\s\S]*?^}$/m,
   )?.[0];
   expect(restore).toBeDefined();
   const stateWrites = (restore ?? "").match(/setRegistrationState\(/g) ?? [];

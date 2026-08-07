@@ -2,21 +2,11 @@ import type { TournamentFormat } from "@tournament-os/shared/tournament-creation
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { requireActiveMembership, requireCurrentUser } from "./access";
-import { logAuditEvent } from "./auditLog";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "./batching";
-import { cutoffQualifiersForNextPhase } from "./cutoffs";
-import {
-  SINGLE_ELIMINATION_FORMAT,
-  SINGLE_ELIMINATION_PLAYERS,
-  createPhases,
-  phasesInOrder,
-  requireCurrentPhase,
-  type validPhaseInputs,
-} from "./phases";
+import { createPhases, type validPhaseInputs } from "./phases";
 import { nextPublicCode } from "./publicCodes";
 import {
   MAX_TOURNAMENT_PLAYERS,
-  activeRegistrations,
   registrationForUser,
 } from "./registrations";
 
@@ -198,73 +188,6 @@ export async function nextTournamentPublicCode(
     FIRST_TOURNAMENT_PUBLIC_CODE,
     now,
   );
-}
-
-export async function completeTournament(
-  ctx: MutationCtx,
-  tournamentId: Id<"tournaments">,
-) {
-  const { tournament, user } = await requireOrganizerAccess(ctx, tournamentId);
-  const phase = await requireCurrentPhase(ctx, tournament._id);
-  if (!phase.phaseCurrentRound) {
-    throw new Error("Current round not found");
-  }
-  const currentRound = await requireRound(ctx, phase.phaseCurrentRound);
-  if (currentRound.roundStatus !== "completed") {
-    throw new Error("Current round must be completed first");
-  }
-  // Between phases the current phase is already "completed" and its final
-  // round has been played, so the checks above pass. Without this guard the
-  // tournament could be marked completed while a later phase is still
-  // upcoming, permanently stranding it (mirrors pairingsNextStep, which only
-  // offers completion once no upcoming phase remains).
-  const laterUpcomingPhases = (await phasesInOrder(ctx, tournament._id)).filter(
-    (p) => p.phaseOrder > phase.phaseOrder && p.phaseStatus === "upcoming",
-  );
-  const nextPhase = laterUpcomingPhases.at(0);
-  if (nextPhase) {
-    // An unplayable next phase may be skipped: a top-8 playoff without eight
-    // active players, or a Swiss phase whose entry cutoff fewer than two
-    // players cleared. Phases after it are unplayable too — nobody advances
-    // through a skipped phase — so cancel them all.
-    const canSkipUnplayableNextPhase =
-      nextPhase.phaseType === SINGLE_ELIMINATION_FORMAT
-        ? (await activeRegistrations(ctx, tournament._id)).length <
-          SINGLE_ELIMINATION_PLAYERS
-        : phase.phaseCutoff !== null &&
-          (
-            await cutoffQualifiersForNextPhase(
-              ctx,
-              currentRound._id,
-              phase.phaseCutoff,
-              nextPhase,
-            )
-          ).length < 2;
-    if (!canSkipUnplayableNextPhase) {
-      throw new Error(
-        "The next phase has not been played; generate its first round instead",
-      );
-    }
-    for (const upcomingPhase of laterUpcomingPhases) {
-      await ctx.db.patch(upcomingPhase._id, {
-        phaseStatus: "cancelled",
-        updatedAt: Date.now(),
-      });
-    }
-  }
-
-  const now = Date.now();
-  await ctx.db.patch(phase._id, { phaseStatus: "completed", updatedAt: now });
-  await ctx.db.patch(tournament._id, {
-    lifecycle: "completed",
-    updatedAt: now,
-  });
-  await logAuditEvent(ctx, {
-    tournamentId: tournament._id,
-    actor: user,
-    actorRole: "organizer",
-    event: { type: "tournament_completed" },
-  });
 }
 
 export function requireSetupEditable(tournament: Doc<"tournaments">) {

@@ -2625,6 +2625,93 @@ test("rewinding the round after a cutoff restores the eliminated players", async
   expect(reopenedRound?.roundStatus).toBe("in_progress");
 });
 
+// The rewind restores the cut's eliminations before it deletes the reopened
+// round's standings, because that deletion rebuilds the promoted round's
+// denormalized participation statuses from the live registrations. If the
+// restore ran second, the rebuild would stamp the promoted rows "eliminated"
+// from the still-stale registrations — the rows every player's standings
+// query reads.
+test("a cross-phase rewind leaves restored players active on the promoted round's standings", async () => {
+  const t = convexTest(schema, modules);
+  const { organizationId } = await seedOrganizer(t);
+  const authed = t.withIdentity(organizerIdentity);
+  const tournamentId = await authed.mutation(
+    api.tournaments.lifecycle.createTournamentWithPhases,
+    {
+      organizationId,
+      name: "Cutoff Rewind Event",
+      startDate: Date.now(),
+      playerCapacity: 8,
+      format: "standard",
+      phases: [
+        {
+          phaseOrder: 1,
+          phaseRoundMode: "fixed",
+          phaseTotalRounds: 2,
+          phaseCutoff: { kind: "top_X_players", playerCount: 2 },
+        },
+        { phaseOrder: 2, phaseRoundMode: "fixed", phaseTotalRounds: 1 },
+      ],
+    },
+  );
+  await seedActiveRegistrations(t, tournamentId, 4);
+  await authed.mutation(api.tournaments.lifecycle.publishTournament, {
+    tournamentId,
+  });
+  await authed.mutation(api.tournaments.rounds.startTournament, {
+    tournamentId,
+  });
+
+  const { round: firstRound } = await playOutCurrentRound(authed, tournamentId);
+  await authed.mutation(api.tournaments.rounds.generateNextRound, {
+    tournamentId,
+  });
+  const { round: cutRound } = await playOutCurrentRound(authed, tournamentId);
+  // Pairing phase 2's first round applies the cut and eliminates the two
+  // players outside it, stamped with the phase-final round that produced it.
+  await authed.mutation(api.tournaments.rounds.generateNextRound, {
+    tournamentId,
+  });
+  await t.run(async (ctx) => {
+    const eliminated = await ctx.db
+      .query("tournamentRegistrations")
+      .withIndex(
+        "by_tournamentId_and_entryStatus_and_participationStatus",
+        (q) =>
+          q
+            .eq("tournamentId", tournamentId)
+            .eq("entryStatus", "confirmed")
+            .eq("participationStatus", "eliminated"),
+      )
+      .collect();
+    expect(eliminated).toHaveLength(2);
+    expect(
+      eliminated.every(
+        (registration) => registration.eliminatedByRoundId === cutRound._id,
+      ),
+    ).toBe(true);
+  });
+
+  await authed.mutation(api.tournaments.rounds.rewindLatestRound, {
+    tournamentId,
+  });
+
+  await t.run(async (ctx) => {
+    const promotedStandings = await ctx.db
+      .query("roundStandings")
+      .withIndex("by_tournamentRoundId_and_rank", (q) =>
+        q.eq("tournamentRoundId", firstRound._id),
+      )
+      .collect();
+    expect(promotedStandings).toHaveLength(4);
+    expect(
+      promotedStandings.some(
+        (standing) => standing.participationStatus === "eliminated",
+      ),
+    ).toBe(false);
+  });
+});
+
 test("phase cutoffs are validated against the phase structure", async () => {
   const t = convexTest(schema, modules);
   const { organizationId } = await seedOrganizer(t);

@@ -310,8 +310,12 @@ export function requireDecisiveEliminationResult(
 // A configured player meeting is a backend lifecycle prerequisite, not only a
 // UI step. Once the meeting is in progress, pairing the phase's first round is
 // what completes it.
+export function playerMeetingPending(phase: Doc<"tournamentPhases">) {
+  return phase.playerMeeting === true && phase.playerMeetingStatus === undefined;
+}
+
 export function requirePlayerMeetingStarted(phase: Doc<"tournamentPhases">) {
-  if (phase.playerMeeting && phase.playerMeetingStatus === undefined) {
+  if (playerMeetingPending(phase)) {
     throw new Error("Player meeting must be started first");
   }
 }

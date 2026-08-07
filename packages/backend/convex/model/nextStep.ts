@@ -1,14 +1,10 @@
-import type { Doc, Id } from "../_generated/dataModel";
-import type { QueryCtx } from "../_generated/server";
-import { cutoffQualifiersForNextPhase } from "./cutoffs";
-import {
-  SINGLE_ELIMINATION_FORMAT,
-  SINGLE_ELIMINATION_PLAYERS,
-  SWISS_FORMAT,
-  selectCurrentPhase,
-} from "./phases";
-import { activeRegistrations } from "./registrations";
-import { isPairingsVisibleToPlayers, roundMatches } from "./tournaments";
+import type { Id } from "../_generated/dataModel";
+import { SINGLE_ELIMINATION_PLAYERS, playerMeetingPending } from "./phases";
+import { isPairingsVisibleToPlayers } from "./tournaments";
+import type {
+  ProgressionActions,
+  ProgressionFacts,
+} from "./progression";
 
 export type PairingsNextStep =
   | { kind: "publishTournament"; ready: boolean; reason: string | null }
@@ -37,20 +33,19 @@ export type PairingsNextStep =
   | { kind: "tournamentCompleted" }
   | { kind: "tournamentCancelled" };
 
-export type PhaseBoard = {
-  phase: Doc<"tournamentPhases">;
-  rounds: Doc<"tournamentRounds">[];
-};
-
-// `phaseBoards` must hold every phase in phaseOrder with each phase's full
-// round list in roundNumber order (the caller already loads exactly that);
-// working off it keeps this from re-reading documents the query has in hand.
-export async function pairingsNextStep(
-  ctx: QueryCtx,
-  tournament: Doc<"tournaments">,
-  phaseBoards: PhaseBoard[],
-  currentRoundMatches?: readonly Doc<"tournamentMatches">[],
-): Promise<PairingsNextStep> {
+// The organizer board's single recommended step, projected from the
+// progression rulebook (model/progression.ts). This function performs no
+// reads and re-derives no readiness rules: everything it branches on was
+// computed once by analyzeProgression — the same facts and verdicts the
+// mutations enforce — so the board can never disagree with what a mutation
+// would accept. What it adds is presentation only: which allowed action to
+// surface first, and reason strings phrased for the board (e.g. the
+// unreported-match count) rather than for a thrown error.
+export function pairingsNextStep(
+  facts: ProgressionFacts,
+  actions: ProgressionActions,
+): PairingsNextStep {
+  const { tournament, phase, round } = facts;
   if (tournament.lifecycle === "cancelled") {
     return { kind: "tournamentCancelled" };
   }
@@ -58,18 +53,11 @@ export async function pairingsNextStep(
     return { kind: "tournamentCompleted" };
   }
 
-  const phase = selectCurrentPhase(phaseBoards.map(({ phase }) => phase));
-  const board =
-    phaseBoards.find(({ phase: candidate }) => candidate._id === phase?._id) ??
-    null;
   if (tournament.lifecycle === "setup") {
-    const hasSwissPhase = phaseBoards.some(
-      ({ phase: candidate }) => candidate.phaseType === SWISS_FORMAT,
-    );
     return {
       kind: "publishTournament",
-      ready: hasSwissPhase,
-      reason: hasSwissPhase ? null : "Swiss phase is not configured",
+      ready: facts.hasSwissPhase,
+      reason: facts.hasSwissPhase ? null : "Swiss phase is not configured",
     };
   }
 
@@ -81,15 +69,10 @@ export async function pairingsNextStep(
         reason: "Tournament phase is not configured",
       };
     }
-    const registrations = await activeRegistrations(ctx, tournament._id);
-    const hasTopEightPlayoff = phaseBoards.some(
-      ({ phase: candidate }) =>
-        candidate.phaseType === SINGLE_ELIMINATION_FORMAT &&
-        candidate.phaseStatus === "upcoming",
-    );
+    const registrationCount = facts.activeRegistrations?.length ?? 0;
     if (
-      hasTopEightPlayoff &&
-      registrations.length < SINGLE_ELIMINATION_PLAYERS
+      facts.hasUpcomingTopEightPlayoff &&
+      registrationCount < SINGLE_ELIMINATION_PLAYERS
     ) {
       return {
         kind: "startTournament",
@@ -100,33 +83,17 @@ export async function pairingsNextStep(
     // The meeting is offered exactly once: after it starts (or completes) the
     // flag no longer matters and play falls through to startTournament, which
     // closes an in-progress meeting itself.
-    if (phase.playerMeeting && phase.playerMeetingStatus === undefined) {
-      if (registrations.length < 2) {
-        return {
-          kind: "startPlayerMeeting",
-          ready: false,
-          reason: "At least two active players are required",
-          phaseId: phase._id,
-        };
-      }
-      return {
-        kind: "startPlayerMeeting",
-        ready: true,
-        reason: null,
-        phaseId: phase._id,
-      };
+    if (playerMeetingPending(phase)) {
+      return startPlayerMeetingStep(phase._id, registrationCount);
     }
-    if (registrations.length < 2) {
-      return {
-        kind: "startTournament",
-        ready: false,
-        reason: "At least two active players are required",
-      };
-    }
-    return { kind: "startTournament", ready: true, reason: null };
+    return {
+      kind: "startTournament",
+      ready: actions.startTournament.allowed,
+      reason: actions.startTournament.reason,
+    };
   }
 
-  if (!board || !phase || !phase.phaseCurrentRound) {
+  if (!phase || !round) {
     return {
       kind: "startTournament",
       ready: false,
@@ -134,12 +101,6 @@ export async function pairingsNextStep(
     };
   }
 
-  const round = board.rounds.find(
-    (candidate) => candidate._id === phase.phaseCurrentRound,
-  );
-  if (!round) {
-    throw new Error("Round not found");
-  }
   if (!isPairingsVisibleToPlayers(round)) {
     return {
       kind: "publishPairings",
@@ -149,18 +110,10 @@ export async function pairingsNextStep(
     };
   }
   if (round.roundStatus !== "completed") {
-    const matches = currentRoundMatches ?? (await roundMatches(ctx, round._id));
-    const unreported = matches.reduce(
-      (count, match) =>
-        match.matchStatus === "completed" || match.matchStatus === "confirmed"
-          ? count
-          : count + 1,
-      0,
-    );
     // Once every match has a result, completing the round and posting standings
     // is the next step regardless of the timer (a round can finish without one
     // ever being started).
-    if (unreported === 0) {
+    if (facts.unreportedMatchCount === 0) {
       return {
         kind: "completeRound",
         ready: true,
@@ -177,69 +130,61 @@ export async function pairingsNextStep(
     return {
       kind: "completeRound",
       ready: false,
-      reason: `${unreported} ${unreported === 1 ? "match still needs" : "matches still need"} a result`,
+      reason: `${facts.unreportedMatchCount} ${facts.unreportedMatchCount === 1 ? "match still needs" : "matches still need"} a result`,
       roundId: round._id,
     };
   }
 
-  // The round's 1-based position within its phase, as in roundNumberInPhase:
-  // round numbers are global across the tournament, so offset from the
-  // phase's first round.
-  const roundInPhase = round.roundNumber - board.rounds[0].roundNumber + 1;
-  const phaseTotalRounds = phase.phaseTotalRounds;
-  if (phaseTotalRounds === null || roundInPhase < phaseTotalRounds) {
-    return { kind: "generateNextRound", ready: true, reason: null };
+  if (
+    phase.phaseTotalRounds === null ||
+    (facts.roundInPhase ?? 1) < phase.phaseTotalRounds
+  ) {
+    return {
+      kind: "generateNextRound",
+      ready: actions.generateNextRound.allowed,
+      reason: actions.generateNextRound.reason,
+    };
   }
 
   // The phase's configured rounds are done: the next round (if any) belongs to
   // the next phase, which generateNextRound starts.
-  const nextPhase =
-    phaseBoards.find(
-      (candidate) => candidate.phase.phaseOrder === phase.phaseOrder + 1,
-    )?.phase ?? null;
-  if (nextPhase && nextPhase.phaseStatus === "upcoming") {
-    if (nextPhase.phaseType === SINGLE_ELIMINATION_FORMAT) {
-      const registrations = await activeRegistrations(ctx, tournament._id);
-      if (registrations.length < SINGLE_ELIMINATION_PLAYERS) {
-        return { kind: "completeTournament", ready: true, reason: null };
-      }
-    } else if (phase.phaseCutoff !== null) {
-      // A cutoff that fewer than two players cleared leaves the next phase
-      // unpairable; completing the tournament is the only move left.
-      const qualifiers = await cutoffQualifiersForNextPhase(
-        ctx,
-        round._id,
-        phase.phaseCutoff,
-        nextPhase,
-      );
-      if (qualifiers.length < 2) {
-        return { kind: "completeTournament", ready: true, reason: null };
-      }
+  const nextPhase = facts.nextUpcomingPhase;
+  if (nextPhase && nextPhase.phaseOrder === phase.phaseOrder + 1) {
+    // An entry shortfall (a top-8 playoff without eight players, or a cutoff
+    // fewer than two players cleared) leaves the next phase unpairable;
+    // completing the tournament is the only move left.
+    if (facts.nextPhaseEntryShortfall !== null) {
+      return { kind: "completeTournament", ready: true, reason: null };
     }
     // A later phase can hold its own meeting (e.g. a day-2 seating) before its
     // first round is paired. Same player-count gate as the pre-start branch:
     // startPlayerMeeting rejects a pool of fewer than two players.
-    if (
-      nextPhase.playerMeeting &&
-      nextPhase.playerMeetingStatus === undefined
-    ) {
-      const registrations = await activeRegistrations(ctx, tournament._id);
-      if (registrations.length < 2) {
-        return {
-          kind: "startPlayerMeeting",
-          ready: false,
-          reason: "At least two active players are required",
-          phaseId: nextPhase._id,
-        };
-      }
-      return {
-        kind: "startPlayerMeeting",
-        ready: true,
-        reason: null,
-        phaseId: nextPhase._id,
-      };
+    if (playerMeetingPending(nextPhase)) {
+      return startPlayerMeetingStep(
+        nextPhase._id,
+        facts.activeRegistrations?.length ?? 0,
+      );
     }
-    return { kind: "generateNextRound", ready: true, reason: null };
+    return {
+      kind: "generateNextRound",
+      ready: actions.generateNextRound.allowed,
+      reason: actions.generateNextRound.reason,
+    };
   }
   return { kind: "completeTournament", ready: true, reason: null };
+}
+
+function startPlayerMeetingStep(
+  phaseId: Id<"tournamentPhases">,
+  registrationCount: number,
+): PairingsNextStep {
+  if (registrationCount < 2) {
+    return {
+      kind: "startPlayerMeeting",
+      ready: false,
+      reason: "At least two active players are required",
+      phaseId,
+    };
+  }
+  return { kind: "startPlayerMeeting", ready: true, reason: null, phaseId };
 }

@@ -79,3 +79,55 @@ interface (e.g., after rewind, the restored standings rows carry the correct
 If refactor 02 (progression module) is planned, do 02 first — this module
 becomes its largest internal seam and the call sites you must convert are the
 same ones 02 rewrites.
+
+## Handoff from refactor 02 (completed 2026-08-07)
+
+Refactor 02 landed on `architecture-refactor` and moved most of the call
+sites named under "Verified current state" above. Trust this section over
+the line numbers up there.
+
+**Where the sync-threading call sites live now.** `tournaments/rounds.ts`,
+`tournaments/testing.ts`, and `tournaments/lifecycle.ts` are auth+args
+adapters and mention no StandingsSync at all. Everything moved into
+`model/progression.ts`:
+
+- `replaceStandingsForRound` → `eliminateSingleEliminationLosers` ordering
+  (with the returned sync threaded through) is in `executeCompleteRound`.
+- The cutoff application (`eliminateNonQualifiers`, fed by a
+  `CutoffPartition` whose `elimination.standingsSync` was prefetched during
+  the verdict's boundary walk) is in `startNextPhaseFirstRound`; the
+  partition rides in on the `generateNextRound` verdict payload
+  (`cutoffPartition`).
+- `restoreEliminationsForRewind` is a private function of
+  `model/progression.ts`, called by its `rewindLatestRound` transition. It
+  is the obvious first operation to lift into the participation module —
+  progression should call `participation.restoreEliminationsForRewind(...)`
+  and keep only the ordering comment.
+
+The full mention surface of `StandingsSync`/`DEFERRED_STANDINGS_SYNC`/
+`prefetchStandingsSync`/`standingsSyncFromRows` is now five model files:
+`registrations.ts` (definitions), `standings.ts` (returns a sync from
+`replaceStandingsForRound`), `cutoffs.ts` (prefetches into
+`CutoffPartition.elimination`), `singleElimination.ts` (threads it),
+`progression.ts` (rewind restore + the elimination call sites).
+
+**How 02's rulebook affects you.** Every progression mutation now gates
+through `analyzeProgression` (facts + per-action verdicts) in
+`model/progression.ts`; `model/nextStep.ts` is a pure projection of that
+analysis. Two consequences: (1) `advanceTestRound` runs the same
+`advance()` composite as the organizer board, so your changes automatically
+cover the test shortcut — no separate test-path work; (2) verdict payloads
+deliberately carry data the transitions reuse (e.g. the cutoff partition)
+to avoid re-reads inside one mutation — if you change what a partition or
+elimination batch returns, update both the facts builder and the transition
+that consumes the payload.
+
+**Test state.** The restore-before-delete rewind ordering is already
+covered behaviorally: "a cross-phase rewind leaves restored players active
+on the promoted round's standings" in `tournaments.convex.spec.ts`. The
+structure-spec grep that remains ("a rewind does not sync standings it is
+about to delete", now pointed at `model/progression.ts`) pins only the
+genuinely unobservable part — that the restore *defers* the sync for rows
+the same transaction deletes. If your internal design removes the strategy
+split, delete that grep with it. The `tournaments/player.ts` grep
+(:124-130 above) is untouched and still yours to address.

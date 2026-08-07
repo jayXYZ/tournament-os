@@ -24,9 +24,9 @@ import {
   registrationForUser,
   syncRegistrationStartDatesBatch,
 } from "../model/registrations";
+import { completeTournament as completeTournamentTransition } from "../model/progression";
 import {
   cleanName,
-  completeTournament as completeTournamentModel,
   createTournament as createTournamentModel,
   isPubliclyViewable,
   requireOrganizerAccess,
@@ -648,7 +648,8 @@ export const continueDeleteTournament = internalMutation({
 export const completeTournament = mutation({
   args: { tournamentId: v.id("tournaments") },
   handler: async (ctx, args) => {
-    await completeTournamentModel(ctx, args.tournamentId);
+    const access = await requireOrganizerAccess(ctx, args.tournamentId);
+    await completeTournamentTransition(ctx, access);
     return args.tournamentId;
   },
 });
