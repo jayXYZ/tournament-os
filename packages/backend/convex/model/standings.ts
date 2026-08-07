@@ -5,8 +5,6 @@ import {
   MAX_TOURNAMENT_PLAYERS,
   nonActiveParticipationStatuses,
   participantRegistrations,
-  type StandingsSync,
-  standingsSyncFromRows,
 } from "./registrations";
 import { roundMatchesWithPlayers } from "./tournaments";
 
@@ -110,9 +108,12 @@ async function deleteStandingsForRound(
 // Deletes the standings of a round a rewind is reopening, then repairs the
 // participation status denormalized onto the rows this promotes to "latest
 // completed round" — the rows every player's standings query will now read.
+// Called only by restoreEliminationsForRewind (model/participation.ts), which
+// restores the rewound rounds' eliminations first so the repair below reads
+// registrations the rewind has already corrected.
 //
 // Only the latest completed round's rows are kept current (see
-// syncStandingParticipationStatus), so the promoted rows still hold whatever
+// model/participation.ts), so the promoted rows still hold whatever
 // status they carried when their round stopped being the latest: a player
 // dropped while the deleted round was on screen would silently read as active
 // again. Reading them back from the live registrations closes that window.
@@ -147,18 +148,17 @@ export async function deleteStandingsForReopenedRound(
   }
 }
 
-// Returns the freshly written rows keyed as a StandingsSync: the round just
-// became the tournament's latest completed round, so a caller that changes
-// registrations later in the same transaction (completeRound's
-// single-elimination batch) can sync against the rows it just paid to write
-// instead of reading the whole range back.
+// Rewrites the round's standings from cumulative stats through it, making it
+// the tournament's latest completed round — the round whose rows the
+// participation module keeps in step with every later status change (see
+// model/participation.ts).
 export async function replaceStandingsForRound(
   ctx: MutationCtx,
   tournament: Doc<"tournaments">,
   phase: Doc<"tournamentPhases">,
   round: Doc<"tournamentRounds">,
   prefetchedMatches?: RoundMatchWithPlayers[],
-): Promise<StandingsSync> {
+): Promise<void> {
   await deleteStandingsForRound(ctx, round._id);
 
   const matchesWithPlayers =
@@ -178,16 +178,11 @@ export async function replaceStandingsForRound(
   );
   const now = Date.now();
 
-  const insertedRows: Array<{
-    _id: Id<"roundStandings">;
-    playerId: Id<"tournamentRegistrations">;
-    participationStatus: Doc<"roundStandings">["participationStatus"];
-  }> = [];
   for (let index = 0; index < ranked.length; index += 1) {
     const { playerStats, playoffStatus, eliminatedInRoundNumber } =
       ranked[index];
     const comparable = comparableFromStats(playerStats, stats);
-    const standingId = await ctx.db.insert("roundStandings", {
+    await ctx.db.insert("roundStandings", {
       tournamentId: tournament._id,
       tournamentPhaseId: phase._id,
       tournamentRoundId: round._id,
@@ -209,19 +204,14 @@ export async function replaceStandingsForRound(
       eliminatedInRoundNumber,
       // Free here — the registration document is already in hand — and it
       // saves the player standings query a per-tournament scan of every
-      // non-active registration. setRegistrationState keeps it current for
-      // status changes that land after this round's standings are written.
+      // non-active registration. The participation module keeps it current
+      // for status changes that land after this round's standings are
+      // written.
       participationStatus: playerStats.registration.participationStatus,
       sortKey: index + 1,
       updatedAt: now,
     });
-    insertedRows.push({
-      _id: standingId,
-      playerId: playerStats.registration._id,
-      participationStatus: playerStats.registration.participationStatus,
-    });
   }
-  return standingsSyncFromRows(insertedRows);
 }
 
 async function rankedStatsForRound(

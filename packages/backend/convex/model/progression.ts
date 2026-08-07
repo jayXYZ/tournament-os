@@ -27,15 +27,15 @@ import {
   swissPhaseByOrder,
 } from "./phases";
 import {
-  DEFERRED_STANDINGS_SYNC,
-  MAX_TOURNAMENT_PLAYERS,
+  eliminateNonQualifiers,
+  restoreEliminationsForRewind,
+} from "./participation";
+import {
   activeRegistrations,
   comparePlayersAlphabetically,
   resolveRegistrationDisplayName,
-  setRegistrationState,
 } from "./registrations";
 import {
-  eliminateNonQualifiers,
   eliminateSingleEliminationLosers,
   singleEliminationAdvancers,
   singleEliminationRoundName,
@@ -43,7 +43,6 @@ import {
 } from "./singleElimination";
 import {
   type RoundMatchWithPlayers,
-  deleteStandingsForReopenedRound,
   replaceStandingsForRound,
 } from "./standings";
 import {
@@ -637,7 +636,7 @@ async function executeCompleteRound(
   },
 ): Promise<Id<"tournamentRounds">> {
   const { phase, round, matchesWithPlayers, roundInPhase } = step;
-  const standingsSync = await replaceStandingsForRound(
+  await replaceStandingsForRound(
     ctx,
     tournament,
     phase,
@@ -645,14 +644,9 @@ async function executeCompleteRound(
     matchesWithPlayers,
   );
   if (phase.phaseType === SINGLE_ELIMINATION_FORMAT) {
-    // The rows just written above, handed through so the elimination batch
-    // syncs statuses against them instead of reading the range back.
-    await eliminateSingleEliminationLosers(
-      ctx,
-      matchesWithPlayers,
-      round._id,
-      standingsSync,
-    );
+    // The rewrite above just made this the latest completed round, which is
+    // where the elimination batch lands its standings-status repair.
+    await eliminateSingleEliminationLosers(ctx, matchesWithPlayers, round._id);
   }
   const now = Date.now();
   await ctx.db.patch(round._id, {
@@ -989,15 +983,14 @@ export async function rewindLatestRound(
   const matchesWithPlayers = facts.matchesWithPlayers ?? [];
   const previousRound = facts.previousRound;
   const now = Date.now();
-  // Must stay ahead of deleteStandingsForReopenedRound below: that call
-  // rebuilds the promoted round's denormalized participation statuses from
-  // the live registrations, so it has to see the un-eliminations this makes.
-  // It also makes syncing them onto standings here pointless, which is why
-  // the restore defers that (see restoreEliminationsForRewind).
-  await restoreEliminationsForRewind(ctx, tournament, [
-    round._id,
-    ...(previousRound ? [previousRound._id] : []),
-  ]);
+  // One operation owns the whole participation unwind — restoring the
+  // eliminations these rounds recorded, deleting the reopened round's
+  // standings, and repairing the round that promotes to latest completed —
+  // so no ordering constraint between those steps leaks out here.
+  await restoreEliminationsForRewind(ctx, tournament, {
+    removedRound: round,
+    reopenedRound: previousRound,
+  });
 
   for (const { match, players } of matchesWithPlayers) {
     for (const player of players) {
@@ -1008,8 +1001,6 @@ export async function rewindLatestRound(
   await ctx.db.delete(round._id);
 
   if (previousRound) {
-    await deleteStandingsForReopenedRound(ctx, tournament._id, previousRound);
-
     const previousPhase = await requirePhase(
       ctx,
       previousRound.tournamentPhaseId,
@@ -1078,97 +1069,6 @@ export async function rewindLatestRound(
     },
   });
   return previousRound?._id ?? null;
-}
-
-async function restoreEliminationsForRewind(
-  ctx: MutationCtx,
-  tournament: Doc<"tournaments">,
-  roundIds: Id<"tournamentRounds">[],
-) {
-  const sourceIds = new Set(roundIds);
-  const eliminated = await ctx.db
-    .query("tournamentRegistrations")
-    .withIndex("by_tournamentId_and_entryStatus_and_participationStatus", (q) =>
-      q
-        .eq("tournamentId", tournament._id)
-        .eq("entryStatus", "confirmed")
-        .eq("participationStatus", "eliminated"),
-    )
-    .take(MAX_TOURNAMENT_PLAYERS);
-  const restored: Doc<"tournamentRegistrations">[] = [];
-  for (const registration of eliminated) {
-    if (
-      registration.eliminatedByRoundId !== undefined &&
-      sourceIds.has(registration.eliminatedByRoundId)
-    ) {
-      restored.push(registration);
-    }
-  }
-  // Dropped players can carry a preserved elimination (a withdrawal after
-  // being eliminated). The rewind undoes the elimination but the withdrawal
-  // stands, so only the stale round reference is cleared.
-  const dropped = await ctx.db
-    .query("tournamentRegistrations")
-    .withIndex("by_tournamentId_and_entryStatus_and_participationStatus", (q) =>
-      q
-        .eq("tournamentId", tournament._id)
-        .eq("entryStatus", "confirmed")
-        .eq("participationStatus", "dropped"),
-    )
-    .take(MAX_TOURNAMENT_PLAYERS);
-  const clearedWithdrawals: Doc<"tournamentRegistrations">[] = [];
-  for (const registration of dropped) {
-    if (
-      registration.eliminatedByRoundId !== undefined &&
-      sourceIds.has(registration.eliminatedByRoundId)
-    ) {
-      clearedWithdrawals.push(registration);
-    }
-  }
-  const now = Date.now();
-  // DEFERRED_STANDINGS_SYNC on both batches: the rows these changes would
-  // reach are the reopened round's — the latest completed round while this
-  // runs — and rewindLatestRound hands them to deleteStandingsForReopenedRound
-  // a few statements later, which deletes them and re-reads the live
-  // registrations onto the round it promotes in their place. Syncing here
-  // would patch up to one row per restored player and then throw every one of
-  // them away in the same transaction. Ordering is what makes that repair
-  // correct, so it must not be swapped to save the writes instead: the repair
-  // has to observe the un-eliminations below, not precede them. With no
-  // previous round the tournament has no completed round and therefore no
-  // standings row anywhere, so there is nothing to sync either way.
-  await mapAsyncInBatches(
-    restored,
-    DATABASE_IO_BATCH_SIZE,
-    async (registration) =>
-      await setRegistrationState(
-        ctx,
-        registration._id,
-        {
-          entryStatus: "confirmed",
-          participationStatus: "active",
-          updatedAt: now,
-        },
-        DEFERRED_STANDINGS_SYNC,
-      ),
-  );
-  await mapAsyncInBatches(
-    clearedWithdrawals,
-    DATABASE_IO_BATCH_SIZE,
-    async (registration) =>
-      await setRegistrationState(
-        ctx,
-        registration._id,
-        {
-          entryStatus: "confirmed",
-          participationStatus: "dropped",
-          // null clears the preserved elimination the rewind just undid.
-          eliminatedByRoundId: null,
-          updatedAt: now,
-        },
-        DEFERRED_STANDINGS_SYNC,
-      ),
-  );
 }
 
 // Seats the phase's player pool for its player meeting: alphabetical order,

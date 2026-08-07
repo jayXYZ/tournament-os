@@ -131,3 +131,35 @@ genuinely unobservable part — that the restore *defers* the sync for rows
 the same transaction deletes. If your internal design removes the strategy
 split, delete that grep with it. The `tournaments/player.ts` grep
 (:124-130 above) is untouched and still yours to address.
+
+## Completed (2026-08-07)
+
+Landed on `architecture-refactor`. The strategy union did not survive as an
+internal — it is deleted outright; no file anywhere mentions `StandingsSync`,
+`DEFERRED_STANDINGS_SYNC`, `prefetchedRound`, or `deferredToCaller`.
+
+**The module is `model/participation.ts`.** Its surface: `setRegistrationState`
+(same union typing, no sync parameter — the single-player op every auth
+adapter already used), `eliminatePlayers({active, dropped, byRoundId})` for
+bracket-sized batches (per-player row lookups internally),
+`eliminateNonQualifiers(ctx, tournament, cut, byRoundId)` for field-sized cut
+batches (reuses the partition's walked rows, or one range for a seat-decided
+cut), and `restoreEliminationsForRewind(ctx, tournament, {removedRound,
+reopenedRound})`, which owns the restore-before-delete ordering by calling
+`deleteStandingsForReopenedRound` itself — progression's rewind makes one
+call and keeps no ordering comment.
+
+**Seam changes.** `replaceStandingsForRound` returns void;
+`CutoffPartition.elimination` carries plain walked `standings` rows instead
+of a sync; `model/singleElimination.ts` keeps only bracket-outcome logic and
+calls `eliminatePlayers`. The leave-confirmed-while-holding-a-standings-row
+guard survives with no caller-facing escape hatch: a future flow that needs
+one must become a participation-module operation.
+
+**Tests.** Both structure-spec greps are deleted. The rewind grep's invariant
+dissolved with the strategy split; the `tournaments/player.ts` grep is
+replaced by a behavioral test ("getLatestStandings reports the status stored
+on the row, not the registration" in `tournaments-player.convex.spec.ts`),
+which severs the denormalized copy from the registration and observes that
+the query believes the row — pinning the no-registration-scan design
+observably.

@@ -5,8 +5,6 @@ import {
   activeRegistrations,
   droppedRegistrations,
   MAX_TOURNAMENT_PLAYERS,
-  type StandingsSync,
-  standingsSyncFromRows,
 } from "./registrations";
 
 export type TournamentPhaseCutoff = NonNullable<
@@ -78,20 +76,20 @@ export type CutoffPartition = {
   qualifiers: Doc<"tournamentRegistrations">[];
   droppedNonQualifiers: Doc<"tournamentRegistrations">[];
   heldPlaces: Doc<"tournamentRegistrations">[];
-  // What eliminateNonQualifiers stamps and the rows it stamps through, carried
-  // out of a partition whose boundary walk already read both so applying the
-  // cut re-reads nothing in the same transaction: `activeNonQualifiers` is the
-  // whole active roster minus `qualifiers` (including any active player the
-  // standings never ranked), and `standingsSync` keys the walked phase-final
-  // rows for the setRegistrationState batches — valid for syncing exactly when
-  // the cut's round is the tournament's latest completed round, the only state
-  // eliminateNonQualifiers runs in. null when the seats decided the cut:
-  // meetingCutoffPartition reads neither the standings nor the active roster,
-  // and fetching them just to fill this field would charge every read-only
-  // caller for data only the applying mutation needs.
+  // What eliminateNonQualifiers (model/participation.ts) stamps and the rows
+  // it repairs statuses through, carried out of a partition whose boundary
+  // walk already read both so applying the cut re-reads nothing in the same
+  // transaction: `activeNonQualifiers` is the whole active roster minus
+  // `qualifiers` (including any active player the standings never ranked),
+  // and `standings` is the walked phase-final rows — the tournament's latest
+  // completed round's, the only state eliminateNonQualifiers runs in. null
+  // when the seats decided the cut: meetingCutoffPartition reads neither the
+  // standings nor the active roster, and fetching them just to fill this
+  // field would charge every read-only caller for data only the applying
+  // mutation needs.
   elimination: {
     activeNonQualifiers: Doc<"tournamentRegistrations">[];
-    standingsSync: StandingsSync;
+    standings: Doc<"roundStandings">[];
   } | null;
 };
 
@@ -178,7 +176,7 @@ async function standingsCutoffPartition(
       activeNonQualifiers: active.filter(
         (registration) => !qualifierIds.has(registration._id),
       ),
-      standingsSync: standingsSyncFromRows(standings),
+      standings,
     },
   };
 }

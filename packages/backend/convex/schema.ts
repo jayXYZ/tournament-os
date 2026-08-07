@@ -392,9 +392,9 @@ export default defineSchema({
     // query every player in the event subscribes to never reads a registration
     // document (see getLatestStandings). Absent means "active" — the common
     // case, and what a legacy row without the field must read as. Written when
-    // the row is created and written through by setRegistrationState whenever
-    // the status changes afterwards, so the copy on the tournament's latest
-    // completed round is always the live value.
+    // the row is created and written through by the participation module
+    // (model/participation.ts) whenever the status changes afterwards, so the
+    // copy on the tournament's latest completed round is always the live value.
     participationStatus: v.optional(tournamentParticipationStatusValidator),
     sortKey: v.number(),
     updatedAt: v.number(),

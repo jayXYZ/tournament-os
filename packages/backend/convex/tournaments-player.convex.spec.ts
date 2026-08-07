@@ -6,8 +6,10 @@ import { expect, test } from "vitest";
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
-import { setRegistrationState } from "./model/registrations";
-import { eliminateNonQualifiers } from "./model/singleElimination";
+import {
+  eliminateNonQualifiers,
+  setRegistrationState,
+} from "./model/participation";
 import { compareStandingRows } from "./model/standings";
 import schema from "./schema";
 import {
@@ -1182,6 +1184,52 @@ test("a rewind past a drop does not resurrect the dropped player", async () => {
   expect(await storedStandingStatus(t, roundOne._id, droppedId)).toBe(
     "dropped",
   );
+});
+
+// The tests above pin the write side: the participation module keeps the
+// denormalized copy exact. This pins the read side — getLatestStandings
+// believes the row rather than live-joining registrations. Severing the copy
+// from the registration (patching the row directly, behind the participation
+// module's back) changes what players see even though no registration
+// changed; a query that joined registrations would report the drop anyway,
+// and would pay a document read and a subscription dependency per non-active
+// player, per viewer, to do it.
+test("getLatestStandings reports the status stored on the row, not the registration", async () => {
+  const t = convexTest(schema, modules);
+  const { tournamentId, registrationIds } = await seedStartedTournament(t, 4);
+  const organizer = t.withIdentity(organizerIdentity);
+  const viewer = t.withIdentity(playerIdentity(1));
+  const droppedId = registrationIds[3];
+
+  await playOutCurrentRound(t, tournamentId);
+  const roundOne = await currentRound(t, tournamentId);
+  await organizer.mutation(api.tournaments.registrations.dropRegistration, {
+    registrationId: droppedId,
+  });
+  expect(await storedStandingStatus(t, roundOne._id, droppedId)).toBe(
+    "dropped",
+  );
+
+  await t.run(async (ctx) => {
+    const standing = await ctx.db
+      .query("roundStandings")
+      .withIndex("by_tournamentRoundId_and_playerId", (q) =>
+        q.eq("tournamentRoundId", roundOne._id).eq("playerId", droppedId),
+      )
+      .unique();
+    if (!standing) {
+      throw new Error("Standings row not found in test setup");
+    }
+    await ctx.db.patch(standing._id, { participationStatus: "active" });
+  });
+
+  const standings = await viewer.query(
+    api.tournaments.player.getLatestStandings,
+    { tournamentId },
+  );
+  expect(
+    standings?.rows.find((row) => row.name === "Player 4")?.registrationStatus,
+  ).toBe("active");
 });
 
 // The participation status stored on a round's standings row, which is what

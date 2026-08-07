@@ -7,6 +7,7 @@ import { currentUserOrNull } from "../model/access";
 import { auditPlayerRef, logAuditEvent } from "../model/auditLog";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
 import { clampPageSize } from "../model/pagination";
+import { setRegistrationState } from "../model/participation";
 import {
   adjustConfirmedRegistrationCount,
   playerDisplayName,
@@ -15,7 +16,6 @@ import {
   registrationForUser,
   requireCapacityAvailable,
   requireRegistration,
-  setRegistrationState,
 } from "../model/registrations";
 import { ensureCurrentUser } from "../model/users";
 import {

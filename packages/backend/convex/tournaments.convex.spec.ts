@@ -6,11 +6,8 @@ import { expect, test } from "vitest";
 
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import {
-  DEFERRED_STANDINGS_SYNC,
-  MAX_TOURNAMENT_PLAYERS,
-  setRegistrationState,
-} from "./model/registrations";
+import { setRegistrationState } from "./model/participation";
+import { MAX_TOURNAMENT_PLAYERS } from "./model/registrations";
 import { generateTestResults } from "./model/testing";
 import schema from "./schema";
 import { organizerIdentity, seedOrganizer } from "./specHelpers";
@@ -3461,22 +3458,11 @@ test("a registration cannot leave the confirmed state while it holds a standings
     await t.run(async (ctx) => await ctx.db.get(lateRegistrationId)),
   ).toMatchObject({ entryStatus: "cancelled" });
 
-  // DEFERRED_STANDINGS_SYNC stays the explicit escape hatch: passing it is
-  // the caller claiming it rewrites or deletes the rows itself in the same
-  // transaction, so the guard does not second-guess it and the row is left
-  // untouched for that repair.
-  await t.run(async (ctx) => {
-    await setRegistrationState(
-      ctx,
-      target._id,
-      { entryStatus: "cancelled" },
-      DEFERRED_STANDINGS_SYNC,
-    );
-  });
-  expect(
-    await t.run(async (ctx) => await ctx.db.get(target._id)),
-  ).toMatchObject({ entryStatus: "cancelled" });
-  expect((await latestStandingsRow())?.participationStatus).toBe("active");
+  // There is deliberately no caller-facing way past the guard: a flow that
+  // must take a row-holding registration out of the confirmed state has to
+  // become a participation-module operation that deletes or rewrites the
+  // player's standings in the same transaction (the rewind restore is the
+  // existing example), so the escape and the repair can never separate.
 });
 
 test("re-running a rewound cutoff re-records a dropped non-qualifier's elimination", async () => {

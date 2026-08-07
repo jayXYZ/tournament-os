@@ -18,13 +18,13 @@ import {
   phasesInOrder,
   selectCurrentPhase,
 } from "../model/phases";
+import { setRegistrationState } from "../model/participation";
 import {
   MAX_TOURNAMENT_PLAYERS,
   playerVisibleParticipationStatus,
   playerVisibleRegistration,
   registrationForUser,
   resolveRegistrationDisplayName,
-  setRegistrationState,
 } from "../model/registrations";
 import {
   MAX_MATCHES_PER_PLAYER,
@@ -256,8 +256,8 @@ export const getLatestStandings = query({
       .take(MAX_TOURNAMENT_PLAYERS);
     // Every player in the event subscribes to this query, so it reads no
     // registration documents at all: participation status is denormalized onto
-    // the standings row, and setRegistrationState writes each change through to
-    // the latest completed round's rows (see syncStandingParticipationStatus).
+    // the standings row, and the participation module writes each change
+    // through to the latest completed round's rows (see model/participation.ts).
     // A drop or reinstate between rounds therefore still shows immediately —
     // it patches the very rows this query reads — while a 500-player field no
     // longer costs one read and one subscription dependency per non-active

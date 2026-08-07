@@ -2,19 +2,14 @@ import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "./batching";
 import { type CutoffPartition, cutoffPartition } from "./cutoffs";
+import { eliminatePlayers } from "./participation";
 import { SINGLE_ELIMINATION_PLAYERS } from "./phases";
-import {
-  activeRegistrations,
-  prefetchStandingsSync,
-  setRegistrationState,
-  type StandingsSync,
-} from "./registrations";
 import type { RoundMatchWithPlayers } from "./standings";
 import { roundMatchesWithPlayers } from "./tournaments";
 
 // The top-8 playoff entry is a fixed top-X cut over the phase-final round's
 // standings; the shared partition also names the dropped players who keep an
-// elimination record (see eliminateNonQualifiers).
+// elimination record (see eliminateNonQualifiers in model/participation.ts).
 export async function topEightCutFromStandings(
   ctx: QueryCtx,
   tournamentId: Id<"tournaments">,
@@ -28,61 +23,6 @@ export async function topEightCutFromStandings(
     throw new Error("A top-8 playoff requires at least eight active players");
   }
   return cut;
-}
-
-export async function eliminateNonQualifiers(
-  ctx: MutationCtx,
-  tournament: Doc<"tournaments">,
-  cut: CutoffPartition,
-  eliminatedByRoundId: Id<"tournamentRounds">,
-) {
-  // The cut is drawn from the round it stamps, and generateNextRound only
-  // reaches here with that round completed and the next one not yet played, so
-  // it is the tournament's latest completed round — the one whose standings
-  // carry the denormalized status. A partition that walked those standings
-  // hands back the active players outside the cut and the rows it walked, so
-  // nothing is re-read here; a seat-decided cut read neither, so both are
-  // fetched now — one roster range and one standings range for the whole
-  // batch either way.
-  const { activeNonQualifiers, standingsSync } =
-    cut.elimination ??
-    (await seatDecidedElimination(ctx, tournament, cut, eliminatedByRoundId));
-  await eliminateRegistrations(
-    ctx,
-    activeNonQualifiers,
-    eliminatedByRoundId,
-    standingsSync,
-  );
-  // Dropped non-qualifiers keep an elimination record too, so a rewind that
-  // cleared a preserved elimination re-records it when the cut re-runs.
-  await preserveDroppedEliminations(
-    ctx,
-    cut.droppedNonQualifiers,
-    eliminatedByRoundId,
-    standingsSync,
-  );
-}
-
-// The elimination side of a cut whose partition never read the standings or
-// the active roster (a live player meeting's seats decided it): everyone
-// active outside the qualifying seats, plus the latest completed round's
-// standings rows for the status sync.
-async function seatDecidedElimination(
-  ctx: MutationCtx,
-  tournament: Doc<"tournaments">,
-  cut: CutoffPartition,
-  eliminatedByRoundId: Id<"tournamentRounds">,
-) {
-  const qualifierIds = new Set(
-    cut.qualifiers.map((registration) => registration._id),
-  );
-  const active = await activeRegistrations(ctx, tournament._id);
-  return {
-    activeNonQualifiers: active.filter(
-      (registration) => !qualifierIds.has(registration._id),
-    ),
-    standingsSync: await prefetchStandingsSync(ctx, eliminatedByRoundId),
-  };
 }
 
 export async function singleEliminationAdvancers(
@@ -165,7 +105,6 @@ export async function eliminateSingleEliminationLosers(
   ctx: MutationCtx,
   matchesWithPlayers: RoundMatchWithPlayers[],
   eliminatedByRoundId: Id<"tournamentRounds">,
-  standingsSync: StandingsSync,
 ) {
   const { advancers, registrationsById, loserIds } =
     await singleEliminationOutcome(ctx, matchesWithPlayers);
@@ -195,81 +134,15 @@ export async function eliminateSingleEliminationLosers(
       droppedLosers.push(registration);
     }
   }
-  // completeRound rewrites this round's standings immediately before calling
-  // us, so it is the latest completed round and its rows are the ones the
-  // status changes below have to reach — which is why it passes those freshly
-  // written rows in as `standingsSync` rather than this helper reading the
-  // range straight back. One sync serves both batches.
-  await eliminateRegistrations(
-    ctx,
-    eliminated,
-    eliminatedByRoundId,
-    standingsSync,
-  );
-  await preserveDroppedEliminations(
-    ctx,
-    droppedLosers,
-    eliminatedByRoundId,
-    standingsSync,
-  );
-}
-
-async function eliminateRegistrations(
-  ctx: MutationCtx,
-  registrations: Doc<"tournamentRegistrations">[],
-  eliminatedByRoundId: Id<"tournamentRounds">,
-  standingsSync: StandingsSync,
-) {
-  const now = Date.now();
-  await mapAsyncInBatches(
-    registrations,
-    DATABASE_IO_BATCH_SIZE,
-    async (registration) =>
-      await setRegistrationState(
-        ctx,
-        registration._id,
-        {
-          entryStatus: "confirmed",
-          participationStatus: "eliminated",
-          eliminatedByRoundId,
-          updatedAt: now,
-        },
-        standingsSync,
-      ),
-  );
-}
-
-// Stamps eliminatedByRoundId on dropped players whose elimination stands,
-// without touching their withdrawal, so a later in-play reinstate restores
-// them to eliminated instead of reviving them mid-bracket. Rows that already
-// carry a preserved elimination keep it: the original round is the
-// authoritative record (e.g. an earlier cut a later cut must not overwrite).
-async function preserveDroppedEliminations(
-  ctx: MutationCtx,
-  registrations: Doc<"tournamentRegistrations">[],
-  eliminatedByRoundId: Id<"tournamentRounds">,
-  standingsSync: StandingsSync,
-) {
-  const unstamped = registrations.filter(
-    (registration) => registration.eliminatedByRoundId === undefined,
-  );
-  const now = Date.now();
-  await mapAsyncInBatches(
-    unstamped,
-    DATABASE_IO_BATCH_SIZE,
-    async (registration) =>
-      await setRegistrationState(
-        ctx,
-        registration._id,
-        {
-          entryStatus: "confirmed",
-          participationStatus: "dropped",
-          eliminatedByRoundId,
-          updatedAt: now,
-        },
-        standingsSync,
-      ),
-  );
+  // completeRound calls this right after rewriting the round's standings, so
+  // eliminatedByRoundId is the tournament's latest completed round — the
+  // contract eliminatePlayers needs to land the status repair on that
+  // round's rows.
+  await eliminatePlayers(ctx, {
+    active: eliminated,
+    dropped: droppedLosers,
+    byRoundId: eliminatedByRoundId,
+  });
 }
 
 export function singleEliminationRoundName(playerCount: number) {
