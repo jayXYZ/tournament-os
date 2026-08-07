@@ -3,9 +3,17 @@ export {
   useDropSelf,
   useLatestStandings,
   useMyCurrentMatch,
+  useMyDecklist,
   useMyMatchHistory,
+  useMyRegistration,
+  useMyTournaments,
   useReportResult,
 } from "./hooks";
+export {
+  useAuthedQueryArgs,
+  useConvexAuthReadiness,
+} from "./auth-readiness";
+export type { ConvexAuthReadiness } from "./auth-readiness";
 export {
   displayPlayerName,
   formatPercent,

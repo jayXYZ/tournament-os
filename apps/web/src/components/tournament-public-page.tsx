@@ -1,6 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
-import { useConvexAuth, useMutation, useQuery } from 'convex/react'
+import { useMyRegistration } from '@tournament-os/core'
+import { useMutation, useQuery } from 'convex/react'
 import {
   Building2,
   CalendarDays,
@@ -215,17 +216,9 @@ function RegistrationPanel({
   spotsLeft: number
 }) {
   const { user, loading, refreshAuth } = useAppAuth()
-  const { isAuthenticated: convexAuthed } = useConvexAuth()
-  // Gated on Convex auth, not just the Clerk user: the server resolves the
-  // registration from its own identity, so running this while Convex is
-  // still exchanging tokens returns null — which would flash the register
-  // button at an already-registered player. Skipping keeps it undefined,
-  // holding the "Checking your registration" state until an answer can be
-  // trusted.
-  const registration = useQuery(
-    api.tournaments.registrations.getMyRegistration,
-    user && convexAuthed ? { tournamentId: tournament._id } : 'skip',
-  )
+  // Held at `undefined` until Convex auth settles (see useMyRegistration), so
+  // an already-registered player never sees a flash of the register button.
+  const registration = useMyRegistration(tournament._id)
   const registerSelf = useMutation(api.tournaments.registrations.registerSelf)
   const cancelRegistration = useMutation(
     api.tournaments.registrations.cancelMyRegistration,

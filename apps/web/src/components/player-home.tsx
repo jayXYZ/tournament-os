@@ -1,4 +1,5 @@
 import { Link } from '@tanstack/react-router'
+import { useMyTournaments } from '@tournament-os/core'
 import { useQuery } from 'convex/react'
 import { CalendarDays, LogIn, Settings, ShieldCheck, Users } from 'lucide-react'
 import { api } from '@tournament-os/backend/convex/_generated/api'
@@ -13,10 +14,7 @@ import { useAppAuth } from '@/lib/use-app-auth'
 export function PlayerHome() {
   const { user, loading, refreshAuth, signOut } = useAppAuth()
   const tournaments = useQuery(api.tournaments.lifecycle.listUpcomingPublic)
-  const myTournaments = useQuery(
-    api.tournaments.registrations.listMyTournaments,
-    user ? {} : 'skip',
-  )
+  const myTournaments = useMyTournaments()
 
   const publicItems = tournaments?.map((tournament) => ({
     key: tournament._id,

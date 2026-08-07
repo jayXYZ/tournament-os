@@ -1,6 +1,11 @@
 import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
-import { useConvexAuth, useQuery } from 'convex/react'
+import {
+  useConvexAuthReadiness,
+  useMyDecklist,
+  useMyRegistration,
+} from '@tournament-os/core'
+import { useQuery } from 'convex/react'
 import {
   ChevronLeft,
   LogIn,
@@ -32,33 +37,19 @@ import { useAppAuth } from '@/lib/use-app-auth'
 // submissionOpen verdict.
 export function DecklistPage({ publicCode }: { publicCode: string }) {
   const { user, loading, refreshAuth } = useAppAuth()
-  const { isLoading: convexAuthLoading, isAuthenticated: convexAuthed } =
-    useConvexAuth()
+  const convexAuth = useConvexAuthReadiness()
   const event = useQuery(api.tournaments.lifecycle.getPublicTournament, {
     publicCode,
   })
   const typedTournamentId = event?.tournament._id ?? null
-  // Gated on Convex auth, not just the Clerk user: the server resolves the
-  // registration from its own identity, so running this while Convex is
-  // still exchanging tokens returns null — which the branches below would
-  // misread as "not registered". Skipping keeps it undefined (the skeleton
-  // state) until an answer can be trusted.
-  const registration = useQuery(
-    api.tournaments.registrations.getMyRegistration,
-    user && typedTournamentId && convexAuthed
-      ? { tournamentId: typedTournamentId }
-      : 'skip',
-  )
+  const registration = useMyRegistration(typedTournamentId)
   const hasConfirmedEntry = registration?.entryStatus === 'confirmed'
   // Fetched even when the tournament no longer collects decklists: the
   // organizer settings copy promises "Turning this off keeps any submitted
   // lists", and getMyDecklist has no decklistRequired gate — it returns the
   // stored list with submissionOpen: false, so the player can still view it.
-  const decklistData = useQuery(
-    api.tournaments.decklists.getMyDecklist,
-    user && typedTournamentId && hasConfirmedEntry
-      ? { tournamentId: typedTournamentId }
-      : 'skip',
+  const decklistData = useMyDecklist(
+    hasConfirmedEntry && typedTournamentId ? typedTournamentId : null,
   )
   // Whether the mounted editor holds unsaved changes, reported live via
   // onDirtyChange. The no-decklist-needed gate below checks it so flipping
@@ -74,7 +65,7 @@ export function DecklistPage({ publicCode }: { publicCode: string }) {
   if (
     loading ||
     event === undefined ||
-    (event === null && user !== null && convexAuthLoading)
+    (event === null && user !== null && convexAuth === 'pending')
   ) {
     return (
       // The heading passes `undefined` while loading so the desktop heading

@@ -1,7 +1,12 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { Link } from '@tanstack/react-router'
-import { useMyCurrentMatch, useRoundTimer } from '@tournament-os/core'
-import { useConvexAuth, useQuery } from 'convex/react'
+import {
+  useMyCurrentMatch,
+  useMyDecklist,
+  useMyRegistration,
+  useRoundTimer,
+} from '@tournament-os/core'
+import { useQuery } from 'convex/react'
 import {
   ChevronRight,
   ListOrdered,
@@ -47,7 +52,6 @@ const shellWidth = '6xl'
 
 export function PlayerController({ publicCode }: { publicCode: string }) {
   const { user, loading, refreshAuth } = useAppAuth()
-  const { isAuthenticated: convexAuthed } = useConvexAuth()
   const event = useQuery(api.tournaments.lifecycle.getPublicTournament, {
     publicCode,
   })
@@ -55,32 +59,18 @@ export function PlayerController({ publicCode }: { publicCode: string }) {
   // getMyRegistration returns any registration row — including cancelled
   // ones — while the player queries reject entries that are not confirmed,
   // so gate them on entryStatus to match the server's requireRegisteredPlayer.
-  // Also gated on Convex auth, not just the Clerk user: the server resolves
-  // the registration from its own identity, so running this while Convex is
-  // still exchanging tokens returns null — which the branches below would
-  // misread as "not registered". Skipping keeps it undefined (the skeleton
-  // state) until an answer can be trusted.
-  const registration = useQuery(
-    api.tournaments.registrations.getMyRegistration,
-    user && typedTournamentId && convexAuthed
-      ? { tournamentId: typedTournamentId }
-      : 'skip',
-  )
+  const registration = useMyRegistration(typedTournamentId)
   const hasConfirmedEntry = registration?.entryStatus === 'confirmed'
   const currentMatch = useMyCurrentMatch(
-    user && hasConfirmedEntry && typedTournamentId ? typedTournamentId : null,
+    hasConfirmedEntry && typedTournamentId ? typedTournamentId : null,
   )
   // The page's only getMyDecklist subscription — it feeds both the phone
   // decklist callout and the More tab's DecklistCard (passed down as a prop),
   // and it is skipped entirely while the event does not collect decklists.
-  const myDecklist = useQuery(
-    api.tournaments.decklists.getMyDecklist,
-    user &&
-      hasConfirmedEntry &&
-      event?.tournament.decklistRequired &&
-      typedTournamentId
-      ? { tournamentId: typedTournamentId }
-      : 'skip',
+  const myDecklist = useMyDecklist(
+    hasConfirmedEntry && event?.tournament.decklistRequired && typedTournamentId
+      ? typedTournamentId
+      : null,
   )
   const [tab, setTab] = useState<ControllerTab>('match')
   // Tabs the player has opened at least once. Below `lg` a panel mounts only
