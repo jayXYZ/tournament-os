@@ -1,21 +1,16 @@
 import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
-import {
-  useConvexAuthReadiness,
-  useMyDecklist,
-  useMyRegistration,
-} from '@tournament-os/core'
-import { useQuery } from 'convex/react'
-import {
-  ChevronLeft,
-  LogIn,
-  ScrollText,
-  SearchX,
-  UserRound,
-} from 'lucide-react'
+import { useMyDecklist } from '@tournament-os/core'
+import { ChevronLeft, ScrollText } from 'lucide-react'
 
-import { api } from '@tournament-os/backend/convex/_generated/api'
+import {
+  PlayerAccessShell,
+  PlayerPageSkeleton,
+  playerShellWidth,
+} from '../player-access-shell'
+import { usePlayerTournamentAccess } from '../use-player-tournament-access'
 import { DecklistEditor } from './decklist-editor'
+import type { PlayerTournamentEvent } from '../use-player-tournament-access'
 import { SiteShell, SiteShellBackLink } from '@/components/shared/site-shell'
 import { WorkspacePageHeader } from '@/components/shared/workspace-page-header'
 import { Button } from '@/components/ui/button'
@@ -27,152 +22,72 @@ import {
   EmptyTitle,
 } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Spinner } from '@/components/ui/spinner'
-import { useAppAuth } from '@/lib/use-app-auth'
 
 // The player's decklist submission page, reached from the player controller.
-// Access mirrors the controller: public code resolves the event, then a
-// signed-in viewer with a confirmed registration gets the editor. The editor
-// itself decides between editable and read-only from the server's
-// submissionOpen verdict.
+// Access mirrors the controller — both pages run the same
+// usePlayerTournamentAccess ladder — then the editor itself decides between
+// editable and read-only from the server's submissionOpen verdict.
 export function DecklistPage({ publicCode }: { publicCode: string }) {
-  const { user, loading, refreshAuth } = useAppAuth()
-  const convexAuth = useConvexAuthReadiness()
-  const event = useQuery(api.tournaments.lifecycle.getPublicTournament, {
-    publicCode,
-  })
-  const typedTournamentId = event?.tournament._id ?? null
-  const registration = useMyRegistration(typedTournamentId)
-  const hasConfirmedEntry = registration?.entryStatus === 'confirmed'
+  const access = usePlayerTournamentAccess(publicCode)
+
+  if (access.state !== 'ready') {
+    return (
+      <DecklistFrame
+        publicCode={publicCode}
+        eventName={
+          access.state === 'notFound'
+            ? null
+            : access.state === 'loading'
+              ? access.event?.tournament.name
+              : access.event.tournament.name
+        }
+      >
+        <PlayerAccessShell
+          access={access}
+          publicCode={publicCode}
+          signIn={{
+            title: 'Sign in to manage your decklist',
+            description:
+              'Sign in to submit and edit the decklist for your registration.',
+          }}
+          notRegistered={{
+            icon: ScrollText,
+            description:
+              'Only players with a confirmed registration can submit a decklist for this event.',
+          }}
+        />
+      </DecklistFrame>
+    )
+  }
+
+  return <DecklistReady publicCode={publicCode} event={access.event} />
+}
+
+// Mounted only in the `ready` access state, so getMyDecklist is subscribed
+// only while the viewer holds a confirmed registration.
+function DecklistReady({
+  publicCode,
+  event,
+}: {
+  publicCode: string
+  event: PlayerTournamentEvent
+}) {
+  const typedTournamentId = event.tournament._id
   // Fetched even when the tournament no longer collects decklists: the
   // organizer settings copy promises "Turning this off keeps any submitted
   // lists", and getMyDecklist has no decklistRequired gate — it returns the
   // stored list with submissionOpen: false, so the player can still view it.
-  const decklistData = useMyDecklist(
-    hasConfirmedEntry && typedTournamentId ? typedTournamentId : null,
-  )
+  const decklistData = useMyDecklist(typedTournamentId)
   // Whether the mounted editor holds unsaved changes, reported live via
   // onDirtyChange. The no-decklist-needed gate below checks it so flipping
   // decklistRequired off mid-edit never unmounts a dirty editor and silently
   // destroys the draft.
   const [editorDirty, setEditorDirty] = useState(false)
 
-  // A resolved event never depends on Convex auth — getPublicTournament only
-  // consults the viewer for non-public events — so a defined result renders
-  // immediately. Only a `null` result for a signed-in viewer is ambiguous: a
-  // private event resolves null until Convex auth catches up with Clerk, so
-  // that one case waits for auth before the not-found branch may claim it.
-  if (
-    loading ||
-    event === undefined ||
-    (event === null && user !== null && convexAuth === 'pending')
-  ) {
-    return (
-      // The heading passes `undefined` while loading so the desktop heading
-      // stays reserved instead of flickering out and back in. Not-found
-      // certainty (and the heading's drop-out) belongs to the post-loading
-      // branch below.
-      <DecklistFrame publicCode={publicCode} eventName={undefined}>
-        <div className="flex min-h-60 items-center justify-center lg:min-h-80">
-          <Spinner className="size-6" />
-        </div>
-      </DecklistFrame>
-    )
-  }
-
-  if (event === null || typedTournamentId === null) {
-    return (
-      <DecklistFrame publicCode={publicCode} eventName={null}>
-        <Empty className="mt-4 min-h-80 border bg-card lg:mt-10">
-          <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <SearchX aria-hidden="true" />
-            </EmptyMedia>
-            <EmptyTitle>Tournament not found</EmptyTitle>
-            <EmptyDescription>
-              This event does not exist or is not open to the public.
-            </EmptyDescription>
-          </EmptyHeader>
-          <Button asChild type="button" variant="outline">
-            <Link to="/">Browse upcoming tournaments</Link>
-          </Button>
-        </Empty>
-      </DecklistFrame>
-    )
-  }
-
-  if (!user) {
-    return (
-      <DecklistFrame publicCode={publicCode} eventName={event.tournament.name}>
-        <Empty className="mt-4 min-h-80 border bg-card lg:mt-10">
-          <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <UserRound aria-hidden="true" />
-            </EmptyMedia>
-            <EmptyTitle>Sign in to manage your decklist</EmptyTitle>
-            <EmptyDescription>
-              Sign in to submit and edit the decklist for your registration.
-            </EmptyDescription>
-          </EmptyHeader>
-          <Button
-            type="button"
-            onClick={() => void refreshAuth({ ensureSignedIn: true })}
-          >
-            <LogIn data-icon="inline-start" />
-            Sign in
-          </Button>
-        </Empty>
-      </DecklistFrame>
-    )
-  }
-
-  if (registration === undefined) {
-    return (
-      <DecklistFrame publicCode={publicCode} eventName={event.tournament.name}>
-        <div className="grid gap-3 pt-4 lg:pt-10">
-          {[0, 1, 2].map((row) => (
-            <Skeleton key={row} className="h-24" />
-          ))}
-        </div>
-      </DecklistFrame>
-    )
-  }
-
-  if (!hasConfirmedEntry) {
-    return (
-      <DecklistFrame publicCode={publicCode} eventName={event.tournament.name}>
-        <Empty className="mt-4 min-h-80 border bg-card lg:mt-10">
-          <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <ScrollText aria-hidden="true" />
-            </EmptyMedia>
-            <EmptyTitle>You are not registered</EmptyTitle>
-            <EmptyDescription>
-              Only players with a confirmed registration can submit a decklist
-              for this event.
-            </EmptyDescription>
-          </EmptyHeader>
-          <Button asChild type="button" variant="outline">
-            <Link
-              to="/tournaments/$tournamentId"
-              params={{ tournamentId: publicCode }}
-            >
-              View event page
-            </Link>
-          </Button>
-        </Empty>
-      </DecklistFrame>
-    )
-  }
-
   if (decklistData === undefined || decklistData === null) {
     return (
       <DecklistFrame publicCode={publicCode} eventName={event.tournament.name}>
-        <div className="grid gap-3 pt-4 lg:pt-10">
-          {[0, 1, 2].map((row) => (
-            <Skeleton key={row} className="h-24" />
-          ))}
-        </div>
+        <PlayerPageSkeleton />
       </DecklistFrame>
     )
   }
@@ -255,12 +170,11 @@ function DecklistFrame({
 }) {
   return (
     <SiteShell
-      // Must stay in lockstep with PlayerController's shellWidth
-      // (player-controller.tsx): /play and /decklist share one header rail,
-      // and matching tokens keep it from reflowing when navigating between
-      // the two pages. Only the frame widens — the form column below caps
-      // the content itself at lg:max-w-2xl.
-      width="6xl"
+      // playerShellWidth keeps /play and /decklist in lockstep: they share
+      // one header rail, and matching tokens keep it from reflowing when
+      // navigating between the two pages. Only the frame widens — the form
+      // column below caps the content itself at lg:max-w-2xl.
+      width={playerShellWidth}
       subtitle="Decklist"
       toaster
       bottomBar={

@@ -3,74 +3,101 @@ import { Link } from '@tanstack/react-router'
 import {
   useMyCurrentMatch,
   useMyDecklist,
-  useMyRegistration,
   useRoundTimer,
 } from '@tournament-os/core'
-import { useQuery } from 'convex/react'
-import {
-  ChevronRight,
-  ListOrdered,
-  LogIn,
-  Menu,
-  ScrollText,
-  SearchX,
-  Swords,
-  UserRound,
-} from 'lucide-react'
-import { api } from '@tournament-os/backend/convex/_generated/api'
+import { ChevronRight, ListOrdered, Menu, ScrollText, Swords } from 'lucide-react'
 import { CurrentMatchCard } from './current-match-card'
 import { MoreTab } from './more-tab'
+import { PlayerAccessShell, playerShellWidth } from './player-access-shell'
 import { StandingsList } from './standings-list'
+import { usePlayerTournamentAccess } from './use-player-tournament-access'
 import type { ReactNode } from 'react'
 import type { RoundTimer } from '@tournament-os/core'
+import type { PlayerTournamentEvent } from './use-player-tournament-access'
 import { RoundTimerPill } from '@/components/shared/round-timer-indicator'
 import { SiteShell, SiteShellBackLink } from '@/components/shared/site-shell'
 import { WorkspacePageHeader } from '@/components/shared/workspace-page-header'
 import { useIsDesktop } from '@/hooks/use-desktop'
-import { useAppAuth } from '@/lib/use-app-auth'
 
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from '@/components/ui/empty'
-import { Skeleton } from '@/components/ui/skeleton'
-import { Spinner } from '@/components/ui/spinner'
 import { cn } from '@/lib/utils'
 
 type ControllerTab = 'match' | 'standings' | 'more'
 
-// One shell width for the whole player surface. Every PlayerController state
-// passes this token — and DecklistFrame (decklist-page.tsx) hardcodes the
-// same one — so the desktop header rail and content column never resize
-// while queries resolve or when navigating between /play and /decklist.
-const shellWidth = '6xl'
-
 export function PlayerController({ publicCode }: { publicCode: string }) {
-  const { user, loading, refreshAuth } = useAppAuth()
-  const event = useQuery(api.tournaments.lifecycle.getPublicTournament, {
-    publicCode,
-  })
-  const typedTournamentId = event?.tournament._id ?? null
-  // getMyRegistration returns any registration row — including cancelled
-  // ones — while the player queries reject entries that are not confirmed,
-  // so gate them on entryStatus to match the server's requireRegisteredPlayer.
-  const registration = useMyRegistration(typedTournamentId)
-  const hasConfirmedEntry = registration?.entryStatus === 'confirmed'
-  const currentMatch = useMyCurrentMatch(
-    hasConfirmedEntry && typedTournamentId ? typedTournamentId : null,
+  const access = usePlayerTournamentAccess(publicCode)
+
+  // publicCode comes synchronously from the route, so the header's
+  // event-page link can render from the very first paint instead of popping
+  // in once queries resolve. Every state passes it except notFound: there is
+  // no event page for a code that resolved to nothing, so the link shows
+  // while the outcome is unknown and drops out only once not-found is
+  // certain — a pop-out on that error path, never a pop-in on the happy path.
+  const eventPageAction = (
+    <SiteShellBackLink
+      to="/tournaments/$tournamentId"
+      params={{ tournamentId: publicCode }}
+    >
+      Event page
+    </SiteShellBackLink>
   )
+
+  if (access.state !== 'ready') {
+    return (
+      <SiteShell
+        width={playerShellWidth}
+        subtitle="Player controller"
+        actions={access.state === 'notFound' ? undefined : eventPageAction}
+        appBar
+        toaster
+      >
+        <PlayerAccessShell
+          access={access}
+          publicCode={publicCode}
+          signIn={{
+            title: 'Sign in to play',
+            description:
+              'Sign in to see your pairings and report match results.',
+          }}
+          notRegistered={{
+            icon: Swords,
+            description:
+              'Only players with a confirmed registration can use the player controller for this event.',
+          }}
+        />
+      </SiteShell>
+    )
+  }
+
+  return (
+    <ControllerReady
+      publicCode={publicCode}
+      event={access.event}
+      eventPageAction={eventPageAction}
+    />
+  )
+}
+
+// Mounted only in the `ready` access state, so its subscriptions exist only
+// while the viewer holds a confirmed registration — the player queries
+// reject anything less (the server's requireRegisteredPlayer), and losing
+// the registration unmounts this subtree on the same client transition.
+function ControllerReady({
+  publicCode,
+  event,
+  eventPageAction,
+}: {
+  publicCode: string
+  event: PlayerTournamentEvent
+  eventPageAction: ReactNode
+}) {
+  const typedTournamentId = event.tournament._id
+  const currentMatch = useMyCurrentMatch(typedTournamentId)
   // The page's only getMyDecklist subscription — it feeds both the phone
   // decklist callout and the More tab's DecklistCard (passed down as a prop),
   // and it is skipped entirely while the event does not collect decklists.
   const myDecklist = useMyDecklist(
-    hasConfirmedEntry && event?.tournament.decklistRequired && typedTournamentId
-      ? typedTournamentId
-      : null,
+    event.tournament.decklistRequired ? typedTournamentId : null,
   )
   const [tab, setTab] = useState<ControllerTab>('match')
   // Tabs the player has opened at least once. Below `lg` a panel mounts only
@@ -101,142 +128,6 @@ export function PlayerController({ publicCode }: { publicCode: string }) {
   const panelMounted = (panel: ControllerTab) =>
     isDesktop || visitedTabs.has(panel)
 
-  // publicCode comes synchronously from the route, so the header's
-  // event-page link can render from the very first paint instead of popping
-  // in once queries resolve. Every state passes it except
-  // tournament-not-found below.
-  const eventPageAction = (
-    <SiteShellBackLink
-      to="/tournaments/$tournamentId"
-      params={{ tournamentId: publicCode }}
-    >
-      Event page
-    </SiteShellBackLink>
-  )
-
-  if (loading || event === undefined) {
-    return (
-      <SiteShell
-        width={shellWidth}
-        subtitle="Player controller"
-        actions={eventPageAction}
-        appBar
-        toaster
-      >
-        <div className="flex min-h-60 items-center justify-center lg:min-h-80">
-          <Spinner className="size-6" />
-        </div>
-      </SiteShell>
-    )
-  }
-
-  if (event === null || typedTournamentId === null) {
-    // Deliberately no header action: there is no event page for a code that
-    // resolved to nothing. The link shows while the outcome is unknown and
-    // drops out only once not-found is certain — a pop-out on this error
-    // path, never a pop-in on the happy path.
-    return (
-      <SiteShell width={shellWidth} subtitle="Player controller" appBar toaster>
-        <Empty className="mt-4 min-h-80 border bg-card lg:mt-10">
-          <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <SearchX aria-hidden="true" />
-            </EmptyMedia>
-            <EmptyTitle>Tournament not found</EmptyTitle>
-            <EmptyDescription>
-              This event does not exist or is not open to the public.
-            </EmptyDescription>
-          </EmptyHeader>
-          <Button asChild type="button" variant="outline">
-            <Link to="/">Browse upcoming tournaments</Link>
-          </Button>
-        </Empty>
-      </SiteShell>
-    )
-  }
-
-  if (!user) {
-    return (
-      <SiteShell
-        width={shellWidth}
-        subtitle="Player controller"
-        actions={eventPageAction}
-        appBar
-        toaster
-      >
-        <Empty className="mt-4 min-h-80 border bg-card lg:mt-10">
-          <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <UserRound aria-hidden="true" />
-            </EmptyMedia>
-            <EmptyTitle>Sign in to play</EmptyTitle>
-            <EmptyDescription>
-              Sign in to see your pairings and report match results.
-            </EmptyDescription>
-          </EmptyHeader>
-          <Button
-            type="button"
-            onClick={() => void refreshAuth({ ensureSignedIn: true })}
-          >
-            <LogIn data-icon="inline-start" />
-            Sign in
-          </Button>
-        </Empty>
-      </SiteShell>
-    )
-  }
-
-  if (registration === undefined) {
-    return (
-      <SiteShell
-        width={shellWidth}
-        subtitle="Player controller"
-        actions={eventPageAction}
-        appBar
-        toaster
-      >
-        <div className="grid gap-3 pt-4 lg:pt-10">
-          {[0, 1, 2].map((row) => (
-            <Skeleton key={row} className="h-24" />
-          ))}
-        </div>
-      </SiteShell>
-    )
-  }
-
-  if (!hasConfirmedEntry) {
-    return (
-      <SiteShell
-        width={shellWidth}
-        subtitle="Player controller"
-        actions={eventPageAction}
-        appBar
-        toaster
-      >
-        <Empty className="mt-4 min-h-80 border bg-card lg:mt-10">
-          <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <Swords aria-hidden="true" />
-            </EmptyMedia>
-            <EmptyTitle>You are not registered</EmptyTitle>
-            <EmptyDescription>
-              Only players with a confirmed registration can use the player
-              controller for this event.
-            </EmptyDescription>
-          </EmptyHeader>
-          <Button asChild type="button" variant="outline">
-            <Link
-              to="/tournaments/$tournamentId"
-              params={{ tournamentId: publicCode }}
-            >
-              View event page
-            </Link>
-          </Button>
-        </Empty>
-      </SiteShell>
-    )
-  }
-
   // Rendered twice — in the sticky phone app bar below `lg`, and in the
   // sticky status strip under the desktop heading from `lg` up — so the live
   // round state stays pinned in view at every viewport width. Both copies
@@ -258,7 +149,7 @@ export function PlayerController({ publicCode }: { publicCode: string }) {
   return (
     <RoundTimerProvider timer={event.tournament.roundTimer}>
       <SiteShell
-        width={shellWidth}
+        width={playerShellWidth}
         subtitle="Player controller"
         actions={eventPageAction}
         toaster
@@ -382,8 +273,8 @@ export function PlayerController({ publicCode }: { publicCode: string }) {
 
 // The page's only ticking round-timer state. Keeping the useRoundTimer call
 // (and its 500ms setNow interval) inside this provider instead of
-// PlayerController means a tick re-renders just the provider — and, because
-// PlayerController hands it an unchanged `children` element, React bails out
+// ControllerReady means a tick re-renders just the provider — and, because
+// ControllerReady hands it an unchanged `children` element, React bails out
 // of the whole layout subtree and re-renders only the LiveTimerPill context
 // consumers in the two status slots. F12's one-interval property still holds:
 // this is the /play subtree's single useRoundTimer, mounted once around the
