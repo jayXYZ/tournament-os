@@ -11,13 +11,59 @@ are satisfied.
 These are cross-cutting foundations and should land alongside the first domain
 changes rather than waiting for a final production milestone.
 
-- [ ] Add browser E2E coverage for the organizer happy path: create → publish → register → pair → report → complete
+- [x] Add browser E2E coverage for the organizer happy path: create → publish → register → pair → report → complete
 - [ ] Extend the E2E path with correction, drop, no-show, and rewind scenarios as those workflows land
 - [ ] Add error monitoring for the web app, native app, and Convex functions
 - [ ] Add rate limiting and abuse controls to public queries and mutations
 - [ ] Establish production deployment checks for Convex and the web app
+  - [ ] Fix the Vercel build boundary: `apps/web/vercel.json` runs
+        `npx convex deploy` from `apps/web`, but the Convex project lives in
+        `packages/backend` — run the deploy from the backend package, invoke
+        the web build explicitly via `--cmd`, pass
+        `--cmd-url-env-var-name VITE_CONVEX_URL`, and prefer pnpm over npx/npm
 - [ ] Configure and verify the custom domain
 - [ ] Address the oversized web settings chunk with route/component code splitting
+- [ ] Finish the pnpm 11 settings migration
+  - [ ] Move `node-linker=hoisted` from `.npmrc` into `pnpm-workspace.yaml` as
+        `nodeLinker: hoisted` — pnpm 11 ignores the `.npmrc` setting, so the
+        active install is isolated despite the documented Expo/Metro hoisting
+        rationale
+  - [ ] Delete the `ignoredBuiltDependencies`/`onlyBuiltDependencies` keys
+        (removed in pnpm 11) and fold them into `allowBuilds`, adding the
+        missing `sharp: false`
+- [ ] Commit environment contracts
+  - [ ] Add a `!**/.env.example` exception to `.gitignore` (the blanket `.env*`
+        rule keeps `apps/native/.env.example` untracked) and commit native and
+        web examples
+  - [ ] Document required variables: web (`VITE_CONVEX_URL`,
+        `VITE_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`), native (the two
+        `EXPO_PUBLIC_*` vars), Convex deployment (`CLERK_JWT_ISSUER_DOMAIN`,
+        `PROFILE_RESULTS_CURSOR_KEY`)
+  - [ ] Add typed environment declarations via `defineApp({ env })` in a
+        backend `convex.config.ts` and make `auth.config.ts`
+        `satisfies AuthConfig` for deployment-time validation
+- [ ] Expand CI beyond `pnpm test`: add lint, typecheck, `format:check`, and a
+      native Expo dependency/export smoke check (the native package has no
+      test script, so root tests silently skip it)
+- [ ] Lint the backend: the Convex ESLint plugin is configured only in
+      `apps/web`, whose config cannot reach `packages/backend/convex` — add a
+      backend ESLint config and script
+- [ ] Add a unified root check command covering tests, package typechecks,
+      lint, and `format:check`; fix the 36 unformatted web files and give
+      `packages/shared` and `packages/tournament-core` standalone
+      `tsconfig.json` files and typecheck scripts
+- [ ] Pin the toolchain: root `"packageManager": "pnpm@11.9.0"`, a Node
+      version file/engines field, and CI/local alignment (CI runs Node 22,
+      local development Node 26)
+- [ ] Align duplicated workspace dependency versions: native installs Convex
+      1.39.1 while web/backend use 1.42.0 even though Metro forces a Convex
+      singleton; consider pnpm catalogs for convex, react, vite, vitest, and
+      TypeScript
+- [ ] Pin the patched `@clerk/expo` exactly (currently a caret range carrying
+      a local Swift patch) and version-qualify its `patchedDependencies` entry
+- [ ] Simplify `apps/native/metro.config.js`: Expo SDK 56 supplies
+      `watchFolders` and `nodeModulesPaths` automatically; keep the singleton
+      resolver until a native smoke test proves it unnecessary
 
 ## 1. Result and adjudication foundation
 
