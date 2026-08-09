@@ -13,6 +13,11 @@ changes rather than waiting for a final production milestone.
 
 - [x] Add browser E2E coverage for the organizer happy path: create → publish → register → pair → report → complete
 - [ ] Extend the E2E path with correction, drop, no-show, and rewind scenarios as those workflows land
+  - [x] Cover active-round result correction with its audit-trail entry, a
+        pairing rewind that reopens the previous round, and an organizer drop
+        that produces a bye round and a "Dropped" standings row
+  - [ ] Cover no-show and forfeit scenarios once the organizer actions land
+        (blocked on section 1's adjudication work)
 - [ ] Add error monitoring for the web app, native app, and Convex functions
 - [ ] Add rate limiting and abuse controls to public queries and mutations
 - [ ] Establish production deployment checks for Convex and the web app

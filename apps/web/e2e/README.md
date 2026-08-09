@@ -28,6 +28,14 @@ the `e2e-organizer@example.com` user, mints a sign-in ticket, activates the
 session through `window.Clerk`, and saves the browser storage state to
 `e2e/.auth/organizer.json` (gitignored) for the test projects.
 
+## Coverage
+
+- `organizer-happy-path.spec.ts` — create → publish → register → pair →
+  report → complete, with real result entry each round.
+- `organizer-corrections.spec.ts` — active-round result correction (and its
+  audit-trail entry), a pairing rewind that reopens the previous round, and
+  an organizer drop that produces a bye round and a "Dropped" standings row.
+
 ## Test data
 
 Tests create tournaments marked as test events under the "E2E Test
