@@ -3,15 +3,11 @@ import { v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import { mutation, query } from "../_generated/server";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
-import {
-  auditPlayerRef,
-  auditResultLine,
-  logAuditEvent,
-} from "../model/auditLog";
+import { auditPlayerRef, logAuditEvent } from "../model/auditLog";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
+import { applyMatchResult } from "../model/matchResults";
 import {
   latestCompletedRound,
-  requireDecisiveEliminationResult,
   requirePhase,
   roundNumberInPhase,
   phaseByOrder,
@@ -30,7 +26,6 @@ import {
   MAX_MATCHES_PER_PLAYER,
   matchLogForRegistration,
 } from "../model/playerResults";
-import { matchPointsForResult } from "../model/standings";
 import {
   isPairingsVisibleToPlayers,
   matchPlayers,
@@ -302,57 +297,19 @@ export const reportMyMatchResult = mutation({
     opponentGameWins: v.number(),
   },
   handler: async (ctx, args) => {
-    const { match, myRow, opponentRow, user } = await requireMatchParticipant(
-      ctx,
-      args.matchId,
-    );
-    if (match.matchStatus !== "upcoming") {
-      throw new Error("Match already has a result");
-    }
-    const myGameWins = validGameWins(args.myGameWins);
-    const opponentGameWins = validGameWins(args.opponentGameWins);
-    requireDecisiveEliminationResult(
-      await requirePhase(ctx, match.tournamentPhaseId),
-      myGameWins,
-      opponentGameWins,
-    );
-
-    const [myPoints, opponentPoints] = matchPointsForResult({
-      playerOneGameWins: myGameWins,
-      playerTwoGameWins: opponentGameWins,
-    });
-    const now = Date.now();
-    await ctx.db.patch(myRow._id, {
-      matchPointsEarned: myPoints,
-      gameWins: myGameWins,
-      gameLosses: opponentGameWins,
-      updatedAt: now,
-    });
-    await ctx.db.patch(opponentRow._id, {
-      matchPointsEarned: opponentPoints,
-      gameWins: opponentGameWins,
-      gameLosses: myGameWins,
-      updatedAt: now,
-    });
-    await ctx.db.patch(match._id, {
-      matchStatus: "completed",
-      reportedByRegistrationId: myRow.playerId,
-      updatedAt: now,
-    });
-    const round = await requireRound(ctx, match.tournamentRoundId);
-    await logAuditEvent(ctx, {
-      tournamentId: match.tournamentId,
-      actor: user,
-      actorRole: "player",
-      event: {
-        type: "match_result_reported",
-        matchId: match._id,
-        roundNumber: round.roundNumber,
-        tableNumber: match.tableNumber ?? null,
-        result: [
-          auditResultLine(myRow, myGameWins, opponentGameWins),
-          auditResultLine(opponentRow, opponentGameWins, myGameWins),
-        ],
+    const { match, round, myRow, opponentRow, user } =
+      await requireMatchParticipant(ctx, args.matchId);
+    await applyMatchResult(ctx, {
+      match,
+      phase: await requirePhase(ctx, match.tournamentPhaseId),
+      round,
+      players: [myRow, opponentRow],
+      playerOneGameWins: validGameWins(args.myGameWins),
+      playerTwoGameWins: validGameWins(args.opponentGameWins),
+      policy: {
+        kind: "player",
+        actor: user,
+        reporterRegistrationId: myRow.playerId,
       },
     });
     return match._id;
@@ -362,7 +319,7 @@ export const reportMyMatchResult = mutation({
 export const confirmMatchResult = mutation({
   args: { matchId: v.id("tournamentMatches") },
   handler: async (ctx, args) => {
-    const { match, myRow, user } = await requireMatchParticipant(
+    const { match, round, myRow, user } = await requireMatchParticipant(
       ctx,
       args.matchId,
     );
@@ -377,7 +334,6 @@ export const confirmMatchResult = mutation({
       matchStatus: "confirmed",
       updatedAt: Date.now(),
     });
-    const round = await requireRound(ctx, match.tournamentRoundId);
     await logAuditEvent(ctx, {
       tournamentId: match.tournamentId,
       actor: user,
@@ -486,7 +442,16 @@ async function requireMatchParticipant(
     throw new Error("Opponent not found for this match");
   }
 
-  return { match, tournament, registration, players, myRow, opponentRow, user };
+  return {
+    match,
+    round,
+    tournament,
+    registration,
+    players,
+    myRow,
+    opponentRow,
+    user,
+  };
 }
 
 function validGameWins(value: number) {

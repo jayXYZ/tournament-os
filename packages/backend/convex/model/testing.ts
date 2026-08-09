@@ -1,12 +1,12 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
-import { requireDecisiveEliminationResult, requirePhase } from "./phases";
+import { applyMatchResult } from "./matchResults";
+import { requirePhase } from "./phases";
 import { createSeededRandom } from "./random";
 import {
   adjustConfirmedRegistrationCount,
   registrationForUser,
 } from "./registrations";
-import { matchPointsForResult } from "./standings";
 import { nextUserPublicCode } from "./users";
 import {
   matchPlayers,
@@ -172,40 +172,21 @@ export async function generateTestResults(
     if (players.length !== 2) {
       continue;
     }
+    // Always drawn, even for matches the writer then skips as already
+    // completed, so a given seed produces the same result sequence
+    // regardless of how many rounds were simulated before.
     const result = simulatedMatchResult(
       random,
       phase.phaseType !== "single_elimination",
     );
-    if (
-      match.matchStatus === "completed" ||
-      match.matchStatus === "confirmed"
-    ) {
-      continue;
-    }
-    requireDecisiveEliminationResult(
+    await applyMatchResult(ctx, {
+      match,
       phase,
-      result.playerOneGameWins,
-      result.playerTwoGameWins,
-    );
-
-    const [playerOnePoints, playerTwoPoints] = matchPointsForResult(result);
-    const now = Date.now();
-    await ctx.db.patch(players[0]._id, {
-      matchPointsEarned: playerOnePoints,
-      gameWins: result.playerOneGameWins,
-      gameLosses: result.playerTwoGameWins,
-      updatedAt: now,
-    });
-    await ctx.db.patch(players[1]._id, {
-      matchPointsEarned: playerTwoPoints,
-      gameWins: result.playerTwoGameWins,
-      gameLosses: result.playerOneGameWins,
-      updatedAt: now,
-    });
-    await ctx.db.patch(match._id, {
-      matchStatus: "completed",
-      reportedByRegistrationId: undefined,
-      updatedAt: now,
+      round,
+      players,
+      playerOneGameWins: result.playerOneGameWins,
+      playerTwoGameWins: result.playerTwoGameWins,
+      policy: { kind: "simulation", audit: "none" },
     });
   }
 }

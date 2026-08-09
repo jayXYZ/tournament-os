@@ -2,17 +2,9 @@ import { v } from "convex/values";
 
 import type { Id } from "../_generated/dataModel";
 import { mutation, query } from "../_generated/server";
-import {
-  auditResultLine,
-  existingResultLines,
-  logAuditEvent,
-} from "../model/auditLog";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
-import {
-  requireDecisiveEliminationResult,
-  requireCurrentPhase,
-  requirePhase,
-} from "../model/phases";
+import { applyMatchResult } from "../model/matchResults";
+import { requireCurrentPhase, requirePhase } from "../model/phases";
 import {
   analyzeProgression,
   completeRound as completeRoundTransition,
@@ -22,7 +14,6 @@ import {
   rewindLatestRound as rewindLatestRoundTransition,
   startTournament as startTournamentTransition,
 } from "../model/progression";
-import { matchPointsForResult } from "../model/standings";
 import {
   MAX_TOURNAMENT_PLAYERS,
   nonActiveParticipationStatuses,
@@ -81,17 +72,7 @@ export const recordMatchResult = mutation({
         "Match results can only be recorded during an active round",
       );
     }
-    const phase = await requirePhase(ctx, match.tournamentPhaseId);
-    requireDecisiveEliminationResult(
-      phase,
-      args.playerOneGameWins,
-      args.playerTwoGameWins,
-    );
     const players = await matchPlayers(ctx, args.matchId);
-    if (players.length !== 2) {
-      throw new Error("Match result requires exactly two players");
-    }
-
     const playerOne = players.find(
       (player) => player.playerId === args.playerOneRegistrationId,
     );
@@ -101,57 +82,14 @@ export const recordMatchResult = mutation({
     if (!playerOne || !playerTwo) {
       throw new Error("Result players must match the pairing");
     }
-
-    const [playerOnePoints, playerTwoPoints] = matchPointsForResult({
+    await applyMatchResult(ctx, {
+      match,
+      phase: await requirePhase(ctx, match.tournamentPhaseId),
+      round,
+      players: [playerOne, playerTwo],
       playerOneGameWins: args.playerOneGameWins,
       playerTwoGameWins: args.playerTwoGameWins,
-    });
-    // Captured before the patches below overwrite the rows: a non-null value
-    // means this call edited an existing result, which the log must preserve.
-    const previousResult = existingResultLines(match, players);
-    const now = Date.now();
-    await ctx.db.patch(playerOne._id, {
-      matchPointsEarned: playerOnePoints,
-      gameWins: args.playerOneGameWins,
-      gameLosses: args.playerTwoGameWins,
-      updatedAt: now,
-    });
-    await ctx.db.patch(playerTwo._id, {
-      matchPointsEarned: playerTwoPoints,
-      gameWins: args.playerTwoGameWins,
-      gameLosses: args.playerOneGameWins,
-      updatedAt: now,
-    });
-    await ctx.db.patch(args.matchId, {
-      matchStatus: "completed",
-      // An organizer-recorded result supersedes any player self-report; this
-      // is also the resolution path when players disagree about a result.
-      reportedByRegistrationId: undefined,
-      updatedAt: now,
-    });
-    await logAuditEvent(ctx, {
-      tournamentId: match.tournamentId,
-      actor: user,
-      actorRole: "organizer",
-      event: {
-        type: "match_result_recorded",
-        matchId: args.matchId,
-        roundNumber: round.roundNumber,
-        tableNumber: match.tableNumber ?? null,
-        result: [
-          auditResultLine(
-            playerOne,
-            args.playerOneGameWins,
-            args.playerTwoGameWins,
-          ),
-          auditResultLine(
-            playerTwo,
-            args.playerTwoGameWins,
-            args.playerOneGameWins,
-          ),
-        ],
-        previousResult,
-      },
+      policy: { kind: "organizer", actor: user },
     });
     return args.matchId;
   },
