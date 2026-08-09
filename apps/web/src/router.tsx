@@ -1,9 +1,24 @@
+import { useEffect } from 'react'
 import { createRouter } from '@tanstack/react-router'
 import { routerWithQueryClient } from '@tanstack/react-router-with-query'
 import { ConvexProvider, ConvexReactClient } from 'convex/react'
 import { ConvexQueryClient } from '@convex-dev/react-query'
 import { QueryClient } from '@tanstack/react-query'
+import * as Sentry from '@sentry/tanstackstart-react'
 import { routeTree } from './routeTree.gen'
+import type { ErrorComponentProps } from '@tanstack/react-router'
+
+function DefaultErrorComponent({ error }: ErrorComponentProps) {
+  useEffect(() => {
+    Sentry.captureException(error)
+  }, [error])
+
+  return (import.meta as any).env.DEV ? (
+    <pre>{error.stack}</pre>
+  ) : (
+    <p>Something went wrong. Please try again.</p>
+  )
+}
 
 export function getRouter() {
   const CONVEX_URL = (import.meta as any).env.VITE_CONVEX_URL!
@@ -33,12 +48,7 @@ export function getRouter() {
       defaultPreload: 'intent',
       scrollRestoration: true,
       defaultPreloadStaleTime: 0, // Let React Query handle all caching
-      defaultErrorComponent: (err) =>
-        (import.meta as any).env.DEV ? (
-          <pre>{err.error.stack}</pre>
-        ) : (
-          <p>Something went wrong. Please try again.</p>
-        ),
+      defaultErrorComponent: DefaultErrorComponent,
       defaultNotFoundComponent: () => <p>not found</p>,
       context: { queryClient, convexClient: convex, convexQueryClient },
       Wrap: ({ children }) => (
@@ -50,6 +60,12 @@ export function getRouter() {
     queryClient,
   )
   // @snippet end example
+
+  if (!router.isServer) {
+    Sentry.addIntegration(
+      Sentry.tanstackRouterBrowserTracingIntegration(router),
+    )
+  }
 
   return router
 }

@@ -1,11 +1,13 @@
 // Learn more: https://docs.expo.dev/guides/monorepos/
-const { getDefaultConfig } = require('expo/metro-config');
+// getSentryExpoConfig extends expo/metro-config's getDefaultConfig with the
+// serializer Sentry needs to attach debug IDs for source-map symbolication.
+const { getSentryExpoConfig } = require('@sentry/react-native/metro');
 const path = require('path');
 
 const projectRoot = __dirname;
 const workspaceRoot = path.resolve(projectRoot, '../..');
 
-const config = getDefaultConfig(projectRoot);
+const config = getSentryExpoConfig(projectRoot);
 
 // 1. Watch all files within the monorepo so changes to shared packages
 //    (@tournament-os/backend, @tournament-os/core) trigger fast refresh.

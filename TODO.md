@@ -19,6 +19,18 @@ changes rather than waiting for a final production milestone.
   - [ ] Cover no-show and forfeit scenarios once the organizer actions land
         (blocked on section 1's adjudication work)
 - [ ] Add error monitoring for the web app, native app, and Convex functions
+  - [x] Wire Sentry into the web app (client, SSR entry, server-function
+        middleware, router error component) behind `VITE_SENTRY_DSN`, with
+        source-map upload activating only when `SENTRY_AUTH_TOKEN` is set
+  - [x] Wire Sentry into the native app (root-layout init, `Sentry.wrap`,
+        Sentry Metro config, Expo config plugin) behind
+        `EXPO_PUBLIC_SENTRY_DSN`
+  - [ ] Run `scripts/setup-error-monitoring.sh` to create the Sentry
+        projects and capture DSNs/credentials (human-only account setup; see
+        `docs/error-monitoring.md`)
+  - [ ] Enable Convex exception reporting to Sentry in the deployment
+        dashboard — blocked on the team being on Convex Pro (the integration
+        is Pro-only; no code side exists)
 - [ ] Add rate limiting and abuse controls to public queries and mutations
 - [ ] Establish production deployment checks for Convex and the web app
   - [ ] Fix the Vercel build boundary: `apps/web/vercel.json` runs

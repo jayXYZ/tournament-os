@@ -1,5 +1,6 @@
 import { ClerkProvider, useAuth } from '@clerk/expo';
 import { tokenCache } from '@clerk/expo/token-cache';
+import * as Sentry from '@sentry/react-native';
 import { ConvexProviderWithClerk } from 'convex/react-clerk';
 import { DarkTheme, Stack, ThemeProvider } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -7,6 +8,16 @@ import * as SystemUI from 'expo-system-ui';
 import { useEffect } from 'react';
 
 import { convex } from '@/lib/convex';
+
+// No-ops when EXPO_PUBLIC_SENTRY_DSN is unset (local dev without monitoring).
+const sentryDsn = process.env.EXPO_PUBLIC_SENTRY_DSN;
+
+if (sentryDsn) {
+  Sentry.init({
+    dsn: sentryDsn,
+    tracesSampleRate: 1.0,
+  });
+}
 
 const APP_BACKGROUND = '#0b0b0f';
 
@@ -37,7 +48,7 @@ if (!envPublishableKey) {
 // `string | undefined` across closures).
 const publishableKey: string = envPublishableKey;
 
-export default function RootLayout() {
+function RootLayout() {
   // Paints the native root window background at runtime. The window sits below
   // React Navigation entirely, so it's what shows through during swipe-back and
   // in the seam between screens mid-transition. `app.json`'s backgroundColor
@@ -76,3 +87,5 @@ export default function RootLayout() {
     </ClerkProvider>
   );
 }
+
+export default sentryDsn ? Sentry.wrap(RootLayout) : RootLayout;

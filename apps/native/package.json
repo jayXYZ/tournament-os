@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@clerk/expo": "^3.4.6",
+    "@sentry/react-native": "~7.11.0",
     "@tournament-os/backend": "workspace:*",
     "@tournament-os/core": "workspace:*",
     "convex": "^1.39.1",

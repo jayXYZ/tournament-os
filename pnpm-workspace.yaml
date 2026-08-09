@@ -26,6 +26,7 @@ overrides:
   "@clerk/shared>react-dom": 19.2.3
 allowBuilds:
   '@clerk/shared': true
+  '@sentry/cli': true
   browser-tabs-lock: false
   bufferutil: false
   core-js: false

@@ -39,7 +39,8 @@
         }
       ],
       "expo-secure-store",
-      "@clerk/expo"
+      "@clerk/expo",
+      "@sentry/react-native"
     ],
     "experiments": {
       "typedRoutes": true,
