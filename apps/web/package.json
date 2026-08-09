@@ -9,7 +9,8 @@
     "start": "node .output/server/index.mjs",
     "format": "prettier --write .",
     "lint": "tsc && eslint .  --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",
@@ -53,6 +54,7 @@
   },
   "devDependencies": {
     "@convex-dev/eslint-plugin": "^2.0.0",
+    "@playwright/test": "^1.62.1",
     "@tailwindcss/typography": "^0.5.20",
     "@tailwindcss/vite": "^4.2.2",
     "@tanstack/eslint-config": "^0.4.0",
