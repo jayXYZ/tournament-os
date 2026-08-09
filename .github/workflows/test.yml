@@ -18,4 +18,8 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Duplicate versions of one package split React context between module
+      # copies (e.g. convex/react during SSR); fail fast when the lockfile
+      # can be deduped.
+      - run: pnpm dedupe --check
       - run: pnpm test
