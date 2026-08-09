@@ -31,9 +31,13 @@ no-shows, and disqualifications without each workflow inventing its own rules.
   - [ ] Define whether draws are allowed for the phase type
 - [ ] Replace the wins-only result shape with a normalized adjudication model
   - [ ] Track game wins, game losses, and game draws
+  - [ ] Compute match-win and game-win percentages from match/game points so drawn games count (MTR Appendix C)
+  - [ ] Exclude byes from a player's percentages where they feed opponents' tiebreakers
+  - [ ] Break residual perfect ties with a per-player random value fixed for the tournament instead of registration time
   - [ ] Distinguish played results, intentional draws, concessions, forfeits, no-shows, byes, and DQs
   - [ ] Keep immutable result revisions and identify the current result
   - [x] Preserve the previous result in the organizer audit trail for active-round overrides
+- [ ] Remove opponent result confirmation — the confirmed match status, mutation, and player UI; disputes resolve through organizer override
 - [ ] Add organizer result corrections after a round or tournament completes
   - [x] Allow organizers to enter or override results during the active round
   - [x] Recompute standings when an active round is completed
@@ -45,11 +49,13 @@ no-shows, and disqualifications without each workflow inventing its own rules.
   - [x] Keep a dropped player's current pairing available so its result can still be reported
   - [ ] Record a match loss or other configured outcome for a mid-round drop
   - [ ] Add organizer no-show and forfeit actions
-  - [ ] Complete the organizer DQ workflow
-    - [x] Mask DQs as drops on public and player-facing APIs while exposing the real status to organizers
+  - [ ] Replace bracket loser-revival with walkovers: the scheduled opponent receives a 2–0 bye when a bracket player leaves before their match; walkovers may chain; departed players keep the placement of the seat they reached (see ADR 0001)
+  - [ ] Complete the organizer DQ workflow (MTR/IPG-aligned — see `CONTEXT.md`)
+    - [ ] Remove DQ'd players from standings entirely so every lower-ranked player advances one place, deleting the mask-as-drop machinery this replaces
+    - [ ] Keep a DQ'd player's completed matches on record and feeding former opponents' tiebreakers, with the tournament staying on their profile without a placement
     - [ ] Add an organizer-authorized DQ action and participation-state transition
     - [ ] Record each DQ as a typed, organizer-only audit event with the actor and affected player
-    - [ ] Define and apply the DQ's match-result and standings consequences
+    - [ ] Apply the DQ's match consequence: the disqualified player loses their current match (IPG 1.1)
 - [ ] Add late entry after round 1
   - [ ] Configure the tournament/phase late-entry policy
   - [ ] Represent missed-round byes, losses, or point adjustments explicitly in history and standings
@@ -58,7 +64,25 @@ no-shows, and disqualifications without each workflow inventing its own rules.
   - [x] Cover distinct byes, max-capacity Swiss standings, drops, cutoffs, and bracket rewinds
   - [ ] Add randomized/generative tests across field sizes, seeds, rounds, drops, and brackets
 
-## 2. Player identity and admission
+## 2. Phase structure and cuts
+
+Cuts and brackets per the 2026-08-09 domain-modeling session (see `CONTEXT.md`
+and `docs/adr/0001-bracket-walkover-to-scheduled-opponent.md`). Bracket
+walkover behavior itself lands with the adjudication model in section 1.
+
+- [ ] Decouple cuts from phase types
+  - [ ] Allow a top-N or points-bar cut before any following phase type, defaulting to no cut between Swiss phases and a top-N cut into single elimination
+  - [ ] Remove the special-cased top-8 cut in favor of an ordinary cut to 8
+  - [ ] Warn in the UI when a points-bar cut feeds a single-elimination phase, since the bracket size becomes unpredictable
+- [ ] Generalize single-elimination brackets
+  - [ ] Support any entry size of at least 2: the bracket is the smallest power of two that fits the field, standard-seeded
+  - [ ] Give the highest seeds first-round byes when the field is short instead of skipping the phase
+  - [ ] Complete the tournament instead of playing a one-player phase
+  - [ ] Generalize bracket round names (Round of 16, Quarterfinals, Semifinals, Finals)
+- [ ] Allow single elimination as the first phase, seeded from the tournament's random seed
+- [ ] Lower the 16-phase cap to a realistic bound (the largest real events need 5–6)
+
+## 3. Player identity and admission
 
 Guest enrollment, invitations, favorites, email, and payments need a player
 identity that can exist without an authenticated account and can later be
@@ -79,13 +103,14 @@ claimed by one.
   - [x] Support public, unlisted, and private tournament visibility
   - [ ] Add join-by-link/code invitations
   - [ ] Add organizer approval and rejection of pending registrations
+  - [ ] Bar re-entry to a private event after organizer removal (launch-blocking): a cancelled registration must stop acting as a standing invitation once the player is rejected — needs the rejection flow's write side
   - [ ] Add waitlist promotion
 - [ ] Enroll players as guests or by email without requiring an account
 - [ ] Persist organizer favorite players across tournaments
   - [ ] Decide whether favorites are scoped to an organizer or the organization
   - [ ] Filter pairings, registrations, and standings by favorites
 
-## 3. Event hierarchy and conventions
+## 4. Event hierarchy and conventions
 
 Model conventions and other umbrella events as first-class containers instead
 of overloading a tournament or relying on naming conventions. Tournaments must
@@ -108,7 +133,7 @@ results, and standings.
   - [ ] Add a public convention landing page with schedule and event discovery
   - [ ] Preserve direct tournament URLs and standalone discovery for child events
 
-## 4. Judge operations and player conduct
+## 5. Judge operations and player conduct
 
 Give judges a focused event-day workspace and model judge actions as durable,
 auditable domain records. Operational table state must remain separate from a
@@ -139,7 +164,7 @@ match result so judge tooling cannot accidentally change standings.
   - [ ] Let authorized staff reopen the table state or resolve the match through normal reporting, forfeit, no-show, or DQ adjudication
 - [ ] Add authorization and invariant tests for judge actions, cross-event history, time extensions, and ghost matches
 
-## 5. Publication, location, and discovery
+## 6. Publication, location, and discovery
 
 Tournament discoverability, participant release, and public publishing are
 separate concerns. Model them explicitly before adding more boolean settings.
@@ -170,7 +195,7 @@ separate concerns. Model them explicitly before adding more boolean settings.
   - [ ] Add format-aware card-count and legality validation with clear warnings/errors
   - [ ] Apply the tournament's decklist publication policy
 
-## 6. Domain events and communications
+## 7. Domain events and communications
 
 Use a durable, idempotent domain-event/outbox layer rather than treating the
 organizer audit log as a delivery queue. Audit, in-app notifications, email,
@@ -198,7 +223,7 @@ push, analytics, and monitoring should be independent consumers.
 - [ ] Add per-user, per-event notification preferences and delivery-channel controls
   - [ ] Respect timezone, quiet-hours, and opt-out settings for reminders while preserving required operational notices
 
-## 7. Event-day outputs and client parity
+## 8. Event-day outputs and client parity
 
 - [ ] Add printable outputs
   - [ ] Pairings by table
@@ -208,7 +233,6 @@ push, analytics, and monitoring should be independent consumers.
 - [ ] Complete native player-controller parity
   - [x] Show current match, player meetings, live timer, and standings
   - [ ] Report a result
-  - [ ] Confirm an opponent's reported result
   - [ ] Drop from the event
   - [ ] Show match history
   - [ ] Submit and view decklists
@@ -225,7 +249,7 @@ push, analytics, and monitoring should be independent consumers.
   - [ ] Add top safe-area padding to sticky top bars
   - [ ] Audit every web page in portrait and landscape before enabling the site-wide viewport change
 
-## 8. Payments
+## 9. Payments
 
 Record the platform decision early, but implement payment state only after the
 admission and cancellation state machines are explicit.
@@ -239,7 +263,7 @@ admission and cancellation state machines are explicit.
 - [ ] Add cancellation/drop refund rules before tournament start
 - [ ] Reconcile payment state with registration transitions without overloading registration status
 
-## 9. Design system and platform polish
+## 10. Design system and platform polish
 
 - [ ] Establish a design language beyond stock shadcn defaults
   - [x] Share player-facing site chrome through SiteShell
