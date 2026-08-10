@@ -1,6 +1,6 @@
 import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
-import { useMyRegistration } from '@tournament-os/core'
+import { mutationErrorMessage, useMyRegistration } from '@tournament-os/core'
 import { useMutation, useQuery } from 'convex/react'
 import {
   Building2,
@@ -234,9 +234,7 @@ function RegistrationPanel({
       await action()
       toast.success(successMessage)
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Something went wrong',
-      )
+      toast.error(mutationErrorMessage(error, 'Something went wrong'))
     } finally {
       setPending(false)
     }

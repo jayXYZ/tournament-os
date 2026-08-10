@@ -1,9 +1,5 @@
 import { useState } from 'react'
-import {
-  
-  
-  useConfirmResult
-} from '@tournament-os/core'
+import { mutationErrorMessage, useConfirmResult } from '@tournament-os/core'
 import { CheckCheck, Hourglass, Swords } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -241,9 +237,7 @@ function MatchStatusSection({ currentMatch }: { currentMatch: MyActiveMatch }) {
               toast.success('Result confirmed.')
             } catch (error) {
               toast.error(
-                error instanceof Error
-                  ? error.message
-                  : 'Could not confirm the result.',
+                mutationErrorMessage(error, 'Could not confirm the result.'),
               )
             } finally {
               setConfirming(false)

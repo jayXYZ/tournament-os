@@ -57,10 +57,17 @@ legitimate play. Tune them in `rateLimits.ts`; nothing else needs to change.
 
 `enforceRateLimit` throws the component's `ConvexError` with
 `data: { kind: "RateLimited", name, retryAfter }`. `ConvexError` data
-survives production error redaction, so clients can branch on it
-(`isRateLimitError` from `@convex-dev/rate-limiter`); today the web app's
-generic error toasts show the raw message, and a friendlier
-"try again in a moment" treatment is tracked in TODO.md.
+survives production error redaction, so clients can branch on it. Both
+clients do so through one helper: `mutationErrorMessage(error, fallback)`
+in `@tournament-os/core` turns a rate-limited rejection into a retry-later
+message sized from `retryAfter` ("try again in about 2 minutes") and
+returns the error's own message otherwise. Every web mutation-error toast
+routes through it (via `useBusyAction` or directly); native mutation flows
+adopt it as they land. The helper reimplements the
+`isRateLimitError` check against the same payload shape rather than
+importing `@convex-dev/rate-limiter`, so its `instanceof ConvexError` test
+resolves through each app's own `convex` instance instead of a second copy
+pnpm may give the component package.
 
 ## Testing
 

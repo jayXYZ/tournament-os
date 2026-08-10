@@ -17,6 +17,7 @@ import {
 import { toast } from 'sonner'
 
 import { api } from '@tournament-os/backend/convex/_generated/api'
+import { mutationErrorMessage } from '@tournament-os/core'
 import { RoundTimerChip } from './round-timer-chip'
 import type { FunctionReturnType } from 'convex/server'
 import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
@@ -396,9 +397,7 @@ function AdvanceStepButton({
       }
     } catch (error) {
       toast.error(
-        error instanceof Error
-          ? error.message
-          : 'Could not advance the tournament.',
+        mutationErrorMessage(error, 'Could not advance the tournament.'),
       )
       throw error
     }

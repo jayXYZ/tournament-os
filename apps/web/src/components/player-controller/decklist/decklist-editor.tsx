@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@tournament-os/backend/convex/_generated/api'
+import { mutationErrorMessage } from '@tournament-os/core'
 import { MAX_DECK_NAME_LENGTH } from '@tournament-os/shared/decklist-limits'
 import { CardSearchInput } from './card-search-input'
 import {
@@ -172,11 +173,7 @@ export function DecklistEditor({
       setHasSubmitted(true)
       toast.success('Decklist submitted.')
     } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : 'Could not submit the decklist.',
-      )
+      toast.error(mutationErrorMessage(error, 'Could not submit the decklist.'))
     } finally {
       setSubmitting(false)
     }

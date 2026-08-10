@@ -20,6 +20,7 @@ export {
   formatRecord,
   standingStatusLabel,
 } from "./format";
+export { mutationErrorMessage } from "./mutation-error";
 export { useRoundTimer } from "./use-round-timer";
 export type {
   LatestStandings,

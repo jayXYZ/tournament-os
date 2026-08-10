@@ -3,6 +3,7 @@ import { useMutation } from 'convex/react'
 import { Archive, Building2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@tournament-os/backend/convex/_generated/api'
+import { mutationErrorMessage } from '@tournament-os/core'
 import { validateOrganizationProfileImageDetails } from '@tournament-os/shared/organization-profile-image'
 import { canManageOrganizationProfile } from '@tournament-os/shared/organizer-utils'
 import { useOrganization } from './organization-context'
@@ -73,9 +74,7 @@ export function OrganizationProfileView() {
       toast.success('Organization profile updated.')
     } catch (error) {
       toast.error(
-        error instanceof Error
-          ? error.message
-          : 'Could not update organization profile.',
+        mutationErrorMessage(error, 'Could not update organization profile.'),
       )
     } finally {
       setBusy(null)
@@ -119,9 +118,10 @@ export function OrganizationProfileView() {
       toast.success('Organization profile picture updated.')
     } catch (error) {
       toast.error(
-        error instanceof Error
-          ? error.message
-          : 'Could not update organization profile picture.',
+        mutationErrorMessage(
+          error,
+          'Could not update organization profile picture.',
+        ),
       )
     } finally {
       setBusy(null)
@@ -145,9 +145,7 @@ export function OrganizationProfileView() {
       toast.success('Organization archived.')
     } catch (error) {
       toast.error(
-        error instanceof Error
-          ? error.message
-          : 'Could not archive organization.',
+        mutationErrorMessage(error, 'Could not archive organization.'),
       )
     } finally {
       setBusy(null)

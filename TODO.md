@@ -41,9 +41,12 @@ changes rather than waiting for a final production milestone.
         cannot write, so they cannot be metered; protection is bounded
         `take()`s, `clampPageSize`, read budgets, viewer gating, and zero
         unbounded `.collect()` calls in deployed code
-  - [ ] Surface RateLimited rejections as a friendly retry-later message in
-        the web and native clients instead of the raw ConvexError toast
-        (`isRateLimitError` gives the typed check)
+  - [x] Surface RateLimited rejections as a friendly retry-later message
+        instead of the raw ConvexError toast: `mutationErrorMessage` in
+        `@tournament-os/core` sizes the message from `retryAfter` and every
+        web mutation-error toast routes through it; native issues no
+        mutations yet, so its result-reporting flows (section 8) adopt the
+        same helper as they land
 - [ ] Establish production deployment checks for Convex and the web app
   - [ ] Fix the Vercel build boundary: `apps/web/vercel.json` runs
         `npx convex deploy` from `apps/web`, but the Convex project lives in
@@ -307,7 +310,9 @@ push, analytics, and monitoring should be independent consumers.
   - [ ] Standings
 - [ ] Complete native player-controller parity
   - [x] Show current match, player meetings, live timer, and standings
-  - [ ] Report a result
+  - [ ] Report a result (surface mutation errors via
+        `mutationErrorMessage` from `@tournament-os/core` so rate-limited
+        rejections get the retry-later treatment)
   - [ ] Drop from the event
   - [ ] Show match history
   - [ ] Submit and view decklists
