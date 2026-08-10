@@ -25,13 +25,13 @@ changes rather than waiting for a final production milestone.
   - [x] Wire Sentry into the native app (root-layout init, `Sentry.wrap`,
         Sentry Metro config, Expo config plugin) behind
         `EXPO_PUBLIC_SENTRY_DSN`
-  - [ ] Run `scripts/setup-error-monitoring.sh` to create the Sentry
+  - [x] Run `scripts/setup-error-monitoring.sh` to create the Sentry
         projects and capture DSNs/credentials (human-only account setup; see
         `docs/error-monitoring.md`)
   - [ ] Enable Convex exception reporting to Sentry in the deployment
         dashboard — blocked on the team being on Convex Pro (the integration
         is Pro-only; no code side exists)
-- [ ] Add rate limiting and abuse controls to public queries and mutations
+- [x] Add rate limiting and abuse controls to public queries and mutations
   - [x] Add per-identity token buckets on every self-serve mutation and on
         row/storage-creating organizer mutations via the
         `@convex-dev/rate-limiter` component, with all budgets and their
