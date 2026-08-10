@@ -32,6 +32,18 @@ changes rather than waiting for a final production milestone.
         dashboard — blocked on the team being on Convex Pro (the integration
         is Pro-only; no code side exists)
 - [ ] Add rate limiting and abuse controls to public queries and mutations
+  - [x] Add per-identity token buckets on every self-serve mutation and on
+        row/storage-creating organizer mutations via the
+        `@convex-dev/rate-limiter` component, with all budgets and their
+        rationale centralized in `convex/rateLimits.ts` (see
+        `docs/rate-limiting.md`); covered by `rateLimits.convex.spec.ts`
+  - [x] Verify the public query surface stays structurally bounded — queries
+        cannot write, so they cannot be metered; protection is bounded
+        `take()`s, `clampPageSize`, read budgets, viewer gating, and zero
+        unbounded `.collect()` calls in deployed code
+  - [ ] Surface RateLimited rejections as a friendly retry-later message in
+        the web and native clients instead of the raw ConvexError toast
+        (`isRateLimitError` gives the typed check)
 - [ ] Establish production deployment checks for Convex and the web app
   - [ ] Fix the Vercel build boundary: `apps/web/vercel.json` runs
         `npx convex deploy` from `apps/web`, but the Convex project lives in

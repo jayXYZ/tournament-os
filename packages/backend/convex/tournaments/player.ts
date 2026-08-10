@@ -35,6 +35,7 @@ import {
   requireTournament,
 } from "../model/tournaments";
 import { ensureCurrentUser } from "../model/users";
+import { enforceRateLimit } from "../rateLimits";
 
 type OpponentSummary = {
   registrationId: Id<"tournamentRegistrations">;
@@ -297,6 +298,7 @@ export const reportMyMatchResult = mutation({
     opponentGameWins: v.number(),
   },
   handler: async (ctx, args) => {
+    await enforceRateLimit(ctx, "reportResult");
     const { match, round, myRow, opponentRow, user } =
       await requireMatchParticipant(ctx, args.matchId);
     await applyMatchResult(ctx, {
@@ -319,6 +321,7 @@ export const reportMyMatchResult = mutation({
 export const confirmMatchResult = mutation({
   args: { matchId: v.id("tournamentMatches") },
   handler: async (ctx, args) => {
+    await enforceRateLimit(ctx, "reportResult");
     const { match, round, myRow, user } = await requireMatchParticipant(
       ctx,
       args.matchId,
@@ -352,6 +355,7 @@ export const confirmMatchResult = mutation({
 export const dropSelf = mutation({
   args: { tournamentId: v.id("tournaments") },
   handler: async (ctx, args) => {
+    await enforceRateLimit(ctx, "dropSelf");
     const user = await ensureCurrentUser(ctx);
     const tournament = await requireTournament(ctx, args.tournamentId);
     if (tournament.lifecycle !== "in_progress") {

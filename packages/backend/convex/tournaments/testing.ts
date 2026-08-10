@@ -32,6 +32,7 @@ import {
   requireTestConfig,
   seedTestPlayers as seedTestPlayersModel,
 } from "../model/testing";
+import { enforceRateLimit } from "../rateLimits";
 import { tournamentFormatValidator } from "../validators";
 
 export const createTestTournament = mutation({
@@ -47,6 +48,7 @@ export const createTestTournament = mutation({
     autoStart: v.optional(v.boolean()),
   },
   handler: async (ctx, args): Promise<Id<"tournaments">> => {
+    await enforceRateLimit(ctx, "createTournament");
     const { user } = await requireActiveMembership(ctx, args.organizationId);
     const dummyPlayerCount = validCapacity(args.dummyPlayerCount ?? 8);
     const playerCapacity = validCapacity(
@@ -130,6 +132,7 @@ export const seedTestPlayers = mutation({
     count: v.number(),
   },
   handler: async (ctx, args) => {
+    await enforceRateLimit(ctx, "seedTestPlayers");
     const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
     requireTestTournament(tournament);
     const addedCount = await seedTestPlayersModel(

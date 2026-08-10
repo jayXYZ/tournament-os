@@ -23,6 +23,7 @@ import {
   registrationForUser,
 } from "./model/registrations";
 import { ensureCurrentUser, userByTokenIdentifier } from "./model/users";
+import { enforceRateLimit } from "./rateLimits";
 import { userProfileVisibilityValidator } from "./validators";
 
 export const me = query({
@@ -36,6 +37,7 @@ export const me = query({
 export const upsertMe = mutation({
   args: {},
   handler: async (ctx): Promise<Id<"users">> => {
+    await enforceRateLimit(ctx, "upsertMe");
     const user = await ensureCurrentUser(ctx);
     return user._id;
   },
@@ -47,6 +49,7 @@ export const updateMyProfileSettings = mutation({
     historyVisibility: v.optional(userProfileVisibilityValidator),
   },
   handler: async (ctx, args) => {
+    await enforceRateLimit(ctx, "updateProfileSettings");
     const user = await ensureCurrentUser(ctx);
     await ctx.db.patch(user._id, {
       ...(args.profileVisibility !== undefined

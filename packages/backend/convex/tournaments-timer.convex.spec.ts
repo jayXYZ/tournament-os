@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 
-import { convexTest, type TestConvex } from "convex-test";
+import type { TestConvex } from "convex-test";
 import { expect, test } from "vitest";
 
 import {
@@ -14,8 +14,7 @@ import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import schema from "./schema";
 import { organizerIdentity, seedOrganizer } from "./specHelpers";
-
-const modules = import.meta.glob("./**/*.ts");
+import { createConvexTest } from "./specHelpers.runtime";
 
 const outsiderIdentity = {
   issuer: "https://convex.test",
@@ -36,7 +35,7 @@ function playerIdentity(playerNumber: number) {
 }
 
 test("startTimer anchors a running timer to the current round", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId } = await seedStartedTournament(t, 4);
   const organizer = t.withIdentity(organizerIdentity);
 
@@ -54,7 +53,7 @@ test("startTimer anchors a running timer to the current round", async () => {
 });
 
 test("startTimer duration falls back from arg to setting to default", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId } = await seedStartedTournament(t, 4);
   const organizer = t.withIdentity(organizerIdentity);
 
@@ -81,7 +80,7 @@ test("startTimer duration falls back from arg to setting to default", async () =
 });
 
 test("startTimer requires an in-progress round", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId } = await seedTournament(t, 4);
   const organizer = t.withIdentity(organizerIdentity);
 
@@ -100,7 +99,7 @@ test("startTimer requires an in-progress round", async () => {
 });
 
 test("startTimer requires published pairings", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId } = await seedTournament(t, 4);
   const organizer = t.withIdentity(organizerIdentity);
   await organizer.mutation(
@@ -125,7 +124,7 @@ test("startTimer requires published pairings", async () => {
 });
 
 test("pause freezes the remainder and resume re-anchors it", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId } = await seedStartedTournament(t, 4);
   const organizer = t.withIdentity(organizerIdentity);
 
@@ -157,7 +156,7 @@ test("pause freezes the remainder and resume re-anchors it", async () => {
 });
 
 test("pausing in overtime keeps the negative remainder", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId } = await seedStartedTournament(t, 4);
   const organizer = t.withIdentity(organizerIdentity);
   await organizer.mutation(api.tournaments.timer.startTimer, { tournamentId });
@@ -170,7 +169,7 @@ test("pausing in overtime keeps the negative remainder", async () => {
 });
 
 test("adjustTimer shifts the anchor and the recorded duration", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId } = await seedStartedTournament(t, 4);
   const organizer = t.withIdentity(organizerIdentity);
 
@@ -217,7 +216,7 @@ test("adjustTimer shifts the anchor and the recorded duration", async () => {
 });
 
 test("clearTimer removes the timer and is idempotent", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId } = await seedStartedTournament(t, 4);
   const organizer = t.withIdentity(organizerIdentity);
 
@@ -230,7 +229,7 @@ test("clearTimer removes the timer and is idempotent", async () => {
 });
 
 test("completeRound clears the finished round's timer", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId } = await seedStartedTournament(t, 4);
   const organizer = t.withIdentity(organizerIdentity);
 
@@ -241,7 +240,7 @@ test("completeRound clears the finished round's timer", async () => {
 });
 
 test("cancelTournament clears a live timer", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId } = await seedStartedTournament(t, 4);
   const organizer = t.withIdentity(organizerIdentity);
 
@@ -253,7 +252,7 @@ test("cancelTournament clears a live timer", async () => {
 });
 
 test("setRoundDuration validates bounds and rejects cancelled events", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId } = await seedStartedTournament(t, 4);
   const organizer = t.withIdentity(organizerIdentity);
 
@@ -289,7 +288,7 @@ test("setRoundDuration validates bounds and rejects cancelled events", async () 
 });
 
 test("timer mutations reject non-organizers", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId } = await seedStartedTournament(t, 4);
 
   const calls = [
@@ -332,7 +331,7 @@ test("timer mutations reject non-organizers", async () => {
 });
 
 test("advance step offers the timer first, then round completion once results are in", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId } = await seedStartedTournament(t, 4);
   const organizer = t.withIdentity(organizerIdentity);
 
@@ -371,7 +370,7 @@ test("advance step offers the timer first, then round completion once results ar
 });
 
 test("timer state rides along on public and player queries", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId } = await seedStartedTournament(t, 4);
   const organizer = t.withIdentity(organizerIdentity);
   await organizer.mutation(api.tournaments.timer.startTimer, { tournamentId });

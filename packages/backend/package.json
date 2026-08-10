@@ -10,6 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@convex-dev/rate-limiter": "^0.3.2",
     "@tournament-os/shared": "workspace:*",
     "convex": "^1.42.0"
   },

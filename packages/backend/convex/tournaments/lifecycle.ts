@@ -25,6 +25,7 @@ import {
   syncRegistrationStartDatesBatch,
 } from "../model/registrations";
 import { completeTournament as completeTournamentTransition } from "../model/progression";
+import { enforceRateLimit } from "../rateLimits";
 import {
   cleanName,
   createTournament as createTournamentModel,
@@ -221,6 +222,7 @@ export const createTournament = mutation({
     decklistRequired: v.optional(v.boolean()),
   },
   handler: async (ctx, args): Promise<Id<"tournaments">> => {
+    await enforceRateLimit(ctx, "createTournament");
     return await createTournamentModel(ctx, {
       organizationId: args.organizationId,
       name: args.name,
@@ -255,6 +257,7 @@ export const createTournamentWithPhases = mutation({
     ),
   },
   handler: async (ctx, args): Promise<Id<"tournaments">> => {
+    await enforceRateLimit(ctx, "createTournament");
     return await createTournamentModel(ctx, {
       organizationId: args.organizationId,
       name: args.name,

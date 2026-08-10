@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 
-import { convexTest, type TestConvex } from "convex-test";
+import type { TestConvex } from "convex-test";
 import { expect, test } from "vitest";
 
 import { api } from "./_generated/api";
@@ -11,8 +11,7 @@ import {
   playOutCurrentRound,
   seedOrganizer,
 } from "./specHelpers";
-
-const modules = import.meta.glob("./**/*.ts");
+import { createConvexTest } from "./specHelpers.runtime";
 
 function playerIdentity(playerNumber: number) {
   return {
@@ -25,7 +24,7 @@ function playerIdentity(playerNumber: number) {
 }
 
 test("phase-1 meeting walks startPlayerMeeting -> startTournament -> completed", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId } = await seedTournament(t, 4, [
     {
       phaseOrder: 1,
@@ -76,7 +75,7 @@ test("phase-1 meeting walks startPlayerMeeting -> startTournament -> completed",
 });
 
 test("seats players alphabetically two per table, odd player alone at the end", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const names = ["charlie", "Alice", "bob", "Dave", "eve"];
   const { tournamentId } = await seedTournament(
     t,
@@ -116,7 +115,7 @@ test("startPlayerMeeting rejects bad states", async () => {
 
   // Not enabled on the phase.
   {
-    const t = convexTest(schema, modules);
+    const t = createConvexTest();
     const { tournamentId } = await seedTournament(t, 4);
     const phaseId = await firstPhaseId(t, tournamentId);
     await expect(
@@ -130,7 +129,7 @@ test("startPlayerMeeting rejects bad states", async () => {
 
   // Already started.
   {
-    const t = convexTest(schema, modules);
+    const t = createConvexTest();
     const { tournamentId } = await seedTournament(t, 4, [
       { phaseOrder: 1, phaseRoundMode: "dynamic", playerMeeting: true },
     ]);
@@ -148,7 +147,7 @@ test("startPlayerMeeting rejects bad states", async () => {
 
   // Too few active players.
   {
-    const t = convexTest(schema, modules);
+    const t = createConvexTest();
     const { tournamentId } = await seedTournament(t, 1, [
       { phaseOrder: 1, phaseRoundMode: "dynamic", playerMeeting: true },
     ]);
@@ -172,7 +171,7 @@ test("startPlayerMeeting rejects bad states", async () => {
 
   // Cancelled tournament.
   {
-    const t = convexTest(schema, modules);
+    const t = createConvexTest();
     const { tournamentId } = await seedTournament(t, 4, [
       { phaseOrder: 1, phaseRoundMode: "dynamic", playerMeeting: true },
     ]);
@@ -190,7 +189,7 @@ test("startPlayerMeeting rejects bad states", async () => {
 });
 
 test("drops during the meeting strike the seat, keep it on reinstate, and shrink round 1", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId, registrationIds } = await seedTournament(t, 4, [
     { phaseOrder: 1, phaseRoundMode: "dynamic", playerMeeting: true },
   ]);
@@ -263,7 +262,7 @@ test("drops during the meeting strike the seat, keep it on reinstate, and shrink
 });
 
 test("a seat's registrationStatus distinguishes a deleted registration from a malformed one", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId, registrationIds } = await seedTournament(t, 4, [
     { phaseOrder: 1, phaseRoundMode: "dynamic", playerMeeting: true },
   ]);
@@ -302,7 +301,7 @@ test("a seat's registrationStatus distinguishes a deleted registration from a ma
 });
 
 test("a later phase holds its own meeting between phases", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId } = await seedTournament(t, 4, [
     { phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 1 },
     {
@@ -358,7 +357,7 @@ test("a later phase holds its own meeting between phases", async () => {
 });
 
 test("a cutoff meeting snapshot controls player views and the next-phase field", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId, registrationIds } = await seedTournament(t, 4, [
     {
       phaseOrder: 1,
@@ -456,7 +455,7 @@ test("a cutoff meeting snapshot controls player views and the next-phase field",
 });
 
 test("a cutoff meeting's seats draw the boundary for dropped-player eliminations", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId } = await seedTournament(t, 5, [
     {
       phaseOrder: 1,
@@ -586,7 +585,7 @@ test("a cutoff meeting's seats draw the boundary for dropped-player eliminations
 });
 
 test("a rewound next phase still cuts against its meeting seats when re-paired", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId, registrationIds } = await seedTournament(t, 5, [
     {
       phaseOrder: 1,
@@ -717,7 +716,7 @@ test("a rewound next phase still cuts against its meeting seats when re-paired",
 // instead of silently re-drawing the boundary against standings the seats may
 // never have been drawn from.
 test("an upcoming next phase with a 'completed' meeting fails the cut loudly", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId } = await seedTournament(t, 5, [
     {
       phaseOrder: 1,
@@ -765,7 +764,7 @@ test("an upcoming next phase with a 'completed' meeting fails the cut loudly", a
 // order-1 phase, but "completed" must always mean the phase's first round is
 // paired), and re-starting the tournament re-completes it.
 test("rewinding round 1 supersedes a phase-1 meeting; restarting re-completes it", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId } = await seedTournament(t, 4, [
     {
       phaseOrder: 1,
@@ -847,7 +846,7 @@ async function correctFirstResultAndComplete(
 }
 
 test("a rewind that corrects a result re-draws a completed meeting's cut", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId } = await seedTournament(t, 5, [
     {
       phaseOrder: 1,
@@ -938,7 +937,7 @@ test("a rewind that corrects a result re-draws a completed meeting's cut", async
 });
 
 test("a re-drawn cut still protects a seated player's withdrawal", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId } = await seedTournament(t, 5, [
     {
       phaseOrder: 1,
@@ -1157,7 +1156,7 @@ function confirmedActiveIds(registrations: Doc<"tournamentRegistrations">[]) {
 }
 
 test("a seated player demoted below a top-X boundary who withdraws is still cut", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const {
     organizer,
     finalRoundId,
@@ -1202,7 +1201,7 @@ test("a seated player demoted below a top-X boundary who withdraws is still cut"
 });
 
 test("a seated player demoted below a points bar who withdraws is still cut", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const {
     organizer,
     finalRoundId,
@@ -1247,7 +1246,7 @@ test("a seated player demoted below a points bar who withdraws is still cut", as
 });
 
 test("a cutoff meeting can complete when its seated field drops below two", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId } = await seedTournament(t, 4, [
     {
       phaseOrder: 1,
@@ -1388,7 +1387,7 @@ async function supersededCutWithHeldPlaceBelowTwo(
 }
 
 test("a superseded cut short of two qualifiers names its recovery, and reinstating fills the held place", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const {
     organizer,
     tournamentId,
@@ -1455,7 +1454,7 @@ test("a superseded cut short of two qualifiers names its recovery, and reinstati
 });
 
 test("a superseded cut short of two qualifiers can complete the tournament", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizer, tournamentId } =
     await supersededCutWithHeldPlaceBelowTwo(t);
 
@@ -1474,7 +1473,7 @@ test("a superseded cut short of two qualifiers can complete the tournament", asy
 });
 
 test("players see their meeting seat, late registrants see none, and pairing is untouched", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const names = ["Alice", "Bob", "Cara", "Dan"];
   const { tournamentId, registrationIds } = await seedTournament(
     t,
@@ -1571,7 +1570,7 @@ test("players see their meeting seat, late registrants see none, and pairing is 
 });
 
 test("deleteTournament clears meeting seats", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId } = await seedTournament(t, 4, [
     { phaseOrder: 1, phaseRoundMode: "dynamic", playerMeeting: true },
   ]);
@@ -1596,7 +1595,7 @@ test("deleteTournament clears meeting seats", async () => {
 });
 
 test("a meeting cut stamps only its own tournament's withdrawals", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId } = await seedTournament(t, 5, [
     {
       phaseOrder: 1,

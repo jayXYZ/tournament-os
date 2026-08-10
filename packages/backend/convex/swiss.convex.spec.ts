@@ -1,6 +1,5 @@
 /// <reference types="vite/client" />
 
-import { convexTest } from "convex-test";
 import { expect, test } from "vitest";
 
 import { api } from "./_generated/api";
@@ -10,13 +9,11 @@ import {
   compareStandingRows,
   recomputeStatsThroughRound,
 } from "./model/standings";
-import schema from "./schema";
 import { organizerIdentity, seedOrganizer } from "./specHelpers";
-
-const modules = import.meta.glob("./**/*.ts");
+import { createConvexTest } from "./specHelpers.runtime";
 
 function createTest() {
-  return convexTest(schema, modules);
+  return createConvexTest();
 }
 type Test = ReturnType<typeof createTest>;
 

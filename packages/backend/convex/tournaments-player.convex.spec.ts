@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 
-import { convexTest, type TestConvex } from "convex-test";
+import type { TestConvex } from "convex-test";
 import { expect, test } from "vitest";
 
 import { api } from "./_generated/api";
@@ -17,8 +17,7 @@ import {
   playOutCurrentRound,
   seedOrganizer,
 } from "./specHelpers";
-
-const modules = import.meta.glob("./**/*.ts");
+import { createConvexTest } from "./specHelpers.runtime";
 
 function playerIdentity(playerNumber: number) {
   return {
@@ -31,7 +30,7 @@ function playerIdentity(playerNumber: number) {
 }
 
 test("reportMyMatchResult records the result for both players", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId, registrationIds } = await seedStartedTournament(t, 4);
   const match = await matchForPlayer(t, tournamentId, 1, registrationIds[0]);
 
@@ -71,7 +70,7 @@ test("reportMyMatchResult records the result for both players", async () => {
 });
 
 test("reportMyMatchResult rejects outsiders, byes, re-reports, and bad scores", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   // Five players: the lowest-seeded player gets the round-one bye.
   const { tournamentId, registrationIds } = await seedStartedTournament(t, 5);
   const match = await matchForPlayer(t, tournamentId, 1, registrationIds[0]);
@@ -145,7 +144,7 @@ test("reportMyMatchResult rejects outsiders, byes, re-reports, and bad scores", 
 });
 
 test("confirmMatchResult requires the opponent; organizer override clears the report", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId, registrationIds } = await seedStartedTournament(t, 4);
   const match = await matchForPlayer(t, tournamentId, 1, registrationIds[0]);
   const opponent = await opponentNumber(
@@ -205,7 +204,7 @@ test("confirmMatchResult requires the opponent; organizer override clears the re
 });
 
 test("player-reported results complete rounds and feed standings", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId, registrationIds } = await seedStartedTournament(t, 4);
   const round = await currentRound(t, tournamentId);
   const matchOne = await matchForPlayer(t, tournamentId, 1, registrationIds[0]);
@@ -264,7 +263,7 @@ test("player-reported results complete rounds and feed standings", async () => {
 });
 
 test("playoff standings lock placements by elimination round", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId, registrationIds } = await seedTournament(t, 12, [
     {
       phaseOrder: 1,
@@ -413,7 +412,7 @@ test("playoff standings lock placements by elimination round", async () => {
 });
 
 test("getMyCurrentMatch walks the tournament lifecycle", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId, registrationIds } = await seedTournament(t, 4);
   const playerOne = t.withIdentity(playerIdentity(1));
 
@@ -491,7 +490,7 @@ test("getMyCurrentMatch walks the tournament lifecycle", async () => {
 });
 
 test("pairings stay private until published and auto-publish applies to future rounds", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId, registrationIds } = await seedTournament(
     t,
     4,
@@ -566,7 +565,7 @@ test("pairings stay private until published and auto-publish applies to future r
 });
 
 test("unpublished rounds do not promise pairings to excluded players", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId, registrationIds } = await seedTournament(
     t,
     4,
@@ -594,7 +593,7 @@ test("unpublished rounds do not promise pairings to excluded players", async () 
 });
 
 test("completing unpublished pairings preserves the round in match history", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId } = await seedTournament(
     t,
     4,
@@ -629,7 +628,7 @@ test("completing unpublished pairings preserves the round in match history", asy
 });
 
 test("isFinalRound is only true in the tournament's last phase", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId } = await seedTournament(t, 4, [
     { phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 1 },
     { phaseOrder: 2, phaseRoundMode: "fixed", phaseTotalRounds: 1 },
@@ -680,7 +679,7 @@ test("isFinalRound is only true in the tournament's last phase", async () => {
 });
 
 test("getMyMatchHistory reports per-round outcomes", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId, registrationIds } = await seedStartedTournament(t, 4);
   const match = await matchForPlayer(t, tournamentId, 1, registrationIds[0]);
   const opponent = await opponentNumber(
@@ -714,7 +713,7 @@ test("getMyMatchHistory reports per-round outcomes", async () => {
 });
 
 test("dropSelf removes the player from future rounds but keeps read access", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId, registrationIds } = await seedTournament(t, 4);
   const playerFour = t.withIdentity(playerIdentity(4));
 
@@ -876,7 +875,7 @@ test("dropSelf removes the player from future rounds but keeps read access", asy
 // batch. Each test checks both what the player sees and what is stored on the
 // row, since a stale stored value is what would break the query.
 test("standings track a drop and a reinstate made between rounds", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId, registrationIds } = await seedStartedTournament(t, 4);
   const organizer = t.withIdentity(organizerIdentity);
   const viewer = t.withIdentity(playerIdentity(1));
@@ -959,7 +958,7 @@ test("standings track a drop and a reinstate made between rounds", async () => {
 });
 
 test("standings show a cut's elimination batch on the round that produced it", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId, registrationIds } = await seedTournament(t, 4, [
     {
       phaseOrder: 1,
@@ -1036,7 +1035,7 @@ test("standings show a cut's elimination batch on the round that produced it", a
 // however large the field is. Counting the reads is the only way to see this:
 // both shapes leave exactly the same rows on disk.
 test("a cut's elimination batch reaches standings through one index range", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId, registrationIds } = await seedTournament(t, 8, [
     {
       phaseOrder: 1,
@@ -1145,7 +1144,7 @@ test("a cut's elimination batch reaches standings through one index range", asyn
 });
 
 test("a rewind past a drop does not resurrect the dropped player", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId, registrationIds } = await seedStartedTournament(t, 4);
   const organizer = t.withIdentity(organizerIdentity);
   const viewer = t.withIdentity(playerIdentity(1));
@@ -1195,7 +1194,7 @@ test("a rewind past a drop does not resurrect the dropped player", async () => {
 // and would pay a document read and a subscription dependency per non-active
 // player, per viewer, to do it.
 test("getLatestStandings reports the status stored on the row, not the registration", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId, registrationIds } = await seedStartedTournament(t, 4);
   const organizer = t.withIdentity(organizerIdentity);
   const viewer = t.withIdentity(playerIdentity(1));
@@ -1254,7 +1253,7 @@ async function storedStandingStatus(
 }
 
 test("player queries reject users who never registered", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId } = await seedStartedTournament(t, 4);
   const outsider = t.withIdentity(playerIdentity(99));
 

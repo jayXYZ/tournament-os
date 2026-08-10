@@ -1,6 +1,5 @@
 /// <reference types="vite/client" />
 
-import { convexTest } from "convex-test";
 import type { FunctionReturnType } from "convex/server";
 import { expect, test } from "vitest";
 
@@ -9,13 +8,11 @@ import type { Id } from "./_generated/dataModel";
 import { setRegistrationState } from "./model/participation";
 import { MAX_TOURNAMENT_PLAYERS } from "./model/registrations";
 import { generateTestResults } from "./model/testing";
-import schema from "./schema";
 import { organizerIdentity, seedOrganizer } from "./specHelpers";
-
-const modules = import.meta.glob("./**/*.ts");
+import { createConvexTest } from "./specHelpers.runtime";
 
 test("listUpcomingPublic returns future public tournaments in start date order", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const now = Date.now();
   const { organizationId, userId } = await seedOrganizer(t);
 
@@ -105,7 +102,7 @@ test("listUpcomingPublic returns future public tournaments in start date order",
 });
 
 test("getPublicTournament hides private and unpublished events and reports registration counts", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const now = Date.now();
   const { organizationId, userId } = await seedOrganizer(t);
 
@@ -242,7 +239,7 @@ test("getPublicTournament hides private and unpublished events and reports regis
 });
 
 test("getPublicTournament keeps private events resolvable for registered players", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const now = Date.now();
   const { organizationId, userId } = await seedOrganizer(t);
   const playerIdentity = {
@@ -356,7 +353,7 @@ test("getPublicTournament keeps private events resolvable for registered players
 // have no way in, and a row in any other entry status is refused by the status
 // guard rather than the visibility one.
 test("registerSelf lets a cancelled player rejoin a private event but admits no one new", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const now = Date.now();
   const { organizationId, userId } = await seedOrganizer(t);
   const playerIdentity = {
@@ -464,7 +461,7 @@ test("registerSelf lets a cancelled player rejoin a private event but admits no 
 // eliminated, or disqualified mid-event must still find the running event
 // here. Disqualifications are masked as drops on this player-facing surface.
 test("listMyTournaments returns every confirmed seat for ongoing and upcoming events", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const now = Date.now();
   const { organizationId, userId } = await seedOrganizer(t);
   const playerIdentity = {
@@ -614,7 +611,7 @@ test("listMyTournaments returns every confirmed seat for ongoing and upcoming ev
 });
 
 test("listUpcomingForOrganization returns active future tournaments for one organization", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const now = Date.now();
   const { organizationId, userId } = await seedOrganizer(t);
   const otherOrganizationId = await t.run(async (ctx) => {
@@ -714,7 +711,7 @@ test("listUpcomingForOrganization returns active future tournaments for one orga
 });
 
 test("createTournamentWithPhases creates an unpublished public tournament with one dynamic Swiss phase", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const now = Date.now();
   const { organizationId } = await seedOrganizer(t);
 
@@ -788,7 +785,7 @@ test("createTournamentWithPhases creates an unpublished public tournament with o
 });
 
 test("unlisted registration events are direct-link accessible but absent from discovery", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const organizer = t.withIdentity(organizerIdentity);
   const tournamentId = await organizer.mutation(
@@ -886,7 +883,7 @@ test("unlisted registration events are direct-link accessible but absent from di
 // player's own completed registration. The states are seeded directly via
 // ctx.db because no mutation writes them yet.
 test("registerSelf reports each entry status honestly instead of a blanket 'Already registered'", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const organizer = t.withIdentity(organizerIdentity);
   const tournamentId = await organizer.mutation(
@@ -966,7 +963,7 @@ test("registerSelf reports each entry status honestly instead of a blanket 'Alre
 });
 
 test("updateTournamentDetails stores trimmed markdown and clears it when emptied", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const now = Date.now();
   const { organizationId } = await seedOrganizer(t);
   const authed = t.withIdentity(organizerIdentity);
@@ -1035,7 +1032,7 @@ test("updateTournamentDetails stores trimmed markdown and clears it when emptied
 });
 
 test("tournament creation assigns sequential public codes", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const now = Date.now();
   const { organizationId } = await seedOrganizer(t);
   const authed = t.withIdentity(organizerIdentity);
@@ -1089,7 +1086,7 @@ test("tournament creation assigns sequential public codes", async () => {
 });
 
 test("createTournamentWithPhases can mark a tournament as a test event", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const now = Date.now();
   const { organizationId } = await seedOrganizer(t);
 
@@ -1113,7 +1110,7 @@ test("createTournamentWithPhases can mark a tournament as a test event", async (
 });
 
 test("organizers can page through registration churn beyond tournament capacity", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const now = Date.now();
   const { organizationId } = await seedOrganizer(t);
   const organizer = t.withIdentity(organizerIdentity);
@@ -1196,7 +1193,7 @@ test("organizers can page through registration churn beyond tournament capacity"
 });
 
 test("a full registration page is not flagged for splitting", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const now = Date.now();
   const { organizationId } = await seedOrganizer(t);
   const organizer = t.withIdentity(organizerIdentity);
@@ -1281,7 +1278,7 @@ test("a full registration page is not flagged for splitting", async () => {
 });
 
 test("organizers can search registrations by player name scoped to one tournament", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const now = Date.now();
   const { organizationId } = await seedOrganizer(t);
   const organizer = t.withIdentity(organizerIdentity);
@@ -1335,7 +1332,7 @@ test("organizers can search registrations by player name scoped to one tournamen
 });
 
 test("seedTestPlayers fills only remaining active registration seats", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const now = Date.now();
   const { organizationId } = await seedOrganizer(t);
   const authed = t.withIdentity(organizerIdentity);
@@ -1411,7 +1408,7 @@ test("seedTestPlayers fills only remaining active registration seats", async () 
 });
 
 test("seedTestPlayers count is seats to add, not a target total", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const now = Date.now();
   const { organizationId } = await seedOrganizer(t);
   const authed = t.withIdentity(organizerIdentity);
@@ -1479,7 +1476,7 @@ test("seedTestPlayers count is seats to add, not a target total", async () => {
 });
 
 test("createTournamentWithPhases stores multiple Swiss phases in order", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const now = Date.now();
   const { organizationId } = await seedOrganizer(t);
 
@@ -1513,7 +1510,7 @@ test("createTournamentWithPhases stores multiple Swiss phases in order", async (
 });
 
 test("updateTournamentPhases atomically adds, removes, reorders, and changes phase types", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const organizer = t.withIdentity(organizerIdentity);
   const tournamentId = await organizer.mutation(
@@ -1619,7 +1616,7 @@ test("updateTournamentPhases atomically adds, removes, reorders, and changes pha
 });
 
 test("pre-start settings enforce roster capacity and lock only while play is active or ended", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const organizer = t.withIdentity(organizerIdentity);
   const tournamentId = await organizer.mutation(
@@ -1720,7 +1717,7 @@ test("pre-start settings enforce roster capacity and lock only while play is act
 });
 
 test("updateTournamentSetup rejects a non-finite start date and never corrupts registrations", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const organizer = t.withIdentity(organizerIdentity);
   const tournamentId = await organizer.mutation(
@@ -1777,7 +1774,7 @@ test("updateTournamentSetup rejects a non-finite start date and never corrupts r
 // model/tournaments.ts createTournament, so a single validStartDate call
 // there closes both entry points at once.
 test("createTournament and createTournamentWithPhases reject a non-finite start date", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const organizer = t.withIdentity(organizerIdentity);
 
@@ -1827,7 +1824,7 @@ test("createTournament and createTournamentWithPhases reject a non-finite start 
 // of tournament.startDate onto tournamentStartDate can never observe a
 // non-finite value.
 test("registerSelf never denormalizes a non-finite tournament start date", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const organizer = t.withIdentity(organizerIdentity);
   const tournamentId = await organizer.mutation(
@@ -1873,7 +1870,7 @@ test("registerSelf never denormalizes a non-finite tournament start date", async
 // only NaN is a new rejection here — asserted alongside the infinities to pin
 // that they still reject too.
 test("createTournament, createTournamentWithPhases, and updateTournamentSetup reject a non-finite player capacity", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const organizer = t.withIdentity(organizerIdentity);
   const capacityErrorMessage = `Player capacity must be between 2 and ${MAX_TOURNAMENT_PLAYERS}`;
@@ -1967,7 +1964,7 @@ test("createTournament, createTournamentWithPhases, and updateTournamentSetup re
 // via `args.startDate ?? now` with no validation of the caller-supplied
 // value — the identical hole, fixed with the same validStartDate helper.
 test("createTestTournament rejects a non-finite start date", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const organizer = t.withIdentity(organizerIdentity);
 
@@ -1993,7 +1990,7 @@ test("createTestTournament rejects a non-finite start date", async () => {
 });
 
 test("updateTournamentPhases rejects duplicate and foreign phase IDs", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const organizer = t.withIdentity(organizerIdentity);
   const tournamentIds = await Promise.all(
@@ -2052,7 +2049,7 @@ test("updateTournamentPhases rejects duplicate and foreign phase IDs", async () 
 });
 
 test("structural phase changes reset only affected player meeting snapshots", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const organizer = t.withIdentity(organizerIdentity);
   const tournamentId = await organizer.mutation(
@@ -2150,7 +2147,7 @@ test("structural phase changes reset only affected player meeting snapshots", as
 });
 
 test("createTournamentWithPhases rejects an empty phase list", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
 
   await expect(
@@ -2168,7 +2165,7 @@ test("createTournamentWithPhases rejects an empty phase list", async () => {
 });
 
 test("startTournament resolves dynamic Swiss rounds from active player count", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const authed = t.withIdentity(organizerIdentity);
   const tournamentId = await authed.mutation(
@@ -2202,7 +2199,7 @@ test("startTournament resolves dynamic Swiss rounds from active player count", a
 });
 
 test("completeRound only accepts the current in-progress round", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const organizer = t.withIdentity(organizerIdentity);
   const tournamentId = await organizer.mutation(
@@ -2250,7 +2247,7 @@ test("completeRound only accepts the current in-progress round", async () => {
 });
 
 test("multi-phase tournaments advance into the next phase and carry records", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const authed = t.withIdentity(organizerIdentity);
   const tournamentId = await authed.mutation(
@@ -2363,7 +2360,7 @@ test("multi-phase tournaments advance into the next phase and carry records", as
 });
 
 async function createCutoffTournament(
-  t: ReturnType<typeof convexTest>,
+  t: ReturnType<typeof createConvexTest>,
   phaseCutoff:
     | { kind: "top_X_players"; playerCount: number }
     | { kind: "X_points_or_more"; matchPoints: number },
@@ -2400,7 +2397,7 @@ async function createCutoffTournament(
 }
 
 test("a top-X cutoff eliminates non-qualifiers when the next phase starts", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { authed, tournamentId } = await createCutoffTournament(t, {
     kind: "top_X_players",
     playerCount: 2,
@@ -2454,7 +2451,7 @@ test("a top-X cutoff eliminates non-qualifiers when the next phase starts", asyn
 });
 
 test("a points cutoff advances every player at or above the bar", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { authed, tournamentId } = await createCutoffTournament(t, {
     kind: "X_points_or_more",
     matchPoints: 3,
@@ -2490,7 +2487,7 @@ test("a points cutoff advances every player at or above the bar", async () => {
 });
 
 test("a cutoff nobody clears ends the tournament instead of pairing the next phase", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { authed, tournamentId } = await createCutoffTournament(t, {
     kind: "X_points_or_more",
     matchPoints: 6,
@@ -2528,7 +2525,7 @@ test("a cutoff nobody clears ends the tournament instead of pairing the next pha
 });
 
 test("a cutoff nobody clears cancels every later phase, not just the next one", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const authed = t.withIdentity(organizerIdentity);
   const tournamentId = await authed.mutation(
@@ -2587,7 +2584,7 @@ test("a cutoff nobody clears cancels every later phase, not just the next one", 
 });
 
 test("rewinding the round after a cutoff restores the eliminated players", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { authed, tournamentId } = await createCutoffTournament(t, {
     kind: "top_X_players",
     playerCount: 2,
@@ -2629,7 +2626,7 @@ test("rewinding the round after a cutoff restores the eliminated players", async
 // from the still-stale registrations — the rows every player's standings
 // query reads.
 test("a cross-phase rewind leaves restored players active on the promoted round's standings", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const authed = t.withIdentity(organizerIdentity);
   const tournamentId = await authed.mutation(
@@ -2710,7 +2707,7 @@ test("a cross-phase rewind leaves restored players active on the promoted round'
 });
 
 test("phase cutoffs are validated against the phase structure", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const authed = t.withIdentity(organizerIdentity);
   const createWithPhases = (
@@ -2823,7 +2820,7 @@ test("phase cutoffs are validated against the phase structure", async () => {
 });
 
 test("rewinding round one ignores byes, clears the timer, and reopens registration", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const authed = t.withIdentity(organizerIdentity);
   const tournamentId = await authed.mutation(
@@ -2879,7 +2876,7 @@ test("rewinding round one ignores byes, clears the timer, and reopens registrati
 });
 
 test("rewind requires organizer access and an in-progress lifecycle", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const authed = t.withIdentity(organizerIdentity);
   const tournamentId = await authed.mutation(
@@ -2919,7 +2916,7 @@ test("rewind requires organizer access and an in-progress lifecycle", async () =
 });
 
 test("rewinding a Swiss round reopens results and regenerates pairings", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const authed = t.withIdentity(organizerIdentity);
   const tournamentId = await authed.mutation(
@@ -3016,7 +3013,7 @@ test("rewinding a Swiss round reopens results and regenerates pairings", async (
 });
 
 test("rewinding a playoff restores cut players and reopens the Swiss phase", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const authed = t.withIdentity(organizerIdentity);
   const tournamentId = await authed.mutation(
@@ -3093,7 +3090,7 @@ test("rewinding a playoff restores cut players and reopens the Swiss phase", asy
 });
 
 test("reinstating a dropped eliminated player restores the elimination, not active play", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const authed = t.withIdentity(organizerIdentity);
   const tournamentId = await authed.mutation(
@@ -3181,7 +3178,7 @@ test("reinstating a dropped eliminated player restores the elimination, not acti
 });
 
 test("re-completing a rewound bracket round re-records a dropped loser's elimination", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const authed = t.withIdentity(organizerIdentity);
   const tournamentId = await authed.mutation(
@@ -3277,7 +3274,7 @@ test("re-completing a rewound bracket round re-records a dropped loser's elimina
 // reserved placeholder with no writer), so this pins setRegistrationState's
 // contract directly, ahead of that mutation landing.
 test("disqualifying an eliminated player preserves the elimination record", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const authed = t.withIdentity(organizerIdentity);
   const tournamentId = await authed.mutation(
@@ -3371,7 +3368,7 @@ test("disqualifying an eliminated player preserves the elimination record", asyn
 // Active — so leaving the confirmed state while a row exists must throw
 // rather than silently stamp a dropped player's row back to Active.
 test("a registration cannot leave the confirmed state while it holds a standings row", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const authed = t.withIdentity(organizerIdentity);
   const tournamentId = await authed.mutation(
@@ -3466,7 +3463,7 @@ test("a registration cannot leave the confirmed state while it holds a standings
 });
 
 test("re-running a rewound cutoff re-records a dropped non-qualifier's elimination", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { authed, tournamentId } = await createCutoffTournament(t, {
     kind: "top_X_players",
     playerCount: 2,
@@ -3524,7 +3521,7 @@ test("re-running a rewound cutoff re-records a dropped non-qualifier's eliminati
 });
 
 test("a cut with no player meeting eliminates dropped players ranked above the boundary", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { authed, tournamentId } = await createCutoffTournament(t, {
     kind: "top_X_players",
     playerCount: 2,
@@ -3591,7 +3588,7 @@ test("a cut with no player meeting eliminates dropped players ranked above the b
 });
 
 test("a top-8 cut eliminates a dropped player the standings rank inside the bracket", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const authed = t.withIdentity(organizerIdentity);
   const tournamentId = await authed.mutation(
@@ -3671,7 +3668,7 @@ test("a top-8 cut eliminates a dropped player the standings rank inside the brac
 });
 
 test("a withdrawal preserved by a round-one rewind can be reinstated before play restarts", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const authed = t.withIdentity(organizerIdentity);
   const tournamentId = await authed.mutation(
@@ -3744,7 +3741,7 @@ test("a withdrawal preserved by a round-one rewind can be reinstated before play
 });
 
 test("a withdrawal preserved by a round-one rewind can be dropped pre-play to free the seat", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const authed = t.withIdentity(organizerIdentity);
   const tournamentId = await authed.mutation(
@@ -3811,7 +3808,7 @@ test("a withdrawal preserved by a round-one rewind can be dropped pre-play to fr
 });
 
 test("a player whose withdrawal survived a rewind can cancel and re-register", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const organizer = t.withIdentity(organizerIdentity);
   const tournamentId = await organizer.mutation(
@@ -3885,7 +3882,7 @@ test("a player whose withdrawal survived a rewind can cancel and re-register", a
 });
 
 test("rewinding elimination pairings restores losers and repairs advancement", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const authed = t.withIdentity(organizerIdentity);
   const tournamentId = await authed.mutation(
@@ -3996,7 +3993,7 @@ test("rewinding elimination pairings restores losers and repairs advancement", a
 });
 
 test("top-8 single elimination advances active players without reseeding", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const authed = t.withIdentity(organizerIdentity);
   const tournamentId = await authed.mutation(
@@ -4193,7 +4190,7 @@ test("top-8 single elimination advances active players without reseeding", async
 });
 
 test("top-8 cut promotes the next-ranked active player when a qualifier drops", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const authed = t.withIdentity(organizerIdentity);
   const tournamentId = await authed.mutation(
@@ -4259,7 +4256,7 @@ test("top-8 cut promotes the next-ranked active player when a qualifier drops", 
 });
 
 test("top-8 tournaments cannot start with fewer than eight active players", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const authed = t.withIdentity(organizerIdentity);
   const tournamentId = await authed.mutation(
@@ -4304,7 +4301,7 @@ test("top-8 tournaments cannot start with fewer than eight active players", asyn
 });
 
 test("an unplayable top-8 phase can be cancelled after Swiss", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const authed = t.withIdentity(organizerIdentity);
   const tournamentId = await authed.mutation(
@@ -4368,7 +4365,7 @@ test("an unplayable top-8 phase can be cancelled after Swiss", async () => {
 });
 
 test("test tournaments seed players, generate Swiss rounds, and complete", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId } = await t.run(async (ctx) => {
     const now = Date.now();
     const userId = await ctx.db.insert("users", {
@@ -4498,7 +4495,7 @@ test("test tournaments seed players, generate Swiss rounds, and complete", async
 });
 
 test("test round simulation generates varied results after an existing report", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const authed = t.withIdentity(organizerIdentity);
 
@@ -4573,7 +4570,7 @@ test("test round simulation generates varied results after an existing report", 
 });
 
 test("test round simulation converts draws into decisive elimination results", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const authed = t.withIdentity(organizerIdentity);
 
@@ -4627,7 +4624,7 @@ test("test round simulation converts draws into decisive elimination results", a
 });
 
 test("test simulation functions reject non-test tournaments", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const authed = t.withIdentity(organizerIdentity);
   const tournamentId: Id<"tournaments"> = await authed.mutation(
@@ -4653,7 +4650,7 @@ test("test simulation functions reject non-test tournaments", async () => {
 // the organizer's paginated endpoint — the tests assert over all rows, not a
 // single page.
 async function listRegistrations(
-  authed: ReturnType<ReturnType<typeof convexTest>["withIdentity"]>,
+  authed: ReturnType<ReturnType<typeof createConvexTest>["withIdentity"]>,
   tournamentId: Id<"tournaments">,
 ) {
   type RegistrationPage = FunctionReturnType<
@@ -4676,7 +4673,7 @@ async function listRegistrations(
 // current round, then completes the round. Returns the round and the unordered
 // registration-id pair of each match for rematch assertions.
 async function playOutCurrentRound(
-  authed: ReturnType<ReturnType<typeof convexTest>["withIdentity"]>,
+  authed: ReturnType<ReturnType<typeof createConvexTest>["withIdentity"]>,
   tournamentId: Id<"tournaments">,
 ) {
   const round = await authed.query(api.tournaments.rounds.getCurrentRound, {
@@ -4720,7 +4717,7 @@ async function playOutCurrentRound(
 }
 
 async function recordFirstPlayerWins(
-  authed: ReturnType<ReturnType<typeof convexTest>["withIdentity"]>,
+  authed: ReturnType<ReturnType<typeof createConvexTest>["withIdentity"]>,
   pairings: Array<{
     match: { _id: Id<"tournamentMatches"> };
     players: Array<{ playerId: Id<"tournamentRegistrations"> }>;
@@ -4744,7 +4741,7 @@ async function recordFirstPlayerWins(
 }
 
 async function seedActiveRegistrations(
-  t: ReturnType<typeof convexTest>,
+  t: ReturnType<typeof createConvexTest>,
   tournamentId: Id<"tournaments">,
   count: number,
 ) {

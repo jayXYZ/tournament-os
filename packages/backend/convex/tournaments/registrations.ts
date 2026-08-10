@@ -22,6 +22,7 @@ import {
   requireOrganizerAccess,
   requireTournament,
 } from "../model/tournaments";
+import { enforceRateLimit } from "../rateLimits";
 
 const REGISTRATION_PAGE_SIZE = 100;
 
@@ -87,6 +88,7 @@ function existingEntryBlocksRegistration(
 export const registerSelf = mutation({
   args: { tournamentId: v.id("tournaments") },
   handler: async (ctx, args): Promise<Id<"tournamentRegistrations">> => {
+    await enforceRateLimit(ctx, "registerSelf");
     const user = await ensureCurrentUser(ctx);
     const tournament = await requireTournament(ctx, args.tournamentId);
     const existing = await registrationForUser(
@@ -157,6 +159,7 @@ export const registerSelf = mutation({
 export const cancelMyRegistration = mutation({
   args: { tournamentId: v.id("tournaments") },
   handler: async (ctx, args) => {
+    await enforceRateLimit(ctx, "cancelRegistration");
     const user = await ensureCurrentUser(ctx);
     const tournament = await requireTournament(ctx, args.tournamentId);
     if (tournament.lifecycle !== "registration") {
