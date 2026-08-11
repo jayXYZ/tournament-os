@@ -1,11 +1,11 @@
 packages:
   - packages/*
   - apps/*
-ignoredBuiltDependencies:
-  - sharp
-  - unrs-resolver
-onlyBuiltDependencies:
-  - '@clerk/shared'
+# Expo / React Native (Metro) resolves modules from a flat node_modules tree.
+# pnpm's default isolated store breaks Metro resolution in a monorepo, so we
+# use a hoisted layout. This is Expo's officially recommended pnpm setup.
+# https://docs.expo.dev/guides/monorepos/
+nodeLinker: hoisted
 patchedDependencies:
   '@clerk/expo': patches/@clerk__expo.patch
 # Pin a single React version across the workspace. pnpm otherwise installs
@@ -32,5 +32,6 @@ allowBuilds:
   core-js: false
   esbuild: true
   msw: false
+  sharp: false
   unrs-resolver: false
   utf-8-validate: false

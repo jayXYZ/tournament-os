@@ -72,12 +72,13 @@ changes rather than waiting for a final production milestone.
       shrinking the settings route chunk from 493 kB to 15 kB with the editor
       in its own on-demand 480 kB chunk; verified in-browser on the settings
       page
-- [ ] Finish the pnpm 11 settings migration
-  - [ ] Move `node-linker=hoisted` from `.npmrc` into `pnpm-workspace.yaml` as
-        `nodeLinker: hoisted` — pnpm 11 ignores the `.npmrc` setting, so the
-        active install is isolated despite the documented Expo/Metro hoisting
-        rationale
-  - [ ] Delete the `ignoredBuiltDependencies`/`onlyBuiltDependencies` keys
+- [x] Finish the pnpm 11 settings migration
+  - [x] Move `node-linker=hoisted` from `.npmrc` into `pnpm-workspace.yaml` as
+        `nodeLinker: hoisted` (`.npmrc` deleted); verified with a clean
+        reinstall that the layout is genuinely hoisted — no `.pnpm` virtual
+        store, no per-package `node_modules`, react and convex resolve as
+        root singletons
+  - [x] Delete the `ignoredBuiltDependencies`/`onlyBuiltDependencies` keys
         (removed in pnpm 11) and fold them into `allowBuilds`, adding the
         missing `sharp: false`
 - [ ] Commit environment contracts
