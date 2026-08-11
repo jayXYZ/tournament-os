@@ -12,7 +12,10 @@ import {
 } from "./organizer-utils.ts";
 
 test("slugifyOrganizationName creates stable slugs from organizer names", () => {
-  assert.equal(slugifyOrganizationName("  Friday Night Magic @ Main St.  "), "friday-night-magic-main-st");
+  assert.equal(
+    slugifyOrganizationName("  Friday Night Magic @ Main St.  "),
+    "friday-night-magic-main-st",
+  );
   assert.equal(slugifyOrganizationName("!!!"), "organizer");
 });
 
@@ -29,7 +32,10 @@ test("canManageOrganizationProfile allows only owner and admin roles", () => {
 });
 
 test("normalizeInviteEmail trims and lowercases emails", () => {
-  assert.equal(normalizeInviteEmail("  Judge@OneExample.COM "), "judge@oneexample.com");
+  assert.equal(
+    normalizeInviteEmail("  Judge@OneExample.COM "),
+    "judge@oneexample.com",
+  );
 });
 
 test("toMembershipStatus only exposes known lifecycle states", () => {

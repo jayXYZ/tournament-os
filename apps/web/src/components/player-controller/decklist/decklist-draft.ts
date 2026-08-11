@@ -36,7 +36,10 @@ export function parseCardInput(raw: string): {
   if (match) {
     const quantity = Number.parseInt(match[1], 10)
     if (quantity >= 1) {
-      return { quantity: Math.min(quantity, MAX_QUANTITY), name: match[2].trim() }
+      return {
+        quantity: Math.min(quantity, MAX_QUANTITY),
+        name: match[2].trim(),
+      }
     }
   }
   return { quantity: 1, name: raw.trim() }
@@ -71,7 +74,10 @@ export function addToBoard(
         : entry,
     )
   }
-  return [...entries, { name: name.trim(), quantity: Math.min(quantity, MAX_QUANTITY) }]
+  return [
+    ...entries,
+    { name: name.trim(), quantity: Math.min(quantity, MAX_QUANTITY) },
+  ]
 }
 
 // Sets an entry's count directly; clamps to 1..MAX_QUANTITY. Removing is an

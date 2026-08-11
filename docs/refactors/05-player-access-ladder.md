@@ -46,7 +46,7 @@ Extract the ladder into one module with two adapters:
   `apps/web/src/components/player-controller/` (or `packages/tournament-core`
   if it stays free of web-only imports) returning a discriminated union:
   `{ state: 'loading' } | { state: 'notFound' } | { state: 'signedOut' } |
-  { state: 'notRegistered', event } | { state: 'ready', event, registration }`.
+{ state: 'notRegistered', event } | { state: 'ready', event, registration }`.
   Internally it composes refactor 01's auth-readiness hook, the event lookup,
   and the confirmed-entry rule (`entryStatus === 'confirmed'` — keep the
   comment explaining it matches the server's `requireRegisteredPlayer`).

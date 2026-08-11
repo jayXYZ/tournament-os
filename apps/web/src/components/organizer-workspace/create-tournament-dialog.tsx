@@ -16,9 +16,7 @@ import type {
 } from '@tournament-os/shared/tournament-creation-utils'
 import type { FormEvent } from 'react'
 import type { TournamentBasicsValue } from '@/components/tournaments'
-import {
-  TournamentBasicsFields,
-} from '@/components/tournaments'
+import { TournamentBasicsFields } from '@/components/tournaments'
 import { TournamentPhaseEditor } from '@/components/tournaments/tournament-phase-editor'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'

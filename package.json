@@ -16,11 +16,17 @@
     "test:e2e": "pnpm --filter @tournament-os/web test:e2e",
     "lint": "pnpm run lint:web && pnpm run lint:native",
     "lint:web": "pnpm --filter @tournament-os/web lint",
-    "lint:native": "pnpm --filter @tournament-os/native lint"
+    "lint:native": "pnpm --filter @tournament-os/native lint",
+    "typecheck": "pnpm -r run typecheck",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "dependencies": {
     "expo": "~56.0.12",
     "react": "19.2.3",
     "react-native": "0.85.3"
+  },
+  "devDependencies": {
+    "prettier": "^3.8.3"
   }
 }

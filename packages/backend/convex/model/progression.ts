@@ -71,7 +71,8 @@ const TOP_EIGHT_REQUIRES_EIGHT =
 const CURRENT_ROUND_NOT_FOUND = "Current round not found";
 const ROUND_NOT_COMPLETED = "Current round must be completed first";
 const ROUND_NOT_IN_PROGRESS = "Current round is not in progress";
-const ONLY_CURRENT_ROUND_COMPLETABLE = "Only the current round can be completed";
+const ONLY_CURRENT_ROUND_COMPLETABLE =
+  "Only the current round can be completed";
 const ALL_RESULTS_REQUIRED =
   "All matches need results before completing the round";
 const ALL_ROUNDS_GENERATED = "All configured rounds have been generated";
@@ -621,7 +622,12 @@ export async function completeRound(
     );
   }
   requireAllowed(actions.completeRound);
-  return await executeCompleteRound(ctx, tournament, user, actions.completeRound);
+  return await executeCompleteRound(
+    ctx,
+    tournament,
+    user,
+    actions.completeRound,
+  );
 }
 
 async function executeCompleteRound(
@@ -713,7 +719,12 @@ async function executeGenerateNextRound(
   }
   const { roundId, playerCount } =
     step.mode === "continuePhase"
-      ? await continuePhaseWithNextRound(ctx, tournament, step.phase, step.round)
+      ? await continuePhaseWithNextRound(
+          ctx,
+          tournament,
+          step.phase,
+          step.round,
+        )
       : await startNextPhaseFirstRound(ctx, tournament, step);
   await logAuditEvent(ctx, {
     tournamentId: tournament._id,
@@ -860,7 +871,12 @@ export async function completeTournament(
 ): Promise<void> {
   const { actions } = await analyzeProgression(ctx, tournament);
   requireAllowed(actions.completeTournament);
-  await executeCompleteTournament(ctx, tournament, user, actions.completeTournament);
+  await executeCompleteTournament(
+    ctx,
+    tournament,
+    user,
+    actions.completeTournament,
+  );
 }
 
 async function executeCompleteTournament(
@@ -916,7 +932,12 @@ export async function advance(
   const first = await analyzeProgression(ctx, tournament);
   requireAllowed(first.actions.completeRound);
   const completedRound = first.actions.completeRound.round;
-  await executeCompleteRound(ctx, tournament, user, first.actions.completeRound);
+  await executeCompleteRound(
+    ctx,
+    tournament,
+    user,
+    first.actions.completeRound,
+  );
 
   // Completing the round moved the state machine; every doc the next step
   // reads is re-fetched so the second verdict sees what the first one wrote.
@@ -932,7 +953,10 @@ export async function advance(
       user,
       next.actions.completeTournament,
     );
-    return { kind: "tournamentCompleted", completedRoundId: completedRound._id };
+    return {
+      kind: "tournamentCompleted",
+      completedRoundId: completedRound._id,
+    };
   }
   if (!next.actions.generateNextRound.allowed) {
     if (next.actions.completeTournament.allowed) {

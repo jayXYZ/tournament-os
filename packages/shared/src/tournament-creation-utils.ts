@@ -95,8 +95,7 @@ function hasValidTournamentPhaseOrder(phases: TournamentCreationPhaseForm[]) {
     phases[0].phaseType === "swiss" &&
     phases.every(
       (phase, index) =>
-        phase.phaseType !== "single_elimination" ||
-        index === phases.length - 1,
+        phase.phaseType !== "single_elimination" || index === phases.length - 1,
     )
   );
 }
@@ -108,11 +107,7 @@ export function canMoveTournamentCreationPhase(
 ) {
   const currentIndex = phases.findIndex((phase) => phase.id === id);
   const nextIndex = currentIndex + direction;
-  if (
-    currentIndex === -1 ||
-    nextIndex < 0 ||
-    nextIndex >= phases.length
-  ) {
+  if (currentIndex === -1 || nextIndex < 0 || nextIndex >= phases.length) {
     return false;
   }
 

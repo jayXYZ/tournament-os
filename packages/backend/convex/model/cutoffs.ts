@@ -215,8 +215,7 @@ export async function cutoffQualifiers(
   roundId: Id<"tournamentRounds">,
   cutoff: TournamentPhaseCutoff,
 ) {
-  return (await cutoffPartition(ctx, tournamentId, roundId, cutoff))
-    .qualifiers;
+  return (await cutoffPartition(ctx, tournamentId, roundId, cutoff)).qualifiers;
 }
 
 // While a cutoff phase's player meeting is live its seats are the authoritative

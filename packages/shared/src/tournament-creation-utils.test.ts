@@ -39,10 +39,11 @@ test("addTournamentCreationPhase inserts a Swiss phase before a playoff", () => 
     phaseType: "single_elimination" as const,
   };
 
-  assert.deepEqual(
-    addTournamentCreationPhase([swiss, playoff], "phase-2"),
-    [swiss, createDefaultTournamentCreationPhase("phase-2"), playoff],
-  );
+  assert.deepEqual(addTournamentCreationPhase([swiss, playoff], "phase-2"), [
+    swiss,
+    createDefaultTournamentCreationPhase("phase-2"),
+    playoff,
+  ]);
 });
 
 test("moveTournamentCreationPhase reorders Swiss phases without moving a playoff", () => {
@@ -54,23 +55,14 @@ test("moveTournamentCreationPhase reorders Swiss phases without moving a playoff
   };
   const phases = [phaseOne, phaseTwo, playoff];
 
-  assert.equal(
-    canMoveTournamentCreationPhase(phases, "phase-1", 1),
-    true,
-  );
+  assert.equal(canMoveTournamentCreationPhase(phases, "phase-1", 1), true);
   assert.deepEqual(moveTournamentCreationPhase(phases, "phase-1", 1), [
     phaseTwo,
     phaseOne,
     playoff,
   ]);
-  assert.equal(
-    canMoveTournamentCreationPhase(phases, "phase-2", 1),
-    false,
-  );
-  assert.equal(
-    canMoveTournamentCreationPhase(phases, "playoff", -1),
-    false,
-  );
+  assert.equal(canMoveTournamentCreationPhase(phases, "phase-2", 1), false);
+  assert.equal(canMoveTournamentCreationPhase(phases, "playoff", -1), false);
 });
 
 test("removeTournamentCreationPhase preserves a leading Swiss phase", () => {

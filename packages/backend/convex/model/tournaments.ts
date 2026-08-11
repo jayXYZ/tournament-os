@@ -5,10 +5,7 @@ import { requireActiveMembership, requireCurrentUser } from "./access";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "./batching";
 import { createPhases, type validPhaseInputs } from "./phases";
 import { nextPublicCode } from "./publicCodes";
-import {
-  MAX_TOURNAMENT_PLAYERS,
-  registrationForUser,
-} from "./registrations";
+import { MAX_TOURNAMENT_PLAYERS, registrationForUser } from "./registrations";
 
 export const TOURNAMENT_PUBLIC_CODE_COUNTER_KEY = "tournamentPublicCode";
 export const FIRST_TOURNAMENT_PUBLIC_CODE = 100_001;

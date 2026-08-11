@@ -21,11 +21,10 @@ export function pairingSeed(
   points: number,
 ): number {
   return (
-    ((Math.trunc(seed) ^
+    (Math.trunc(seed) ^
       Math.imul(roundNumber, 2654435761) ^
       Math.imul(points, 40503)) >>>
-      0) ||
-    1
+      0 || 1
   );
 }
 

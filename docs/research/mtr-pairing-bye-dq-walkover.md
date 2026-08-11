@@ -8,33 +8,33 @@ specify it — a finding in itself).
 
 ## Documents worked from
 
-| Document | Revision | Source |
-| --- | --- | --- |
-| Magic: The Gathering Tournament Rules (MTR) | Effective **February 27, 2026** (current per WPN) | [media.wizards.com PDF](https://media.wizards.com/ContentResources/WPN/MTG_MTR_2026_Feb27_EN.pdf), linked from [WPN Rules and Documentation](https://wpn.wizards.com/en/rules-documents) |
-| Magic Infraction Procedure Guide (IPG) | Effective **September 23, 2024** (latest published) | [media.wizards.com PDF](https://media.wizards.com/ContentResources/WPN/MTG_IPG_2024Sep23_EN.pdf) |
-| MTR historical comparison | April 15, 2024 | [media.wizards.com PDF](https://media.wizards.com/ContentResources/WPN/MTG_MTR_2024_Apr15.pdf) |
-| MTR historical comparison | March 27, 2015 | [mirror PDF](https://hudecekpetr.cz/other/rulebooks/mtr-2015-03-23.pdf) *(mirror)* |
-| DCI Universal Tournament Rules (UTR) | June 20, 2007 | [mirror PDF](https://users.pfw.edu/buldtb/private/fwgg/mtg/pdfs/DCI_UTR.pdf) *(mirror)* |
-| WotC "Swiss-Style Pairing System Basics" (scorekeeper aid F.1.1/F.1.2) | Updated **October 7, 1999** | [mirror PDF](https://mjmj.info/data/obsolete/other/Swiss_Pairings.pdf) *(mirror; obsolete official document)* |
-| Magic Judges Forum, "Pairing Algorithm" (topic 8245) | community discussion, L5 judge participation | [apps.magicjudges.org](https://apps.magicjudges.org/forum/topic/8245/) *(secondary, judge program)* |
+| Document                                                               | Revision                                            | Source                                                                                                                                                                                   |
+| ---------------------------------------------------------------------- | --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Magic: The Gathering Tournament Rules (MTR)                            | Effective **February 27, 2026** (current per WPN)   | [media.wizards.com PDF](https://media.wizards.com/ContentResources/WPN/MTG_MTR_2026_Feb27_EN.pdf), linked from [WPN Rules and Documentation](https://wpn.wizards.com/en/rules-documents) |
+| Magic Infraction Procedure Guide (IPG)                                 | Effective **September 23, 2024** (latest published) | [media.wizards.com PDF](https://media.wizards.com/ContentResources/WPN/MTG_IPG_2024Sep23_EN.pdf)                                                                                         |
+| MTR historical comparison                                              | April 15, 2024                                      | [media.wizards.com PDF](https://media.wizards.com/ContentResources/WPN/MTG_MTR_2024_Apr15.pdf)                                                                                           |
+| MTR historical comparison                                              | March 27, 2015                                      | [mirror PDF](https://hudecekpetr.cz/other/rulebooks/mtr-2015-03-23.pdf) _(mirror)_                                                                                                       |
+| DCI Universal Tournament Rules (UTR)                                   | June 20, 2007                                       | [mirror PDF](https://users.pfw.edu/buldtb/private/fwgg/mtg/pdfs/DCI_UTR.pdf) _(mirror)_                                                                                                  |
+| WotC "Swiss-Style Pairing System Basics" (scorekeeper aid F.1.1/F.1.2) | Updated **October 7, 1999**                         | [mirror PDF](https://mjmj.info/data/obsolete/other/Swiss_Pairings.pdf) _(mirror; obsolete official document)_                                                                            |
+| Magic Judges Forum, "Pairing Algorithm" (topic 8245)                   | community discussion, L5 judge participation        | [apps.magicjudges.org](https://apps.magicjudges.org/forum/topic/8245/) _(secondary, judge program)_                                                                                      |
 
 Headline meta-finding: **the modern MTR does not contain a Swiss pairing procedure at
 all.** MTR 10.4 names the algorithm without defining it, and no MTR revision checked
 (2015, 2024, 2026) nor the 2007 UTR contains rematch-avoidance or bye-assignment rules.
 Those details live only in obsolete 1999-era WotC documents, in Wizards' pairing
 software behavior, and in judge-program convention. A senior judge in the forum thread
-above states it directly: *"There have not been any official statement of the pairings
+above states it directly: _"There have not been any official statement of the pairings
 policy and algorithm for a very long time. You certainly will not find it in the policy
-documents."* (secondary source).
+documents."_ (secondary source).
 
 ## Summary
 
-| # | Question | One-line answer |
-| --- | --- | --- |
-| 1 | Rematch avoidance scope | **MTR is silent** — no rematch-avoidance rule exists in the current MTR; the only pairing-scope rule is MTR 7.6's draft-pod restriction. Whole-Swiss-portion avoidance is judge/software convention, not MTR text. |
-| 2 | Bye assignment | **MTR is silent** on who gets the bye; it only defines a bye's value (Appendix C: a 2–0 match win). The obsolete 1999 WotC procedure gives it to the leftover player after random within-match-point-group pairing (effectively random within the lowest bracket). A one-bye-per-player cap appears in **no** official document found. |
-| 3 | DQ and tiebreakers | The "removed... do not take up a place in the standings" quote is **IPG 1.1 (Disqualification), not the MTR**. Nothing removes a DQ'd player's completed results; MTR Appendix C computes tiebreakers from opponents actually faced and worked examples include withdrawn players — implying prior results keep feeding OMW%/OGW%. Explicit DQ-tiebreaker statement: absent. |
-| 4 | Single-elim walkover | MTR 2.10 (explicit): after a cut, no replacement advances; the uncontested match is recorded as a **bye**, and Appendix C defines a bye as a 2–0 match win. A no-show who hasn't dropped is instead handled as an IPG 3.1 Tardiness **Match Loss**. Final placement of the departed player: MTR silent for drops (implied: they keep their standing); IPG explicit for DQs (everyone below moves up a spot). |
+| #   | Question                | One-line answer                                                                                                                                                                                                                                                                                                                                                                                              |
+| --- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | Rematch avoidance scope | **MTR is silent** — no rematch-avoidance rule exists in the current MTR; the only pairing-scope rule is MTR 7.6's draft-pod restriction. Whole-Swiss-portion avoidance is judge/software convention, not MTR text.                                                                                                                                                                                           |
+| 2   | Bye assignment          | **MTR is silent** on who gets the bye; it only defines a bye's value (Appendix C: a 2–0 match win). The obsolete 1999 WotC procedure gives it to the leftover player after random within-match-point-group pairing (effectively random within the lowest bracket). A one-bye-per-player cap appears in **no** official document found.                                                                       |
+| 3   | DQ and tiebreakers      | The "removed... do not take up a place in the standings" quote is **IPG 1.1 (Disqualification), not the MTR**. Nothing removes a DQ'd player's completed results; MTR Appendix C computes tiebreakers from opponents actually faced and worked examples include withdrawn players — implying prior results keep feeding OMW%/OGW%. Explicit DQ-tiebreaker statement: absent.                                 |
+| 4   | Single-elim walkover    | MTR 2.10 (explicit): after a cut, no replacement advances; the uncontested match is recorded as a **bye**, and Appendix C defines a bye as a 2–0 match win. A no-show who hasn't dropped is instead handled as an IPG 3.1 Tardiness **Match Loss**. Final placement of the departed player: MTR silent for drops (implied: they keep their standing); IPG explicit for DQs (everyone below moves up a spot). |
 
 ---
 
@@ -73,7 +73,7 @@ per format segment — it never establishes rematch avoidance in the first place
 From the Magic Judges Forum "Pairing Algorithm" thread (L5 judges; describing the de
 facto standard implemented by Wizards' pairing software):
 
-- *"never pair two players twice during the Swiss"* (Scott Marshall, L5) — i.e. the
+- _"never pair two players twice during the Swiss"_ (Scott Marshall, L5) — i.e. the
   convention scopes avoidance to the **entire Swiss portion of the event**, across days
   and across format changes, not per segment.
 - If two players in the same score bracket have already played, both are paired down;
@@ -84,7 +84,7 @@ facto standard implemented by Wizards' pairing software):
 
 - Explicit MTR constraints on pairing are exactly two: Swiss by match points (by name
   only) and, in draft segments, pod-only pairing (MTR 7.6). At a mixed-format event the
-  pod restriction is the *only* MTR-mandated pairing scope: limited rounds pair within
+  pod restriction is the _only_ MTR-mandated pairing scope: limited rounds pair within
   the pod regardless of what happened in constructed rounds.
 - Whole-Swiss rematch avoidance (across days/formats) is the judge-program and
   software convention and a safe default to implement, but if it ever conflicts with
@@ -99,7 +99,7 @@ facto standard implemented by Wizards' pairing software):
 
 ### What the MTR explicitly says
 
-The current MTR defines only what a bye is *worth*, never who *receives* it:
+The current MTR defines only what a bye is _worth_, never who _receives_ it:
 
 > "When a player is assigned a bye for a round, they are considered to have won the
 > match 2–0. Thus, that player earns 3 match points and 6 game points. A player's byes
@@ -110,7 +110,7 @@ The current MTR defines only what a bye is *worth*, never who *receives* it:
 > "Players receiving byes are considered to have won the match."
 > — MTR Appendix C "Match Points" (Feb 27, 2026, p. 51)
 
-Appendix E acknowledges *awarded* (pre-assigned) byes only for round-count purposes:
+Appendix E acknowledges _awarded_ (pre-assigned) byes only for round-count purposes:
 
 > "In tournaments where awarded byes are used, each player with a 1-round bye should
 > count as 2 players, each player with a 2-round bye should count as 4 players, and
@@ -143,7 +143,7 @@ WotC's scorekeeper aid "Swiss-Style Pairing System Basics" (F.1.1, updated Octob
 
 Reading: because within-group pairing is random and tiebreakers are explicitly not
 used, the leftover bottom-of-list player is effectively **a random player in the lowest
-match-point bracket** — not the lowest-*ranked* player (rank implies tiebreakers, which
+match-point bracket** — not the lowest-_ranked_ player (rank implies tiebreakers, which
 step 3 forbids using).
 
 ### The one-bye constraint
@@ -196,21 +196,21 @@ results.
 > — MTR Appendix C "Opponents' match-win percentage" (Feb 27, 2026, p. 52)
 
 The only exclusion is byes. There is no carve-out for opponents who dropped or were
-removed. And the match-win-percentage section's worked example is *built around*
+removed. And the match-win-percentage section's worked example is _built around_
 players who left mid-event:
 
 > "These three players competed in an 8-round tournament, although only the first
 > player completed all rounds."
 > [table rows:] "5-2-1 — 16 — 8 — 16/(8*3) = 0.667" · "1-3-0, then withdraws — 3 — 4 —
 > 3/(4*3) = 0.25, so 0.33 is used." · "3-2-0, including a first-round bye, then
-> withdraws — 9 — 5 — 9/(5*3) = 0.60"
+> withdraws — 9 — 5 — 9/(5\*3) = 0.60"
 > — MTR Appendix C "Match-win percentage" (Feb 27, 2026, p. 51)
 
 ### Explicit / implied / silent
 
 - **Explicit:** dropped players' match-win percentages are still computed (over rounds
   actually played, with the 0.33 floor). The only reason Appendix C computes a
-  percentage for a withdrawn player is for use in *former opponents'* OMW% — those
+  percentage for a withdrawn player is for use in _former opponents'_ OMW% — those
   players play no further rounds themselves.
 - **Implied:** a disqualified player is "dropped from the tournament" (IPG); the MTR
   treats them like any other departed opponent for tiebreakers, so their completed
@@ -296,7 +296,7 @@ Related explicit rule: "In single-elimination rounds, matches may not end in a d
 - **Voluntary drop — MTR is almost entirely silent.** Explicit: a player who drops
   before round 1 "is considered to have not participated in the tournament and will not
   be listed in the finish order" (MTR §2.10). Implied by that sentence's scoping: a
-  player who drops *later* — including from a bracket — remains in the finish order at
+  player who drops _later_ — including from a bracket — remains in the finish order at
   whatever standing their results give them; nothing advances a replacement into the
   bracket. No text assigns a specific final place (e.g. "loses the match they
   walked over") to a bracket dropper.

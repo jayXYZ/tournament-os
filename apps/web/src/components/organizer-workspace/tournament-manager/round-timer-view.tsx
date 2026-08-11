@@ -302,7 +302,9 @@ function RoundLengthCard({
   const setRoundDuration = useMutation(api.tournaments.timer.setRoundDuration)
   const [minutes, setMinutes] = useState(
     String(
-      durationMsToMinutes(tournament.roundDurationMs ?? DEFAULT_ROUND_DURATION_MS),
+      durationMsToMinutes(
+        tournament.roundDurationMs ?? DEFAULT_ROUND_DURATION_MS,
+      ),
     ),
   )
   const { busy, run } = useBusyAction()

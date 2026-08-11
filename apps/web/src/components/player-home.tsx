@@ -66,7 +66,10 @@ export function PlayerHome() {
           </h1>
         </div>
         <div className="grid gap-2 text-sm text-muted-foreground sm:grid-cols-2 md:min-w-80">
-          <StatusLine icon={CalendarDays} label="Showing public future events" />
+          <StatusLine
+            icon={CalendarDays}
+            label="Showing public future events"
+          />
           <StatusLine icon={Users} label="Open an event to register" />
         </div>
       </div>

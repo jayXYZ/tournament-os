@@ -91,7 +91,7 @@ function parseCatalog(body: unknown): Array<string> {
     typeof body === 'object' &&
     body !== null &&
     'data' in body &&
-    Array.isArray((body).data)
+    Array.isArray(body.data)
   ) {
     return (body as { data: Array<unknown> }).data.filter(
       (item): item is string => typeof item === 'string',

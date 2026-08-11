@@ -53,7 +53,7 @@ prerequisite for safely verifying the other refactors in `docs/refactors/`.
 2. **Port the four `packages/shared` test files from `node:test` to vitest**
    (mechanical: swap imports/assertions) — or wire `node --test` if that is
    genuinely less work; the requirement is that `pnpm --filter
-   @tournament-os/shared test` runs and passes.
+@tournament-os/shared test` runs and passes.
 3. **Add a root `test` script** that runs every workspace's tests
    (`pnpm -r test` or equivalent).
 4. **Export the pure functions** listed above from the progress bar (just add

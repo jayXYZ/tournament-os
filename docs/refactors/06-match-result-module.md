@@ -58,7 +58,7 @@ Add one model-level writer, e.g. `applyMatchResult` in a
 The three call sites become adapters that differ only in policy:
 
 - organizer: supersedes player reports (`reportedByRegistrationId:
-  undefined`), allowed to overwrite an existing result, organizer-actor audit
+undefined`), allowed to overwrite an existing result, organizer-actor audit
   including previous-result lines;
 - player: only on `"upcoming"` matches, stamps
   `reportedByRegistrationId`, player-actor audit;

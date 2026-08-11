@@ -13,7 +13,7 @@ Convex code.** Pre-production; verify backend with
 
 ## Problem
 
-What each `MyCurrentMatch` kind *means* to a player — title, body copy, tone —
+What each `MyCurrentMatch` kind _means_ to a player — title, body copy, tone —
 is written twice (web and native) and the union itself is built inline in the
 Convex endpoint, so the branching is testable only end-to-end. The two copy
 sets drift independently. Several other player-facing rules are duplicated

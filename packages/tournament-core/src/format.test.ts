@@ -87,9 +87,9 @@ test("a playoff cut outranks an eliminated registration", () => {
 });
 
 test("an eliminated registration shows through when there is no playoff state", () => {
-  expect(
-    standingStatusLabel({ registrationStatus: "eliminated" }, DQ),
-  ).toBe("Eliminated");
+  expect(standingStatusLabel({ registrationStatus: "eliminated" }, DQ)).toBe(
+    "Eliminated",
+  );
   expect(
     standingStatusLabel(
       { registrationStatus: "eliminated", playoffStatus: "not_started" },
@@ -109,7 +109,5 @@ test("active and unknown players get no marker", () => {
   expect(
     standingStatusLabel({ registrationStatus: null, playoffStatus: null }, DQ),
   ).toBeNull();
-  expect(
-    standingStatusLabel({ registrationStatus: undefined }, DQ),
-  ).toBeNull();
+  expect(standingStatusLabel({ registrationStatus: undefined }, DQ)).toBeNull();
 });

@@ -1,13 +1,13 @@
-import { ClerkProvider, useAuth } from '@clerk/expo';
-import { tokenCache } from '@clerk/expo/token-cache';
-import * as Sentry from '@sentry/react-native';
-import { ConvexProviderWithClerk } from 'convex/react-clerk';
-import { DarkTheme, Stack, ThemeProvider } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
-import * as SystemUI from 'expo-system-ui';
-import { useEffect } from 'react';
+import { ClerkProvider, useAuth } from "@clerk/expo";
+import { tokenCache } from "@clerk/expo/token-cache";
+import * as Sentry from "@sentry/react-native";
+import { ConvexProviderWithClerk } from "convex/react-clerk";
+import { DarkTheme, Stack, ThemeProvider } from "expo-router";
+import { StatusBar } from "expo-status-bar";
+import * as SystemUI from "expo-system-ui";
+import { useEffect } from "react";
 
-import { convex } from '@/lib/convex';
+import { convex } from "@/lib/convex";
 
 // No-ops when EXPO_PUBLIC_SENTRY_DSN is unset (local dev without monitoring).
 const sentryDsn = process.env.EXPO_PUBLIC_SENTRY_DSN;
@@ -19,7 +19,7 @@ if (sentryDsn) {
   });
 }
 
-const APP_BACKGROUND = '#0b0b0f';
+const APP_BACKGROUND = "#0b0b0f";
 
 // react-native-screens paints each native screen container with the navigation
 // theme's `colors.background`. expo-router defaults to the light theme (white),
@@ -39,7 +39,7 @@ const envPublishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
 if (!envPublishableKey) {
   throw new Error(
-    'Missing EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY. Copy apps/native/.env.example to .env.local and fill it in.',
+    "Missing EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY. Copy apps/native/.env.example to .env.local and fill it in.",
   );
 }
 

@@ -185,8 +185,8 @@ function CurrentMatch({
             {current.meeting.seatmateName
               ? `Seated with ${current.meeting.seatmateName}. `
               : ""}
-            Take your seat and check in with the organizer. Pairings will
-            appear here once the meeting wraps up.
+            Take your seat and check in with the organizer. Pairings will appear
+            here once the meeting wraps up.
           </Text>
         </View>
       );
@@ -201,8 +201,7 @@ function CurrentMatch({
       return (
         <Text style={styles.muted}>
           Round {current.round.roundNumber} pairings pending. The organizer is
-          reviewing this round’s pairings. They will appear here once
-          published.
+          reviewing this round’s pairings. They will appear here once published.
         </Text>
       );
     case "no_match":

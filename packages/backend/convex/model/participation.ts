@@ -61,7 +61,10 @@ type RegistrationStateArgs = RegistrationStateUpdate & {
 // so already-held rows can feed a batch without a full Doc<"roundStandings">
 // (which a fresh insert cannot supply — it lacks _creationTime). A full Doc
 // satisfies it.
-type StandingsRowRef = Pick<Doc<"roundStandings">, "_id" | "participationStatus">;
+type StandingsRowRef = Pick<
+  Doc<"roundStandings">,
+  "_id" | "participationStatus"
+>;
 
 // Writes the registration-row half of a transition. Every operation in this
 // module funnels through here, so the transition contract (the union typing

@@ -13,19 +13,19 @@ an authenticated account can call without holding a privileged role, plus the
 membership-gated mutations that create rows or storage. Membership is not
 treated as a scarcity gate because any account can mint its own organization.
 
-| Bucket | Mutations |
-| --- | --- |
-| `upsertMe` | `users.upsertMe` (runs on every sign-in) |
-| `updateProfileSettings` | `users.updateMyProfileSettings` |
-| `registerSelf` / `cancelRegistration` | registration churn pair |
-| `dropSelf` | `tournaments.player.dropSelf` |
-| `reportResult` | `reportMyMatchResult` + `confirmMatchResult` |
-| `submitDecklist` | `tournaments.decklists.submitMyDecklist` |
-| `createOrganization` | `organizations.createOrganizerOrganization` (strictest: 3 burst, 12/day) |
-| `inviteMember` | `inviteMember` + `revokeInvitation` (future email budget) |
-| `profileImageUpload` | upload-URL minting + image swap (storage abuse) |
-| `createTournament` | `createTournament`, `createTournamentWithPhases`, `createTestTournament` |
-| `seedTestPlayers` | dummy user/registration row growth |
+| Bucket                                | Mutations                                                                |
+| ------------------------------------- | ------------------------------------------------------------------------ |
+| `upsertMe`                            | `users.upsertMe` (runs on every sign-in)                                 |
+| `updateProfileSettings`               | `users.updateMyProfileSettings`                                          |
+| `registerSelf` / `cancelRegistration` | registration churn pair                                                  |
+| `dropSelf`                            | `tournaments.player.dropSelf`                                            |
+| `reportResult`                        | `reportMyMatchResult` + `confirmMatchResult`                             |
+| `submitDecklist`                      | `tournaments.decklists.submitMyDecklist`                                 |
+| `createOrganization`                  | `organizations.createOrganizerOrganization` (strictest: 3 burst, 12/day) |
+| `inviteMember`                        | `inviteMember` + `revokeInvitation` (future email budget)                |
+| `profileImageUpload`                  | upload-URL minting + image swap (storage abuse)                          |
+| `createTournament`                    | `createTournament`, `createTournamentWithPhases`, `createTestTournament` |
+| `seedTestPlayers`                     | dummy user/registration row growth                                       |
 
 Keys are the identity's `tokenIdentifier`, so one abusive account cannot
 starve anyone else, and the key exists before the `users` row does. The

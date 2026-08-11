@@ -282,9 +282,7 @@ test("listAuditEvents clamps an oversized page size instead of reading the whole
       startDate: Date.now(),
       playerCapacity: 16,
       format: "standard",
-      phases: [
-        { phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 3 },
-      ],
+      phases: [{ phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 3 }],
     });
 
   const ROW_COUNT = 150;

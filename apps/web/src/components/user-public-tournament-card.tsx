@@ -90,7 +90,10 @@ export function UserPublicTournamentCard({
       {expanded ? (
         <CardContent className="grid gap-4">
           <Separator />
-          <MatchLog publicCode={publicCode} tournamentId={result.tournamentId} />
+          <MatchLog
+            publicCode={publicCode}
+            tournamentId={result.tournamentId}
+          />
         </CardContent>
       ) : null}
     </Card>

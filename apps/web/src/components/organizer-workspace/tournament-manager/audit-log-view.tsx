@@ -51,8 +51,8 @@ export function AuditLogView({
         <CardHeader>
           <CardTitle>Audit log</CardTitle>
           <CardDescription>
-            Every result entry, edit, drop, and lifecycle change, newest first
-            — for resolving disputes after the fact.
+            Every result entry, edit, drop, and lifecycle change, newest first —
+            for resolving disputes after the fact.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -109,7 +109,9 @@ function AuditEventItem({ row }: { row: AuditEventRow }) {
   return (
     <li className="flex flex-col gap-1 py-3">
       <div className="flex flex-wrap items-center gap-2">
-        <Badge variant={row.actorRole === 'organizer' ? 'default' : 'secondary'}>
+        <Badge
+          variant={row.actorRole === 'organizer' ? 'default' : 'secondary'}
+        >
           {row.actorRole === 'organizer' ? 'Organizer' : 'Player'}
         </Badge>
         {isEdit && <Badge variant="destructive">Result edit</Badge>}

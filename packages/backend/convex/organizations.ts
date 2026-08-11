@@ -237,7 +237,10 @@ export const updateProfileImage = mutation({
     await enforceRateLimit(ctx, "profileImageUpload");
     await requireProfilePermission(ctx, args.organizationId);
 
-    const metadata = await ctx.db.system.get("_storage", args.profileImageStorageId);
+    const metadata = await ctx.db.system.get(
+      "_storage",
+      args.profileImageStorageId,
+    );
     if (!metadata) {
       throw new Error("Uploaded image was not found");
     }

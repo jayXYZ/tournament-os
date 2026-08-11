@@ -50,11 +50,11 @@ dashboard logs page.
 
 ## Environment variables
 
-| Variable | Where | Purpose |
-| --- | --- | --- |
-| `VITE_SENTRY_DSN` | `apps/web/.env.local`, Vercel | web reporting (client + SSR) |
-| `EXPO_PUBLIC_SENTRY_DSN` | `apps/native/.env.local`, EAS | native reporting |
-| `SENTRY_ORG`, `SENTRY_PROJECT` | both `.env.local`s, Vercel, EAS | source-map upload target |
-| `SENTRY_AUTH_TOKEN` | both `.env.local`s (secret), Vercel, EAS | source-map upload auth |
+| Variable                       | Where                                    | Purpose                      |
+| ------------------------------ | ---------------------------------------- | ---------------------------- |
+| `VITE_SENTRY_DSN`              | `apps/web/.env.local`, Vercel            | web reporting (client + SSR) |
+| `EXPO_PUBLIC_SENTRY_DSN`       | `apps/native/.env.local`, EAS            | native reporting             |
+| `SENTRY_ORG`, `SENTRY_PROJECT` | both `.env.local`s, Vercel, EAS          | source-map upload target     |
+| `SENTRY_AUTH_TOKEN`            | both `.env.local`s (secret), Vercel, EAS | source-map upload auth       |
 
 All are optional: absent, the apps build and run with monitoring disabled.

@@ -96,16 +96,27 @@ changes rather than waiting for a final production milestone.
         from `_generated/server` and the auth config is
         `satisfies AuthConfig`; verified by a dev deploy, backend tsc, and the
         backend test suite
-- [ ] Expand CI beyond `pnpm test`: add lint, typecheck, `format:check`, and a
-      native Expo dependency/export smoke check (the native package has no
-      test script, so root tests silently skip it)
+- [x] Expand CI beyond `pnpm test`: the workflow now runs four isolated jobs —
+      test; checks (`pnpm lint`, `pnpm typecheck`, `pnpm format:check`); a
+      native smoke job (`expo install --check` plus an ios+android
+      `expo export`, since the native package has no test script); and the
+      lockfile dedupe check, which must stay an isolated final job because
+      `pnpm dedupe --check` silently strips hoisted packages from
+      `node_modules` even when it passes (pnpm 11.9.0); all jobs verified
+      green locally
 - [ ] Lint the backend: the Convex ESLint plugin is configured only in
       `apps/web`, whose config cannot reach `packages/backend/convex` — add a
       backend ESLint config and script
 - [ ] Add a unified root check command covering tests, package typechecks,
-      lint, and `format:check`; fix the 36 unformatted web files and give
-      `packages/shared` and `packages/tournament-core` standalone
-      `tsconfig.json` files and typecheck scripts
+      lint, and `format:check`
+  - [x] Add root `format`, `format:check`, and `typecheck` scripts and make
+        the whole repo prettier-clean (the root `.prettierignore` restates
+        nested build-output ignores because prettier only reads the ignore
+        files in its working directory)
+  - [ ] Give `packages/shared` and `packages/tournament-core` standalone
+        `tsconfig.json` files and typecheck scripts
+  - [ ] Add the single root command that runs tests, typechecks, lint, and
+        `format:check` together
 - [ ] Pin the toolchain: root `"packageManager": "pnpm@11.9.0"`, a Node
       version file/engines field, and CI/local alignment (CI runs Node 22,
       local development Node 26)
@@ -344,6 +355,10 @@ push, analytics, and monitoring should be independent consumers.
   - [ ] Complete the visual/design pass
   - [ ] Add robust error and empty states across every workflow
   - [ ] Define and implement offline/read-cache tolerance
+  - [ ] Fix or drop the native app's web target: `expo export --platform web`
+        fails in the router's static render (`requireNativeComponent` is not
+        a function), so the native build script and the CI smoke check export
+        ios+android only
 - [ ] Add real safe-area support to the web app chrome; ship all parts together
   - [ ] Add `viewport-fit=cover` to the root viewport meta in `apps/web/src/routes/__root.tsx`
   - [ ] Add bottom safe-area padding to SiteShell's fixed bottom-bar chrome

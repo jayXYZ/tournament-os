@@ -311,7 +311,9 @@ export function requireDecisiveEliminationResult(
 // UI step. Once the meeting is in progress, pairing the phase's first round is
 // what completes it.
 export function playerMeetingPending(phase: Doc<"tournamentPhases">) {
-  return phase.playerMeeting === true && phase.playerMeetingStatus === undefined;
+  return (
+    phase.playerMeeting === true && phase.playerMeetingStatus === undefined
+  );
 }
 
 export function requirePlayerMeetingStarted(phase: Doc<"tournamentPhases">) {

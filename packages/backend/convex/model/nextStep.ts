@@ -1,10 +1,7 @@
 import type { Id } from "../_generated/dataModel";
 import { SINGLE_ELIMINATION_PLAYERS, playerMeetingPending } from "./phases";
 import { isPairingsVisibleToPlayers } from "./tournaments";
-import type {
-  ProgressionActions,
-  ProgressionFacts,
-} from "./progression";
+import type { ProgressionActions, ProgressionFacts } from "./progression";
 
 export type PairingsNextStep =
   | { kind: "publishTournament"; ready: boolean; reason: string | null }

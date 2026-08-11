@@ -7,7 +7,7 @@ packages:
 # https://docs.expo.dev/guides/monorepos/
 nodeLinker: hoisted
 patchedDependencies:
-  '@clerk/expo': patches/@clerk__expo.patch
+  "@clerk/expo": patches/@clerk__expo.patch
 # Pin a single React version across the workspace. pnpm otherwise installs
 # multiple peer-instances of react/react-dom (and therefore convex), which
 # Metro loads as separate module copies, breaking React context (e.g.
@@ -25,8 +25,8 @@ overrides:
   "@clerk/react>react-dom": 19.2.3
   "@clerk/shared>react-dom": 19.2.3
 allowBuilds:
-  '@clerk/shared': true
-  '@sentry/cli': true
+  "@clerk/shared": true
+  "@sentry/cli": true
   browser-tabs-lock: false
   bufferutil: false
   core-js: false

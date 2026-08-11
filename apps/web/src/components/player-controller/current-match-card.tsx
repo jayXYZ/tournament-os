@@ -4,7 +4,7 @@ import { CheckCheck, Hourglass, Swords } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { ReportResultDialog } from './report-result-dialog'
-import type {MyActiveMatch, MyCurrentMatch} from '@tournament-os/core';
+import type { MyActiveMatch, MyCurrentMatch } from '@tournament-os/core'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -23,7 +23,6 @@ import {
 } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
-
 
 export function CurrentMatchCard({
   currentMatch,
@@ -75,8 +74,8 @@ export function CurrentMatchCard({
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">
-            Take your seat and check in with the organizer. Pairings will
-            appear here once the meeting wraps up.
+            Take your seat and check in with the organizer. Pairings will appear
+            here once the meeting wraps up.
           </p>
         </CardContent>
       </Card>

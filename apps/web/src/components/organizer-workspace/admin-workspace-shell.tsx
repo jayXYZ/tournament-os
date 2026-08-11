@@ -1,7 +1,7 @@
 import { AdminAuthGate } from './admin-auth-gate'
 import { AdminHeader, AdminSidebar } from './admin-sidebar'
 import { OrganizationProvider } from './organization-context'
-import type {ReactNode} from 'react';
+import type { ReactNode } from 'react'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { Toaster } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'

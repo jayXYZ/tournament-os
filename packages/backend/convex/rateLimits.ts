@@ -64,7 +64,12 @@ const limits = {
   },
   // Organizations are the root grant for every organizer surface, so minting
   // them is the strictest limit here.
-  createOrganization: { kind: "token bucket", rate: 12, period: DAY, capacity: 3 },
+  createOrganization: {
+    kind: "token bucket",
+    rate: 12,
+    period: DAY,
+    capacity: 3,
+  },
   // Shared by inviteMember and revokeInvitation; becomes an email budget once
   // transactional invite email lands.
   inviteMember: { kind: "token bucket", rate: 60, period: HOUR, capacity: 20 },

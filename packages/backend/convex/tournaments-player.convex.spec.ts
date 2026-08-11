@@ -999,14 +999,14 @@ test("standings show a cut's elimination batch on the round that produced it", a
   );
   expect(standings?.roundNumber).toBe(finalSwissRound.roundNumber);
   for (const eliminatedId of eliminatedIds) {
-    expect(await storedStandingStatus(t, finalSwissRound._id, eliminatedId)).toBe(
-      "eliminated",
-    );
+    expect(
+      await storedStandingStatus(t, finalSwissRound._id, eliminatedId),
+    ).toBe("eliminated");
   }
   for (const qualifierId of qualifierIds) {
-    expect(await storedStandingStatus(t, finalSwissRound._id, qualifierId)).toBe(
-      "active",
-    );
+    expect(
+      await storedStandingStatus(t, finalSwissRound._id, qualifierId),
+    ).toBe("active");
   }
   // The organizer view of the same round still live-joins the registration, so
   // the denormalized copy the players read has to agree with it row for row.
@@ -1103,7 +1103,10 @@ test("a cut's elimination batch reaches standings through one index range", asyn
           if (property === "patch" && standingIds.has(args[0] as string)) {
             counts.standingsPatches += 1;
           }
-          return (value as (...inner: unknown[]) => unknown).apply(target, args);
+          return (value as (...inner: unknown[]) => unknown).apply(
+            target,
+            args,
+          );
         };
       },
     });
@@ -1132,14 +1135,14 @@ test("a cut's elimination batch reaches standings through one index range", asyn
   expect(tally.standingsPatches).toBe(eliminatedIds.length);
   // …and the denormalized copy is still exact, which is what the range buys.
   for (const eliminatedId of eliminatedIds) {
-    expect(await storedStandingStatus(t, finalSwissRound._id, eliminatedId)).toBe(
-      "eliminated",
-    );
+    expect(
+      await storedStandingStatus(t, finalSwissRound._id, eliminatedId),
+    ).toBe("eliminated");
   }
   for (const qualifierId of qualifierIds) {
-    expect(await storedStandingStatus(t, finalSwissRound._id, qualifierId)).toBe(
-      "active",
-    );
+    expect(
+      await storedStandingStatus(t, finalSwissRound._id, qualifierId),
+    ).toBe("active");
   }
 });
 

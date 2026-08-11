@@ -75,9 +75,7 @@ test('parseCardInput leaves names that merely start with digits alone', () => {
 
 test('addToBoard appends new cards in entry order and trims names', () => {
   const board = addToBoard(entries(['Lightning Bolt', 4]), '  Sol Ring ', 1)
-  expect(board).toEqual(
-    entries(['Lightning Bolt', 4], ['Sol Ring', 1]),
-  )
+  expect(board).toEqual(entries(['Lightning Bolt', 4], ['Sol Ring', 1]))
 })
 
 test('addToBoard merges into an existing entry case-insensitively', () => {
@@ -160,12 +158,12 @@ test('boardCount totals copies, not entries', () => {
 
 test('draftsEqual ignores deck-name whitespace only', () => {
   const a = draft(entries(['Lightning Bolt', 4]), [], 'Burn')
-  expect(draftsEqual(a, draft(entries(['Lightning Bolt', 4]), [], '  Burn  '))).toBe(
-    true,
-  )
-  expect(draftsEqual(a, draft(entries(['Lightning Bolt', 4]), [], 'Bern'))).toBe(
-    false,
-  )
+  expect(
+    draftsEqual(a, draft(entries(['Lightning Bolt', 4]), [], '  Burn  ')),
+  ).toBe(true)
+  expect(
+    draftsEqual(a, draft(entries(['Lightning Bolt', 4]), [], 'Bern')),
+  ).toBe(false)
 })
 
 test('draftsEqual detects board differences', () => {
@@ -211,9 +209,6 @@ test('draftsEqual detects board differences', () => {
     ),
   ).toBe(false)
   expect(
-    draftsEqual(
-      base,
-      draft(entries(['Lightning Bolt', 4], ['Sol Ring', 1])),
-    ),
+    draftsEqual(base, draft(entries(['Lightning Bolt', 4], ['Sol Ring', 1]))),
   ).toBe(false)
 })

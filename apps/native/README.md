@@ -44,9 +44,11 @@ Re-run `expo run:ios` only when native dependencies or config plugins change
 
 1. Copy env and fill in values (defaults already point at the shared dev
    deployment / Clerk app):
+
    ```sh
    cp .env.example .env.local
    ```
+
    - `EXPO_PUBLIC_CONVEX_URL` — same as `apps/web`'s `VITE_CONVEX_URL`
    - `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY` — same Clerk app as the web app
 

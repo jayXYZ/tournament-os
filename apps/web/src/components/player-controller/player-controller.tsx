@@ -5,7 +5,13 @@ import {
   useMyDecklist,
   useRoundTimer,
 } from '@tournament-os/core'
-import { ChevronRight, ListOrdered, Menu, ScrollText, Swords } from 'lucide-react'
+import {
+  ChevronRight,
+  ListOrdered,
+  Menu,
+  ScrollText,
+  Swords,
+} from 'lucide-react'
 import { CurrentMatchCard } from './current-match-card'
 import { MoreTab } from './more-tab'
 import { PlayerAccessShell, playerShellWidth } from './player-access-shell'

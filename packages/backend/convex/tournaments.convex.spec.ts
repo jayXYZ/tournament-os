@@ -444,9 +444,8 @@ test("registerSelf lets a cancelled player rejoin a private event but admits no 
     }),
   ).toMatchObject({ entryStatus: "confirmed", participationStatus: "active" });
   expect(
-    (
-      await t.run(async (ctx) => await ctx.db.get(tournamentId))
-    )?.confirmedRegistrationCount,
+    (await t.run(async (ctx) => await ctx.db.get(tournamentId)))
+      ?.confirmedRegistrationCount,
   ).toBe(1);
 
   await expect(
@@ -1784,17 +1783,14 @@ test("createTournament and createTournamentWithPhases reject a non-finite start 
     Number.NEGATIVE_INFINITY,
   ]) {
     await expect(
-      organizer.mutation(
-        api.tournaments.lifecycle.createTournamentWithPhases,
-        {
-          organizationId,
-          name: "Bad Start Date",
-          startDate,
-          playerCapacity: 8,
-          format: "standard",
-          phases: [{ phaseOrder: 1, phaseRoundMode: "dynamic" }],
-        },
-      ),
+      organizer.mutation(api.tournaments.lifecycle.createTournamentWithPhases, {
+        organizationId,
+        name: "Bad Start Date",
+        startDate,
+        playerCapacity: 8,
+        format: "standard",
+        phases: [{ phaseOrder: 1, phaseRoundMode: "dynamic" }],
+      }),
     ).rejects.toThrow("Tournament start date must be a valid date");
 
     await expect(
@@ -1881,17 +1877,14 @@ test("createTournament, createTournamentWithPhases, and updateTournamentSetup re
     Number.NEGATIVE_INFINITY,
   ]) {
     await expect(
-      organizer.mutation(
-        api.tournaments.lifecycle.createTournamentWithPhases,
-        {
-          organizationId,
-          name: "Bad Capacity",
-          startDate: Date.now(),
-          playerCapacity,
-          format: "standard",
-          phases: [{ phaseOrder: 1, phaseRoundMode: "dynamic" }],
-        },
-      ),
+      organizer.mutation(api.tournaments.lifecycle.createTournamentWithPhases, {
+        organizationId,
+        name: "Bad Capacity",
+        startDate: Date.now(),
+        playerCapacity,
+        format: "standard",
+        phases: [{ phaseOrder: 1, phaseRoundMode: "dynamic" }],
+      }),
     ).rejects.toThrow(capacityErrorMessage);
 
     await expect(

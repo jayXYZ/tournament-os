@@ -113,7 +113,11 @@ const standingColumns: Array<ColumnDef<StandingRow>> = [
     id: 'points',
     accessorFn: (row) => row.standing.matchPoints,
     header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="Points" className="ml-auto" />
+      <DataTableColumnHeader
+        column={column}
+        title="Points"
+        className="ml-auto"
+      />
     ),
     meta: { className: 'text-right' },
     cell: ({ row }) => (

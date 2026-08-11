@@ -18,8 +18,58 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # Duplicate versions of one package split React context between module
-      # copies (e.g. convex/react during SSR); fail fast when the lockfile
-      # can be deduped.
-      - run: pnpm dedupe --check
       - run: pnpm test
+
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm format:check
+
+  # Bundles the Expo app for every platform and verifies Expo-managed
+  # dependency versions, since the native package has no test script and
+  # would otherwise go completely unchecked.
+  native-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @tournament-os/native exec expo install --check
+      - run: pnpm --filter @tournament-os/native run build
+
+  # Duplicate versions of one package split React context between module
+  # copies (e.g. convex/react during SSR); fail fast when the lockfile can be
+  # deduped. This MUST stay an isolated job with nothing after it: with
+  # nodeLinker: hoisted, `pnpm dedupe --check` silently strips packages out of
+  # node_modules even when the check passes (observed with pnpm 11.9.0), so
+  # any later step in the same job would run against a broken install.
+  lockfile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm dedupe --check

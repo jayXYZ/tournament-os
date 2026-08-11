@@ -43,10 +43,7 @@ export function TournamentPhaseEditor({
 }) {
   function handleAddPhase() {
     onChange(
-      addTournamentCreationPhase(
-        phases,
-        `phase-local-${crypto.randomUUID()}`,
-      ),
+      addTournamentCreationPhase(phases, `phase-local-${crypto.randomUUID()}`),
     )
   }
 
@@ -175,13 +172,10 @@ function TournamentPhaseField({
             variant="outline"
             size="icon"
             onClick={() =>
-              onPhasesChange(
-                moveTournamentCreationPhase(phases, phase.id, -1),
-              )
+              onPhasesChange(moveTournamentCreationPhase(phases, phase.id, -1))
             }
             disabled={
-              disabled ||
-              !canMoveTournamentCreationPhase(phases, phase.id, -1)
+              disabled || !canMoveTournamentCreationPhase(phases, phase.id, -1)
             }
             aria-label={`Move phase ${index + 1} up`}
           >
@@ -192,13 +186,10 @@ function TournamentPhaseField({
             variant="outline"
             size="icon"
             onClick={() =>
-              onPhasesChange(
-                moveTournamentCreationPhase(phases, phase.id, 1),
-              )
+              onPhasesChange(moveTournamentCreationPhase(phases, phase.id, 1))
             }
             disabled={
-              disabled ||
-              !canMoveTournamentCreationPhase(phases, phase.id, 1)
+              disabled || !canMoveTournamentCreationPhase(phases, phase.id, 1)
             }
             aria-label={`Move phase ${index + 1} down`}
           >
@@ -209,9 +200,7 @@ function TournamentPhaseField({
             variant="outline"
             size="icon"
             onClick={() =>
-              onPhasesChange(
-                removeTournamentCreationPhase(phases, phase.id),
-              )
+              onPhasesChange(removeTournamentCreationPhase(phases, phase.id))
             }
             disabled={
               disabled || !canRemoveTournamentCreationPhase(phases, phase.id)

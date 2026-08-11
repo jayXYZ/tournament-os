@@ -305,7 +305,11 @@ export const updateTournamentSetup = mutation({
         // limits. The tournament document patched below is the source of truth
         // throughout, so its readers never see a stale date.
         if (
-          !(await syncRegistrationStartDatesBatch(ctx, tournament._id, startDate))
+          !(await syncRegistrationStartDatesBatch(
+            ctx,
+            tournament._id,
+            startDate,
+          ))
         ) {
           await ctx.scheduler.runAfter(
             0,

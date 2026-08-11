@@ -711,9 +711,7 @@ test("getPublicPlayerResults caps an all-hidden scan at the read budget but keep
   // ciphertext blob — no plaintext JSON, and in particular not the hidden
   // position row's tournamentStartDate (budget = 300 rows examined, so the
   // cursor sits on the hidden row seeded with startDate now - 299 * 1_000).
-  expect(first.continueCursor).toMatch(
-    /^profileResults\.v2\.[A-Za-z0-9_-]+$/,
-  );
+  expect(first.continueCursor).toMatch(/^profileResults\.v2\.[A-Za-z0-9_-]+$/);
   expect(first.continueCursor).not.toContain(
     String(now - (PROFILE_RESULTS_RAW_READ_BUDGET - 1) * 1_000),
   );

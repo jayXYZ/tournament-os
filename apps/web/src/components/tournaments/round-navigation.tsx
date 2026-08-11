@@ -160,8 +160,7 @@ export function TournamentPhaseTabs({
             // a completed round and must not navigate to an empty phase.
             disabled={
               phase.phaseStatus === 'upcoming' &&
-              (mode === 'completed' ||
-                phase.playerMeetingStatus === undefined)
+              (mode === 'completed' || phase.playerMeetingStatus === undefined)
             }
           >
             {phase.phaseName ?? `Phase ${phase.phaseOrder}`}

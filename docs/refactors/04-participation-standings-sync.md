@@ -127,7 +127,7 @@ covered behaviorally: "a cross-phase rewind leaves restored players active
 on the promoted round's standings" in `tournaments.convex.spec.ts`. The
 structure-spec grep that remains ("a rewind does not sync standings it is
 about to delete", now pointed at `model/progression.ts`) pins only the
-genuinely unobservable part — that the restore *defers* the sync for rows
+genuinely unobservable part — that the restore _defers_ the sync for rows
 the same transaction deletes. If your internal design removes the strategy
 split, delete that grep with it. The `tournaments/player.ts` grep
 (:124-130 above) is untouched and still yours to address.
