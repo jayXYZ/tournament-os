@@ -131,9 +131,16 @@ changes rather than waiting for a final production milestone.
         fails quickly; verified green locally (CI keeps its isolated
         parallel jobs on purpose — see the lockfile-job note — so `check`
         is the local one-shot equivalent, not a CI step)
-- [ ] Pin the toolchain: root `"packageManager": "pnpm@11.9.0"`, a Node
-      version file/engines field, and CI/local alignment (CI runs Node 22,
-      local development Node 26)
+- [x] Pin the toolchain on Node 24 LTS and pnpm 11.9.0: root
+      `"packageManager": "pnpm@11.9.0"` (local pnpm self-switches to it and
+      CI's pnpm/action-setup reads it, replacing the hardcoded version),
+      `.nvmrc` pinning 24 with every CI job on `node-version-file`, and
+      `"engines": { "node": ">=24" }` in the root and `apps/web` manifests —
+      the web copy matters because Vercel picks its build/function runtime
+      from the project-root-directory package.json, and Node 24 is Vercel's
+      default LTS (26 is sandbox-only there). Local Homebrew Node 26
+      satisfies the floor; no local version manager reads `.nvmrc`, so it
+      binds CI and documents intent without breaking local dev
 - [ ] Align duplicated workspace dependency versions: native installs Convex
       1.39.1 while web/backend use 1.42.0 even though Metro forces a Convex
       singleton; consider pnpm catalogs for convex, react, vite, vitest, and
