@@ -67,7 +67,11 @@ changes rather than waiting for a final production milestone.
 - [ ] Configure and verify the custom domain (blocked on human-only
       registrar/DNS and Vercel dashboard setup; any code-side follow-ups
       such as allowed auth origins land once the domain exists)
-- [ ] Address the oversized web settings chunk with route/component code splitting
+- [x] Address the oversized web settings chunk: `MarkdownEditor` (TipTap/
+      ProseMirror) now lazy-loads behind Suspense in the event-details card,
+      shrinking the settings route chunk from 493 kB to 15 kB with the editor
+      in its own on-demand 480 kB chunk; verified in-browser on the settings
+      page
 - [ ] Finish the pnpm 11 settings migration
   - [ ] Move `node-linker=hoisted` from `.npmrc` into `pnpm-workspace.yaml` as
         `nodeLinker: hoisted` — pnpm 11 ignores the `.npmrc` setting, so the

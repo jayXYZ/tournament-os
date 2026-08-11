@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { Suspense, lazy, useState } from 'react'
 import { useMutation } from 'convex/react'
 import { toast } from 'sonner'
 
@@ -14,9 +14,16 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { FieldGroup } from '@/components/ui/field'
-import { MarkdownEditor } from '@/components/ui/markdown-editor'
 import { Spinner } from '@/components/ui/spinner'
 import { useBusyAction } from '@/hooks/use-busy-action'
+
+// TipTap/ProseMirror dwarf everything else on the settings route, so the
+// editor loads as its own chunk only when this card actually renders.
+const MarkdownEditor = lazy(() =>
+  import('@/components/ui/markdown-editor').then((module) => ({
+    default: module.MarkdownEditor,
+  })),
+)
 
 export function EventDetailsCard({
   tournament,
@@ -57,12 +64,20 @@ export function EventDetailsCard({
       <CardContent>
         <form onSubmit={handleSubmit}>
           <FieldGroup>
-            <MarkdownEditor
-              value={tournament.detailsMarkdown ?? ''}
-              onChange={setDetails}
-              disabled={disabled}
-              placeholder="Tell players what to expect: schedule, prizes, entry requirements, venue details…"
-            />
+            <Suspense
+              // Mirrors the editor container (toolbar + min-h-40 content) so
+              // the card doesn't shift when the chunk arrives.
+              fallback={
+                <div className="min-h-50 rounded-md border border-input bg-input/20 dark:bg-input/30" />
+              }
+            >
+              <MarkdownEditor
+                value={tournament.detailsMarkdown ?? ''}
+                onChange={setDetails}
+                disabled={disabled}
+                placeholder="Tell players what to expect: schedule, prizes, entry requirements, venue details…"
+              />
+            </Suspense>
             <div className="flex justify-end">
               <Button type="submit" disabled={disabled}>
                 {busy ? <Spinner data-icon="inline-start" /> : null}
