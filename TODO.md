@@ -141,10 +141,18 @@ changes rather than waiting for a final production milestone.
       default LTS (26 is sandbox-only there). Local Homebrew Node 26
       satisfies the floor; no local version manager reads `.nvmrc`, so it
       binds CI and documents intent without breaking local dev
-- [ ] Align duplicated workspace dependency versions: native installs Convex
-      1.39.1 while web/backend use 1.42.0 even though Metro forces a Convex
-      singleton; consider pnpm catalogs for convex, react, vite, vitest, and
-      TypeScript
+- [x] Align duplicated workspace dependency versions via pnpm catalogs:
+      `pnpm-workspace.yaml` now declares one range each for convex, expo,
+      react, react-dom, react-native, typescript, vite, and vitest, and every
+      manifest references them with the `catalog:` protocol (the drift was
+      declaration-only — the lockfile already resolved singletons, e.g.
+      native's `^1.39.1` convex range installed 1.42.0). The react-family
+      catalog entries are exact and must stay in lockstep with the workspace
+      `overrides` block, which still force-pins transitive react/react-dom
+      for Metro; tournament-core's convex peer range bumped to `^1.42.0`,
+      while peer ranges stay literal since they state compatibility, not
+      installs. Verified with `pnpm check`, `expo install --check` (Expo CLI
+      resolves `catalog:` ranges fine), and an ios+android `expo export`
   - [x] Align TypeScript on 6.0.3 across web, native, and backend — the
         backend's old `^5` range made pnpm resolve a second
         `@typescript-eslint` peer-variant with a TypeScript 5.9.3 copy nested

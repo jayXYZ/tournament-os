@@ -24,6 +24,20 @@ overrides:
   "@clerk/clerk-react>react-dom": 19.2.3
   "@clerk/react>react-dom": 19.2.3
   "@clerk/shared>react-dom": 19.2.3
+# Single declared range per shared dependency; manifests reference these via
+# the catalog: protocol so package versions cannot drift apart again. The
+# react/react-dom/react-native entries are exact and must stay in lockstep
+# with the overrides block above (see its comment); expo/react-native ranges
+# are Expo-managed, so bump them here when upgrading the SDK.
+catalog:
+  convex: ^1.42.0
+  expo: ~56.0.19
+  react: 19.2.3
+  react-dom: 19.2.3
+  react-native: 0.85.3
+  typescript: ^6.0.3
+  vite: ^8.0.16
+  vitest: ^4.1.8
 allowBuilds:
   "@clerk/shared": true
   "@sentry/cli": true

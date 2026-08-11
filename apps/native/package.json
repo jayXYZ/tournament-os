@@ -18,8 +18,8 @@
     "@sentry/react-native": "~7.11.0",
     "@tournament-os/backend": "workspace:*",
     "@tournament-os/core": "workspace:*",
-    "convex": "^1.39.1",
-    "expo": "~56.0.19",
+    "convex": "catalog:",
+    "expo": "catalog:",
     "expo-auth-session": "~56.0.16",
     "expo-constants": "~56.0.23",
     "expo-crypto": "~56.0.4",
@@ -36,9 +36,9 @@
     "expo-symbols": "~56.0.7",
     "expo-system-ui": "~56.0.5",
     "expo-web-browser": "~56.0.6",
-    "react": "19.2.3",
-    "react-dom": "19.2.3",
-    "react-native": "0.85.3",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "react-native": "catalog:",
     "react-native-gesture-handler": "~2.31.1",
     "react-native-reanimated": "4.3.1",
     "react-native-safe-area-context": "~5.7.0",
@@ -50,6 +50,6 @@
     "@types/react": "~19.2.2",
     "eslint": "^9.39.4",
     "eslint-config-expo": "~56.0.4",
-    "typescript": "~6.0.3"
+    "typescript": "catalog:"
   }
 }

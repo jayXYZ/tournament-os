@@ -4,6 +4,27 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+catalogs:
+  default:
+    convex:
+      specifier: ^1.42.0
+      version: 1.42.0
+    expo:
+      specifier: ~56.0.19
+      version: 56.0.19
+    react-native:
+      specifier: 0.85.3
+      version: 0.85.3
+    typescript:
+      specifier: ^6.0.3
+      version: 6.0.3
+    vite:
+      specifier: ^8.0.16
+      version: 8.0.16
+    vitest:
+      specifier: ^4.1.8
+      version: 4.1.8
+
 overrides:
   react: 19.2.3
   react-dom: 19.2.3
@@ -19,13 +40,13 @@ importers:
   .:
     dependencies:
       expo:
-        specifier: ~56.0.12
+        specifier: 'catalog:'
         version: 56.0.19(@babel/core@7.29.7)(@expo/dom-webview@56.0.5)(@expo/metro-runtime@56.0.15)(bufferutil@4.1.0)(expo-router@56.2.18)(react-dom@19.2.3(react@19.2.3))(react-native-web@0.21.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-native-worklets@0.8.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7)(bufferutil@4.1.0))(react-native@0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7)(bufferutil@4.1.0))(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3))(react-native@0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7)(bufferutil@4.1.0))(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)
       react:
         specifier: 19.2.3
         version: 19.2.3
       react-native:
-        specifier: 0.85.3
+        specifier: 'catalog:'
         version: 0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7)(bufferutil@4.1.0))(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)
     devDependencies:
       prettier:
@@ -47,10 +68,10 @@ importers:
         specifier: workspace:*
         version: link:../../packages/tournament-core
       convex:
-        specifier: ^1.39.1
+        specifier: 'catalog:'
         version: 1.42.0(@clerk/clerk-react@5.61.8(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(@clerk/react@6.10.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)
       expo:
-        specifier: ~56.0.19
+        specifier: 'catalog:'
         version: 56.0.19(@babel/core@7.29.7)(@expo/dom-webview@56.0.5)(@expo/metro-runtime@56.0.15)(bufferutil@4.1.0)(expo-router@56.2.18)(react-dom@19.2.3(react@19.2.3))(react-native-web@0.21.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-native-worklets@0.8.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7)(bufferutil@4.1.0)(utf-8-validate@6.0.6))(react-native@0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7)(bufferutil@4.1.0)(utf-8-validate@6.0.6))(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3))(react-native@0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7)(bufferutil@4.1.0)(utf-8-validate@6.0.6))(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)(typescript@6.0.3)(utf-8-validate@6.0.6)
       expo-auth-session:
         specifier: ~56.0.16
@@ -107,7 +128,7 @@ importers:
         specifier: 19.2.3
         version: 19.2.3(react@19.2.3)
       react-native:
-        specifier: 0.85.3
+        specifier: 'catalog:'
         version: 0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7)(bufferutil@4.1.0)(utf-8-validate@6.0.6))(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)
       react-native-gesture-handler:
         specifier: ~2.31.1
@@ -138,7 +159,7 @@ importers:
         specifier: ~56.0.4
         version: 56.0.4(eslint-plugin-import-x@4.16.2(@typescript-eslint/utils@8.60.0(eslint@9.39.4(jiti@2.7.0))(typescript@6.0.3))(eslint-import-resolver-node@0.3.10)(eslint@9.39.4(jiti@2.7.0)))(eslint@9.39.4(jiti@2.7.0))(typescript@6.0.3)
       typescript:
-        specifier: ~6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
 
   apps/web:
@@ -216,7 +237,7 @@ importers:
         specifier: ^2.1.1
         version: 2.1.1
       convex:
-        specifier: ^1.42.0
+        specifier: 'catalog:'
         version: 1.42.0(@clerk/clerk-react@5.61.8(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(@clerk/react@6.10.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)
       date-fns:
         specifier: ^4.4.0
@@ -298,13 +319,13 @@ importers:
         specifier: ^4.2.2
         version: 4.3.0
       typescript:
-        specifier: ^6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
       vite:
-        specifier: ^8.0.9
+        specifier: 'catalog:'
         version: 8.0.16(@types/node@24.13.2)(esbuild@0.27.0)(jiti@2.7.0)(terser@5.48.0)(yaml@2.9.0)
       vitest:
-        specifier: ^4.1.8
+        specifier: 'catalog:'
         version: 4.1.8(@edge-runtime/vm@5.0.0)(@opentelemetry/api@1.9.1)(@types/node@24.13.2)(msw@2.14.6(@types/node@24.13.2)(typescript@6.0.3))(vite@8.0.16(@types/node@24.13.2)(esbuild@0.27.0)(jiti@2.7.0)(terser@5.48.0)(yaml@2.9.0))
 
   packages/backend:
@@ -316,7 +337,7 @@ importers:
         specifier: workspace:*
         version: link:../shared
       convex:
-        specifier: ^1.42.0
+        specifier: 'catalog:'
         version: 1.42.0(@clerk/clerk-react@5.61.8(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(@clerk/react@6.10.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)
     devDependencies:
       '@convex-dev/eslint-plugin':
@@ -332,28 +353,28 @@ importers:
         specifier: ^9.39.4
         version: 9.39.4(jiti@2.7.0)
       typescript:
-        specifier: ^6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
       typescript-eslint:
         specifier: ^8.60.0
         version: 8.60.0(eslint@9.39.4(jiti@2.7.0))(typescript@6.0.3)
       vite:
-        specifier: ^8.0.16
+        specifier: 'catalog:'
         version: 8.0.16(@types/node@26.0.1)(esbuild@0.27.0)(jiti@2.7.0)(terser@5.48.0)(yaml@2.9.0)
       vitest:
-        specifier: ^4.1.8
+        specifier: 'catalog:'
         version: 4.1.8(@edge-runtime/vm@5.0.0)(@opentelemetry/api@1.9.1)(@types/node@26.0.1)(msw@2.14.6(@types/node@26.0.1)(typescript@6.0.3))(vite@8.0.16(@types/node@26.0.1)(esbuild@0.27.0)(jiti@2.7.0)(terser@5.48.0)(yaml@2.9.0))
 
   packages/shared:
     devDependencies:
       typescript:
-        specifier: ^6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
       vite:
-        specifier: ^8.0.16
+        specifier: 'catalog:'
         version: 8.0.16(@types/node@26.0.1)(esbuild@0.27.0)(jiti@2.7.0)(terser@5.48.0)(yaml@2.9.0)
       vitest:
-        specifier: ^4.1.8
+        specifier: 'catalog:'
         version: 4.1.8(@edge-runtime/vm@5.0.0)(@opentelemetry/api@1.9.1)(@types/node@26.0.1)(msw@2.14.6(@types/node@26.0.1)(typescript@6.0.3))(vite@8.0.16(@types/node@26.0.1)(esbuild@0.27.0)(jiti@2.7.0)(terser@5.48.0)(yaml@2.9.0))
 
   packages/tournament-core:
@@ -365,20 +386,20 @@ importers:
         specifier: workspace:*
         version: link:../shared
       convex:
-        specifier: ^1.39.1
+        specifier: ^1.42.0
         version: 1.42.0(@clerk/clerk-react@5.61.8(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(@clerk/react@6.10.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)
       react:
         specifier: 19.2.3
         version: 19.2.3
     devDependencies:
       typescript:
-        specifier: ^6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
       vite:
-        specifier: ^8.0.16
+        specifier: 'catalog:'
         version: 8.0.16(@types/node@26.0.1)(esbuild@0.27.0)(jiti@2.7.0)(terser@5.48.0)(yaml@2.9.0)
       vitest:
-        specifier: ^4.1.8
+        specifier: 'catalog:'
         version: 4.1.8(@edge-runtime/vm@5.0.0)(@opentelemetry/api@1.9.1)(@types/node@26.0.1)(msw@2.14.6(@types/node@26.0.1)(typescript@6.0.3))(vite@8.0.16(@types/node@26.0.1)(esbuild@0.27.0)(jiti@2.7.0)(terser@5.48.0)(yaml@2.9.0))
 
 packages:
