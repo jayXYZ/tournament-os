@@ -346,6 +346,9 @@ importers:
 
   packages/shared:
     devDependencies:
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
       vite:
         specifier: ^8.0.16
         version: 8.0.16(@types/node@26.0.1)(esbuild@0.27.0)(jiti@2.7.0)(terser@5.48.0)(yaml@2.9.0)
@@ -368,6 +371,9 @@ importers:
         specifier: 19.2.3
         version: 19.2.3
     devDependencies:
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
       vite:
         specifier: ^8.0.16
         version: 8.0.16(@types/node@26.0.1)(esbuild@0.27.0)(jiti@2.7.0)(terser@5.48.0)(yaml@2.9.0)

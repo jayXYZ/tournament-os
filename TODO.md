@@ -113,16 +113,24 @@ changes rather than waiting for a final production milestone.
       the backend specs rely on explicit via `"types": ["node"]` in
       `convex/tsconfig.json`, since TypeScript 6 no longer auto-includes
       hoisted `@types` packages
-- [ ] Add a unified root check command covering tests, package typechecks,
+- [x] Add a unified root check command covering tests, package typechecks,
       lint, and `format:check`
   - [x] Add root `format`, `format:check`, and `typecheck` scripts and make
         the whole repo prettier-clean (the root `.prettierignore` restates
         nested build-output ignores because prettier only reads the ignore
         files in its working directory)
-  - [ ] Give `packages/shared` and `packages/tournament-core` standalone
-        `tsconfig.json` files and typecheck scripts
-  - [ ] Add the single root command that runs tests, typechecks, lint, and
-        `format:check` together
+  - [x] Give `packages/shared` and `packages/tournament-core` standalone
+        `tsconfig.json` files and `typecheck` scripts (modeled on the web
+        config; shared stays ES-lib-only since it is dependency-free, core
+        adds the DOM lib for its timer globals; both pin `typescript` to the
+        workspace-wide `^6.0.3` range) — this also brings their test files
+        under typechecking for the first time, since the web program only
+        pulled in the package sources it imports
+  - [x] Add the single root command: `pnpm check` runs `format:check`,
+        `typecheck`, `lint`, then `pnpm test`, ordered fast-to-slow so it
+        fails quickly; verified green locally (CI keeps its isolated
+        parallel jobs on purpose — see the lockfile-job note — so `check`
+        is the local one-shot equivalent, not a CI step)
 - [ ] Pin the toolchain: root `"packageManager": "pnpm@11.9.0"`, a Node
       version file/engines field, and CI/local alignment (CI runs Node 22,
       local development Node 26)

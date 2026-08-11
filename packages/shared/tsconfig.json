@@ -1,0 +1,25 @@
+{
+  "include": ["src/**/*.ts", "vitest.config.ts"],
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    /* Dependency-free package: ES lib only, no DOM or node globals. */
+    "lib": ["ES2023"],
+
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "noEmit": true,
+
+    "skipLibCheck": true,
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedSideEffectImports": true,
+
+    "esModuleInterop": true,
+    "isolatedModules": true,
+    "forceConsistentCasingInFileNames": true
+  }
+}
