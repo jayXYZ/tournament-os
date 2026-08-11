@@ -6,6 +6,12 @@ integrations. A checked child under an open parent records foundation that is
 already in place; the parent remains open until all of its acceptance criteria
 are satisfied.
 
+Tasks that cannot proceed yet carry an explicit "(blocked on …)" note naming
+the prerequisite. Treat these markers as authoritative when picking the next
+open task — skip blocked items without re-deriving the block, and when a task
+turns out to be blocked (on other sections, human-only account/dashboard
+steps, or plan tiers), add the note rather than leaving it implicit.
+
 ## 0. Delivery guardrails
 
 These are cross-cutting foundations and should land alongside the first domain
@@ -54,10 +60,13 @@ changes rather than waiting for a final production milestone.
         explicitly with `--cmd 'pnpm --filter @tournament-os/web run build'`,
         and passes `--cmd-url-env-var-name VITE_CONVEX_URL` — all pnpm, no
         npx/npm
-  - [ ] Verify an actual Vercel production deploy end-to-end (needs
-        `CONVEX_DEPLOY_KEY` in the Vercel project and a dashboard-side check
-        that the root directory is `apps/web` with workspace-root install)
-- [ ] Configure and verify the custom domain
+  - [ ] Verify an actual Vercel production deploy end-to-end (blocked on
+        human-only dashboard setup: `CONVEX_DEPLOY_KEY` in the Vercel
+        project and confirming the root directory is `apps/web` with
+        workspace-root install)
+- [ ] Configure and verify the custom domain (blocked on human-only
+      registrar/DNS and Vercel dashboard setup; any code-side follow-ups
+      such as allowed auth origins land once the domain exists)
 - [ ] Address the oversized web settings chunk with route/component code splitting
 - [ ] Finish the pnpm 11 settings migration
   - [ ] Move `node-linker=hoisted` from `.npmrc` into `pnpm-workspace.yaml` as
@@ -185,7 +194,7 @@ claimed by one.
   - [x] Support public, unlisted, and private tournament visibility
   - [ ] Add join-by-link/code invitations
   - [ ] Add organizer approval and rejection of pending registrations
-  - [ ] Bar re-entry to a private event after organizer removal (launch-blocking): a cancelled registration must stop acting as a standing invitation once the player is rejected — needs the rejection flow's write side
+  - [ ] Bar re-entry to a private event after organizer removal (launch-blocking): a cancelled registration must stop acting as a standing invitation once the player is rejected (blocked on the organizer approval/rejection write side above)
   - [ ] Add waitlist promotion
 - [ ] Enroll players as guests or by email without requiring an account
 - [ ] Persist organizer favorite players across tournaments
