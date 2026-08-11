@@ -104,9 +104,15 @@ changes rather than waiting for a final production milestone.
       `pnpm dedupe --check` silently strips hoisted packages from
       `node_modules` even when it passes (pnpm 11.9.0); all jobs verified
       green locally
-- [ ] Lint the backend: the Convex ESLint plugin is configured only in
-      `apps/web`, whose config cannot reach `packages/backend/convex` — add a
-      backend ESLint config and script
+- [x] Lint the backend: `packages/backend` now has its own flat ESLint config
+      (typescript-eslint recommended plus the Convex plugin's recommended
+      rules, `_`-prefix escape hatch for intentionally unused identifiers,
+      `_generated` ignored), a `lint` script gated at zero warnings, and a
+      root `lint:backend` step wired into `pnpm lint`; landing it required
+      aligning the backend on TypeScript 6 (below) and making the node types
+      the backend specs rely on explicit via `"types": ["node"]` in
+      `convex/tsconfig.json`, since TypeScript 6 no longer auto-includes
+      hoisted `@types` packages
 - [ ] Add a unified root check command covering tests, package typechecks,
       lint, and `format:check`
   - [x] Add root `format`, `format:check`, and `typecheck` scripts and make
@@ -124,6 +130,12 @@ changes rather than waiting for a final production milestone.
       1.39.1 while web/backend use 1.42.0 even though Metro forces a Convex
       singleton; consider pnpm catalogs for convex, react, vite, vitest, and
       TypeScript
+  - [x] Align TypeScript on 6.0.3 across web, native, and backend — the
+        backend's old `^5` range made pnpm resolve a second
+        `@typescript-eslint` peer-variant with a TypeScript 5.9.3 copy nested
+        inside the hoisted packages, which silently downgraded the web app's
+        type-aware lint to a program without `strictNullChecks` (≈1,100 false
+        `no-unnecessary-condition` errors)
 - [ ] Pin the patched `@clerk/expo` exactly (currently a caret range carrying
       a local Swift patch) and version-qualify its `patchedDependencies` entry
 - [ ] Simplify `apps/native/metro.config.js`: Expo SDK 56 supplies

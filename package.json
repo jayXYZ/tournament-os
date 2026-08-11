@@ -14,9 +14,10 @@
     "start": "pnpm --filter @tournament-os/web start",
     "test": "pnpm -r test",
     "test:e2e": "pnpm --filter @tournament-os/web test:e2e",
-    "lint": "pnpm run lint:web && pnpm run lint:native",
+    "lint": "pnpm run lint:web && pnpm run lint:native && pnpm run lint:backend",
     "lint:web": "pnpm --filter @tournament-os/web lint",
     "lint:native": "pnpm --filter @tournament-os/native lint",
+    "lint:backend": "pnpm --filter @tournament-os/backend lint",
     "typecheck": "pnpm -r run typecheck",
     "format": "prettier --write .",
     "format:check": "prettier --check ."

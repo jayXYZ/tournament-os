@@ -8,6 +8,7 @@
     "dev": "convex dev",
     "deploy": "convex deploy",
     "test": "vitest run",
+    "lint": "eslint . --max-warnings 0",
     "typecheck": "tsc --noEmit -p convex/tsconfig.json"
   },
   "dependencies": {
@@ -16,9 +17,12 @@
     "convex": "^1.42.0"
   },
   "devDependencies": {
+    "@convex-dev/eslint-plugin": "^2.0.0",
     "@edge-runtime/vm": "^5.0.0",
     "convex-test": "^0.0.53",
-    "typescript": "^5",
+    "eslint": "^9.39.4",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.60.0",
     "vite": "^8.0.16",
     "vitest": "^4.1.8"
   }
