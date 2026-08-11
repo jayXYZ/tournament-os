@@ -81,17 +81,21 @@ changes rather than waiting for a final production milestone.
   - [x] Delete the `ignoredBuiltDependencies`/`onlyBuiltDependencies` keys
         (removed in pnpm 11) and fold them into `allowBuilds`, adding the
         missing `sharp: false`
-- [ ] Commit environment contracts
-  - [ ] Add a `!**/.env.example` exception to `.gitignore` (the blanket `.env*`
-        rule keeps `apps/native/.env.example` untracked) and commit native and
-        web examples
-  - [ ] Document required variables: web (`VITE_CONVEX_URL`,
-        `VITE_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`), native (the two
-        `EXPO_PUBLIC_*` vars), Convex deployment (`CLERK_JWT_ISSUER_DOMAIN`,
-        `PROFILE_RESULTS_CURSOR_KEY`)
-  - [ ] Add typed environment declarations via `defineApp({ env })` in a
-        backend `convex.config.ts` and make `auth.config.ts`
-        `satisfies AuthConfig` for deployment-time validation
+- [x] Commit environment contracts
+  - [x] Add a `!**/.env.example` exception to `.gitignore` and commit the
+        native and web examples (each now also lists the optional Sentry vars)
+  - [x] Document required variables in `docs/environment.md` — web
+        (`VITE_CONVEX_URL`, `VITE_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`),
+        native (the two `EXPO_PUBLIC_*` vars), Convex deployment
+        (`CLERK_JWT_ISSUER_DOMAIN`, `PROFILE_RESULTS_CURSOR_KEY`) — with
+        production locations (Vercel/EAS/`convex env set`) and a README pointer
+  - [x] Add typed environment declarations via `defineApp({ env })` in the
+        backend `convex.config.ts` (`CLERK_JWT_ISSUER_DOMAIN` required,
+        `PROFILE_RESULTS_CURSOR_KEY` optional with its dev fallback);
+        `auth.config.ts` and `model/playerResults.ts` now read the typed `env`
+        from `_generated/server` and the auth config is
+        `satisfies AuthConfig`; verified by a dev deploy, backend tsc, and the
+        backend test suite
 - [ ] Expand CI beyond `pnpm test`: add lint, typecheck, `format:check`, and a
       native Expo dependency/export smoke check (the native package has no
       test script, so root tests silently skip it)

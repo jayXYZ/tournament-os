@@ -1,7 +1,7 @@
 import { ConvexError } from "convex/values";
 
 import type { Doc, Id } from "../_generated/dataModel";
-import type { QueryCtx } from "../_generated/server";
+import { env, type QueryCtx } from "../_generated/server";
 import { currentUserOrNull, getActiveMembership } from "./access";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "./batching";
 import { latestCompletedRound } from "./phases";
@@ -71,7 +71,6 @@ const PROFILE_RESULTS_CURSOR_NONCE_BYTES = 12;
 // source: still opaque to app clients (they can never read deployed function
 // source), but not a real secret for anyone with repo access, so it is a
 // dev/test fallback only, not security for production data.
-const PROFILE_RESULTS_CURSOR_KEY_ENV_VAR = "PROFILE_RESULTS_CURSOR_KEY";
 const PROFILE_RESULTS_CURSOR_DEV_FALLBACK_SECRET =
   "dev-only-fallback--set-PROFILE_RESULTS_CURSOR_KEY-in-production";
 
@@ -87,9 +86,7 @@ const cursorKeyCache = new Map<string, Promise<ProfileResultsCursorKeys>>();
 
 function profileResultsCursorKeys(): Promise<ProfileResultsCursorKeys> {
   const secret =
-    (typeof process === "undefined"
-      ? undefined
-      : process.env[PROFILE_RESULTS_CURSOR_KEY_ENV_VAR]) ||
+    env.PROFILE_RESULTS_CURSOR_KEY ||
     PROFILE_RESULTS_CURSOR_DEV_FALLBACK_SECRET;
   let keys = cursorKeyCache.get(secret);
   if (keys === undefined) {
@@ -114,10 +111,13 @@ async function deriveProfileResultsCursorKeys(
     encoder.encode(`${secret}|profileResultsCursor.nonce`),
   );
   const [encryptionKey, nonceKey] = await Promise.all([
-    crypto.subtle.importKey("raw", encryptionKeyBytes, { name: "AES-GCM" }, false, [
-      "encrypt",
-      "decrypt",
-    ]),
+    crypto.subtle.importKey(
+      "raw",
+      encryptionKeyBytes,
+      { name: "AES-GCM" },
+      false,
+      ["encrypt", "decrypt"],
+    ),
     crypto.subtle.importKey(
       "raw",
       nonceKeyBytes,
@@ -134,7 +134,10 @@ function toBase64Url(bytes: Uint8Array): string {
   for (const byte of bytes) {
     binary += String.fromCharCode(byte);
   }
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  return btoa(binary)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
 }
 
 // Throws on non-base64url input; callers treat any throw as a bad cursor.

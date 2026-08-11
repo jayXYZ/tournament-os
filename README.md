@@ -16,6 +16,10 @@ Install dependencies from the repo root:
 pnpm install
 ```
 
+Copy each app's `.env.example` to `.env.local` and fill it in — see
+[docs/environment.md](./docs/environment.md) for the full environment
+contract, including the variables set on the Convex deployment itself.
+
 Run the web app and the Convex backend together:
 
 ```bash
