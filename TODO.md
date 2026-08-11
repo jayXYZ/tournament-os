@@ -48,11 +48,15 @@ changes rather than waiting for a final production milestone.
         mutations yet, so its result-reporting flows (section 8) adopt the
         same helper as they land
 - [ ] Establish production deployment checks for Convex and the web app
-  - [ ] Fix the Vercel build boundary: `apps/web/vercel.json` runs
-        `npx convex deploy` from `apps/web`, but the Convex project lives in
-        `packages/backend` — run the deploy from the backend package, invoke
-        the web build explicitly via `--cmd`, pass
-        `--cmd-url-env-var-name VITE_CONVEX_URL`, and prefer pnpm over npx/npm
+  - [x] Fix the Vercel build boundary: `apps/web/vercel.json` now runs
+        `convex deploy` from the backend package via
+        `pnpm --filter @tournament-os/backend exec`, invokes the web build
+        explicitly with `--cmd 'pnpm --filter @tournament-os/web run build'`,
+        and passes `--cmd-url-env-var-name VITE_CONVEX_URL` — all pnpm, no
+        npx/npm
+  - [ ] Verify an actual Vercel production deploy end-to-end (needs
+        `CONVEX_DEPLOY_KEY` in the Vercel project and a dashboard-side check
+        that the root directory is `apps/web` with workspace-root install)
 - [ ] Configure and verify the custom domain
 - [ ] Address the oversized web settings chunk with route/component code splitting
 - [ ] Finish the pnpm 11 settings migration
