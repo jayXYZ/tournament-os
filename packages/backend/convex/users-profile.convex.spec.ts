@@ -247,6 +247,7 @@ test("getPublicPlayerResults paginates completed tournaments newest first", asyn
         entryStatus: "confirmed",
         participationStatus: "active",
         createdAt: now + index,
+        tiebreakRandom: 100_000 - index,
         updatedAt: now,
       });
     }
@@ -308,6 +309,7 @@ test("getPublicPlayerResults bounds hostile and non-finite page sizes", async ()
         entryStatus: "confirmed",
         participationStatus: "active",
         createdAt: now + index,
+        tiebreakRandom: 100_000 - index,
         updatedAt: now,
       });
     }
@@ -382,6 +384,7 @@ test("getPublicPlayerResults pages through tournaments sharing a start date", as
         entryStatus: "confirmed",
         participationStatus: "active",
         createdAt: now + index,
+        tiebreakRandom: 100_000 - index,
         updatedAt: now,
       });
     }
@@ -473,6 +476,7 @@ test("getPublicPlayerResults filters hidden registrations out of every page", as
         entryStatus: "confirmed",
         participationStatus: "active",
         createdAt: now + index,
+        tiebreakRandom: 100_000 - index,
         updatedAt: now,
       });
     }
@@ -526,6 +530,7 @@ test("getPublicPlayerResults exhausts an entirely hidden history in one page", a
       entryStatus: "confirmed",
       participationStatus: "active",
       createdAt: now,
+      tiebreakRandom: 1,
       updatedAt: now,
     });
   });
@@ -577,6 +582,7 @@ test("getPublicPlayerResults surfaces sparse visible rows in a single request", 
         entryStatus: "confirmed",
         participationStatus: "active",
         createdAt: now + index,
+        tiebreakRandom: 100_000 - index,
         updatedAt: now,
       });
     }
@@ -608,6 +614,7 @@ test("getPublicPlayerResults surfaces sparse visible rows in a single request", 
         entryStatus: "confirmed",
         participationStatus: "active",
         createdAt: now + hiddenRows + index,
+        tiebreakRandom: 100_000 - (hiddenRows + index),
         updatedAt: now,
       });
     }
@@ -668,6 +675,7 @@ test("getPublicPlayerResults caps an all-hidden scan at the read budget but keep
         entryStatus: "confirmed",
         participationStatus: "active",
         createdAt: now + index,
+        tiebreakRandom: 100_000 - index,
         updatedAt: now,
       });
     }
@@ -695,6 +703,7 @@ test("getPublicPlayerResults caps an all-hidden scan at the read budget but keep
       entryStatus: "confirmed",
       participationStatus: "active",
       createdAt: now + hiddenRows,
+      tiebreakRandom: 100_000 - hiddenRows,
       updatedAt: now,
     });
   });
@@ -821,6 +830,7 @@ test("getPublicPlayerResults cursor keys come from the deployment environment", 
         entryStatus: "confirmed",
         participationStatus: "active",
         createdAt: now + index,
+        tiebreakRandom: 100_000 - index,
         updatedAt: now,
       });
     }
@@ -944,6 +954,7 @@ test("start date edits drain oversized registration sets via scheduled batches",
             }
           : { entryStatus: "cancelled" as const }),
         createdAt: now + index,
+        tiebreakRandom: 100_000 - index,
         updatedAt: now,
       });
     }
@@ -1034,6 +1045,7 @@ test("a reschedule during an in-flight sync converges on the latest date", async
         entryStatus: "confirmed" as const,
         participationStatus: "active" as const,
         createdAt: now + index,
+        tiebreakRandom: 100_000 - index,
         updatedAt: now,
       });
     }
@@ -1340,6 +1352,7 @@ async function registerUsers(
           entryStatus: "confirmed",
           participationStatus: "active",
           createdAt: now + index + 1,
+          tiebreakRandom: 100_000 - index,
           updatedAt: now,
         }),
       );

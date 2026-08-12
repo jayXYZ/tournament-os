@@ -2,7 +2,7 @@ import { usePaginatedQuery } from 'convex/react'
 import { ScrollText } from 'lucide-react'
 
 import { api } from '@tournament-os/backend/convex/_generated/api'
-import { displayPlayerName } from '@tournament-os/core'
+import { displayPlayerName, formatGameScoreline } from '@tournament-os/core'
 import type { FunctionReturnType } from 'convex/server'
 import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
 import { Badge } from '@/components/ui/badge'
@@ -194,7 +194,12 @@ function formatScoreline(lines: Array<ResultLine>) {
   if (!first || !second) {
     return 'a match result'
   }
-  return `${displayPlayerName(first.playerName)} ${first.gameWins}–${second.gameWins} ${displayPlayerName(second.playerName)}`
+  const scoreline = formatGameScoreline(
+    first.gameWins,
+    second.gameWins,
+    first.gameDraws,
+  )
+  return `${displayPlayerName(first.playerName)} ${scoreline} ${displayPlayerName(second.playerName)}`
 }
 
 function formatTimestamp(creationTime: number) {

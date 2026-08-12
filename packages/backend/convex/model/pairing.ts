@@ -28,9 +28,10 @@ export type RankedRegistration = {
   opponentMatchWinPct: number;
   gameWinPct: number;
   opponentGameWinPct: number;
-  createdAt: number;
+  tiebreakRandom: number;
+  tiebreakId: string;
   opponentIds: Set<Id<"tournamentRegistrations">>;
-  hasHadBye: boolean;
+  byeCount: number;
 };
 
 export type Pairing = {
@@ -193,18 +194,38 @@ export async function createRoundWithPairings(
     });
 
     if (pairing.isBye) {
+      // A Bye is an Awarded Result: the phase's required game wins to zero
+      // (2–0 in best-of-3), not a fixed 2–0.
+      const byeGameWins = requiredGameWins(args.phase.bestOf);
       await ctx.db.insert("tournamentMatchPlayers", {
         tournamentMatchId: matchId,
         playerId: pairing.playerOne._id,
         playerName: pairing.playerOne.playerName,
         matchPointsEarned: BYE_MATCH_POINTS,
-        // A Bye is an Awarded Result: the phase's required game wins to zero
-        // (2–0 in best-of-3), not a fixed 2–0.
-        gameWins: requiredGameWins(args.phase.bestOf),
+        gameWins: byeGameWins,
         gameLosses: 0,
+        gameDraws: 0,
         isBye: true,
         updatedAt: now,
       });
+      // Byes are results too, so they get a revision like any other outcome;
+      // no actor — the system awarded it at pairing time.
+      const revisionId = await ctx.db.insert("matchResultRevisions", {
+        tournamentId: args.tournament._id,
+        tournamentMatchId: matchId,
+        kind: "bye",
+        lines: [
+          {
+            registrationId: pairing.playerOne._id,
+            outcome: "win",
+            matchPointsEarned: BYE_MATCH_POINTS,
+            gameWins: byeGameWins,
+            gameLosses: 0,
+            gameDraws: 0,
+          },
+        ],
+      });
+      await ctx.db.patch(matchId, { currentResultRevisionId: revisionId });
     } else if (pairing.playerTwo) {
       await ctx.db.insert("tournamentMatchPlayers", {
         tournamentMatchId: matchId,
@@ -241,17 +262,18 @@ export async function rankedRegistrationsForPairing(
 ): Promise<RankedRegistration[]> {
   if (!args.previousRoundId) {
     return [...args.registrations]
-      .sort((left, right) => left.createdAt - right.createdAt)
       .map((registration) => ({
         registration,
         matchPoints: 0,
         opponentMatchWinPct: 0,
         gameWinPct: 0,
         opponentGameWinPct: 0,
-        createdAt: registration.createdAt,
+        tiebreakRandom: registration.tiebreakRandom,
+        tiebreakId: registration._id as string,
         opponentIds: new Set<Id<"tournamentRegistrations">>(),
-        hasHadBye: false,
-      }));
+        byeCount: 0,
+      }))
+      .sort(compareStandingRows);
   }
 
   const previousRoundId = args.previousRoundId;
@@ -272,7 +294,7 @@ export async function rankedRegistrationsForPairing(
       standing && hasCumulativeTotals(standing)
         ? {
             opponentIds: new Set(standing.opponentIds ?? []),
-            hasHadBye: standing.hasHadBye ?? false,
+            byeCount: standing.byeCount ?? 0,
           }
         : await playerPairingHistory(ctx, registration._id);
 
@@ -282,7 +304,8 @@ export async function rankedRegistrationsForPairing(
       opponentMatchWinPct: standing?.opponentMatchWinPct ?? 0,
       gameWinPct: standing?.gameWinPct ?? 0,
       opponentGameWinPct: standing?.opponentGameWinPct ?? 0,
-      createdAt: registration.createdAt,
+      tiebreakRandom: registration.tiebreakRandom,
+      tiebreakId: registration._id as string,
       ...history,
     });
   }
@@ -302,7 +325,7 @@ export function buildSwissPairings(
   if (standingsSorted.length % 2 === 1) {
     let byeIndex = standingsSorted.length - 1;
     for (let index = standingsSorted.length - 1; index >= 0; index -= 1) {
-      if (!standingsSorted[index].hasHadBye) {
+      if (standingsSorted[index].byeCount === 0) {
         byeIndex = index;
         break;
       }
@@ -507,6 +530,6 @@ async function playerPairingHistory(
 
   return {
     opponentIds,
-    hasHadBye: rows.some((row) => row.isBye),
+    byeCount: rows.filter((row) => row.isBye).length,
   };
 }

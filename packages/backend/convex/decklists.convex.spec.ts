@@ -71,6 +71,7 @@ async function seedOpenTournament(
           participationStatus: "active",
           playerName: identity.name,
           createdAt: now + playerNumber,
+          tiebreakRandom: playerNumber,
           updatedAt: now + playerNumber,
         }),
       );

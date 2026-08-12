@@ -1,4 +1,4 @@
-import { displayPlayerName } from '@tournament-os/core'
+import { displayPlayerName, formatGameScoreline } from '@tournament-os/core'
 import type { PairingRow } from './pairing-row'
 import { Badge } from '@/components/ui/badge'
 
@@ -17,11 +17,12 @@ export function MatchResultCell({ row }: { row: PairingRow }) {
   const playerTwoWins = playerOne?.isBye
     ? (playerOne.gameLosses ?? 0)
     : (playerTwo?.gameWins ?? 0)
+  const gameDraws = playerOne?.gameDraws ?? 0
 
   if (playerOneWins === playerTwoWins) {
     return (
       <ResultWithProvenance row={row}>
-        Draw {playerOneWins}&ndash;{playerTwoWins}
+        Draw {formatGameScoreline(playerOneWins, playerTwoWins, gameDraws)}
       </ResultWithProvenance>
     )
   }
@@ -35,7 +36,7 @@ export function MatchResultCell({ row }: { row: PairingRow }) {
 
   return (
     <ResultWithProvenance row={row}>
-      {winnerName} wins {winnerWins}&ndash;{loserWins}
+      {winnerName} wins {formatGameScoreline(winnerWins, loserWins, gameDraws)}
     </ResultWithProvenance>
   )
 }

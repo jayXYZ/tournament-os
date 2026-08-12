@@ -4,6 +4,8 @@ import { v } from "convex/values";
 import {
   auditActorRoleValidator,
   invitationStatusValidator,
+  matchResultKindValidator,
+  matchResultLineValidator,
   tournamentPhaseBestOfValidator,
   membershipStatusValidator,
   organizationStatusValidator,
@@ -176,9 +178,13 @@ export default defineSchema({
     // key off decklistId — an unnamed list has no deckName here either.
     decklistId: v.optional(v.id("tournamentDecklists")),
     deckName: v.optional(v.string()),
-    // Kept alongside _creationTime: pairing and standings tie-break on this,
-    // and test seeding deliberately offsets it per player for determinism.
     createdAt: v.number(),
+    // The player's fixed random tiebreaker for this tournament, breaking
+    // otherwise-perfect standings ties. Derived at registration time from
+    // the tournament seed and the user's stable publicCode (see
+    // model/random.ts) so it is reproducible across reseeds and never
+    // correlates with registration order.
+    tiebreakRandom: v.number(),
     updatedAt: v.number(),
   })
     // Whole-tournament scans prefix-query this on tournamentId alone; the
@@ -331,6 +337,9 @@ export default defineSchema({
     // Set when a player self-reports the result; absent once an organizer
     // records or overrides it. "completed" + this field = unconfirmed report.
     reportedByRegistrationId: v.optional(v.id("tournamentRegistrations")),
+    // The revision that is the match's current result; absent while the
+    // match has none. Older revisions for the match are superseded history.
+    currentResultRevisionId: v.optional(v.id("matchResultRevisions")),
     updatedAt: v.number(),
   })
     .index("by_tournamentRoundId", ["tournamentRoundId"])
@@ -338,6 +347,27 @@ export default defineSchema({
       "tournamentRoundId",
       "tableNumber",
     ]),
+
+  // Append-only history of every result a match has carried, one row per
+  // entry or override — the adjudication record behind the denormalized
+  // current-result fields on tournamentMatchPlayers, which stay the hot read
+  // model for standings and pairings. Rows are immutable (no updatedAt;
+  // _creationTime is the entry timestamp) and are deleted only when their
+  // match is deleted (a rewind un-pairing the round, or tournament deletion).
+  matchResultRevisions: defineTable({
+    tournamentId: v.id("tournaments"),
+    tournamentMatchId: v.id("tournamentMatches"),
+    kind: matchResultKindValidator,
+    // One line per player: two for played results, one for byes.
+    lines: v.array(matchResultLineValidator),
+    // Who entered the result. Absent for system-written revisions: byes at
+    // pairing time and seeded test simulation.
+    actorUserId: v.optional(v.id("users")),
+    actorRole: v.optional(auditActorRoleValidator),
+    // Optional organizer note explaining a correction, for dispute context
+    // beyond what the audit log records.
+    note: v.optional(v.string()),
+  }).index("by_tournamentMatchId", ["tournamentMatchId"]),
 
   tournamentMatchPlayers: defineTable({
     tournamentMatchId: v.id("tournamentMatches"),
@@ -349,6 +379,10 @@ export default defineSchema({
     matchPointsEarned: v.optional(v.number()),
     gameWins: v.optional(v.number()),
     gameLosses: v.optional(v.number()),
+    // Drawn games are shared by both players, so a match's two rows always
+    // carry the same value. Absent (like the fields above) until a result is
+    // recorded.
+    gameDraws: v.optional(v.number()),
     isBye: v.boolean(),
     updatedAt: v.number(),
   })
@@ -375,11 +409,15 @@ export default defineSchema({
     // Cumulative totals through this round, denormalized so the next round's
     // standings and pairings never re-read full match history. Optional only
     // for rows written before these fields existed; readers fall back to a
-    // per-player history walk when they are missing.
+    // per-player history walk when they are missing. byeCount and
+    // byeGameWins exist so the percentages a player feeds into opponents'
+    // tiebreakers can exclude their byes (see model/standings.ts).
     gameWins: v.optional(v.number()),
     gameLosses: v.optional(v.number()),
+    gameDraws: v.optional(v.number()),
     opponentIds: v.optional(v.array(v.id("tournamentRegistrations"))),
-    hasHadBye: v.optional(v.boolean()),
+    byeCount: v.optional(v.number()),
+    byeGameWins: v.optional(v.number()),
     opponentMatchWinPct: v.number(),
     gameWinPct: v.number(),
     opponentGameWinPct: v.number(),

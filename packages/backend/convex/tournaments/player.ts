@@ -213,6 +213,7 @@ export const getMyCurrentMatch = query({
         registrationId: registration._id,
         gameWins: myRow.gameWins ?? null,
         gameLosses: myRow.gameLosses ?? null,
+        gameDraws: myRow.gameDraws ?? null,
         isBye: myRow.isBye,
       },
       opponent,
@@ -299,6 +300,7 @@ export const reportMyMatchResult = mutation({
     matchId: v.id("tournamentMatches"),
     myGameWins: v.number(),
     opponentGameWins: v.number(),
+    gameDraws: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     await enforceRateLimit(ctx, "reportResult");
@@ -311,6 +313,7 @@ export const reportMyMatchResult = mutation({
       players: [myRow, opponentRow],
       playerOneGameWins: args.myGameWins,
       playerTwoGameWins: args.opponentGameWins,
+      gameDraws: args.gameDraws ?? 0,
       policy: {
         kind: "player",
         actor: user,

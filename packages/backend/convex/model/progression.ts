@@ -1,6 +1,7 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { logAuditEvent } from "./auditLog";
+import { deleteResultRevisionsForMatch } from "./matchResults";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "./batching";
 import {
   type CutoffPartition,
@@ -1020,6 +1021,7 @@ export async function rewindLatestRound(
     for (const player of players) {
       await ctx.db.delete(player._id);
     }
+    await deleteResultRevisionsForMatch(ctx, match._id);
     await ctx.db.delete(match._id);
   }
   await ctx.db.delete(round._id);

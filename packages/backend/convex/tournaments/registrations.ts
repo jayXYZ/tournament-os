@@ -8,6 +8,7 @@ import { auditPlayerRef, logAuditEvent } from "../model/auditLog";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
 import { clampPageSize } from "../model/pagination";
 import { setRegistrationState } from "../model/participation";
+import { tiebreakRandom } from "../model/random";
 import {
   adjustConfirmedRegistrationCount,
   playerDisplayName,
@@ -131,6 +132,10 @@ export const registerSelf = mutation({
         participationStatus: "active",
         playerName,
         createdAt: now,
+        tiebreakRandom: tiebreakRandom(
+          tournament.seed ?? tournament.publicCode,
+          String(user.publicCode),
+        ),
         updatedAt: now,
       }));
     if (existing) {

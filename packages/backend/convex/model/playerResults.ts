@@ -462,6 +462,7 @@ export async function matchLogForRegistration(
         isBye: playerRow.isBye,
         myGameWins: playerRow.gameWins ?? null,
         myGameLosses: playerRow.gameLosses ?? null,
+        myGameDraws: playerRow.gameDraws ?? null,
         result: matchResultForRow(match, playerRow),
       };
     },

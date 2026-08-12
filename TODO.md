@@ -186,20 +186,36 @@ no-shows, and disqualifications without each workflow inventing its own rules.
         enforces each side ≤ required wins and non-drawn games ≤ X, byes and
         the test simulator award structure-relative scorelines, and both
         result-entry UIs cap inputs at the required wins (the drawn-games ≤ 3
-        bound lands with game-draw tracking in the adjudication model below,
-        since drawn games are not yet recorded)
+        bound landed with game-draw tracking in the adjudication model below)
   - [x] Define whether draws are allowed for the phase type: fixed by phase
         type, not configurable — equal game wins is a valid Swiss match draw
         at any structure (0–0 in best of 1, 2–2 in best of 5) and never valid
         in single elimination; recording drawn games themselves lands with the
         adjudication model below
-- [ ] Replace the wins-only result shape with a normalized adjudication model
-  - [ ] Track game wins, game losses, and game draws
-  - [ ] Compute match-win and game-win percentages from match/game points so drawn games count (MTR Appendix C)
-  - [ ] Exclude byes from a player's percentages where they feed opponents' tiebreakers
-  - [ ] Break residual perfect ties with a per-player random value fixed for the tournament instead of registration time
-  - [ ] Distinguish played results, intentional draws, concessions, forfeits, no-shows, byes, and DQs (Intentional draws can't be distinguished, a 0-0 ID looks the same as a match that went to time game 1 and resulted in a draw)
-  - [ ] Keep immutable result revisions and identify the current result
+- [x] Replace the wins-only result shape with a normalized adjudication model
+  - [x] Track game wins, game losses, and game draws: `gameDraws` flows from
+        both entry surfaces through `applyMatchResult` onto the match-player
+        rows, audit lines, standings, and every scoreline display
+  - [x] Compute match-win and game-win percentages from match/game points so
+        drawn games count (MTR Appendix C)
+  - [x] Exclude byes from a player's percentages where they feed opponents'
+        tiebreakers: cumulative `byeCount`/`byeGameWins` produce the
+        bye-excluded feed variants, while a player's own GWP keeps their
+        byes' awarded games (MTR literal)
+  - [x] Break residual perfect ties with a per-player random value fixed for
+        the tournament instead of registration time: `tiebreakRandom` on the
+        registration, hashed from the tournament seed and the user's stable
+        publicCode (player number for seeded test players) so same-seed
+        pairings stay reproducible across reseeds
+  - [x] Distinguish played results, intentional draws, concessions, forfeits,
+        no-shows, byes, and DQs: the revision kind vocabulary and explicit
+        per-player outcomes exist (no intentional-draw kind by design — an ID
+        is an ordinary drawn match); only `played` and `bye` have writers
+        until the organizer adjudication actions below land
+  - [x] Keep immutable result revisions and identify the current result:
+        append-only `matchResultRevisions` with `currentResultRevisionId` on
+        the match and an optional organizer correction note; the match-player
+        rows stay the denormalized hot read model
   - [x] Preserve the previous result in the organizer audit trail for active-round overrides
 - [ ] Remove opponent result confirmation — the confirmed match status, mutation, and player UI; disputes resolve through organizer override
 - [x] Result corrections are active-round-only by design (decided 2026-08-12):

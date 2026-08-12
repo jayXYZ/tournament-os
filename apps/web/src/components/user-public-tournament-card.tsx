@@ -3,7 +3,11 @@ import { useQuery } from 'convex/react'
 import { ChevronDown, ChevronUp, Trophy } from 'lucide-react'
 import { useState } from 'react'
 import { api } from '@tournament-os/backend/convex/_generated/api'
-import { displayPlayerName, formatRecord } from '@tournament-os/core'
+import {
+  displayPlayerName,
+  formatGameScoreline,
+  formatRecord,
+} from '@tournament-os/core'
 import type { FunctionReturnType } from 'convex/server'
 import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
 
@@ -149,7 +153,11 @@ function MatchLog({
             </TableCell>
             <TableCell className="tabular-nums">
               {row.myGameWins !== null && row.myGameLosses !== null
-                ? `${row.myGameWins}–${row.myGameLosses}`
+                ? formatGameScoreline(
+                    row.myGameWins,
+                    row.myGameLosses,
+                    row.myGameDraws ?? 0,
+                  )
                 : '—'}
             </TableCell>
             <TableCell className="text-right">

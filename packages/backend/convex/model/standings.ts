@@ -27,7 +27,11 @@ export type StandingComparable = {
   opponentMatchWinPct: number;
   gameWinPct: number;
   opponentGameWinPct: number;
-  createdAt: number;
+  // Seed-derived per-player random (see model/random.ts) breaking residual
+  // perfect ties; the registration id is the absolute final order so two
+  // colliding hashes still compare deterministically.
+  tiebreakRandom: number;
+  tiebreakId: string;
 };
 
 export type PlayerStats = {
@@ -38,9 +42,14 @@ export type PlayerStats = {
   matchDraws: number;
   gameWins: number;
   gameLosses: number;
+  gameDraws: number;
   opponentIds: Id<"tournamentRegistrations">[];
-  hasHadBye: boolean;
-  createdAt: number;
+  // Bye totals kept separately so the percentages this player feeds into
+  // opponents' tiebreakers can exclude their byes (MTR Appendix C), while
+  // their own game-win percentage keeps them.
+  byeCount: number;
+  byeGameWins: number;
+  tiebreakRandom: number;
 };
 
 type PlayoffStandingStatus = "not_started" | "active" | "eliminated" | "cut";
@@ -60,7 +69,8 @@ export function compareStandingRows(
     right.opponentMatchWinPct - left.opponentMatchWinPct ||
     right.gameWinPct - left.gameWinPct ||
     right.opponentGameWinPct - left.opponentGameWinPct ||
-    left.createdAt - right.createdAt
+    right.tiebreakRandom - left.tiebreakRandom ||
+    left.tiebreakId.localeCompare(right.tiebreakId)
   );
 }
 
@@ -80,8 +90,10 @@ export function hasCumulativeTotals(standing: Doc<"roundStandings">) {
   return (
     standing.gameWins !== undefined &&
     standing.gameLosses !== undefined &&
+    standing.gameDraws !== undefined &&
     standing.opponentIds !== undefined &&
-    standing.hasHadBye !== undefined
+    standing.byeCount !== undefined &&
+    standing.byeGameWins !== undefined
   );
 }
 
@@ -165,7 +177,7 @@ export async function replaceStandingsForRound(
     prefetchedMatches ?? (await roundMatchesWithPlayers(ctx, round._id));
   const stats = await cumulativeStatsThroughRound(
     ctx,
-    tournament._id,
+    tournament,
     round,
     matchesWithPlayers,
   );
@@ -195,8 +207,10 @@ export async function replaceStandingsForRound(
       matchDraws: playerStats.matchDraws,
       gameWins: playerStats.gameWins,
       gameLosses: playerStats.gameLosses,
+      gameDraws: playerStats.gameDraws,
       opponentIds: playerStats.opponentIds,
-      hasHadBye: playerStats.hasHadBye,
+      byeCount: playerStats.byeCount,
+      byeGameWins: playerStats.byeGameWins,
       opponentMatchWinPct: comparable.opponentMatchWinPct,
       gameWinPct: comparable.gameWinPct,
       opponentGameWinPct: comparable.opponentGameWinPct,
@@ -344,7 +358,7 @@ function comparePlayerStats(
 // documents instead of every match in the tournament's history.
 async function cumulativeStatsThroughRound(
   ctx: QueryCtx,
-  tournamentId: Id<"tournaments">,
+  tournament: Doc<"tournaments">,
   round: Doc<"tournamentRounds">,
   matchesWithPlayers: RoundMatchWithPlayers[],
 ) {
@@ -352,7 +366,7 @@ async function cumulativeStatsThroughRound(
   // former opponents' OMW%/OGW% (MTR Appendix C: withdrawal does not erase
   // a record); they also stay ranked, with their record frozen at the point
   // they stopped playing.
-  const registrations = await participantRegistrations(ctx, tournamentId);
+  const registrations = await participantRegistrations(ctx, tournament._id);
   const stats = new Map<Id<"tournamentRegistrations">, PlayerStats>(
     registrations.map((registration) => [
       registration._id,
@@ -389,14 +403,16 @@ async function cumulativeStatsThroughRound(
         playerStats.matchDraws = standing.matchDraws;
         playerStats.gameWins = standing.gameWins ?? 0;
         playerStats.gameLosses = standing.gameLosses ?? 0;
+        playerStats.gameDraws = standing.gameDraws ?? 0;
         playerStats.opponentIds = [...(standing.opponentIds ?? [])];
-        playerStats.hasHadBye = standing.hasHadBye ?? false;
+        playerStats.byeCount = standing.byeCount ?? 0;
+        playerStats.byeGameWins = standing.byeGameWins ?? 0;
       } else {
         // Legacy standings row or a player without one (e.g. reinstated
         // after a drop): rebuild this player's totals from match history.
         await accumulatePlayerHistory(
           ctx,
-          tournamentId,
+          tournament._id,
           playerStats,
           round.roundNumber - 1,
         );
@@ -496,9 +512,11 @@ function emptyStats(registration: Doc<"tournamentRegistrations">): PlayerStats {
     matchDraws: 0,
     gameWins: 0,
     gameLosses: 0,
+    gameDraws: 0,
     opponentIds: [],
-    hasHadBye: false,
-    createdAt: registration.createdAt,
+    byeCount: 0,
+    byeGameWins: 0,
+    tiebreakRandom: registration.tiebreakRandom,
   };
 }
 
@@ -510,11 +528,13 @@ function applyMatchPlayerRow(
   playerStats.matchPoints += points;
   playerStats.gameWins += playerRow.gameWins ?? 0;
   playerStats.gameLosses += playerRow.gameLosses ?? 0;
+  playerStats.gameDraws += playerRow.gameDraws ?? 0;
   if (playerRow.opponentPlayerId) {
     playerStats.opponentIds.push(playerRow.opponentPlayerId);
   }
   if (playerRow.isBye) {
-    playerStats.hasHadBye = true;
+    playerStats.byeCount += 1;
+    playerStats.byeGameWins += playerRow.gameWins ?? 0;
   }
   if (points === MATCH_WIN_POINTS || playerRow.isBye) {
     playerStats.matchWins += 1;
@@ -531,12 +551,12 @@ export function comparableFromStats(
 ): StandingComparable {
   const opponentMatchWinPct = averageOrFloor(
     playerStats.opponentIds.map((opponentId) =>
-      Math.max(0.33, matchWinPct(allStats.get(opponentId))),
+      Math.max(0.33, feedMatchWinPct(allStats.get(opponentId))),
     ),
   );
   const opponentGameWinPct = averageOrFloor(
     playerStats.opponentIds.map((opponentId) =>
-      Math.max(0.33, gameWinPct(allStats.get(opponentId))),
+      Math.max(0.33, feedGameWinPct(allStats.get(opponentId))),
     ),
   );
 
@@ -545,32 +565,58 @@ export function comparableFromStats(
     opponentMatchWinPct,
     // MTR Appendix C floors game-win percentage at 0.33 in its definition,
     // so the floor applies to a player's own tiebreaker, not just opponents'.
-    gameWinPct: Math.max(0.33, gameWinPct(playerStats)),
+    gameWinPct: Math.max(0.33, ownGameWinPct(playerStats)),
     opponentGameWinPct,
-    createdAt: playerStats.createdAt,
+    tiebreakRandom: playerStats.tiebreakRandom,
+    tiebreakId: playerStats.registration._id,
   };
 }
 
-function matchWinPct(stats: PlayerStats | undefined) {
+// Percentages are match/game points over points possible (MTR Appendix C),
+// so drawn matches and drawn games count toward both sides of the division.
+// Each comes in two variants: the player's own tiebreaker keeps their byes
+// (a bye is an awarded win with awarded game points), while the value fed
+// into an opponent's OMW%/OGW% excludes them — an opponent-less round says
+// nothing about the strength anyone actually faced. Own match-win percentage
+// has no own variant because it never ranks the player directly.
+
+function feedMatchWinPct(stats: PlayerStats | undefined) {
   if (!stats) {
     return 0;
   }
-  const matches = stats.matchWins + stats.matchLosses + stats.matchDraws;
-  if (matches === 0) {
+  const matches =
+    stats.matchWins + stats.matchLosses + stats.matchDraws - stats.byeCount;
+  if (matches <= 0) {
     return 0;
   }
-  return (stats.matchWins + stats.matchDraws / 3) / matches;
+  // Every bye awarded exactly a match win's points, so subtracting them
+  // leaves the points earned in played rounds.
+  const matchPoints = stats.matchPoints - MATCH_WIN_POINTS * stats.byeCount;
+  return matchPoints / (3 * matches);
 }
 
-function gameWinPct(stats: PlayerStats | undefined) {
+function ownGameWinPct(stats: PlayerStats | undefined) {
   if (!stats) {
     return 0;
   }
-  const games = stats.gameWins + stats.gameLosses;
+  const games = stats.gameWins + stats.gameLosses + stats.gameDraws;
   if (games === 0) {
     return 0;
   }
-  return stats.gameWins / games;
+  return (3 * stats.gameWins + stats.gameDraws) / (3 * games);
+}
+
+function feedGameWinPct(stats: PlayerStats | undefined) {
+  if (!stats) {
+    return 0;
+  }
+  const games =
+    stats.gameWins + stats.gameLosses + stats.gameDraws - stats.byeGameWins;
+  if (games <= 0) {
+    return 0;
+  }
+  const gamePoints = 3 * (stats.gameWins - stats.byeGameWins) + stats.gameDraws;
+  return gamePoints / (3 * games);
 }
 
 // A player with only byes has no opponents to average; MTR's per-opponent

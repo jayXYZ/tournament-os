@@ -1,6 +1,9 @@
 import { useState } from 'react'
-import { useReportResult } from '@tournament-os/core'
-import { requiredGameWins } from '@tournament-os/shared/match-structure'
+import { formatGameScoreline, useReportResult } from '@tournament-os/core'
+import {
+  MAX_GAME_DRAWS,
+  requiredGameWins,
+} from '@tournament-os/shared/match-structure'
 import { Minus, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -36,10 +39,11 @@ export function ReportResultDialog({
   const { busy, run } = useBusyAction()
   const [myGameWins, setMyGameWins] = useState(0)
   const [opponentGameWins, setOpponentGameWins] = useState(0)
+  const [gameDraws, setGameDraws] = useState(0)
 
   async function handleSubmit() {
     await run(async () => {
-      await reportResult({ matchId, myGameWins, opponentGameWins })
+      await reportResult({ matchId, myGameWins, opponentGameWins, gameDraws })
       onOpenChange(false)
       toast.success('Result reported.')
     }, 'Could not report the result.')
@@ -78,8 +82,20 @@ export function ReportResultDialog({
             onChange={setOpponentGameWins}
             disabled={busy}
           />
+          <GameWinsStepper
+            label="Drawn games"
+            value={gameDraws}
+            max={MAX_GAME_DRAWS}
+            onChange={setGameDraws}
+            disabled={busy}
+          />
           <p className="text-center text-sm font-medium text-muted-foreground">
-            {resultPreview(myGameWins, opponentGameWins, opponentName)}
+            {resultPreview(
+              myGameWins,
+              opponentGameWins,
+              gameDraws,
+              opponentName,
+            )}
           </p>
         </div>
 
@@ -147,13 +163,14 @@ function GameWinsStepper({
 function resultPreview(
   myGameWins: number,
   opponentGameWins: number,
+  gameDraws: number,
   opponentName: string,
 ) {
   if (myGameWins > opponentGameWins) {
-    return `You win ${myGameWins}–${opponentGameWins}`
+    return `You win ${formatGameScoreline(myGameWins, opponentGameWins, gameDraws)}`
   }
   if (myGameWins < opponentGameWins) {
-    return `${opponentName} wins ${opponentGameWins}–${myGameWins}`
+    return `${opponentName} wins ${formatGameScoreline(opponentGameWins, myGameWins, gameDraws)}`
   }
-  return `Draw ${myGameWins}–${opponentGameWins}`
+  return `Draw ${formatGameScoreline(myGameWins, opponentGameWins, gameDraws)}`
 }

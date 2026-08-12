@@ -1,5 +1,6 @@
 import type { Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
+import { deleteResultRevisionsForMatch } from "./matchResults";
 import { matchPlayers, roundMatches } from "./tournaments";
 
 // Deletion budget per transaction. Each invocation deletes at most this many
@@ -42,13 +43,16 @@ export async function deleteTournamentOperationalDataBatch(
       sawFullPage ||= matches.length === 512;
       for (const match of matches) {
         const players = await matchPlayers(ctx, match._id);
-        if (budget < players.length + 1) {
+        // Revisions per match are bounded by result overrides — budget a
+        // handful alongside the player rows and the match itself.
+        if (budget < players.length + 8) {
           return false;
         }
         for (const player of players) {
           await ctx.db.delete(player._id);
           budget -= 1;
         }
+        budget -= await deleteResultRevisionsForMatch(ctx, match._id);
         await ctx.db.delete(match._id);
         budget -= 1;
       }

@@ -13,6 +13,7 @@ export { useAuthedQueryArgs, useConvexAuthReadiness } from "./auth-readiness";
 export type { ConvexAuthReadiness } from "./auth-readiness";
 export {
   displayPlayerName,
+  formatGameScoreline,
   formatPercent,
   formatRecord,
   standingStatusLabel,

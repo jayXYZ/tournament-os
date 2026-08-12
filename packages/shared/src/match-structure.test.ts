@@ -56,4 +56,13 @@ describe("gameWinsEntryError", () => {
     expect(gameWinsEntryError(1, 1, 1)).toMatch(/total at most 1/);
     expect(gameWinsEntryError(5, 3, 3)).toMatch(/total at most 5/);
   });
+
+  it("bounds drawn games at the flat cap without counting them toward X", () => {
+    expect(gameWinsEntryError(3, 1, 1, 1)).toBeNull();
+    expect(gameWinsEntryError(1, 0, 0, 2)).toBeNull();
+    expect(gameWinsEntryError(3, 2, 1, 3)).toBeNull();
+    expect(gameWinsEntryError(3, 0, 0, 4)).toMatch(/at most 3 drawn games/);
+    expect(gameWinsEntryError(3, 0, 0, -1)).toMatch(/whole number/);
+    expect(gameWinsEntryError(3, 0, 0, 1.5)).toMatch(/whole number/);
+  });
 });

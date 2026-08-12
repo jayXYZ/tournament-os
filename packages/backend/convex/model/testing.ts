@@ -7,7 +7,7 @@ import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { applyMatchResult } from "./matchResults";
 import { requirePhase } from "./phases";
-import { createSeededRandom } from "./random";
+import { createSeededRandom, tiebreakRandom } from "./random";
 import {
   adjustConfirmedRegistrationCount,
   registrationForUser,
@@ -166,6 +166,14 @@ export async function seedTestPlayers(
         participationStatus: "active",
         playerName: existingUser?.name ?? `Test Player ${playerNumber}`,
         createdAt: now + playerNumber,
+        // Keyed on the player number — a test player's stable identity — so
+        // the same seed reproduces identical pairings across test-tournament
+        // resets and re-creations (real registrations key on the user's
+        // stable publicCode instead).
+        tiebreakRandom: tiebreakRandom(
+          tournament.seed ?? tournament.publicCode,
+          String(playerNumber),
+        ),
         updatedAt: now,
       });
     }
@@ -209,6 +217,7 @@ export async function generateTestResults(
       players,
       playerOneGameWins: result.playerOneGameWins,
       playerTwoGameWins: result.playerTwoGameWins,
+      gameDraws: result.draws,
       policy: { kind: "simulation", audit: "none" },
     });
   }

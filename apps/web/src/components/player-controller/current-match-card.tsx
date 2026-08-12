@@ -1,5 +1,9 @@
 import { useState } from 'react'
-import { mutationErrorMessage, useConfirmResult } from '@tournament-os/core'
+import {
+  formatGameScoreline,
+  mutationErrorMessage,
+  useConfirmResult,
+} from '@tournament-os/core'
 import { CheckCheck, Hourglass, Swords } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -192,7 +196,7 @@ function MatchStatusSection({ currentMatch }: { currentMatch: MyActiveMatch }) {
     )
   }
 
-  const scoreline = formatScoreline(me.gameWins, me.gameLosses)
+  const scoreline = formatScoreline(me.gameWins, me.gameLosses, me.gameDraws)
   const reportedByMe = match.reportedByRegistrationId === me.registrationId
 
   if (match.matchStatus === 'confirmed') {
@@ -309,14 +313,19 @@ function opponentName(currentMatch: MyActiveMatch) {
   return currentMatch.opponent?.name ?? 'Opponent'
 }
 
-function formatScoreline(gameWins: number | null, gameLosses: number | null) {
+function formatScoreline(
+  gameWins: number | null,
+  gameLosses: number | null,
+  gameDraws: number | null,
+) {
   const wins = gameWins ?? 0
   const losses = gameLosses ?? 0
+  const scoreline = formatGameScoreline(wins, losses, gameDraws ?? 0)
   if (wins > losses) {
-    return `You win ${wins}–${losses}`
+    return `You win ${scoreline}`
   }
   if (wins < losses) {
-    return `You lose ${wins}–${losses}`
+    return `You lose ${scoreline}`
   }
-  return `Draw ${wins}–${losses}`
+  return `Draw ${scoreline}`
 }

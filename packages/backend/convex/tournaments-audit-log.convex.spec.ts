@@ -406,6 +406,7 @@ async function seedTournament(
           participationStatus: "active",
           playerName: identity.name,
           createdAt: now + playerNumber,
+          tiebreakRandom: playerNumber,
           updatedAt: now,
         }),
       );

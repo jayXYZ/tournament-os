@@ -62,6 +62,9 @@ export const recordMatchResult = mutation({
     playerTwoRegistrationId: v.id("tournamentRegistrations"),
     playerOneGameWins: v.number(),
     playerTwoGameWins: v.number(),
+    gameDraws: v.optional(v.number()),
+    // Optional note explaining a correction, stored on the result revision.
+    note: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const match = await requireMatch(ctx, args.matchId);
@@ -89,11 +92,24 @@ export const recordMatchResult = mutation({
       players: [playerOne, playerTwo],
       playerOneGameWins: args.playerOneGameWins,
       playerTwoGameWins: args.playerTwoGameWins,
-      policy: { kind: "organizer", actor: user },
+      gameDraws: args.gameDraws ?? 0,
+      policy: { kind: "organizer", actor: user, note: cleanNote(args.note) },
     });
     return args.matchId;
   },
 });
+
+// Empty and whitespace-only notes are dropped rather than stored.
+function cleanNote(note: string | undefined) {
+  const trimmed = note?.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  if (trimmed.length > 500) {
+    throw new Error("Result note must be at most 500 characters");
+  }
+  return trimmed;
+}
 
 export const completeRound = mutation({
   args: { roundId: v.id("tournamentRounds") },

@@ -111,7 +111,9 @@ test("odd-sized Swiss events give byes to distinct players and stay consistent",
         q.eq("tournamentRoundId", firstRoundId!),
       )
       .collect();
-    const byeStanding = roundOneStandings.find((row) => row.hasHadBye);
+    const byeStanding = roundOneStandings.find(
+      (row) => (row.byeCount ?? 0) > 0,
+    );
     expect(byeStanding).toBeDefined();
     expect(byeStanding!.opponentMatchWinPct).toBe(0.33);
     expect(byeStanding!.opponentGameWinPct).toBe(0.33);
@@ -173,8 +175,10 @@ test("standings and pairings fall back to match history for legacy rows", async 
       await ctx.db.patch(standing._id, {
         gameWins: undefined,
         gameLosses: undefined,
+        gameDraws: undefined,
         opponentIds: undefined,
-        hasHadBye: undefined,
+        byeCount: undefined,
+        byeGameWins: undefined,
       });
     }
   });
@@ -458,7 +462,9 @@ async function expectStandingsMatchOracle(
       expect(standing.matchDraws).toBe(stats!.matchDraws);
       expect(standing.gameWins).toBe(stats!.gameWins);
       expect(standing.gameLosses).toBe(stats!.gameLosses);
-      expect(standing.hasHadBye).toBe(stats!.hasHadBye);
+      expect(standing.gameDraws).toBe(stats!.gameDraws);
+      expect(standing.byeCount).toBe(stats!.byeCount);
+      expect(standing.byeGameWins).toBe(stats!.byeGameWins);
       expect([...(standing.opponentIds ?? [])].sort()).toEqual(
         [...stats!.opponentIds].sort(),
       );

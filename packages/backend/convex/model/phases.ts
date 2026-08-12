@@ -310,11 +310,13 @@ export function requireValidMatchResult(
   phase: Doc<"tournamentPhases">,
   playerOneGameWins: number,
   playerTwoGameWins: number,
+  gameDraws = 0,
 ) {
   const entryError = gameWinsEntryError(
     phase.bestOf,
     playerOneGameWins,
     playerTwoGameWins,
+    gameDraws,
   );
   if (entryError !== null) {
     throw new Error(entryError);

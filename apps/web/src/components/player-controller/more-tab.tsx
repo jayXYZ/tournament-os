@@ -1,6 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import {
   displayPlayerName,
+  formatGameScoreline,
   useDropSelf,
   useMyMatchHistory,
 } from '@tournament-os/core'
@@ -180,7 +181,11 @@ function MatchHistoryCard({
               </span>
               {entry.result !== 'pending' ? (
                 <span className="text-sm tabular-nums text-muted-foreground">
-                  {entry.myGameWins ?? 0}–{entry.myGameLosses ?? 0}
+                  {formatGameScoreline(
+                    entry.myGameWins ?? 0,
+                    entry.myGameLosses ?? 0,
+                    entry.myGameDraws ?? 0,
+                  )}
                 </span>
               ) : null}
               <ResultBadge result={entry.result} />

@@ -33,34 +33,36 @@ test("top-eight bracket uses tournament seeding order", () => {
   ]);
 });
 
-// Minimal RankedRegistration factory: only _id/createdAt on the registration
+// Minimal RankedRegistration factory: only _id on the registration
 // and the standings/history fields the matcher reads actually matter.
 function ranked(
   id: string,
   options: {
     points?: number;
-    createdAt?: number;
+    // Standing position among equals: lower ranks higher, mapped onto the
+    // descending tiebreakRandom comparator term.
+    position?: number;
     gameWinPct?: number;
     opponents?: string[];
-    hasHadBye?: boolean;
+    byeCount?: number;
   } = {},
 ): RankedRegistration {
   return {
     registration: {
       _id: id as unknown as Id<"tournamentRegistrations">,
-      createdAt: options.createdAt ?? 0,
     } as Doc<"tournamentRegistrations">,
     matchPoints: options.points ?? 0,
     opponentMatchWinPct: 0,
     gameWinPct: options.gameWinPct ?? 0,
     opponentGameWinPct: 0,
-    createdAt: options.createdAt ?? 0,
+    tiebreakRandom: 1000 - (options.position ?? 0),
+    tiebreakId: id,
     opponentIds: new Set(
       (options.opponents ?? []).map(
         (opponent) => opponent as unknown as Id<"tournamentRegistrations">,
       ),
     ),
-    hasHadBye: options.hasHadBye ?? false,
+    byeCount: options.byeCount ?? 0,
   };
 }
 
@@ -86,10 +88,10 @@ test("avoids a rematch the old greedy pass would have made", () => {
   // C and D have already played. Greedy pairs A-B first, stranding C-D into a
   // rematch; the backtracking matcher pairs A-C and B-D instead.
   const players = [
-    ranked("A", { createdAt: 1 }),
-    ranked("B", { createdAt: 2 }),
-    ranked("C", { createdAt: 3, opponents: ["D"] }),
-    ranked("D", { createdAt: 4, opponents: ["C"] }),
+    ranked("A", { position: 1 }),
+    ranked("B", { position: 2 }),
+    ranked("C", { position: 3, opponents: ["D"] }),
+    ranked("D", { position: 4, opponents: ["C"] }),
   ];
 
   const pairings = buildSwissPairings(players, POWER_PAIR_FINAL);
@@ -102,12 +104,12 @@ test("avoids a rematch the old greedy pass would have made", () => {
 test("forces a float-down rather than repeating a pairing", () => {
   // A has played everyone in its bracket except F, so A must float to F.
   const players = [
-    ranked("A", { points: 6, createdAt: 1, opponents: ["B", "C", "D", "E"] }),
-    ranked("B", { points: 6, createdAt: 2, opponents: ["A"] }),
-    ranked("C", { points: 6, createdAt: 3, opponents: ["A"] }),
-    ranked("D", { points: 6, createdAt: 4, opponents: ["A"] }),
-    ranked("E", { points: 6, createdAt: 5, opponents: ["A"] }),
-    ranked("F", { points: 3, createdAt: 6 }),
+    ranked("A", { points: 6, position: 1, opponents: ["B", "C", "D", "E"] }),
+    ranked("B", { points: 6, position: 2, opponents: ["A"] }),
+    ranked("C", { points: 6, position: 3, opponents: ["A"] }),
+    ranked("D", { points: 6, position: 4, opponents: ["A"] }),
+    ranked("E", { points: 6, position: 5, opponents: ["A"] }),
+    ranked("F", { points: 3, position: 6 }),
   ];
 
   const pairings = buildSwissPairings(players, POWER_PAIR_FINAL);
@@ -121,10 +123,10 @@ test("gracefully minimizes rematches when none can be avoided", () => {
   // A saturated four-player field (everyone has played everyone): no
   // rematch-free pairing exists, so the matcher must still pair everyone.
   const players = [
-    ranked("A", { createdAt: 1, opponents: ["B", "C", "D"] }),
-    ranked("B", { createdAt: 2, opponents: ["A", "C", "D"] }),
-    ranked("C", { createdAt: 3, opponents: ["A", "B", "D"] }),
-    ranked("D", { createdAt: 4, opponents: ["A", "B", "C"] }),
+    ranked("A", { position: 1, opponents: ["B", "C", "D"] }),
+    ranked("B", { position: 2, opponents: ["A", "C", "D"] }),
+    ranked("C", { position: 3, opponents: ["A", "B", "D"] }),
+    ranked("D", { position: 4, opponents: ["A", "B", "C"] }),
   ];
 
   const pairings = buildSwissPairings(players, POWER_PAIR_FINAL);
@@ -140,11 +142,11 @@ test("gracefully minimizes rematches when none can be avoided", () => {
 test("gives the bye to the lowest-ranked player without one", () => {
   // E is lowest by standings but already had a bye, so D floats into the bye.
   const players = [
-    ranked("A", { createdAt: 1 }),
-    ranked("B", { createdAt: 2 }),
-    ranked("C", { createdAt: 3 }),
-    ranked("D", { createdAt: 4 }),
-    ranked("E", { createdAt: 5, hasHadBye: true }),
+    ranked("A", { position: 1 }),
+    ranked("B", { position: 2 }),
+    ranked("C", { position: 3 }),
+    ranked("D", { position: 4 }),
+    ranked("E", { position: 5, byeCount: 1 }),
   ];
 
   const pairings = buildSwissPairings(players, {
@@ -162,7 +164,7 @@ test("gives the bye to the lowest-ranked player without one", () => {
 test("is deterministic for a seed and varies by round", () => {
   const field = () =>
     Array.from({ length: 8 }, (_, index) =>
-      ranked(`P${index}`, { createdAt: index + 1 }),
+      ranked(`P${index}`, { position: index + 1 }),
     );
   const options: PairingOptions = {
     seed: 42,
@@ -184,10 +186,10 @@ test("is deterministic for a seed and varies by round", () => {
 test("final-round power pairing makes the top table decisive", () => {
   // Same record, distinct game-win percentages → standings order A,B,C,D.
   const field = () => [
-    ranked("A", { points: 6, createdAt: 1, gameWinPct: 0.9 }),
-    ranked("B", { points: 6, createdAt: 2, gameWinPct: 0.8 }),
-    ranked("C", { points: 6, createdAt: 3, gameWinPct: 0.7 }),
-    ranked("D", { points: 6, createdAt: 4, gameWinPct: 0.6 }),
+    ranked("A", { points: 6, position: 1, gameWinPct: 0.9 }),
+    ranked("B", { points: 6, position: 2, gameWinPct: 0.8 }),
+    ranked("C", { points: 6, position: 3, gameWinPct: 0.7 }),
+    ranked("D", { points: 6, position: 4, gameWinPct: 0.6 }),
   ];
 
   const powerPaired = buildSwissPairings(field(), POWER_PAIR_FINAL);

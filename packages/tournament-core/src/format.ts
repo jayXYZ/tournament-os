@@ -6,6 +6,18 @@ export function formatRecord(wins: number, losses: number, draws: number) {
   return `${wins}–${losses}–${draws}`;
 }
 
+// A match's game scoreline. Drawn games are the uncommon case, so they are
+// appended only when present: "2–1", but "1–1–1" for a match with a draw.
+export function formatGameScoreline(
+  gameWins: number,
+  gameLosses: number,
+  gameDraws: number,
+) {
+  return gameDraws > 0
+    ? `${gameWins}–${gameLosses}–${gameDraws}`
+    : `${gameWins}–${gameLosses}`;
+}
+
 export function displayPlayerName(name: string | null | undefined) {
   return name ?? "Unknown player";
 }

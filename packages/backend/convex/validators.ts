@@ -219,6 +219,39 @@ const auditMatchResultLineValidator = v.object({
   playerName: v.union(v.string(), v.null()),
   gameWins: v.number(),
   gameLosses: v.number(),
+  gameDraws: v.number(),
+});
+
+// How a match outcome came about (see CONTEXT.md): a played result, or one
+// of the Awarded Result kinds. Only "played" and "bye" have writers today;
+// concession, forfeit, no-show, and DQ land with the organizer adjudication
+// actions, and walkovers are byes.
+export const matchResultKindValidator = v.union(
+  v.literal("played"),
+  v.literal("bye"),
+  v.literal("concession"),
+  v.literal("forfeit"),
+  v.literal("no_show"),
+  v.literal("dq"),
+);
+
+// A player's side of a match outcome. Stored explicitly rather than derived
+// from game wins so awarded results and double losses stay representable.
+export const matchOutcomeValidator = v.union(
+  v.literal("win"),
+  v.literal("loss"),
+  v.literal("draw"),
+);
+
+// One player's line of a result revision. Match points are stored alongside
+// the outcome they derive from so readers never re-derive scoring rules.
+export const matchResultLineValidator = v.object({
+  registrationId: v.id("tournamentRegistrations"),
+  outcome: matchOutcomeValidator,
+  matchPointsEarned: v.number(),
+  gameWins: v.number(),
+  gameLosses: v.number(),
+  gameDraws: v.number(),
 });
 
 // What happened, as a discriminated union so the log view renders each kind

@@ -1522,6 +1522,7 @@ test("players see their meeting seat, late registrants see none, and pairing is 
       participationStatus: "active",
       playerName: "Zed",
       createdAt: now,
+      tiebreakRandom: 1,
       updatedAt: now,
     });
   });
@@ -1655,6 +1656,7 @@ test("a meeting cut stamps only its own tournament's withdrawals", async () => {
       participationStatus: "dropped",
       playerName: "Other Player",
       createdAt: Date.now(),
+      tiebreakRandom: 1,
       updatedAt: Date.now(),
     });
   });
@@ -1743,6 +1745,7 @@ async function seedTournament(
           participationStatus: "active",
           playerName,
           createdAt: now + playerNumber,
+          tiebreakRandom: playerNumber,
           updatedAt: now,
         }),
       );

@@ -357,20 +357,22 @@ test("playoff standings lock placements by elimination round", async () => {
   expect(
     standings?.rows.slice(4, 8).map((row) => row.eliminatedInRoundNumber),
   ).toEqual([2, 2, 2, 2]);
-  const quarterfinalLoserRows = standings?.rows.slice(4, 8) ?? [];
-  expect(quarterfinalLoserRows).toEqual(
-    [...quarterfinalLoserRows].sort((left, right) =>
-      compareStandingRows(
-        {
-          ...left,
-          createdAt: Number(left.name?.replace("Player ", "")),
-        },
-        {
-          ...right,
-          createdAt: Number(right.name?.replace("Player ", "")),
-        },
-      ),
-    ),
+  // The payload does not expose the seed-derived tiebreak, so the sort check
+  // uses a stable index tiebreak: rows that tie on every public tiebreaker
+  // keep their returned order, and any misordering of the public tiebreakers
+  // still fails.
+  const quarterfinalLoserRows = (standings?.rows.slice(4, 8) ?? []).map(
+    (row, index) => ({
+      row,
+      comparable: { ...row, tiebreakRandom: 0, tiebreakId: String(index) },
+    }),
+  );
+  expect(quarterfinalLoserRows.map(({ row }) => row)).toEqual(
+    [...quarterfinalLoserRows]
+      .sort((left, right) =>
+        compareStandingRows(left.comparable, right.comparable),
+      )
+      .map(({ row }) => row),
   );
   expect(standings?.rows.slice(8).map((row) => row.playoffStatus)).toEqual([
     "cut",
@@ -1356,6 +1358,10 @@ async function seedTournament(
           entryStatus: "confirmed",
           participationStatus: "active",
           createdAt: now + playerNumber,
+          // Descending so equal records rank in player-number order, keeping
+          // this suite's pairing expectations stable; tiebreak realism lives
+          // in the pairing and swiss suites.
+          tiebreakRandom: 100_000 - playerNumber,
           updatedAt: now,
         }),
       );

@@ -173,6 +173,7 @@ test("getPublicTournament hides private and unpublished events and reports regis
       entryStatus: "confirmed",
       participationStatus: "active",
       createdAt: now,
+      tiebreakRandom: 1,
       updatedAt: now,
     });
     await ctx.db.patch(rows.setupId, {
@@ -281,6 +282,7 @@ test("getPublicTournament keeps private events resolvable for registered players
       entryStatus: "confirmed",
       participationStatus: "active",
       createdAt: now,
+      tiebreakRandom: 1,
       updatedAt: now,
     });
     return { tournamentId, registrationId };
@@ -426,6 +428,7 @@ test("registerSelf lets a cancelled player rejoin a private event but admits no 
       entryStatus: "confirmed",
       participationStatus: "active",
       createdAt: now,
+      tiebreakRandom: 1,
       updatedAt: now,
     });
   });
@@ -494,6 +497,7 @@ test("listMyTournaments returns every confirmed seat for ongoing and upcoming ev
     const registrationBase = {
       userId: playerUserId,
       createdAt: now,
+      tiebreakRandom: 1,
       updatedAt: now,
     };
 
@@ -1142,6 +1146,7 @@ test("organizers can page through registration churn beyond tournament capacity"
           entryStatus: "cancelled",
           playerName: `Churn Player ${playerNumber}`,
           createdAt: now + playerNumber,
+          tiebreakRandom: playerNumber,
           updatedAt: now + playerNumber,
         }),
       );
@@ -1226,6 +1231,7 @@ test("a full registration page is not flagged for splitting", async () => {
           entryStatus: "cancelled",
           playerName: `Large Roster Player ${playerNumber}`,
           createdAt: now + playerNumber,
+          tiebreakRandom: playerNumber,
           updatedAt: now + playerNumber,
         }),
       );
@@ -1317,6 +1323,7 @@ test("organizers can search registrations by player name scoped to one tournamen
         entryStatus: "cancelled",
         playerName,
         createdAt: now + index,
+        tiebreakRandom: index + 1,
         updatedAt: now + index,
       });
     }
@@ -1364,6 +1371,7 @@ test("seedTestPlayers fills only remaining active registration seats", async () 
       entryStatus: "confirmed",
       participationStatus: "active",
       createdAt: now,
+      tiebreakRandom: 1,
       updatedAt: now,
     });
     await ctx.db.patch(tournamentId, {
@@ -1440,6 +1448,7 @@ test("seedTestPlayers count is seats to add, not a target total", async () => {
       entryStatus: "confirmed",
       participationStatus: "active",
       createdAt: now,
+      tiebreakRandom: 1,
       updatedAt: now,
     });
     await ctx.db.patch(tournamentId, {
@@ -3436,6 +3445,7 @@ test("a registration cannot leave the confirmed state while it holds a standings
       entryStatus: "confirmed",
       participationStatus: "active",
       createdAt: now,
+      tiebreakRandom: 1,
       updatedAt: now,
     });
   });
@@ -4759,6 +4769,7 @@ async function seedActiveRegistrations(
         entryStatus: "confirmed",
         participationStatus: "active",
         createdAt: now + playerNumber,
+        tiebreakRandom: playerNumber,
         updatedAt: now,
       });
     }

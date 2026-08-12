@@ -45,12 +45,14 @@ export function auditResultLine(
   playerRow: Doc<"tournamentMatchPlayers">,
   gameWins: number,
   gameLosses: number,
+  gameDraws: number,
 ) {
   return {
     registrationId: playerRow.playerId,
     playerName: playerRow.playerName ?? null,
     gameWins,
     gameLosses,
+    gameDraws,
   };
 }
 
@@ -64,6 +66,11 @@ export function existingResultLines(
     return null;
   }
   return playerRows.map((row) =>
-    auditResultLine(row, row.gameWins ?? 0, row.gameLosses ?? 0),
+    auditResultLine(
+      row,
+      row.gameWins ?? 0,
+      row.gameLosses ?? 0,
+      row.gameDraws ?? 0,
+    ),
   );
 }

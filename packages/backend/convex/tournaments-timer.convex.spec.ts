@@ -529,6 +529,7 @@ async function seedTournament(
           entryStatus: "confirmed",
           participationStatus: "active",
           createdAt: now + playerNumber,
+          tiebreakRandom: playerNumber,
           updatedAt: now,
         }),
       );
