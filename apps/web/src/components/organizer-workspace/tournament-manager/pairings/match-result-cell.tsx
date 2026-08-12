@@ -5,11 +5,7 @@ import { Badge } from '@/components/ui/badge'
 export function MatchResultCell({ row }: { row: PairingRow }) {
   const playerOne = row.players.at(0)
   const playerTwo = row.players.at(1)
-  const hasResult =
-    row.match.matchStatus === 'completed' ||
-    row.match.matchStatus === 'confirmed'
-
-  if (!hasResult) {
+  if (row.match.matchStatus !== 'completed') {
     return <Badge variant="outline">Awaiting result</Badge>
   }
 
@@ -42,7 +38,7 @@ export function MatchResultCell({ row }: { row: PairingRow }) {
 }
 
 // Distinguishes player self-reported results from organizer-entered ones, so
-// the organizer can spot unconfirmed reports before completing the round.
+// the organizer knows which results players entered themselves.
 function ResultWithProvenance({
   row,
   children,
@@ -53,10 +49,8 @@ function ResultWithProvenance({
   return (
     <div className="flex flex-wrap items-center gap-2">
       <span className="font-medium">{children}</span>
-      {row.match.matchStatus === 'confirmed' ? (
-        <Badge variant="secondary">Confirmed by players</Badge>
-      ) : row.match.reportedByRegistrationId !== undefined ? (
-        <Badge variant="outline">Player-reported &middot; unconfirmed</Badge>
+      {row.match.reportedByRegistrationId !== undefined ? (
+        <Badge variant="outline">Player-reported</Badge>
       ) : null}
     </div>
   )

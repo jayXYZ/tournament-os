@@ -233,9 +233,7 @@ export async function analyzeProgression(
       : null;
   const unreportedMatchCount = (matchesWithPlayers ?? []).reduce(
     (count, { match }) =>
-      match.matchStatus === "completed" || match.matchStatus === "confirmed"
-        ? count
-        : count + 1,
+      match.matchStatus === "completed" ? count : count + 1,
     0,
   );
   const currentRoundHasRecordedResult =

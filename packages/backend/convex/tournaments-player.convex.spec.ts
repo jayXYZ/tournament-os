@@ -163,7 +163,7 @@ test("reportMyMatchResult rejects outsiders, byes, re-reports, and bad scores", 
   ).rejects.toThrow("Match already has a result");
 });
 
-test("confirmMatchResult requires the opponent; organizer override clears the report", async () => {
+test("a report counts immediately and an organizer override supersedes it", async () => {
   const t = createConvexTest();
   const { tournamentId, registrationIds } = await seedStartedTournament(t, 4);
   const match = await matchForPlayer(t, tournamentId, 1, registrationIds[0]);
@@ -174,14 +174,6 @@ test("confirmMatchResult requires the opponent; organizer override clears the re
     registrationIds,
   );
 
-  await expect(
-    t
-      .withIdentity(playerIdentity(opponent))
-      .mutation(api.tournaments.player.confirmMatchResult, {
-        matchId: match._id,
-      }),
-  ).rejects.toThrow("Match has no player-reported result to confirm");
-
   await t
     .withIdentity(playerIdentity(1))
     .mutation(api.tournaments.player.reportMyMatchResult, {
@@ -189,26 +181,13 @@ test("confirmMatchResult requires the opponent; organizer override clears the re
       myGameWins: 2,
       opponentGameWins: 1,
     });
-
-  await expect(
-    t
-      .withIdentity(playerIdentity(1))
-      .mutation(api.tournaments.player.confirmMatchResult, {
-        matchId: match._id,
-      }),
-  ).rejects.toThrow("The reporting player cannot confirm their own result");
-
-  await t
-    .withIdentity(playerIdentity(opponent))
-    .mutation(api.tournaments.player.confirmMatchResult, {
-      matchId: match._id,
-    });
   let stored = await t.run(async (ctx) => await ctx.db.get(match._id));
-  expect(stored?.matchStatus).toBe("confirmed");
+  expect(stored?.matchStatus).toBe("completed");
   expect(stored?.reportedByRegistrationId).toBe(registrationIds[0]);
 
-  // The organizer can still override a player-reported result; doing so
-  // makes the result organizer-final.
+  // There is no confirmation step: disputes resolve through an organizer
+  // override, which clears the reporter stamp and makes the result
+  // organizer-final.
   await t
     .withIdentity(organizerIdentity)
     .mutation(api.tournaments.rounds.recordMatchResult, {
@@ -228,12 +207,6 @@ test("player-reported results complete rounds and feed standings", async () => {
   const { tournamentId, registrationIds } = await seedStartedTournament(t, 4);
   const round = await currentRound(t, tournamentId);
   const matchOne = await matchForPlayer(t, tournamentId, 1, registrationIds[0]);
-  const opponentOne = await opponentNumber(
-    t,
-    matchOne._id,
-    registrationIds[0],
-    registrationIds,
-  );
   // The other table is whichever match player 1 is not in.
   const otherNumber = await outsiderNumber(t, matchOne._id, registrationIds);
   const matchTwo = await matchForPlayer(
@@ -243,7 +216,7 @@ test("player-reported results complete rounds and feed standings", async () => {
     registrationIds[otherNumber - 1],
   );
 
-  // Player 1 wins and the opponent confirms.
+  // Both tables report; each report counts as a result immediately.
   await t
     .withIdentity(playerIdentity(1))
     .mutation(api.tournaments.player.reportMyMatchResult, {
@@ -252,12 +225,6 @@ test("player-reported results complete rounds and feed standings", async () => {
       opponentGameWins: 0,
     });
   await t
-    .withIdentity(playerIdentity(opponentOne))
-    .mutation(api.tournaments.player.confirmMatchResult, {
-      matchId: matchOne._id,
-    });
-  // The other table reports but leaves it unconfirmed.
-  await t
     .withIdentity(playerIdentity(otherNumber))
     .mutation(api.tournaments.player.reportMyMatchResult, {
       matchId: matchTwo._id,
@@ -265,7 +232,6 @@ test("player-reported results complete rounds and feed standings", async () => {
       opponentGameWins: 1,
     });
 
-  // One confirmed and one unconfirmed report both count as results.
   await t
     .withIdentity(organizerIdentity)
     .mutation(api.tournaments.rounds.completeRound, { roundId: round._id });

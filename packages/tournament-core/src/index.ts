@@ -1,5 +1,4 @@
 export {
-  useConfirmResult,
   useDropSelf,
   useLatestStandings,
   useMyCurrentMatch,

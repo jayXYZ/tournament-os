@@ -23,7 +23,7 @@ function playerIdentity(playerNumber: number) {
   };
 }
 
-test("result reports, confirmations, and organizer overrides are audited", async () => {
+test("result reports and organizer overrides are audited", async () => {
   const t = createConvexTest();
   const { tournamentId, registrationIds } = await seedStartedTournament(t, 4);
   const match = await matchForPlayer(t, tournamentId, registrationIds[0]);
@@ -42,11 +42,6 @@ test("result reports, confirmations, and organizer overrides are audited", async
       opponentGameWins: 1,
     });
   await t
-    .withIdentity(playerIdentity(opponent))
-    .mutation(api.tournaments.player.confirmMatchResult, {
-      matchId: match._id,
-    });
-  await t
     .withIdentity(organizerIdentity)
     .mutation(api.tournaments.rounds.recordMatchResult, {
       matchId: match._id,
@@ -56,17 +51,16 @@ test("result reports, confirmations, and organizer overrides are audited", async
       playerTwoGameWins: 2,
     });
 
-  // Newest first: override, confirmation, report, tournament start, publish.
+  // Newest first: override, report, tournament start, publish.
   const events = await auditEvents(t, tournamentId);
   expect(events.map((row) => row.event.type)).toEqual([
     "match_result_recorded",
-    "match_result_confirmed",
     "match_result_reported",
     "tournament_started",
     "tournament_published",
   ]);
 
-  const reported = events[2];
+  const reported = events[1];
   expect(reported.actorRole).toBe("player");
   expect(reported.actorName).toBe("Player 1");
   if (reported.event.type !== "match_result_reported") {
@@ -77,10 +71,6 @@ test("result reports, confirmations, and organizer overrides are audited", async
     (line) => line.registrationId === registrationIds[0],
   );
   expect(myReportedLine).toMatchObject({ gameWins: 2, gameLosses: 1 });
-
-  const confirmed = events[1];
-  expect(confirmed.actorRole).toBe("player");
-  expect(confirmed.actorName).toBe(`Player ${opponent}`);
 
   // The override preserves the result it replaced — the dispute-resolution case.
   const recorded = events[0];

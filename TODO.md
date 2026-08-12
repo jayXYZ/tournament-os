@@ -217,7 +217,9 @@ no-shows, and disqualifications without each workflow inventing its own rules.
         the match and an optional organizer correction note; the match-player
         rows stay the denormalized hot read model
   - [x] Preserve the previous result in the organizer audit trail for active-round overrides
-- [ ] Remove opponent result confirmation — the confirmed match status, mutation, and player UI; disputes resolve through organizer override
+- [x] Remove opponent result confirmation — the confirmed match status,
+      mutation, audit event, hook, and player UI are gone; the reporter stamp
+      stays for provenance and disputes resolve through organizer override
 - [x] Result corrections are active-round-only by design (decided 2026-08-12):
       organizers override results in the open round, and rewinding the latest
       untouched round reopens the previous round for fixes — including

@@ -51,8 +51,7 @@ const limits = {
     capacity: 20,
   },
   dropSelf: { kind: "token bucket", rate: 30, period: HOUR, capacity: 10 },
-  // Shared by reportMyMatchResult and confirmMatchResult: one activity, one
-  // budget. A real player reports at most once a round plus corrections.
+  // A real player reports at most once a round.
   reportResult: { kind: "token bucket", rate: 120, period: HOUR, capacity: 40 },
   // Every resubmission before lock is legitimate, but each appends an audit
   // row, so the budget bounds audit-log growth per player.

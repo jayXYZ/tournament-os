@@ -62,8 +62,8 @@ export function ReportResultDialog({
         <DialogHeader>
           <DialogTitle>Report match result</DialogTitle>
           <DialogDescription>
-            Enter the games each player won. Your opponent will be asked to
-            confirm.
+            Enter the games each player won. The result counts immediately; your
+            organizer can correct it if something is wrong.
           </DialogDescription>
         </DialogHeader>
 

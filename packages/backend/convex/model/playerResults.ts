@@ -481,7 +481,7 @@ export function matchResultForRow(
   match: Doc<"tournamentMatches">,
   playerRow: Doc<"tournamentMatchPlayers">,
 ) {
-  if (match.matchStatus !== "completed" && match.matchStatus !== "confirmed") {
+  if (match.matchStatus !== "completed") {
     return "pending" as const;
   }
   const gameWins = playerRow.gameWins ?? 0;

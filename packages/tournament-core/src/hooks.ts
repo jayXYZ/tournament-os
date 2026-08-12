@@ -63,10 +63,6 @@ export function useReportResult() {
   return useMutation(api.tournaments.player.reportMyMatchResult);
 }
 
-export function useConfirmResult() {
-  return useMutation(api.tournaments.player.confirmMatchResult);
-}
-
 export function useDropSelf() {
   return useMutation(api.tournaments.player.dropSelf);
 }

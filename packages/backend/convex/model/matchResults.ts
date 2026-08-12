@@ -81,10 +81,7 @@ export async function applyMatchResult(
   if (policy.kind === "player" && match.matchStatus !== "upcoming") {
     throw new Error("Match already has a result");
   }
-  if (
-    policy.kind === "simulation" &&
-    (match.matchStatus === "completed" || match.matchStatus === "confirmed")
-  ) {
+  if (policy.kind === "simulation" && match.matchStatus === "completed") {
     return "skipped";
   }
   if (players.length !== 2 || players[0]._id === players[1]._id) {

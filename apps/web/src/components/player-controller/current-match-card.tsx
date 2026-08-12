@@ -1,11 +1,6 @@
 import { useState } from 'react'
-import {
-  formatGameScoreline,
-  mutationErrorMessage,
-  useConfirmResult,
-} from '@tournament-os/core'
-import { CheckCheck, Hourglass, Swords } from 'lucide-react'
-import { toast } from 'sonner'
+import { formatGameScoreline } from '@tournament-os/core'
+import { Hourglass, Swords } from 'lucide-react'
 
 import { ReportResultDialog } from './report-result-dialog'
 import type { MyActiveMatch, MyCurrentMatch } from '@tournament-os/core'
@@ -26,7 +21,6 @@ import {
   EmptyTitle,
 } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Spinner } from '@/components/ui/spinner'
 
 export function CurrentMatchCard({
   currentMatch,
@@ -159,10 +153,8 @@ function ActiveMatch({ currentMatch }: { currentMatch: MyActiveMatch }) {
 }
 
 function MatchStatusSection({ currentMatch }: { currentMatch: MyActiveMatch }) {
-  const { match, me, opponent } = currentMatch
-  const confirmResult = useConfirmResult()
+  const { match, me } = currentMatch
   const [reporting, setReporting] = useState(false)
-  const [confirming, setConfirming] = useState(false)
 
   if (me.isBye) {
     return (
@@ -199,59 +191,19 @@ function MatchStatusSection({ currentMatch }: { currentMatch: MyActiveMatch }) {
   const scoreline = formatScoreline(me.gameWins, me.gameLosses, me.gameDraws)
   const reportedByMe = match.reportedByRegistrationId === me.registrationId
 
-  if (match.matchStatus === 'confirmed') {
+  // A reported result counts immediately — there is no confirmation step.
+  // Disputes go to the organizer, whose override supersedes the report.
+  if (match.reportedByRegistrationId) {
     return (
       <ResultSummary
         scoreline={scoreline}
         badge={
-          <Badge>
-            <CheckCheck data-icon="inline-start" />
-            Confirmed
+          <Badge variant="outline">
+            {reportedByMe ? 'Reported by you' : 'Reported by opponent'}
           </Badge>
         }
-      />
-    )
-  }
-
-  if (match.matchStatus === 'completed' && match.reportedByRegistrationId) {
-    if (reportedByMe) {
-      return (
-        <ResultSummary
-          scoreline={scoreline}
-          badge={<Badge variant="outline">Waiting for confirmation</Badge>}
-          note={`Waiting for ${opponent?.name ?? 'your opponent'} to confirm. The round can continue without it.`}
-        />
-      )
-    }
-
-    return (
-      <ResultSummary
-        scoreline={scoreline}
-        badge={<Badge variant="outline">Reported by opponent</Badge>}
         note="Result wrong? Find a judge or the tournament organizer."
-      >
-        <Button
-          type="button"
-          size="lg"
-          disabled={confirming}
-          onClick={async () => {
-            setConfirming(true)
-            try {
-              await confirmResult({ matchId: match._id })
-              toast.success('Result confirmed.')
-            } catch (error) {
-              toast.error(
-                mutationErrorMessage(error, 'Could not confirm the result.'),
-              )
-            } finally {
-              setConfirming(false)
-            }
-          }}
-        >
-          {confirming ? <Spinner data-icon="inline-start" /> : null}
-          Confirm result
-        </Button>
-      </ResultSummary>
+      />
     )
   }
 

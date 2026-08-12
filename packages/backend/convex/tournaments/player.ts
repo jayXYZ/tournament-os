@@ -324,40 +324,6 @@ export const reportMyMatchResult = mutation({
   },
 });
 
-export const confirmMatchResult = mutation({
-  args: { matchId: v.id("tournamentMatches") },
-  handler: async (ctx, args) => {
-    await enforceRateLimit(ctx, "reportResult");
-    const { match, round, myRow, user } = await requireMatchParticipant(
-      ctx,
-      args.matchId,
-    );
-    if (match.matchStatus !== "completed" || !match.reportedByRegistrationId) {
-      throw new Error("Match has no player-reported result to confirm");
-    }
-    if (match.reportedByRegistrationId === myRow.playerId) {
-      throw new Error("The reporting player cannot confirm their own result");
-    }
-
-    await ctx.db.patch(match._id, {
-      matchStatus: "confirmed",
-      updatedAt: Date.now(),
-    });
-    await logAuditEvent(ctx, {
-      tournamentId: match.tournamentId,
-      actor: user,
-      actorRole: "player",
-      event: {
-        type: "match_result_confirmed",
-        matchId: match._id,
-        roundNumber: round.roundNumber,
-        tableNumber: match.tableNumber ?? null,
-      },
-    });
-    return match._id;
-  },
-});
-
 export const dropSelf = mutation({
   args: { tournamentId: v.id("tournaments") },
   handler: async (ctx, args) => {

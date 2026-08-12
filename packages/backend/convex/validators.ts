@@ -180,11 +180,13 @@ export const tournamentRoundStatusValidator = v.union(
   v.literal("cancelled"),
 );
 
+// No "confirmed" status: a Reported Result counts immediately and there is
+// no opponent-confirmation step (see CONTEXT.md); disputes resolve through
+// organizer override.
 export const tournamentMatchStatusValidator = v.union(
   v.literal("upcoming"),
   v.literal("in_progress"),
   v.literal("completed"),
-  v.literal("confirmed"),
   v.literal("cancelled"),
 );
 
@@ -275,12 +277,6 @@ export const tournamentAuditEventValidator = v.union(
     roundNumber: v.number(),
     tableNumber: v.union(v.number(), v.null()),
     result: v.array(auditMatchResultLineValidator),
-  }),
-  v.object({
-    type: v.literal("match_result_confirmed"),
-    matchId: v.id("tournamentMatches"),
-    roundNumber: v.number(),
-    tableNumber: v.union(v.number(), v.null()),
   }),
   v.object({
     type: v.literal("player_registered"),

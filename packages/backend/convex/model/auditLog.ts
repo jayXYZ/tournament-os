@@ -62,7 +62,7 @@ export function existingResultLines(
   match: Doc<"tournamentMatches">,
   playerRows: Doc<"tournamentMatchPlayers">[],
 ) {
-  if (match.matchStatus !== "completed" && match.matchStatus !== "confirmed") {
+  if (match.matchStatus !== "completed") {
     return null;
   }
   return playerRows.map((row) =>

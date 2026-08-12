@@ -421,10 +421,7 @@ async function cumulativeStatsThroughRound(
   }
 
   for (const { match, players } of matchesWithPlayers) {
-    if (
-      match.matchStatus !== "completed" &&
-      match.matchStatus !== "confirmed"
-    ) {
+    if (match.matchStatus !== "completed") {
       continue;
     }
     for (const playerRow of players) {
@@ -460,10 +457,7 @@ export async function accumulatePlayerHistory(
     if (!match || match.tournamentId !== tournamentId) {
       continue;
     }
-    if (
-      match.matchStatus !== "completed" &&
-      match.matchStatus !== "confirmed"
-    ) {
+    if (match.matchStatus !== "completed") {
       continue;
     }
     const round = await ctx.db.get(match.tournamentRoundId);
