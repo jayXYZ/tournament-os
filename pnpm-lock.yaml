@@ -33,7 +33,7 @@ overrides:
   '@clerk/shared>react-dom': 19.2.3
 
 patchedDependencies:
-  '@clerk/expo': bb8d4052d686bb7b3382e38c7a00bf6bf5c56bbd30beb46416dea2fb4d9878bf
+  '@clerk/expo@3.4.6': bb8d4052d686bb7b3382e38c7a00bf6bf5c56bbd30beb46416dea2fb4d9878bf
 
 importers:
 
@@ -56,7 +56,7 @@ importers:
   apps/native:
     dependencies:
       '@clerk/expo':
-        specifier: ^3.4.6
+        specifier: 3.4.6
         version: 3.4.6(patch_hash=bb8d4052d686bb7b3382e38c7a00bf6bf5c56bbd30beb46416dea2fb4d9878bf)(c6c7a6db56312e82a773c9f0a6ad26e5)
       '@sentry/react-native':
         specifier: ~7.11.0

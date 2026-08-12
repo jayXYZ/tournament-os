@@ -6,8 +6,12 @@ packages:
 # use a hoisted layout. This is Expo's officially recommended pnpm setup.
 # https://docs.expo.dev/guides/monorepos/
 nodeLinker: hoisted
+# The patch carries a local Swift 6 fix to ClerkNativeBridge.swift, so the
+# dependency is pinned exactly (in apps/native) and the entry is
+# version-qualified: bumping @clerk/expo must fail loudly here until the patch
+# is re-derived against the new version instead of silently (mis)applying.
 patchedDependencies:
-  "@clerk/expo": patches/@clerk__expo.patch
+  "@clerk/expo@3.4.6": patches/@clerk__expo.patch
 # Pin a single React version across the workspace. pnpm otherwise installs
 # multiple peer-instances of react/react-dom (and therefore convex), which
 # Metro loads as separate module copies, breaking React context (e.g.

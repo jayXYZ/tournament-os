@@ -159,8 +159,12 @@ changes rather than waiting for a final production milestone.
         inside the hoisted packages, which silently downgraded the web app's
         type-aware lint to a program without `strictNullChecks` (≈1,100 false
         `no-unnecessary-condition` errors)
-- [ ] Pin the patched `@clerk/expo` exactly (currently a caret range carrying
-      a local Swift patch) and version-qualify its `patchedDependencies` entry
+- [x] Pin the patched `@clerk/expo` exactly and version-qualify its
+      `patchedDependencies` entry: apps/native now depends on `3.4.6` (no
+      caret) and `pnpm-workspace.yaml` keys the patch as `@clerk/expo@3.4.6`,
+      so bumping the package fails loudly until the Swift patch is re-derived
+      instead of silently (mis)applying; verified with `pnpm check` and
+      `expo install --check`
 - [ ] Simplify `apps/native/metro.config.js`: Expo SDK 56 supplies
       `watchFolders` and `nodeModulesPaths` automatically; keep the singleton
       resolver until a native smoke test proves it unnecessary

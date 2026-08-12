@@ -14,7 +14,7 @@
     "lint": "tsc --noEmit && expo lint"
   },
   "dependencies": {
-    "@clerk/expo": "^3.4.6",
+    "@clerk/expo": "3.4.6",
     "@sentry/react-native": "~7.11.0",
     "@tournament-os/backend": "workspace:*",
     "@tournament-os/core": "workspace:*",
