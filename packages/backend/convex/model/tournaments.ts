@@ -124,16 +124,22 @@ export async function roundMatchesWithPlayers(
 export const PAIRINGS_REWIND_RECORDED_RESULT_REASON =
   "Pairings cannot be unpublished after a match result has been recorded";
 
+// Whether any result in the round makes it "touched" for the rewind guard
+// (see CONTEXT.md "Rewind"). Automatic results — a bye written at pairing
+// time, a concession written by a drop — don't count: the fact behind them
+// (the pairing, the withdrawal) survives the rewind, so deleting them
+// destroys nothing that anyone entered. A played result does count, as will
+// the organizer-entered adjudications (forfeit, no-show, DQ) when they land.
 export function roundHasRecordedResult(
   matchesWithPlayers: readonly {
-    match: Pick<Doc<"tournamentMatches">, "matchStatus" | "tableNumber">;
-    players: readonly Pick<Doc<"tournamentMatchPlayers">, "isBye">[];
+    match: Pick<Doc<"tournamentMatches">, "matchStatus" | "currentResultKind">;
   }[],
 ) {
   return matchesWithPlayers.some(
-    ({ match, players }) =>
-      !players.every((player) => player.isBye) &&
-      match.matchStatus !== "upcoming",
+    ({ match }) =>
+      match.matchStatus !== "upcoming" &&
+      match.currentResultKind !== "bye" &&
+      match.currentResultKind !== "concession",
   );
 }
 

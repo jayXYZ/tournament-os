@@ -22,6 +22,9 @@ changes rather than waiting for a final production milestone.
   - [x] Cover active-round result correction with its audit-trail entry, a
         pairing rewind that reopens the previous round, and an organizer drop
         that produces a bye round and a "Dropped" standings row
+  - [ ] Cover a mid-round drop's immediate concession (the backend flow
+        landed with section 1's drop work; needs a browser scenario where a
+        player drops during an unreported match)
   - [ ] Cover no-show and forfeit scenarios once the organizer actions land
         (blocked on section 1's adjudication work)
 - [ ] Add error monitoring for the web app, native app, and Convex functions
@@ -238,9 +241,17 @@ no-shows, and disqualifications without each workflow inventing its own rules.
 - [ ] Complete real-event drop and adjudication handling
   - [x] Allow organizer and player drops during an event
   - [x] Keep a dropped player's current pairing available so its result can still be reported
-  - [ ] Record a mid-round drop as an immediate concession — required-wins–0
-        for the opponent, no per-tournament configuration; a finished match is
-        reported before the drop or fixed by organizer override afterwards
+  - [x] Record a mid-round drop as an immediate concession: both drop entry
+        points route through `concedeUnfinishedMatchOnDrop`, awarding the
+        opponent required-wins–0 as a "concession" revision (no
+        per-tournament configuration) with a typed `match_conceded` audit
+        event; a finished match is reported before the drop or fixed by
+        organizer override afterwards. Decided alongside (2026-08-12):
+        automatic results — byes and drop concessions — don't count as
+        "touching" a round for the rewind guard, since the pairing or drop
+        behind them survives the rewind; the denormalized
+        `currentResultKind` on matches keeps that check read-free
+        (CONTEXT.md "Rewind" updated; reset the dev DB for the new field)
   - [ ] Add organizer no-show and forfeit actions (no-show defaults to also
         dropping the player, organizer can keep them in; both players absent
         is a double match loss)

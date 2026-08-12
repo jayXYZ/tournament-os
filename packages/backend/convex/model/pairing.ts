@@ -225,7 +225,10 @@ export async function createRoundWithPairings(
           },
         ],
       });
-      await ctx.db.patch(matchId, { currentResultRevisionId: revisionId });
+      await ctx.db.patch(matchId, {
+        currentResultRevisionId: revisionId,
+        currentResultKind: "bye",
+      });
     } else if (pairing.playerTwo) {
       await ctx.db.insert("tournamentMatchPlayers", {
         tournamentMatchId: matchId,

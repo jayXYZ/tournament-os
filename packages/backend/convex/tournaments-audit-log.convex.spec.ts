@@ -157,6 +157,9 @@ test("registration changes and drops are audited with the acting side", async ()
   expect(
     events.map((row) => [row.event.type, row.actorRole, row.actorName]),
   ).toEqual([
+    // The mid-round drop concedes player 2's unfinished match alongside the
+    // drop itself.
+    ["match_conceded", "player", "Player 2"],
     ["player_dropped", "player", "Player 2"],
     ["tournament_started", "organizer", "Organizer"],
     ["player_reinstated", "organizer", "Organizer"],
@@ -168,7 +171,7 @@ test("registration changes and drops are audited with the acting side", async ()
 
   // Organizer-initiated pre-play cancellations name the affected player, not
   // the actor.
-  const organizerDrop = events[3];
+  const organizerDrop = events[4];
   if (organizerDrop.event.type !== "registration_cancelled") {
     throw new Error("Expected a registration cancellation event");
   }

@@ -225,9 +225,10 @@ const auditMatchResultLineValidator = v.object({
 });
 
 // How a match outcome came about (see CONTEXT.md): a played result, or one
-// of the Awarded Result kinds. Only "played" and "bye" have writers today;
-// concession, forfeit, no-show, and DQ land with the organizer adjudication
-// actions, and walkovers are byes.
+// of the Awarded Result kinds. "played", "bye", and "concession" (a drop
+// during the player's own unfinished match) have writers today; forfeit,
+// no-show, and DQ land with the organizer adjudication actions, and
+// walkovers are byes.
 export const matchResultKindValidator = v.union(
   v.literal("played"),
   v.literal("bye"),
@@ -276,6 +277,19 @@ export const tournamentAuditEventValidator = v.union(
     matchId: v.id("tournamentMatches"),
     roundNumber: v.number(),
     tableNumber: v.union(v.number(), v.null()),
+    result: v.array(auditMatchResultLineValidator),
+  }),
+  v.object({
+    // A drop during the player's own unfinished match: the awarded
+    // concession the drop recorded, alongside the player_dropped event the
+    // drop itself logs. The actor is whoever recorded the drop — the player
+    // themself or an organizer.
+    type: v.literal("match_conceded"),
+    matchId: v.id("tournamentMatches"),
+    roundNumber: v.number(),
+    tableNumber: v.union(v.number(), v.null()),
+    // The player whose drop conceded the match.
+    player: auditPlayerRefValidator,
     result: v.array(auditMatchResultLineValidator),
   }),
   v.object({

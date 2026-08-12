@@ -5,7 +5,10 @@ import { mutation, query } from "../_generated/server";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { auditPlayerRef, logAuditEvent } from "../model/auditLog";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
-import { applyMatchResult } from "../model/matchResults";
+import {
+  applyMatchResult,
+  concedeUnfinishedMatchOnDrop,
+} from "../model/matchResults";
 import {
   latestCompletedRound,
   requirePhase,
@@ -358,6 +361,14 @@ export const dropSelf = mutation({
       actorRole: "player",
       event: { type: "player_dropped", player: auditPlayerRef(registration) },
     });
+    // A drop during the player's own unfinished match concedes it (see
+    // CONTEXT.md "Concession").
+    await concedeUnfinishedMatchOnDrop(ctx, {
+      tournament,
+      registration,
+      actor: user,
+      actorRole: "player",
+    });
     return registration._id;
   },
 });
@@ -380,8 +391,9 @@ async function playerMatchInRound(
   return null;
 }
 
-// Being one of the match's two players is the authorization: a dropped player
-// may still owe the result for the round they dropped in.
+// Being one of the match's two players is the authorization — participation
+// status is not checked, because a match can outlive it (a drop concedes the
+// player's own unfinished match, but never touches a finished one).
 async function requireMatchParticipant(
   ctx: MutationCtx,
   matchId: Id<"tournamentMatches">,

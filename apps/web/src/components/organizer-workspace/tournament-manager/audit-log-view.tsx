@@ -142,6 +142,8 @@ function describeEvent(row: AuditEventRow): string {
       return `Recorded ${formatScoreline(event.result)} ${matchLocation(event)}`
     case 'match_result_reported':
       return `Reported ${formatScoreline(event.result)} ${matchLocation(event)}`
+    case 'match_conceded':
+      return `${displayPlayerName(event.player.playerName)} conceded by dropping: ${formatScoreline(event.result)} ${matchLocation(event)}`
     case 'player_registered':
       return `${displayPlayerName(event.player.playerName)} registered for the event`
     case 'decklist_submitted':

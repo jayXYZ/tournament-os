@@ -340,6 +340,11 @@ export default defineSchema({
     // The revision that is the match's current result; absent while the
     // match has none. Older revisions for the match are superseded history.
     currentResultRevisionId: v.optional(v.id("matchResultRevisions")),
+    // The current revision's kind, denormalized so round-level guards (the
+    // rewind "untouched round" check) can tell entered results from
+    // automatic ones without reading every revision. Written together with
+    // currentResultRevisionId, absent exactly when it is.
+    currentResultKind: v.optional(matchResultKindValidator),
     updatedAt: v.number(),
   })
     .index("by_tournamentRoundId", ["tournamentRoundId"])

@@ -58,21 +58,19 @@ test("database I/O batches preserve order and bound concurrency", async () => {
   expect(maxInFlight).toBe(DATABASE_IO_BATCH_SIZE);
 });
 
-test("rewind result detection follows player bye state, not table numbers", () => {
+test("rewind result detection counts entered results, not automatic ones", () => {
+  // Automatic results — a pairing-time bye, a drop's concession — don't make
+  // the round "touched": the pairing or drop behind them survives a rewind.
   expect(
     roundHasRecordedResult([
-      {
-        match: { matchStatus: "completed", tableNumber: 99 },
-        players: [{ isBye: true }],
-      },
+      { match: { matchStatus: "completed", currentResultKind: "bye" } },
+      { match: { matchStatus: "completed", currentResultKind: "concession" } },
+      { match: { matchStatus: "upcoming", currentResultKind: undefined } },
     ]),
   ).toBe(false);
   expect(
     roundHasRecordedResult([
-      {
-        match: { matchStatus: "completed" },
-        players: [{ isBye: false }, { isBye: false }],
-      },
+      { match: { matchStatus: "completed", currentResultKind: "played" } },
     ]),
   ).toBe(true);
 });

@@ -6,6 +6,7 @@ import { mutation, query, type QueryCtx } from "../_generated/server";
 import { currentUserOrNull } from "../model/access";
 import { auditPlayerRef, logAuditEvent } from "../model/auditLog";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
+import { concedeUnfinishedMatchOnDrop } from "../model/matchResults";
 import { clampPageSize } from "../model/pagination";
 import { setRegistrationState } from "../model/participation";
 import { tiebreakRandom } from "../model/random";
@@ -390,6 +391,16 @@ export const dropRegistration = mutation({
         player: auditPlayerRef(registration),
       },
     });
+    if (!beforePlay) {
+      // A mid-play drop during the player's own unfinished match concedes it
+      // (see CONTEXT.md "Concession"), recorded with the organizer as actor.
+      await concedeUnfinishedMatchOnDrop(ctx, {
+        tournament,
+        registration,
+        actor: user,
+        actorRole: "organizer",
+      });
+    }
     return args.registrationId;
   },
 });

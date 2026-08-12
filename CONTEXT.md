@@ -96,8 +96,11 @@ receive first-round Byes. A one-player field is never played; the tournament
 completes instead.
 
 **Rewind**:
-Un-pairing the current round: available only while that round has no recorded
-non-bye result, and it reopens exactly the previous round. Results are only
+Un-pairing the current round: available only while that round has no entered
+result — automatic results (a Bye from pairing, a Concession from a drop)
+don't count, because the pairing or drop behind them survives the rewind and
+nothing anyone entered is destroyed — and it reopens exactly the previous
+round. Results are only
 ever correctable while their round is open — the active round directly, or
 the previous round after a Rewind reopens it (including re-drawing a cut by
 rewinding the next phase's first round). Mistakes buried under completed

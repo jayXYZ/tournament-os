@@ -1,12 +1,18 @@
+import { requiredGameWins } from "@tournament-os/shared/match-structure";
+
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
+import type { AuditActorRole } from "./auditLog";
 import {
+  auditPlayerRef,
   auditResultLine,
   existingResultLines,
   logAuditEvent,
 } from "./auditLog";
-import { requireValidMatchResult } from "./phases";
+import { currentPhaseOrNull, requireValidMatchResult } from "./phases";
+import { MAX_MATCHES_PER_PLAYER } from "./playerResults";
 import { matchPointsForResult } from "./standings";
+import { matchPlayers } from "./tournaments";
 
 // Revisions live and die with their match: deleting a match (a rewind
 // un-pairing its round, or tournament deletion) deletes its revisions too.
@@ -42,7 +48,7 @@ export type MatchResultPolicy =
     }
   | {
       // Player self-report: only valid while the match has no result, and
-      // stamps the reporter so the opponent (not the reporter) can confirm.
+      // stamps the reporter for provenance and dispute resolution.
       kind: "player";
       actor: Doc<"users">;
       reporterRegistrationId: Id<"tournamentRegistrations">;
@@ -54,6 +60,16 @@ export type MatchResultPolicy =
       // tournament's audit trail.
       kind: "simulation";
       audit: "none";
+    }
+  | {
+      // A drop conceding the player's own unfinished match (see CONTEXT.md
+      // "Concession"): an Awarded Result, valid only while the match has no
+      // result. The actor is whoever recorded the drop, so the role varies —
+      // the player themself or an organizer.
+      kind: "concession";
+      actor: Doc<"users">;
+      actorRole: AuditActorRole;
+      concededBy: Doc<"tournamentRegistrations">;
     };
 
 // The one writer for match results. Validates the result, computes match
@@ -78,7 +94,10 @@ export async function applyMatchResult(
 ): Promise<"applied" | "skipped"> {
   const { match, phase, players, policy } = args;
 
-  if (policy.kind === "player" && match.matchStatus !== "upcoming") {
+  if (
+    (policy.kind === "player" || policy.kind === "concession") &&
+    match.matchStatus !== "upcoming"
+  ) {
     throw new Error("Match already has a result");
   }
   if (policy.kind === "simulation" && match.matchStatus === "completed") {
@@ -113,10 +132,14 @@ export async function applyMatchResult(
       : points === 1
         ? ("draw" as const)
         : ("loss" as const);
+  const kind =
+    policy.kind === "concession"
+      ? ("concession" as const)
+      : ("played" as const);
   const revisionId = await ctx.db.insert("matchResultRevisions", {
     tournamentId: match.tournamentId,
     tournamentMatchId: match._id,
-    kind: "played",
+    kind,
     lines: [
       {
         registrationId: playerOne.playerId,
@@ -137,7 +160,11 @@ export async function applyMatchResult(
     ],
     ...(policy.kind === "simulation"
       ? {}
-      : { actorUserId: policy.actor._id, actorRole: policy.kind }),
+      : {
+          actorUserId: policy.actor._id,
+          actorRole:
+            policy.kind === "concession" ? policy.actorRole : policy.kind,
+        }),
     ...(policy.kind === "organizer" && policy.note !== undefined
       ? { note: policy.note }
       : {}),
@@ -160,6 +187,7 @@ export async function applyMatchResult(
   await ctx.db.patch(match._id, {
     matchStatus: "completed",
     currentResultRevisionId: revisionId,
+    currentResultKind: kind,
     // Only a player self-report carries a reporter; an organizer result
     // clears it, superseding any report awaiting confirmation.
     reportedByRegistrationId:
@@ -192,11 +220,84 @@ export async function applyMatchResult(
   await logAuditEvent(ctx, {
     tournamentId: match.tournamentId,
     actor: policy.actor,
-    actorRole: policy.kind,
+    actorRole: policy.kind === "concession" ? policy.actorRole : policy.kind,
     event:
-      policy.kind === "organizer"
-        ? { type: "match_result_recorded", ...eventBase, previousResult }
-        : { type: "match_result_reported", ...eventBase },
+      policy.kind === "concession"
+        ? {
+            type: "match_conceded",
+            ...eventBase,
+            player: auditPlayerRef(policy.concededBy),
+          }
+        : policy.kind === "organizer"
+          ? { type: "match_result_recorded", ...eventBase, previousResult }
+          : { type: "match_result_reported", ...eventBase },
   });
   return "applied";
+}
+
+// A drop's match consequence (see CONTEXT.md "Drop" and "Concession"): a
+// player dropping during their own unfinished match concedes it, so the
+// opponent immediately wins an Awarded Result — the structure's required
+// game wins to zero, with no per-tournament configuration. A match that
+// already has a result is left alone: a finished match is reported before
+// the drop, or fixed by organizer override afterwards. Both drop entry
+// points (player self-drop, organizer drop) call this with the drop's actor.
+export async function concedeUnfinishedMatchOnDrop(
+  ctx: MutationCtx,
+  args: {
+    tournament: Doc<"tournaments">;
+    registration: Doc<"tournamentRegistrations">;
+    actor: Doc<"users">;
+    actorRole: AuditActorRole;
+  },
+) {
+  const phase = await currentPhaseOrNull(ctx, args.tournament._id);
+  if (!phase?.phaseCurrentRound) {
+    return;
+  }
+  const round = await ctx.db.get(phase.phaseCurrentRound);
+  if (!round || round.roundStatus !== "in_progress") {
+    return;
+  }
+  // The player's pairing in the open round, if any — a registration plays at
+  // most one match per round.
+  const playerRows = await ctx.db
+    .query("tournamentMatchPlayers")
+    .withIndex("by_playerId", (q) => q.eq("playerId", args.registration._id))
+    .take(MAX_MATCHES_PER_PLAYER);
+  let match: Doc<"tournamentMatches"> | null = null;
+  for (const row of playerRows) {
+    const candidate = await ctx.db.get(row.tournamentMatchId);
+    if (candidate && candidate.tournamentRoundId === round._id) {
+      match = candidate;
+      break;
+    }
+  }
+  // "upcoming" is the only concedeable state: byes complete at pairing time,
+  // and a match with a result stands — including the concession an
+  // opponent's earlier drop already awarded.
+  if (!match || match.matchStatus !== "upcoming") {
+    return;
+  }
+  const players = await matchPlayers(ctx, match._id);
+  if (players.length !== 2) {
+    return;
+  }
+  const required = requiredGameWins(phase.bestOf);
+  const concedesFirst = players[0].playerId === args.registration._id;
+  await applyMatchResult(ctx, {
+    match,
+    phase,
+    round,
+    players,
+    playerOneGameWins: concedesFirst ? 0 : required,
+    playerTwoGameWins: concedesFirst ? required : 0,
+    gameDraws: 0,
+    policy: {
+      kind: "concession",
+      actor: args.actor,
+      actorRole: args.actorRole,
+      concededBy: args.registration,
+    },
+  });
 }
