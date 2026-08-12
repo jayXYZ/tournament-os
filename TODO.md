@@ -165,9 +165,14 @@ changes rather than waiting for a final production milestone.
       so bumping the package fails loudly until the Swift patch is re-derived
       instead of silently (mis)applying; verified with `pnpm check` and
       `expo install --check`
-- [ ] Simplify `apps/native/metro.config.js`: Expo SDK 56 supplies
-      `watchFolders` and `nodeModulesPaths` automatically; keep the singleton
-      resolver until a native smoke test proves it unnecessary
+- [x] Simplify `apps/native/metro.config.js` to just the Sentry wrapper:
+      Expo SDK 56's `getWatchFolders`/`getModulesPaths` supply the monorepo
+      `watchFolders` and `nodeModulesPaths` automatically (verified against
+      the installed `@expo/metro-config`), and the singleton react/react-dom/
+      convex resolver was proven dead by the hoisted layout — each package
+      exists exactly once, at the workspace root, so Metro cannot resolve
+      duplicate copies; verified with `expo install --check` and an
+      ios+android `expo export`
 
 ## 1. Result and adjudication foundation
 
