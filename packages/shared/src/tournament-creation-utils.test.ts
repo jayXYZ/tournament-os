@@ -17,6 +17,7 @@ test("createDefaultTournamentCreationPhase creates a dynamic Swiss phase", () =>
     phaseType: "swiss",
     phaseRoundMode: "dynamic",
     phaseTotalRounds: "3",
+    bestOf: "3",
     phaseCutoffKind: "none",
     phaseCutoffValue: "8",
     playerMeeting: false,
@@ -114,12 +115,13 @@ test("toTournamentCreationPhasePayload sends contiguous phase orders", () => {
   // playerMeeting stays absent when false, matching the backend's
   // absent-default field.
   assert.deepEqual(toTournamentCreationPhasePayload(phases), [
-    { phaseOrder: 1, phaseType: "swiss", phaseRoundMode: "dynamic" },
+    { phaseOrder: 1, phaseType: "swiss", phaseRoundMode: "dynamic", bestOf: 3 },
     {
       phaseOrder: 2,
       phaseType: "swiss",
       phaseRoundMode: "fixed",
       phaseTotalRounds: 5,
+      bestOf: 3,
     },
   ]);
 });
@@ -134,6 +136,7 @@ test("toTournamentCreationPhasePayload emits playerMeeting only when enabled", (
       phaseOrder: 1,
       phaseType: "swiss",
       phaseRoundMode: "dynamic",
+      bestOf: 3,
       playerMeeting: true,
     },
   ]);
@@ -160,9 +163,10 @@ test("toTournamentCreationPhasePayload emits a cutoff only where one can apply",
       phaseOrder: 1,
       phaseType: "swiss",
       phaseRoundMode: "dynamic",
+      bestOf: 3,
       phaseCutoff: { kind: "top_X_players", playerCount: 16 },
     },
-    { phaseOrder: 2, phaseType: "swiss", phaseRoundMode: "dynamic" },
+    { phaseOrder: 2, phaseType: "swiss", phaseRoundMode: "dynamic", bestOf: 3 },
   ]);
 });
 
@@ -179,11 +183,12 @@ test("toTournamentCreationPhasePayload drops a cutoff on the phase feeding a pla
   ];
 
   assert.deepEqual(toTournamentCreationPhasePayload(phases), [
-    { phaseOrder: 1, phaseType: "swiss", phaseRoundMode: "dynamic" },
+    { phaseOrder: 1, phaseType: "swiss", phaseRoundMode: "dynamic", bestOf: 3 },
     {
       phaseOrder: 2,
       phaseType: "single_elimination",
       phaseRoundMode: "fixed",
+      bestOf: 3,
     },
   ]);
 });
@@ -199,6 +204,7 @@ test("toTournamentCreationPhasePayload fixes a single-elimination phase at three
       phaseOrder: 1,
       phaseType: "single_elimination",
       phaseRoundMode: "fixed",
+      bestOf: 3,
     },
   ]);
 });

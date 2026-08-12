@@ -127,6 +127,15 @@ export const tournamentPhaseRoundModeValidator = v.union(
   v.literal("fixed"),
 );
 
+// A phase's Match Structure: best-of-1, -3, or -5, meaning first to ⌈X/2⌉
+// game wins (see CONTEXT.md "Match Structure" and
+// @tournament-os/shared/match-structure for the derived rules).
+export const tournamentPhaseBestOfValidator = v.union(
+  v.literal(1),
+  v.literal(3),
+  v.literal(5),
+);
+
 // How a phase cuts the field when it completes: keep only the top N ranked
 // players, or everyone at or above a match-point bar. Null means no cut —
 // every active player advances. Only configurable on a Swiss phase followed by

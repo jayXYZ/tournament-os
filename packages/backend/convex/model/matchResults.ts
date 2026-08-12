@@ -5,7 +5,7 @@ import {
   existingResultLines,
   logAuditEvent,
 } from "./auditLog";
-import { requireDecisiveEliminationResult } from "./phases";
+import { requireValidMatchResult } from "./phases";
 import { matchPointsForResult } from "./standings";
 
 // Who is writing the result. Everything the entry points do differently hangs
@@ -66,7 +66,7 @@ export async function applyMatchResult(
   if (players.length !== 2 || players[0]._id === players[1]._id) {
     throw new Error("Match result requires exactly two players");
   }
-  requireDecisiveEliminationResult(
+  requireValidMatchResult(
     phase,
     args.playerOneGameWins,
     args.playerTwoGameWins,

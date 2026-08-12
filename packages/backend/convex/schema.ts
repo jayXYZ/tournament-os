@@ -4,6 +4,7 @@ import { v } from "convex/values";
 import {
   auditActorRoleValidator,
   invitationStatusValidator,
+  tournamentPhaseBestOfValidator,
   membershipStatusValidator,
   organizationStatusValidator,
   organizerRoleValidator,
@@ -259,6 +260,10 @@ export default defineSchema({
     phaseOrder: v.number(),
     phaseStatus: tournamentPhaseStatusValidator,
     phaseRoundMode: tournamentPhaseRoundModeValidator,
+    // The phase's Match Structure (best-of-1/3/5). Drives result-entry
+    // validation and the bye scoreline; editable pre-start like the rest of
+    // the phase configuration.
+    bestOf: tournamentPhaseBestOfValidator,
     phaseTotalRounds: v.union(v.number(), v.null()),
     phaseCurrentRound: v.optional(v.id("tournamentRounds")),
     phaseCutoff: tournamentPhaseCutoffValidator,

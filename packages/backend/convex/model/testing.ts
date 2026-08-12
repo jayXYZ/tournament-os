@@ -1,3 +1,8 @@
+import {
+  requiredGameWins,
+  type BestOf,
+} from "@tournament-os/shared/match-structure";
+
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { applyMatchResult } from "./matchResults";
@@ -21,30 +26,48 @@ export type SimulatedMatchResult = {
   draws: number;
 };
 
+// Scorelines are drawn from the phase's Match Structure: the winner takes the
+// required game wins, the loser 0 or one short of winning, and a drawn match
+// splits below the requirement (0–0 in best of 1). Best-of-3 output is
+// identical to the pre-structure generator, so seeded expectations hold.
 export function simulatedMatchResult(
   random: () => number,
-  allowDraws = true,
+  options: { bestOf: BestOf; allowDraws?: boolean },
 ): SimulatedMatchResult {
+  const required = requiredGameWins(options.bestOf);
+  const drawnWins = Math.min(1, required - 1);
   const roll = random();
 
   if (roll < 0.08) {
-    if (allowDraws) {
-      return { playerOneGameWins: 1, playerTwoGameWins: 1, draws: 1 };
+    if (options.allowDraws !== false) {
+      return {
+        playerOneGameWins: drawnWins,
+        playerTwoGameWins: drawnWins,
+        draws: 1,
+      };
     }
     return random() < 0.5
-      ? { playerOneGameWins: 2, playerTwoGameWins: 0, draws: 0 }
-      : { playerOneGameWins: 0, playerTwoGameWins: 2, draws: 0 };
+      ? { playerOneGameWins: required, playerTwoGameWins: 0, draws: 0 }
+      : { playerOneGameWins: 0, playerTwoGameWins: required, draws: 0 };
   }
 
   if (roll < 0.54) {
     return random() < 0.7
-      ? { playerOneGameWins: 2, playerTwoGameWins: 0, draws: 0 }
-      : { playerOneGameWins: 2, playerTwoGameWins: 1, draws: 0 };
+      ? { playerOneGameWins: required, playerTwoGameWins: 0, draws: 0 }
+      : {
+          playerOneGameWins: required,
+          playerTwoGameWins: required - 1,
+          draws: 0,
+        };
   }
 
   return random() < 0.7
-    ? { playerOneGameWins: 0, playerTwoGameWins: 2, draws: 0 }
-    : { playerOneGameWins: 1, playerTwoGameWins: 2, draws: 0 };
+    ? { playerOneGameWins: 0, playerTwoGameWins: required, draws: 0 }
+    : {
+        playerOneGameWins: required - 1,
+        playerTwoGameWins: required,
+        draws: 0,
+      };
 }
 
 export async function getTestConfig(
@@ -175,10 +198,10 @@ export async function generateTestResults(
     // Always drawn, even for matches the writer then skips as already
     // completed, so a given seed produces the same result sequence
     // regardless of how many rounds were simulated before.
-    const result = simulatedMatchResult(
-      random,
-      phase.phaseType !== "single_elimination",
-    );
+    const result = simulatedMatchResult(random, {
+      bestOf: phase.bestOf,
+      allowDraws: phase.phaseType !== "single_elimination",
+    });
     await applyMatchResult(ctx, {
       match,
       phase,

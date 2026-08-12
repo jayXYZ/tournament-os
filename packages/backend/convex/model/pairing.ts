@@ -1,3 +1,5 @@
+import { requiredGameWins } from "@tournament-os/shared/match-structure";
+
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { requireResolvedPhaseTotalRounds, roundNumberInPhase } from "./phases";
@@ -196,7 +198,9 @@ export async function createRoundWithPairings(
         playerId: pairing.playerOne._id,
         playerName: pairing.playerOne.playerName,
         matchPointsEarned: BYE_MATCH_POINTS,
-        gameWins: 2,
+        // A Bye is an Awarded Result: the phase's required game wins to zero
+        // (2–0 in best-of-3), not a fixed 2–0.
+        gameWins: requiredGameWins(args.phase.bestOf),
         gameLosses: 0,
         isBye: true,
         updatedAt: now,

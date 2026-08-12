@@ -14,3 +14,7 @@ the departed player keeps the placement of the seat they reached.
 
 Decided 2026-08-09. Textual analysis of both MTR revisions:
 `docs/research/mtr-pairing-bye-dq-walkover.md`.
+
+Amended 2026-08-12: match structure is now configured per phase, so the
+walkover Bye records the phase's required game wins to zero — 2–0 only in
+best-of-3.

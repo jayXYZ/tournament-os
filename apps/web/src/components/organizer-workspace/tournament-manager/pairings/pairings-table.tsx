@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { useQuery } from 'convex/react'
 import { Swords } from 'lucide-react'
 
@@ -7,6 +8,7 @@ import { ManageMatchMenu } from './manage-match-menu'
 import { MatchResultCell } from './match-result-cell'
 import type { ColumnDef } from '@tanstack/react-table'
 import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
+import type { BestOf } from '@tournament-os/shared/match-structure'
 import type { PairingRow } from './pairing-row'
 import { TableEmptyState } from '@/components/shared/table-empty-state'
 import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'
@@ -14,60 +16,67 @@ import { TableSearchInput } from '@/components/shared/table-search-input'
 import { Badge } from '@/components/ui/badge'
 import { DataTable, DataTableColumnHeader } from '@/components/ui/data-table'
 
-const pairingColumns: Array<ColumnDef<PairingRow>> = [
-  {
-    id: 'table',
-    accessorFn: (row) => row.match.tableNumber ?? Number.POSITIVE_INFINITY,
-    header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="Table" />
-    ),
-    meta: { className: 'w-20' },
-    cell: ({ row }) => (
-      <span className="font-medium tabular-nums">
-        {row.original.match.tableNumber ?? (
-          <span className="text-muted-foreground">&mdash;</span>
-        )}
-      </span>
-    ),
-  },
-  {
-    id: 'players',
-    accessorFn: (row) =>
-      row.players
-        .map((player) => displayPlayerName(player.playerName))
-        .join(' '),
-    header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="Players" />
-    ),
-    // Greedy column absorbs name-length variance so the columns after it stay
-    // put as pairings change across pages.
-    meta: { className: 'w-full' },
-    enableSorting: false,
-    cell: ({ row }) => <PairingPlayersCell row={row.original} />,
-  },
-  {
-    id: 'result',
-    header: 'Result',
-    enableSorting: false,
-    cell: ({ row }) => <MatchResultCell row={row.original} />,
-  },
-  {
-    id: 'actions',
-    header: 'Manage',
-    enableSorting: false,
-    meta: { className: 'text-right' },
-    cell: ({ row }) => <ManageMatchMenu row={row.original} />,
-  },
-]
+// Built per render because the manage cell needs the round's phase match
+// structure to bound result entry.
+function buildPairingColumns(bestOf: BestOf): Array<ColumnDef<PairingRow>> {
+  return [
+    {
+      id: 'table',
+      accessorFn: (row) => row.match.tableNumber ?? Number.POSITIVE_INFINITY,
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Table" />
+      ),
+      meta: { className: 'w-20' },
+      cell: ({ row }) => (
+        <span className="font-medium tabular-nums">
+          {row.original.match.tableNumber ?? (
+            <span className="text-muted-foreground">&mdash;</span>
+          )}
+        </span>
+      ),
+    },
+    {
+      id: 'players',
+      accessorFn: (row) =>
+        row.players
+          .map((player) => displayPlayerName(player.playerName))
+          .join(' '),
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Players" />
+      ),
+      // Greedy column absorbs name-length variance so the columns after it stay
+      // put as pairings change across pages.
+      meta: { className: 'w-full' },
+      enableSorting: false,
+      cell: ({ row }) => <PairingPlayersCell row={row.original} />,
+    },
+    {
+      id: 'result',
+      header: 'Result',
+      enableSorting: false,
+      cell: ({ row }) => <MatchResultCell row={row.original} />,
+    },
+    {
+      id: 'actions',
+      header: 'Manage',
+      enableSorting: false,
+      meta: { className: 'text-right' },
+      cell: ({ row }) => <ManageMatchMenu row={row.original} bestOf={bestOf} />,
+    },
+  ]
+}
 
 export function PairingsTable({
   roundId,
+  bestOf,
 }: {
   roundId: Id<'tournamentRounds'>
+  bestOf: BestOf
 }) {
   const pairings = useQuery(api.tournaments.rounds.listRoundPairings, {
     roundId,
   })
+  const columns = useMemo(() => buildPairingColumns(bestOf), [bestOf])
 
   if (pairings === undefined) {
     return <TableLoadingSkeleton />
@@ -85,7 +94,7 @@ export function PairingsTable({
 
   return (
     <DataTable
-      columns={pairingColumns}
+      columns={columns}
       data={pairings}
       className="min-w-[640px]"
       noResultsLabel="No matches match your search."

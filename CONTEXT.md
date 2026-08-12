@@ -31,12 +31,13 @@ of the division.
 **Tiebreakers**:
 Standings order is decided by, in order: Match Points, Opponents' Match-Win
 Percentage, Game-Win Percentage, Opponents' Game-Win Percentage. A remaining
-perfect tie is broken by a random value fixed per player for the tournament,
-so recomputation never reorders it.
+perfect tie is broken by a random value fixed per player for the tournament
+(derived from the tournament's seed), so recomputation never reorders it.
 
 **Bye**:
-An awarded round with no opponent, counted as a 2–0 match win: 3 match points
-and 6 game points. A player's byes are ignored when their percentages feed an
+An awarded round with no opponent, counted as a match win at the Match
+Structure's required game wins to zero (2–0 in best-of-3: 3 match points and
+6 game points). A player's byes are ignored when their percentages feed an
 opponent's tiebreakers. The bye goes to the lowest-ranked player who has never
 had one; second byes exist only once every player in the field has had one.
 (Our rule — the MTR is silent on assignment.)
@@ -50,8 +51,15 @@ never a pairing failure. Pod-play phases (draft pods, not Swiss) are exempt.
 **Reported Result**:
 A match result entered by a player or organizer. It counts immediately toward
 standings and round completion; there is no opponent-confirmation step, and
-disputes are resolved by organizer override.
+disputes are resolved by organizer override. Intentional draws are not a
+distinct kind of result — they are recorded as ordinary drawn matches.
 _Avoid_: confirmed result
+
+**Awarded Result**:
+A match outcome recorded without play: Byes, Walkovers, Concessions,
+Forfeits, No-Shows, DQ losses, and Missed Rounds. The winning side is
+recorded with the Match Structure's required game wins and zero losses (2–0
+in best-of-3); a double loss records zero wins for both players.
 
 ### Structure
 
@@ -60,6 +68,16 @@ One stage of a tournament with its own pairing structure (Swiss or single
 elimination today; pod play later). A tournament is a short ordered list of
 phases; a single-elimination phase is always the last, because it ends with
 one player.
+
+**Match Structure**:
+A phase's match length — best-of-1, -3, or -5 (default 3), configurable
+pre-start like other phase settings. "Best of X" is shorthand for first to
+⌈X/2⌉ game wins; a match that ends before either player gets there goes to
+whichever player has more game wins, and equal game wins is a match draw
+(never allowed in single elimination). Drawn games are always possible and
+never count toward X (at most three are recordable per match); non-drawn
+games never exceed X.
+_Avoid_: best-of-3 as a fixed platform rule
 
 **Cut**:
 A phase's final act: eliminating every player not moving on and handing the
@@ -79,8 +97,11 @@ completes instead.
 
 **Rewind**:
 Un-pairing the current round: available only while that round has no recorded
-non-bye result, and it reopens exactly the previous round. Correcting rounds
-that were actually played is a different (future) mechanism, and a completed
+non-bye result, and it reopens exactly the previous round. Results are only
+ever correctable while their round is open — the active round directly, or
+the previous round after a Rewind reopens it (including re-drawing a cut by
+rewinding the next phase's first round). Mistakes buried under completed
+rounds stand, cut fields are never recomputed after the fact, and a completed
 tournament is final.
 
 **Round Timer**:
@@ -110,11 +131,36 @@ _Avoid_: withdrawal, quit
 
 **Concession**:
 A match loss taken by a player who concedes (or drops) during their own
-unfinished match; the opponent wins the match.
+unfinished match; the opponent wins the match as an Awarded Result. A drop
+records the concession immediately — a player who actually finished their
+match reports the real result before dropping, and an organizer override
+fixes it afterwards otherwise.
+
+**Forfeit**:
+An organizer-recorded match loss awarded against a player without play; the
+opponent wins the match as an Awarded Result.
+
+**No-Show**:
+A Forfeit recorded against an absent player. By default it also drops the
+player (the organizer can keep them in); both players absent is a double
+match loss.
+
+**Late Entry**:
+An organizer-only override admitting a player while the first phase is in
+progress; players never self-join a started tournament, and capacity still
+applies. The player receives a Missed Round loss for every round already
+generated (including the open one) and is paired from the next round.
+
+**Missed Round**:
+The opponent-less Awarded Result loss (zero game wins, the required game wins
+against) a Late Entry player receives for each round they were absent. It
+counts toward the player's own Match Points and Game-Win Percentage but, like
+a Bye, is excluded when their percentages feed an opponent's tiebreakers.
 
 **Walkover**:
 The uncontested match win awarded to a bracket player whose scheduled opponent
-has left the tournament, recorded as a Bye (a 2–0 match win). It always goes
+has left the tournament, recorded as a Bye (an Awarded Result match win). It
+always goes
 to the scheduled opponent, never to a reseeded player; defeated players are
 never revived into a bracket slot, and walkovers may chain. The departed
 player keeps the placement of the seat they reached.
@@ -124,6 +170,10 @@ _Avoid_: loser revival, loser advancement
 Removal from the tournament and from the standings entirely: every
 lower-ranked player advances one place. A DQ after a cut advances standings
 placements only — nobody is added to the bracket in the DQ'd player's place.
+A DQ during a round records the player's unresolved match as a loss with the
+opponent awarded the win; a DQ between rounds carries no match consequence,
+an already-reported result is never flipped, and a DQ can only be issued
+while the tournament is live.
 The player's completed matches remain on record, visible and feeding former
 opponents' tiebreakers; the tournament stays on their profile without a
 placement.

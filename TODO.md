@@ -175,40 +175,71 @@ Build one result model and transition path before adding more result-entry
 surfaces. It should support played results, corrections, draws, forfeits,
 no-shows, and disqualifications without each workflow inventing its own rules.
 
-- [ ] Add a match policy to each phase
-  - [ ] Configure Best-of-X / match structure per phase
-  - [ ] Derive valid result entry from the phase policy instead of hardcoding 0–2 game wins
-  - [ ] Define whether draws are allowed for the phase type
+- [x] Add a match policy to each phase (best-of-1/3/5, default 3, pre-start
+      editable — see CONTEXT.md "Match Structure"): `bestOf` on
+      `tournamentPhases` (required field — reset the dev DB), a Match
+      structure selector in the phase editor, and shared rules in
+      `@tournament-os/shared/match-structure`
+  - [x] Configure Best-of-X / match structure per phase
+  - [x] Derive valid result entry from the phase policy instead of hardcoding
+        0–2 game wins: `requireValidMatchResult` in the one result writer
+        enforces each side ≤ required wins and non-drawn games ≤ X, byes and
+        the test simulator award structure-relative scorelines, and both
+        result-entry UIs cap inputs at the required wins (the drawn-games ≤ 3
+        bound lands with game-draw tracking in the adjudication model below,
+        since drawn games are not yet recorded)
+  - [x] Define whether draws are allowed for the phase type: fixed by phase
+        type, not configurable — equal game wins is a valid Swiss match draw
+        at any structure (0–0 in best of 1, 2–2 in best of 5) and never valid
+        in single elimination; recording drawn games themselves lands with the
+        adjudication model below
 - [ ] Replace the wins-only result shape with a normalized adjudication model
   - [ ] Track game wins, game losses, and game draws
   - [ ] Compute match-win and game-win percentages from match/game points so drawn games count (MTR Appendix C)
   - [ ] Exclude byes from a player's percentages where they feed opponents' tiebreakers
   - [ ] Break residual perfect ties with a per-player random value fixed for the tournament instead of registration time
-  - [ ] Distinguish played results, intentional draws, concessions, forfeits, no-shows, byes, and DQs
+  - [ ] Distinguish played results, intentional draws, concessions, forfeits, no-shows, byes, and DQs (Intentional draws can't be distinguished, a 0-0 ID looks the same as a match that went to time game 1 and resulted in a draw)
   - [ ] Keep immutable result revisions and identify the current result
   - [x] Preserve the previous result in the organizer audit trail for active-round overrides
 - [ ] Remove opponent result confirmation — the confirmed match status, mutation, and player UI; disputes resolve through organizer override
-- [ ] Add organizer result corrections after a round or tournament completes
+- [x] Result corrections are active-round-only by design (decided 2026-08-12):
+      organizers override results in the open round, and rewinding the latest
+      untouched round reopens the previous round for fixes — including
+      re-drawing a cut by rewinding the next phase's first round. Mistakes
+      buried under completed rounds stand and a completed tournament is
+      final, so no forward standings-recompute or cutoff-correction mechanism
+      exists (see CONTEXT.md "Rewind")
   - [x] Allow organizers to enter or override results during the active round
   - [x] Recompute standings when an active round is completed
   - [x] Rewind the latest untouched round and reopen the preceding round
-  - [ ] Recompute standings snapshots from the corrected round forward while preserving pairings that actually occurred
-  - [ ] Define correction behavior when a changed result would have altered a phase cutoff or playoff field
 - [ ] Complete real-event drop and adjudication handling
   - [x] Allow organizer and player drops during an event
   - [x] Keep a dropped player's current pairing available so its result can still be reported
-  - [ ] Record a match loss or other configured outcome for a mid-round drop
-  - [ ] Add organizer no-show and forfeit actions
+  - [ ] Record a mid-round drop as an immediate concession — required-wins–0
+        for the opponent, no per-tournament configuration; a finished match is
+        reported before the drop or fixed by organizer override afterwards
+  - [ ] Add organizer no-show and forfeit actions (no-show defaults to also
+        dropping the player, organizer can keep them in; both players absent
+        is a double match loss)
   - [ ] Replace bracket loser-revival with walkovers: the scheduled opponent receives a 2–0 bye when a bracket player leaves before their match; walkovers may chain; departed players keep the placement of the seat they reached (see ADR 0001)
   - [ ] Complete the organizer DQ workflow (MTR/IPG-aligned — see `CONTEXT.md`)
     - [ ] Remove DQ'd players from standings entirely so every lower-ranked player advances one place, deleting the mask-as-drop machinery this replaces
     - [ ] Keep a DQ'd player's completed matches on record and feeding former opponents' tiebreakers, with the tournament staying on their profile without a placement
     - [ ] Add an organizer-authorized DQ action and participation-state transition
     - [ ] Record each DQ as a typed, organizer-only audit event with the actor and affected player
-    - [ ] Apply the DQ's match consequence: the disqualified player loses their current match (IPG 1.1)
-- [ ] Add late entry after round 1
-  - [ ] Configure the tournament/phase late-entry policy
-  - [ ] Represent missed-round byes, losses, or point adjustments explicitly in history and standings
+    - [ ] Apply the DQ's match consequence: the disqualified player loses
+          their current match when it is unresolved (IPG 1.1); an
+          already-reported result is never flipped, and the DQ action exists
+          only while the tournament is in progress
+- [ ] Add late entry after round 1 (blocked on an organizer
+      manual-registration feature — section 3's admission work; players never
+      self-join a started tournament)
+  - [ ] Admit a late player by organizer override during the first phase
+        only, with player capacity still applying
+  - [ ] Record an opponent-less missed-round loss (zero game wins, required
+        wins against) for every already-generated round, counting toward the
+        player's own match points and GWP but excluded when their percentages
+        feed opponents' tiebreakers (see CONTEXT.md "Missed Round")
 - [ ] Expand tournament-engine invariant tests
   - [x] Cover rematch avoidance and unavoidable-rematch behavior with deterministic cases
   - [x] Cover distinct byes, max-capacity Swiss standings, drops, cutoffs, and bracket rewinds

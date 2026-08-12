@@ -182,6 +182,7 @@ function MatchStatusSection({ currentMatch }: { currentMatch: MyActiveMatch }) {
         {reporting ? (
           <ReportResultDialog
             matchId={match._id}
+            bestOf={match.bestOf}
             opponentName={opponentName(currentMatch)}
             open={reporting}
             onOpenChange={setReporting}

@@ -4,6 +4,8 @@ import { toast } from 'sonner'
 
 import { api } from '@tournament-os/backend/convex/_generated/api'
 import { displayPlayerName } from '@tournament-os/core'
+import { requiredGameWins } from '@tournament-os/shared/match-structure'
+import type { BestOf } from '@tournament-os/shared/match-structure'
 import type { FormEvent } from 'react'
 import type { PairingRow } from './pairing-row'
 import { Button } from '@/components/ui/button'
@@ -22,16 +24,19 @@ import { useBusyAction } from '@/hooks/use-busy-action'
 
 export function EnterResultDialog({
   row,
+  bestOf,
   open,
   onOpenChange,
 }: {
   row: PairingRow
+  bestOf: BestOf
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
   const recordMatchResult = useMutation(
     api.tournaments.rounds.recordMatchResult,
   )
+  const maxGameWins = requiredGameWins(bestOf)
   const playerOne = row.players.at(0)
   const playerTwo = row.players.at(1)
 
@@ -96,7 +101,7 @@ export function EnterResultDialog({
                   onChange={(event) => setPlayerOneWins(event.target.value)}
                   type="number"
                   min={0}
-                  max={2}
+                  max={maxGameWins}
                   disabled={busy}
                   required
                 />
@@ -111,7 +116,7 @@ export function EnterResultDialog({
                   onChange={(event) => setPlayerTwoWins(event.target.value)}
                   type="number"
                   min={0}
-                  max={2}
+                  max={maxGameWins}
                   disabled={busy}
                   required
                 />

@@ -123,7 +123,27 @@ test("reportMyMatchResult rejects outsiders, byes, re-reports, and bad scores", 
         myGameWins: 3,
         opponentGameWins: 0,
       }),
-  ).rejects.toThrow("Game wins must be a whole number between 0 and 2");
+  ).rejects.toThrow("A best-of-3 match is won at 2 game wins");
+
+  await expect(
+    t
+      .withIdentity(playerIdentity(1))
+      .mutation(api.tournaments.player.reportMyMatchResult, {
+        matchId: match._id,
+        myGameWins: 2,
+        opponentGameWins: 2,
+      }),
+  ).rejects.toThrow("Game wins can total at most 3 in a best-of-3 match");
+
+  await expect(
+    t
+      .withIdentity(playerIdentity(1))
+      .mutation(api.tournaments.player.reportMyMatchResult, {
+        matchId: match._id,
+        myGameWins: -1,
+        opponentGameWins: 0,
+      }),
+  ).rejects.toThrow("Game wins must be a whole number of 0 or more");
 
   await t
     .withIdentity(playerIdentity(1))

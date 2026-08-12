@@ -2,6 +2,7 @@ import { useQuery } from 'convex/react'
 import { Swords } from 'lucide-react'
 
 import { api } from '@tournament-os/backend/convex/_generated/api'
+import { DEFAULT_BEST_OF } from '@tournament-os/shared/match-structure'
 import { PlayerMeetingCard } from '../player-meeting-card'
 import { PairingsSettingsMenu } from './pairings-settings-menu'
 import { PairingsTable } from './pairings-table'
@@ -65,7 +66,10 @@ export function PairingsView({
                 description="Generate pairings to create the first round and assign players to tables."
               />
             ) : (
-              <PairingsTable roundId={navigation.selectedRound._id} />
+              <PairingsTable
+                roundId={navigation.selectedRound._id}
+                bestOf={activePhase?.bestOf ?? DEFAULT_BEST_OF}
+              />
             )}
           </CardContent>
         </Card>

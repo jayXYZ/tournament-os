@@ -205,6 +205,9 @@ export const getMyCurrentMatch = query({
         tableNumber: match.tableNumber ?? null,
         matchStatus: match.matchStatus,
         reportedByRegistrationId: match.reportedByRegistrationId ?? null,
+        // The phase's Match Structure, so result entry can cap game wins at
+        // what the structure allows instead of hardcoding best-of-3.
+        bestOf: phase.bestOf,
       },
       me: {
         registrationId: registration._id,
@@ -306,8 +309,8 @@ export const reportMyMatchResult = mutation({
       phase: await requirePhase(ctx, match.tournamentPhaseId),
       round,
       players: [myRow, opponentRow],
-      playerOneGameWins: validGameWins(args.myGameWins),
-      playerTwoGameWins: validGameWins(args.opponentGameWins),
+      playerOneGameWins: args.myGameWins,
+      playerTwoGameWins: args.opponentGameWins,
       policy: {
         kind: "player",
         actor: user,
@@ -456,11 +459,4 @@ async function requireMatchParticipant(
     opponentRow,
     user,
   };
-}
-
-function validGameWins(value: number) {
-  if (!Number.isInteger(value) || value < 0 || value > 2) {
-    throw new Error("Game wins must be a whole number between 0 and 2");
-  }
-  return value;
 }

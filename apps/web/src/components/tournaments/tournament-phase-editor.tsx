@@ -1,5 +1,6 @@
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react'
 
+import { bestOfOptions } from '@tournament-os/shared/match-structure'
 import {
   MAX_TOURNAMENT_PHASES,
   addTournamentCreationPhase,
@@ -99,7 +100,7 @@ function TournamentPhaseField({
 
   return (
     <Field className="rounded-md border border-border p-3">
-      <div className="grid gap-3 md:grid-cols-[180px_minmax(0,1fr)_auto] md:items-end">
+      <div className="grid gap-3 md:grid-cols-[180px_140px_minmax(0,1fr)_auto] md:items-end">
         <Field data-disabled={disabled || undefined}>
           <FieldLabel>Phase {index + 1}</FieldLabel>
           <Select
@@ -138,6 +139,34 @@ function TournamentPhaseField({
                 >
                   Top 8 playoff
                 </SelectItem>
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        </Field>
+
+        <Field data-disabled={disabled || undefined}>
+          <FieldLabel>Match structure</FieldLabel>
+          <Select
+            value={phase.bestOf}
+            onValueChange={(bestOf) =>
+              onPhasesChange(
+                phases.map((current) =>
+                  current.id === phase.id ? { ...current, bestOf } : current,
+                ),
+              )
+            }
+            disabled={disabled}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                {bestOfOptions.map((option) => (
+                  <SelectItem key={option} value={String(option)}>
+                    Best of {option}
+                  </SelectItem>
+                ))}
               </SelectGroup>
             </SelectContent>
           </Select>

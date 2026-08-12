@@ -1,5 +1,7 @@
 import { v } from "convex/values";
 
+import { DEFAULT_BEST_OF } from "@tournament-os/shared/match-structure";
+
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
@@ -95,6 +97,7 @@ export const createTestTournament = mutation({
       phaseStatus: "upcoming",
       phaseRoundMode: "fixed",
       phaseTotalRounds: roundsToGenerate,
+      bestOf: DEFAULT_BEST_OF,
       phaseCutoff: null,
       powerPairFinalRound: true,
       updatedAt: now,
@@ -227,6 +230,7 @@ async function finishTestTournamentReset(
     phaseStatus: "upcoming",
     phaseRoundMode: "fixed",
     phaseTotalRounds: args.roundsToGenerate,
+    bestOf: DEFAULT_BEST_OF,
     phaseCutoff: null,
     powerPairFinalRound: true,
     updatedAt: now,

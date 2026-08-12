@@ -39,6 +39,7 @@ export type TournamentRoundNavigationPhase = {
   phase: Pick<
     Doc<'tournamentPhases'>,
     | '_id'
+    | 'bestOf'
     | 'phaseName'
     | 'phaseOrder'
     | 'phaseStatus'

@@ -1,3 +1,5 @@
+import { DEFAULT_BEST_OF, isBestOf, type BestOf } from "./match-structure";
+
 export const tournamentFormats = [
   "standard",
   "modern",
@@ -23,6 +25,9 @@ export type TournamentCreationPhaseForm = {
   phaseType: TournamentCreationPhaseType;
   phaseRoundMode: TournamentCreationPhaseRoundMode;
   phaseTotalRounds: string;
+  // Match Structure as a form string ("1" | "3" | "5"), like the other
+  // numeric form fields.
+  bestOf: string;
   phaseCutoffKind: TournamentCreationPhaseCutoffKind;
   phaseCutoffValue: string;
   playerMeeting: boolean;
@@ -37,6 +42,7 @@ export type TournamentCreationPhasePayload = {
   phaseType: TournamentCreationPhaseType;
   phaseRoundMode: TournamentCreationPhaseRoundMode;
   phaseTotalRounds?: number;
+  bestOf?: BestOf;
   phaseCutoff?: TournamentCreationPhaseCutoffPayload;
   playerMeeting?: boolean;
 };
@@ -51,6 +57,7 @@ export function createDefaultTournamentCreationPhase(
     phaseType: "swiss",
     phaseRoundMode: "dynamic",
     phaseTotalRounds: "3",
+    bestOf: String(DEFAULT_BEST_OF),
     phaseCutoffKind: "none",
     phaseCutoffValue: "8",
     playerMeeting: false,
@@ -168,6 +175,10 @@ export function toTournamentCreationPhasePayload(
     const playerMeeting = phase.playerMeeting
       ? { playerMeeting: true as const }
       : {};
+    // Sent only when it parses to a supported structure; the backend defaults
+    // a missing value to best-of-3.
+    const parsedBestOf = Number(phase.bestOf);
+    const bestOf = isBestOf(parsedBestOf) ? { bestOf: parsedBestOf } : {};
     // Dropped rather than sent for phases that cannot carry one (last phase,
     // or feeding the playoff), so a cutoff configured before a reorder or
     // phase-type change does not fail backend validation.
@@ -192,6 +203,7 @@ export function toTournamentCreationPhasePayload(
         phaseOrder,
         phaseType: "single_elimination" as const,
         phaseRoundMode: "fixed" as const,
+        ...bestOf,
       };
     }
     if (phase.phaseRoundMode === "dynamic") {
@@ -199,6 +211,7 @@ export function toTournamentCreationPhasePayload(
         phaseOrder,
         phaseType: "swiss" as const,
         phaseRoundMode: "dynamic" as const,
+        ...bestOf,
         ...phaseCutoff,
         ...playerMeeting,
       };
@@ -209,6 +222,7 @@ export function toTournamentCreationPhasePayload(
       phaseType: "swiss",
       phaseRoundMode: "fixed",
       phaseTotalRounds: Number(phase.phaseTotalRounds),
+      ...bestOf,
       ...phaseCutoff,
       ...playerMeeting,
     };

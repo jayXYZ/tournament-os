@@ -1,3 +1,10 @@
+import {
+  DEFAULT_BEST_OF,
+  gameWinsEntryError,
+  isBestOf,
+  type BestOf,
+} from "@tournament-os/shared/match-structure";
+
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { MAX_TOURNAMENT_PLAYERS } from "./registrations";
@@ -19,6 +26,7 @@ export type TournamentPhaseInput = {
   phaseType?: "swiss" | "single_elimination";
   phaseRoundMode: "dynamic" | "fixed";
   phaseTotalRounds?: number;
+  bestOf?: number;
   phaseCutoff?: TournamentPhaseCutoffInput | null;
   playerMeeting?: boolean;
 };
@@ -243,6 +251,7 @@ export async function createPhases(
       phaseStatus: "upcoming",
       phaseRoundMode: phase.phaseRoundMode,
       phaseTotalRounds: phase.phaseTotalRounds,
+      bestOf: phase.bestOf,
       phaseCutoff: phase.phaseCutoff,
       powerPairFinalRound: phase.phaseType === SWISS_FORMAT ? true : undefined,
       playerMeeting: phase.playerMeeting,
@@ -294,11 +303,22 @@ export function requireResolvedPhaseTotalRounds(
   return phase.phaseTotalRounds;
 }
 
-export function requireDecisiveEliminationResult(
+// The one gate for a reported scoreline: the structure bounds derived from
+// the phase's Match Structure, plus the phase-type draw rule — drawn matches
+// are always valid in Swiss and never valid in single elimination.
+export function requireValidMatchResult(
   phase: Doc<"tournamentPhases">,
   playerOneGameWins: number,
   playerTwoGameWins: number,
 ) {
+  const entryError = gameWinsEntryError(
+    phase.bestOf,
+    playerOneGameWins,
+    playerTwoGameWins,
+  );
+  if (entryError !== null) {
+    throw new Error(entryError);
+  }
   if (
     phase.phaseType === SINGLE_ELIMINATION_FORMAT &&
     playerOneGameWins === playerTwoGameWins
@@ -320,6 +340,16 @@ export function requirePlayerMeetingStarted(phase: Doc<"tournamentPhases">) {
   if (playerMeetingPending(phase)) {
     throw new Error("Player meeting must be started first");
   }
+}
+
+export function validBestOf(value: number | undefined): BestOf {
+  if (value === undefined) {
+    return DEFAULT_BEST_OF;
+  }
+  if (!isBestOf(value)) {
+    throw new Error("Matches must be best of 1, 3, or 5");
+  }
+  return value;
 }
 
 export function validRoundCount(value: number) {
@@ -388,6 +418,7 @@ export function validPhaseInputs(phases: TournamentPhaseInput[]) {
       throw new Error("A phase cutoff requires a following Swiss phase");
     }
     const phaseCutoff = rawCutoff === null ? null : validPhaseCutoff(rawCutoff);
+    const bestOf = validBestOf(phase.bestOf);
     if (phaseType === SINGLE_ELIMINATION_FORMAT) {
       if (playerMeeting) {
         throw new Error(
@@ -399,6 +430,7 @@ export function validPhaseInputs(phases: TournamentPhaseInput[]) {
         phaseType,
         phaseRoundMode: "fixed" as const,
         phaseTotalRounds: SINGLE_ELIMINATION_ROUNDS,
+        bestOf,
         phaseCutoff: null,
         playerMeeting: undefined,
       };
@@ -409,6 +441,7 @@ export function validPhaseInputs(phases: TournamentPhaseInput[]) {
         phaseType,
         phaseRoundMode: "dynamic" as const,
         phaseTotalRounds: null,
+        bestOf,
         phaseCutoff,
         playerMeeting,
       };
@@ -419,6 +452,7 @@ export function validPhaseInputs(phases: TournamentPhaseInput[]) {
       phaseType,
       phaseRoundMode: "fixed" as const,
       phaseTotalRounds: validRoundCount(phase.phaseTotalRounds ?? 0),
+      bestOf,
       phaseCutoff,
       playerMeeting,
     };

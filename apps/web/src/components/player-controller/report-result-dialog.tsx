@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { useReportResult } from '@tournament-os/core'
+import { requiredGameWins } from '@tournament-os/shared/match-structure'
 import { Minus, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 
 import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
+import type { BestOf } from '@tournament-os/shared/match-structure'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -18,15 +20,18 @@ import { useBusyAction } from '@/hooks/use-busy-action'
 
 export function ReportResultDialog({
   matchId,
+  bestOf,
   opponentName,
   open,
   onOpenChange,
 }: {
   matchId: Id<'tournamentMatches'>
+  bestOf: BestOf
   opponentName: string
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
+  const maxGameWins = requiredGameWins(bestOf)
   const reportResult = useReportResult()
   const { busy, run } = useBusyAction()
   const [myGameWins, setMyGameWins] = useState(0)
@@ -62,12 +67,14 @@ export function ReportResultDialog({
           <GameWinsStepper
             label="You"
             value={myGameWins}
+            max={maxGameWins}
             onChange={setMyGameWins}
             disabled={busy}
           />
           <GameWinsStepper
             label={opponentName}
             value={opponentGameWins}
+            max={maxGameWins}
             onChange={setOpponentGameWins}
             disabled={busy}
           />
@@ -95,11 +102,13 @@ export function ReportResultDialog({
 function GameWinsStepper({
   label,
   value,
+  max,
   onChange,
   disabled,
 }: {
   label: string
   value: number
+  max: number
   onChange: (value: number) => void
   disabled: boolean
 }) {
@@ -125,7 +134,7 @@ function GameWinsStepper({
           variant="outline"
           size="icon"
           aria-label={`More game wins for ${label}`}
-          disabled={disabled || value >= 2}
+          disabled={disabled || value >= max}
           onClick={() => onChange(value + 1)}
         >
           <Plus />

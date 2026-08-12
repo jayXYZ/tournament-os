@@ -39,6 +39,7 @@ import {
 } from "../model/tournaments";
 import {
   tournamentFormatValidator,
+  tournamentPhaseBestOfValidator,
   tournamentPhaseCutoffValidator,
   tournamentPhaseRoundModeValidator,
   tournamentPhaseTypeValidator,
@@ -251,6 +252,7 @@ export const createTournamentWithPhases = mutation({
         phaseType: v.optional(tournamentPhaseTypeValidator),
         phaseRoundMode: tournamentPhaseRoundModeValidator,
         phaseTotalRounds: v.optional(v.number()),
+        bestOf: v.optional(tournamentPhaseBestOfValidator),
         phaseCutoff: v.optional(tournamentPhaseCutoffValidator),
         playerMeeting: v.optional(v.boolean()),
       }),
@@ -439,6 +441,7 @@ export const updateTournamentPhases = mutation({
         phaseType: tournamentPhaseTypeValidator,
         phaseRoundMode: tournamentPhaseRoundModeValidator,
         phaseTotalRounds: v.optional(v.number()),
+        bestOf: v.optional(tournamentPhaseBestOfValidator),
         phaseCutoff: v.optional(tournamentPhaseCutoffValidator),
         playerMeeting: v.optional(v.boolean()),
       }),
@@ -505,6 +508,7 @@ export const updateTournamentPhases = mutation({
         phaseStatus: "upcoming" as const,
         phaseRoundMode: phase.phaseRoundMode,
         phaseTotalRounds: phase.phaseTotalRounds,
+        bestOf: phase.bestOf,
         phaseCurrentRound: undefined,
         phaseCutoff: phase.phaseCutoff,
         powerPairFinalRound:
