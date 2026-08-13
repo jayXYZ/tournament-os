@@ -227,8 +227,8 @@ const auditMatchResultLineValidator = v.object({
 // How a match outcome came about (see CONTEXT.md): a played result, or one
 // of the Awarded Result kinds. "played", "bye", and "concession" (a drop
 // during the player's own unfinished match) have writers today; forfeit,
-// no-show, and DQ land with the organizer adjudication actions, and
-// walkovers are byes.
+// no-show, and DQ land with the judge adjudication actions (TODO.md
+// section 5), and walkovers are byes.
 export const matchResultKindValidator = v.union(
   v.literal("played"),
   v.literal("bye"),

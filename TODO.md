@@ -25,8 +25,9 @@ changes rather than waiting for a final production milestone.
   - [ ] Cover a mid-round drop's immediate concession (the backend flow
         landed with section 1's drop work; needs a browser scenario where a
         player drops during an unreported match)
-  - [ ] Cover no-show and forfeit scenarios once the organizer actions land
-        (blocked on section 1's adjudication work)
+  - [ ] Cover no-show and forfeit scenarios once the judge adjudication
+        actions land (moved to section 5's judge operations work; until
+        then a forfeit is covered by manually entering the match result)
 - [ ] Add error monitoring for the web app, native app, and Convex functions
   - [x] Wire Sentry into the web app (client, SSR entry, server-function
         middleware, router error component) behind `VITE_SENTRY_DSN`, with
@@ -252,19 +253,13 @@ no-shows, and disqualifications without each workflow inventing its own rules.
         behind them survives the rewind; the denormalized
         `currentResultKind` on matches keeps that check read-free
         (CONTEXT.md "Rewind" updated; reset the dev DB for the new field)
-  - [ ] Add organizer no-show and forfeit actions (no-show defaults to also
-        dropping the player, organizer can keep them in; both players absent
-        is a double match loss)
+  - [x] Decide where the forfeit, no-show, and DQ workflows live
+        (2026-08-13): they are judge calls, not routine result entry, so the
+        explicit actions move to section 5's judge operations. Until they
+        land, an organizer covers a forfeit by manually entering the match
+        result; the adjudication model here (revision kinds, awarded-result
+        rules) stays the foundation those actions build on
   - [ ] Replace bracket loser-revival with walkovers: the scheduled opponent receives a 2–0 bye when a bracket player leaves before their match; walkovers may chain; departed players keep the placement of the seat they reached (see ADR 0001)
-  - [ ] Complete the organizer DQ workflow (MTR/IPG-aligned — see `CONTEXT.md`)
-    - [ ] Remove DQ'd players from standings entirely so every lower-ranked player advances one place, deleting the mask-as-drop machinery this replaces
-    - [ ] Keep a DQ'd player's completed matches on record and feeding former opponents' tiebreakers, with the tournament staying on their profile without a placement
-    - [ ] Add an organizer-authorized DQ action and participation-state transition
-    - [ ] Record each DQ as a typed, organizer-only audit event with the actor and affected player
-    - [ ] Apply the DQ's match consequence: the disqualified player loses
-          their current match when it is unresolved (IPG 1.1); an
-          already-reported result is never flipped, and the DQ action exists
-          only while the tournament is in progress
 - [ ] Add late entry after round 1 (blocked on an organizer
       manual-registration feature — section 3's admission work; players never
       self-join a started tournament)
@@ -372,6 +367,23 @@ match result so judge tooling cannot accidentally change standings.
   - [ ] Show an authorized judge the player's history within the current event and across prior events
   - [ ] Define the organization/convention boundary within which cross-event history may be viewed
   - [ ] Add append-only corrections, privacy controls, retention rules, and access auditing for sensitive conduct history
+- [ ] Add no-show and forfeit adjudication actions (moved from section 1,
+      2026-08-13: judge calls, not routine result entry; until they land an
+      organizer covers a forfeit by manually entering the match result)
+  - [ ] A no-show defaults to also dropping the absent player (staff can
+        keep them in); both players absent is a double match loss
+  - [ ] Refuse a bracket double no-show until walkovers land (section 1):
+        single elimination cannot advance a double match loss
+- [ ] Complete the DQ workflow (MTR/IPG-aligned — see `CONTEXT.md`; moved
+      from section 1, 2026-08-13, alongside the other judge adjudications)
+  - [ ] Remove DQ'd players from standings entirely so every lower-ranked player advances one place, deleting the mask-as-drop machinery this replaces
+  - [ ] Keep a DQ'd player's completed matches on record and feeding former opponents' tiebreakers, with the tournament staying on their profile without a placement
+  - [ ] Add an authorized DQ action and participation-state transition
+  - [ ] Record each DQ as a typed, staff-only audit event with the actor and affected player
+  - [ ] Apply the DQ's match consequence: the disqualified player loses
+        their current match when it is unresolved (IPG 1.1); an
+        already-reported result is never flipped, and the DQ action exists
+        only while the tournament is in progress
 - [ ] Add ghost-match handling for unreported matches whose players have left the table
   - [ ] Track ghost status, reporting judge, timestamp, and notes independently from result state
   - [ ] Remove ghost matches from active-table and routine result-reminder views and move them to a judge exception queue
