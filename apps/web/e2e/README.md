@@ -35,6 +35,9 @@ session through `window.Clerk`, and saves the browser storage state to
 - `organizer-corrections.spec.ts` — active-round result correction (and its
   audit-trail entry), a pairing rewind that reopens the previous round, and
   an organizer drop that produces a bye round and a "Dropped" standings row.
+- `organizer-mid-round-drop.spec.ts` — a drop during an unreported match
+  concedes it to the opponent immediately (required-wins–0, typed
+  `match_conceded` audit event) and the round completes off the concession.
 
 ## Test data
 

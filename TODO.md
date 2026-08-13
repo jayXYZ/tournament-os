@@ -22,9 +22,12 @@ changes rather than waiting for a final production milestone.
   - [x] Cover active-round result correction with its audit-trail entry, a
         pairing rewind that reopens the previous round, and an organizer drop
         that produces a bye round and a "Dropped" standings row
-  - [ ] Cover a mid-round drop's immediate concession (the backend flow
-        landed with section 1's drop work; needs a browser scenario where a
-        player drops during an unreported match)
+  - [x] Cover a mid-round drop's immediate concession:
+        `organizer-mid-round-drop.spec.ts` reports one of two tables, drops
+        a player from the unreported table, and asserts the opponent's
+        immediate 2–0 concession win, the typed `match_conceded` audit line,
+        and that the round completes off the concession into final standings
+        with a "Dropped" row
   - [ ] Cover no-show and forfeit scenarios once the judge adjudication
         actions land (moved to section 5's judge operations work; until
         then a forfeit is covered by manually entering the match result)
