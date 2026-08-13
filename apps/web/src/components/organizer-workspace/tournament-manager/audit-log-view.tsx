@@ -102,9 +102,10 @@ export function AuditLogView({
 }
 
 function AuditEventItem({ row }: { row: AuditEventRow }) {
-  const isEdit =
-    row.event.type === 'match_result_recorded' &&
-    row.event.previousResult !== null
+  // Any result-changing event that replaced an existing result is an edit
+  // and shows what it replaced, whichever event type carried it.
+  const previousResult =
+    'previousResult' in row.event ? row.event.previousResult : null
 
   return (
     <li className="flex flex-col gap-1 py-3">
@@ -114,7 +115,9 @@ function AuditEventItem({ row }: { row: AuditEventRow }) {
         >
           {row.actorRole === 'organizer' ? 'Organizer' : 'Player'}
         </Badge>
-        {isEdit && <Badge variant="destructive">Result edit</Badge>}
+        {previousResult !== null && (
+          <Badge variant="destructive">Result edit</Badge>
+        )}
         <span className="text-sm font-medium">
           {row.actorName ?? 'Unknown user'}
         </span>
@@ -126,9 +129,9 @@ function AuditEventItem({ row }: { row: AuditEventRow }) {
         </span>
       </div>
       <p className="text-sm text-muted-foreground">{describeEvent(row)}</p>
-      {isEdit && row.event.type === 'match_result_recorded' && (
+      {previousResult !== null && (
         <p className="text-sm text-muted-foreground">
-          Previous result: {formatScoreline(row.event.previousResult!)}
+          Previous result: {formatScoreline(previousResult)}
         </p>
       )}
     </li>

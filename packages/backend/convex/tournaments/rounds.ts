@@ -2,6 +2,7 @@ import { v } from "convex/values";
 
 import type { Id } from "../_generated/dataModel";
 import { mutation, query } from "../_generated/server";
+import type { MutationCtx } from "../_generated/server";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
 import { applyMatchResult } from "../model/matchResults";
 import { requireCurrentPhase, requirePhase } from "../model/phases";
@@ -55,6 +56,35 @@ export const publishPairings = mutation({
   },
 });
 
+// Resolves everything an organizer result entry or adjudication needs —
+// match, organizer access, phase, round, and pairing rows — and enforces
+// that results only change while their round is active (see CONTEXT.md
+// "Rewind": corrections are active-round-only).
+async function requireAdjudicableMatch(
+  ctx: MutationCtx,
+  matchId: Id<"tournamentMatches">,
+) {
+  const match = await requireMatch(ctx, matchId);
+  const { tournament, user } = await requireOrganizerAccess(
+    ctx,
+    match.tournamentId,
+  );
+  const round = await requireRound(ctx, match.tournamentRoundId);
+  if (round.roundStatus !== "in_progress") {
+    throw new Error(
+      "Match results can only be recorded during an active round",
+    );
+  }
+  return {
+    match,
+    tournament,
+    user,
+    round,
+    phase: await requirePhase(ctx, match.tournamentPhaseId),
+    players: await matchPlayers(ctx, matchId),
+  };
+}
+
 export const recordMatchResult = mutation({
   args: {
     matchId: v.id("tournamentMatches"),
@@ -67,15 +97,8 @@ export const recordMatchResult = mutation({
     note: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const match = await requireMatch(ctx, args.matchId);
-    const { user } = await requireOrganizerAccess(ctx, match.tournamentId);
-    const round = await requireRound(ctx, match.tournamentRoundId);
-    if (round.roundStatus !== "in_progress") {
-      throw new Error(
-        "Match results can only be recorded during an active round",
-      );
-    }
-    const players = await matchPlayers(ctx, args.matchId);
+    const { match, phase, round, players, user } =
+      await requireAdjudicableMatch(ctx, args.matchId);
     const playerOne = players.find(
       (player) => player.playerId === args.playerOneRegistrationId,
     );
@@ -87,7 +110,7 @@ export const recordMatchResult = mutation({
     }
     await applyMatchResult(ctx, {
       match,
-      phase: await requirePhase(ctx, match.tournamentPhaseId),
+      phase,
       round,
       players: [playerOne, playerTwo],
       playerOneGameWins: args.playerOneGameWins,
