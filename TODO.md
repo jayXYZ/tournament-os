@@ -283,10 +283,28 @@ no-shows, and disqualifications without each workflow inventing its own rules.
         wins against) for every already-generated round, counting toward the
         player's own match points and GWP but excluded when their percentages
         feed opponents' tiebreakers (see CONTEXT.md "Missed Round")
-- [ ] Expand tournament-engine invariant tests
+- [x] Expand tournament-engine invariant tests
   - [x] Cover rematch avoidance and unavoidable-rematch behavior with deterministic cases
   - [x] Cover distinct byes, max-capacity Swiss standings, drops, cutoffs, and bracket rewinds
-  - [ ] Add randomized/generative tests across field sizes, seeds, rounds, drops, and brackets
+  - [x] Add randomized/generative tests across field sizes, seeds, rounds,
+        drops, and brackets: `generative.convex.spec.ts` derives every
+        scenario from fixed seeds via the engine's own PRNG (failures name
+        the seed and shape). Pure layer: 150 in-memory Swiss tournaments
+        against `buildSwissPairings` (partition, determinism, MTR bye
+        choice, and zero rematches whenever one is provably avoidable —
+        every paired player having met fewer than half the paired field
+        guarantees a rematch-free matching exists) plus 300 random walkover
+        plans against `planSingleEliminationPairings`. Full-stack layer:
+        seven randomized tournaments driven through the real mutations
+        (random field sizes/parities, round counts, best-of, mid-round drop
+        concessions, between-round drops, top-8 cut, bracket walkovers,
+        completion), checking every completed round against the
+        `recomputeStatsThroughRound` oracle and playoff-advancement
+        ordering. A deterministic coverage probe asserts the fixed seeds
+        keep exercising drops, concessions, byes, draws, walkovers, and
+        guaranteed-rematch-free rounds, so generator drift cannot silently
+        drain coverage; validated by mutation-testing the bye rule (3 of 4
+        tests catch it)
 
 ## 2. Phase structure and cuts
 
