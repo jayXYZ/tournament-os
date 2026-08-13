@@ -269,6 +269,13 @@ async function rankedStatsForRound(
   const currentParticipants = new Set<Id<"tournamentRegistrations">>();
   const currentAdvancers = new Set<Id<"tournamentRegistrations">>();
   for (const { players } of matchesWithPlayers) {
+    // A walkover: the departed seat-holder's scheduled opponent received the
+    // match as a Bye (see CONTEXT.md "Walkover").
+    if (players.length === 1 && players[0].isBye) {
+      currentParticipants.add(players[0].playerId);
+      currentAdvancers.add(players[0].playerId);
+      continue;
+    }
     if (players.length !== 2) {
       throw new Error("Single-elimination matches require exactly two players");
     }
@@ -280,18 +287,12 @@ async function rankedStatsForRound(
     if (firstWins === secondWins) {
       throw new Error("Single-elimination matches must have a winner");
     }
-    const winner = firstWins > secondWins ? first : second;
-    const loser = winner === first ? second : first;
-    const winnerRegistration = stats.get(winner.playerId)?.registration;
-    if (winnerRegistration?.participationStatus === "active") {
-      currentAdvancers.add(winner.playerId);
-    } else if (
-      stats.get(loser.playerId)?.registration.participationStatus === "active"
-    ) {
-      // A winner who withdrew after reporting gives the opponent the bracket
-      // slot, matching singleEliminationAdvancers in model/singleElimination.ts.
-      currentAdvancers.add(loser.playerId);
-    }
+    // The game winner advances whether or not they are still in the
+    // tournament: a withdrawal never revives the defeated opponent — the
+    // seat advances and the next pairing walks it over (ADR 0001).
+    currentAdvancers.add(
+      firstWins > secondWins ? first.playerId : second.playerId,
+    );
   }
 
   const ranked = [...stats.values()].map((playerStats): RankedPlayerStats => {
@@ -308,6 +309,16 @@ async function rankedStatsForRound(
     }
 
     const previous = previousByPlayer.get(playerId);
+    if (previous?.playoffStatus === "active") {
+      // A seat-holder absent from the round was walked over at pairing (or
+      // their seat pair emptied entirely): they keep the placement of the
+      // seat they reached — this round.
+      return {
+        playerStats,
+        playoffStatus: "eliminated",
+        eliminatedInRoundNumber: round.roundNumber,
+      };
+    }
     if (previous?.playoffStatus === "eliminated") {
       return {
         playerStats,

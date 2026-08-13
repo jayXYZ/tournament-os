@@ -3995,7 +3995,7 @@ test("rewinding elimination pairings restores losers and repairs advancement", a
   expect(repairedPlayers).not.toContain(replacedWinner);
 });
 
-test("top-8 single elimination advances active players without reseeding", async () => {
+test("top-8 single elimination walks a departed winner's seat over without reseeding", async () => {
   const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const authed = t.withIdentity(organizerIdentity);
@@ -4084,13 +4084,12 @@ test("top-8 single elimination advances active players without reseeding", async
 
   const quarterfinalWinners = await recordFirstPlayerWins(authed, quarterfinal);
   const withdrawnWinner = quarterfinalWinners[0];
-  const replacement = quarterfinal[0].players.find(
+  const defeatedOpponent = quarterfinal[0].players.find(
     (player) => player.playerId !== withdrawnWinner,
   );
-  if (!replacement) {
-    throw new Error("Expected a quarterfinal opponent to advance");
+  if (!defeatedOpponent) {
+    throw new Error("Expected the withdrawn winner to have an opponent");
   }
-  const replacementAdvancer = replacement.playerId;
   await authed.mutation(api.tournaments.registrations.dropRegistration, {
     registrationId: withdrawnWinner,
   });
@@ -4134,22 +4133,30 @@ test("top-8 single elimination advances active players without reseeding", async
     api.tournaments.rounds.listRoundPairings,
     { roundId: semifinalId },
   );
+  // The departed winner's seat is walked over, never handed back to the
+  // defeated opponent: the scheduled semifinal opponent receives the match
+  // as an awarded Bye and the other semifinal plays normally (ADR 0001).
+  const walkovers = semifinal.filter(({ players }) => players.length === 1);
+  const playedSemifinals = semifinal.filter(
+    ({ players }) => players.length === 2,
+  );
+  expect(walkovers).toHaveLength(1);
+  expect(playedSemifinals).toHaveLength(1);
+  expect(walkovers[0].players[0]).toMatchObject({
+    playerId: quarterfinalWinners[1],
+    isBye: true,
+  });
+  expect(walkovers[0].match.matchStatus).toBe("completed");
   expect(
-    semifinal.map(({ players }) => new Set(players.map((p) => p.playerId))),
-  ).toEqual([
-    new Set([replacementAdvancer, quarterfinalWinners[1]]),
-    new Set(quarterfinalWinners.slice(2, 4)),
-  ]);
-  expect(
-    semifinal.flatMap(({ players }) =>
-      players.map((player) => player.playerId),
-    ),
-  ).toContain(lockedWinner);
-  expect(
-    semifinal.flatMap(({ players }) =>
-      players.map((player) => player.playerId),
-    ),
-  ).not.toContain(lockedLoser);
+    new Set(playedSemifinals[0].players.map((player) => player.playerId)),
+  ).toEqual(new Set(quarterfinalWinners.slice(2, 4)));
+  const semifinalPlayerIds = semifinal.flatMap(({ players }) =>
+    players.map((player) => player.playerId),
+  );
+  expect(semifinalPlayerIds).not.toContain(withdrawnWinner);
+  expect(semifinalPlayerIds).not.toContain(defeatedOpponent.playerId);
+  expect(semifinalPlayerIds).toContain(lockedWinner);
+  expect(semifinalPlayerIds).not.toContain(lockedLoser);
   expect(
     (
       await authed.query(api.tournaments.rounds.getCurrentRound, {
@@ -4162,6 +4169,27 @@ test("top-8 single elimination advances active players without reseeding", async
   await authed.mutation(api.tournaments.rounds.completeRound, {
     roundId: semifinalId,
   });
+
+  // Completing the walkover round records the departed winner's exit at the
+  // seat they reached: dropped, with the semifinal as their elimination
+  // round, ranked with the semifinalists above every quarterfinal loser.
+  const withdrawnRegistration = (
+    await listRegistrations(authed, tournamentId)
+  ).find(({ registration }) => registration._id === withdrawnWinner);
+  expect(withdrawnRegistration?.registration).toMatchObject({
+    participationStatus: "dropped",
+    eliminatedByRoundId: semifinalId,
+  });
+  const semifinalStandings = (
+    await authed.query(api.tournaments.rounds.listRoundStandings, {
+      roundId: semifinalId,
+    })
+  ).map(({ standing }) => standing);
+  const rankByPlayer = new Map(
+    semifinalStandings.map((row) => [row.playerId, row.rank]),
+  );
+  expect(rankByPlayer.get(withdrawnWinner)).toBeLessThanOrEqual(4);
+  expect(rankByPlayer.get(defeatedOpponent.playerId)).toBeGreaterThan(4);
   const finalId = await authed.mutation(
     api.tournaments.rounds.generateNextRound,
     { tournamentId },
@@ -4190,6 +4218,270 @@ test("top-8 single elimination advances active players without reseeding", async
       tournamentId,
     }),
   ).toMatchObject({ nextStep: { kind: "completeTournament", ready: true } });
+});
+
+test("walkovers chain: a final can be won by walkover", async () => {
+  const t = createConvexTest();
+  const { authed, tournamentId, quarterfinalId, quarterfinal } =
+    await seedPairedQuarterfinals(t);
+  const quarterfinalWinners = await recordFirstPlayerWins(authed, quarterfinal);
+  // Seat 1's winner leaves before the semifinal is paired…
+  await authed.mutation(api.tournaments.registrations.dropRegistration, {
+    registrationId: quarterfinalWinners[0],
+  });
+  await authed.mutation(api.tournaments.rounds.completeRound, {
+    roundId: quarterfinalId,
+  });
+
+  const semifinalId = await authed.mutation(
+    api.tournaments.rounds.generateNextRound,
+    { tournamentId },
+  );
+  const semifinal = await authed.query(
+    api.tournaments.rounds.listRoundPairings,
+    { roundId: semifinalId },
+  );
+  const semifinalWinners = await recordFirstPlayerWins(authed, semifinal);
+  // …so their scheduled opponent wins the semifinal by walkover, then
+  // leaves as well. The walkover Bye completed at pairing time, so the drop
+  // concedes nothing — the seat is already won.
+  const walkoverSemifinalist = quarterfinalWinners[1];
+  expect(semifinalWinners).toContain(walkoverSemifinalist);
+  await authed.mutation(api.tournaments.registrations.dropRegistration, {
+    registrationId: walkoverSemifinalist,
+  });
+  await authed.mutation(api.tournaments.rounds.completeRound, {
+    roundId: semifinalId,
+  });
+
+  // The final is a single walkover Bye for the remaining finalist.
+  const finalId = await authed.mutation(
+    api.tournaments.rounds.generateNextRound,
+    { tournamentId },
+  );
+  const finalPairings = await authed.query(
+    api.tournaments.rounds.listRoundPairings,
+    { roundId: finalId },
+  );
+  const champion = semifinalWinners.find(
+    (winner) => winner !== walkoverSemifinalist,
+  );
+  expect(finalPairings).toHaveLength(1);
+  expect(finalPairings[0].players).toHaveLength(1);
+  expect(finalPairings[0].players[0]).toMatchObject({
+    playerId: champion,
+    isBye: true,
+  });
+  expect(finalPairings[0].match.matchStatus).toBe("completed");
+  expect(
+    (
+      await authed.query(api.tournaments.rounds.getCurrentRound, {
+        tournamentId,
+      })
+    )?.roundName,
+  ).toBe("Finals");
+  await authed.mutation(api.tournaments.rounds.completeRound, {
+    roundId: finalId,
+  });
+
+  // Departed players keep the seats they reached: the walked-over finalist
+  // places second and the earlier departure ranks with the semifinalists.
+  const standings = (
+    await authed.query(api.tournaments.rounds.listRoundStandings, {
+      roundId: finalId,
+    })
+  ).map(({ standing }) => standing);
+  expect(standings[0].playerId).toBe(champion);
+  expect(standings[1].playerId).toBe(walkoverSemifinalist);
+  const firstDeparture = standings.find(
+    (row) => row.playerId === quarterfinalWinners[0],
+  );
+  expect(firstDeparture?.rank).toBeLessThanOrEqual(4);
+  expect(
+    await authed.query(api.tournaments.rounds.getPairingsBoard, {
+      tournamentId,
+    }),
+  ).toMatchObject({ nextStep: { kind: "completeTournament", ready: true } });
+});
+
+test("a bracket pair with no live player advances no seat and the walkover chains", async () => {
+  const t = createConvexTest();
+  const { authed, tournamentId, quarterfinalId, quarterfinal } =
+    await seedPairedQuarterfinals(t);
+  const quarterfinalWinners = await recordFirstPlayerWins(authed, quarterfinal);
+  // Both winners headed for the same semifinal leave before it is paired.
+  for (const registrationId of quarterfinalWinners.slice(0, 2)) {
+    await authed.mutation(api.tournaments.registrations.dropRegistration, {
+      registrationId,
+    });
+  }
+  await authed.mutation(api.tournaments.rounds.completeRound, {
+    roundId: quarterfinalId,
+  });
+
+  // Their semifinal has nobody to award — no Bye, no match. The other
+  // semifinal plays normally.
+  const semifinalId = await authed.mutation(
+    api.tournaments.rounds.generateNextRound,
+    { tournamentId },
+  );
+  const semifinal = await authed.query(
+    api.tournaments.rounds.listRoundPairings,
+    { roundId: semifinalId },
+  );
+  expect(semifinal).toHaveLength(1);
+  expect(
+    new Set(semifinal[0].players.map((player) => player.playerId)),
+  ).toEqual(new Set(quarterfinalWinners.slice(2, 4)));
+  const semifinalWinners = await recordFirstPlayerWins(authed, semifinal);
+  await authed.mutation(api.tournaments.rounds.completeRound, {
+    roundId: semifinalId,
+  });
+
+  // Both departures record the semifinal — the seat they reached…
+  const registrations = await listRegistrations(authed, tournamentId);
+  for (const playerId of quarterfinalWinners.slice(0, 2)) {
+    expect(
+      registrations.find(({ registration }) => registration._id === playerId)
+        ?.registration,
+    ).toMatchObject({
+      participationStatus: "dropped",
+      eliminatedByRoundId: semifinalId,
+    });
+  }
+
+  // …and the empty seat walks the lone finalist over.
+  const finalId = await authed.mutation(
+    api.tournaments.rounds.generateNextRound,
+    { tournamentId },
+  );
+  const finalPairings = await authed.query(
+    api.tournaments.rounds.listRoundPairings,
+    { roundId: finalId },
+  );
+  expect(finalPairings).toHaveLength(1);
+  expect(finalPairings[0].players).toHaveLength(1);
+  expect(finalPairings[0].players[0]).toMatchObject({
+    playerId: semifinalWinners[0],
+    isBye: true,
+  });
+  expect(
+    (
+      await authed.query(api.tournaments.rounds.getCurrentRound, {
+        tournamentId,
+      })
+    )?.roundName,
+  ).toBe("Finals");
+  await authed.mutation(api.tournaments.rounds.completeRound, {
+    roundId: finalId,
+  });
+  expect(
+    await authed.query(api.tournaments.rounds.getPairingsBoard, {
+      tournamentId,
+    }),
+  ).toMatchObject({ nextStep: { kind: "completeTournament", ready: true } });
+});
+
+test("a bracket with no live players refuses another round and offers completion", async () => {
+  const t = createConvexTest();
+  const { authed, tournamentId, quarterfinalId, quarterfinal } =
+    await seedPairedQuarterfinals(t);
+  const quarterfinalWinners = await recordFirstPlayerWins(authed, quarterfinal);
+  for (const registrationId of quarterfinalWinners) {
+    await authed.mutation(api.tournaments.registrations.dropRegistration, {
+      registrationId,
+    });
+  }
+  await authed.mutation(api.tournaments.rounds.completeRound, {
+    roundId: quarterfinalId,
+  });
+
+  // Chained walkovers have no one left to award, whatever the configured
+  // round count says.
+  await expect(
+    authed.mutation(api.tournaments.rounds.generateNextRound, {
+      tournamentId,
+    }),
+  ).rejects.toThrow(
+    "Every remaining bracket player has left the tournament; complete the tournament instead",
+  );
+  expect(
+    await authed.query(api.tournaments.rounds.getPairingsBoard, {
+      tournamentId,
+    }),
+  ).toMatchObject({ nextStep: { kind: "completeTournament", ready: true } });
+  await authed.mutation(api.tournaments.lifecycle.completeTournament, {
+    tournamentId,
+  });
+  const board = await authed.query(api.tournaments.rounds.getPairingsBoard, {
+    tournamentId,
+  });
+  expect(board.tournament.lifecycle).toBe("completed");
+});
+
+test("re-completing a rewound walkover round re-records the departed winner's exit", async () => {
+  const t = createConvexTest();
+  const { authed, tournamentId, quarterfinalId, quarterfinal } =
+    await seedPairedQuarterfinals(t);
+  const quarterfinalWinners = await recordFirstPlayerWins(authed, quarterfinal);
+  const departedWinner = quarterfinalWinners[0];
+  await authed.mutation(api.tournaments.registrations.dropRegistration, {
+    registrationId: departedWinner,
+  });
+  await authed.mutation(api.tournaments.rounds.completeRound, {
+    roundId: quarterfinalId,
+  });
+  const semifinalId = await authed.mutation(
+    api.tournaments.rounds.generateNextRound,
+    { tournamentId },
+  );
+  const semifinal = await authed.query(
+    api.tournaments.rounds.listRoundPairings,
+    { roundId: semifinalId },
+  );
+  await recordFirstPlayerWins(authed, semifinal);
+  await authed.mutation(api.tournaments.rounds.completeRound, {
+    roundId: semifinalId,
+  });
+  await authed.mutation(api.tournaments.rounds.generateNextRound, {
+    tournamentId,
+  });
+  const registrationsById = async () =>
+    new Map(
+      (await listRegistrations(authed, tournamentId)).map(
+        ({ registration }) => [registration._id, registration],
+      ),
+    );
+  expect((await registrationsById()).get(departedWinner)).toMatchObject({
+    participationStatus: "dropped",
+    eliminatedByRoundId: semifinalId,
+  });
+
+  // The unreported final can be rewound; reopening the semifinal clears the
+  // walked-over departure's stamp along with the losers' eliminations.
+  await authed.mutation(api.tournaments.rounds.rewindLatestRound, {
+    tournamentId,
+  });
+  const afterRewind = (await registrationsById()).get(departedWinner);
+  expect(afterRewind?.participationStatus).toBe("dropped");
+  expect(afterRewind?.eliminatedByRoundId).toBeUndefined();
+
+  // Re-completing the reopened semifinal re-records where they left the
+  // bracket, so reinstating restores the exit rather than active play.
+  await authed.mutation(api.tournaments.rounds.completeRound, {
+    roundId: semifinalId,
+  });
+  expect((await registrationsById()).get(departedWinner)).toMatchObject({
+    participationStatus: "dropped",
+    eliminatedByRoundId: semifinalId,
+  });
+  await authed.mutation(api.tournaments.registrations.reinstateRegistration, {
+    registrationId: departedWinner,
+  });
+  expect((await registrationsById()).get(departedWinner)).toMatchObject({
+    participationStatus: "eliminated",
+    eliminatedByRoundId: semifinalId,
+  });
 });
 
 test("top-8 cut promotes the next-ranked active player when a qualifier drops", async () => {
@@ -4728,6 +5020,11 @@ async function recordFirstPlayerWins(
 ) {
   const winners: Id<"tournamentRegistrations">[] = [];
   for (const { match, players } of pairings) {
+    // A walkover Bye completed at pairing time: its lone player already won.
+    if (players.length === 1) {
+      winners.push(players[0].playerId);
+      continue;
+    }
     if (players.length !== 2) {
       throw new Error("Expected a two-player elimination match");
     }
@@ -4741,6 +5038,58 @@ async function recordFirstPlayerWins(
     });
   }
   return winners;
+}
+
+// Seeds a 12-player one-round-Swiss → top-8 tournament, plays out the Swiss
+// round, and pairs the quarterfinals. The playoff-walkover tests all start
+// from this state.
+async function seedPairedQuarterfinals(t: ReturnType<typeof createConvexTest>) {
+  const { organizationId } = await seedOrganizer(t);
+  const authed = t.withIdentity(organizerIdentity);
+  const tournamentId = await authed.mutation(
+    api.tournaments.lifecycle.createTournamentWithPhases,
+    {
+      organizationId,
+      name: "Walkover Playoff",
+      startDate: Date.now(),
+      playerCapacity: 12,
+      format: "standard",
+      phases: [
+        {
+          phaseOrder: 1,
+          phaseType: "swiss",
+          phaseRoundMode: "fixed",
+          phaseTotalRounds: 1,
+        },
+        {
+          phaseOrder: 2,
+          phaseType: "single_elimination",
+          phaseRoundMode: "fixed",
+        },
+      ],
+    },
+  );
+  await authed.mutation(api.tournaments.lifecycle.updatePairingsAutoPublish, {
+    tournamentId,
+    autoPublishPairings: true,
+  });
+  await seedActiveRegistrations(t, tournamentId, 12);
+  await authed.mutation(api.tournaments.lifecycle.publishTournament, {
+    tournamentId,
+  });
+  await authed.mutation(api.tournaments.rounds.startTournament, {
+    tournamentId,
+  });
+  await playOutCurrentRound(authed, tournamentId);
+  const quarterfinalId = await authed.mutation(
+    api.tournaments.rounds.generateNextRound,
+    { tournamentId },
+  );
+  const quarterfinal = await authed.query(
+    api.tournaments.rounds.listRoundPairings,
+    { roundId: quarterfinalId },
+  );
+  return { authed, tournamentId, quarterfinalId, quarterfinal };
 }
 
 async function seedActiveRegistrations(

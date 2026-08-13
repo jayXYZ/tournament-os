@@ -10,6 +10,7 @@ import {
 } from "./cutoffs";
 import { type PairingsNextStep, pairingsNextStep } from "./nextStep";
 import {
+  buildTopEightSingleEliminationPairings,
   createRoundWithPairings,
   createSingleEliminationRoundWithPairings,
 } from "./pairing";
@@ -38,8 +39,9 @@ import {
 } from "./registrations";
 import {
   eliminateSingleEliminationLosers,
-  singleEliminationAdvancers,
+  planSingleEliminationPairings,
   singleEliminationRoundName,
+  singleEliminationSeatWinners,
   topEightCutFromStandings,
 } from "./singleElimination";
 import {
@@ -92,6 +94,8 @@ const CUTOFF_TOO_FEW_QUALIFIERS =
   "The phase cutoff leaves fewer than two qualifying players; complete the tournament instead";
 const CUTOFF_TOO_FEW_QUALIFIERS_HELD_PLACES =
   "The phase cutoff leaves fewer than two qualifying players; reinstate a withdrawn player who still holds a place in the field, or complete the tournament";
+const BRACKET_NO_LIVE_PLAYERS =
+  "Every remaining bracket player has left the tournament; complete the tournament instead";
 
 export type PhaseBoard = {
   phase: Doc<"tournamentPhases">;
@@ -119,6 +123,12 @@ export type ProgressionFacts = {
   // Loaded only in the states whose rules read the roster: pre-start, and
   // between rounds when a later phase could start.
   activeRegistrations: Doc<"tournamentRegistrations">[] | null;
+  // The completed bracket round's seat winners in table order (departed
+  // winners included — their seats advance and the walkover materializes at
+  // pairing; see model/singleElimination.ts). Loaded only between bracket
+  // rounds, where the next-round verdict and mutation need them; null
+  // everywhere else.
+  bracketSeatWinners: Doc<"tournamentRegistrations">[] | null;
   hasSwissPhase: boolean;
   hasUpcomingTopEightPlayoff: boolean;
   // The first later phase still waiting to be played, and whether its entry
@@ -161,7 +171,12 @@ export type ProgressionActions = {
       phase: Doc<"tournamentPhases">;
       round: Doc<"tournamentRounds">;
     } & (
-      | { mode: "continuePhase" }
+      | {
+          mode: "continuePhase";
+          // Non-null exactly when the phase is single elimination: the seat
+          // winners the next round is paired from.
+          bracketSeatWinners: Doc<"tournamentRegistrations">[] | null;
+        }
       | {
           mode: "startNextPhase";
           nextPhase: Doc<"tournamentPhases">;
@@ -266,6 +281,17 @@ export async function analyzeProgression(
       ? await activeRegistrations(ctx, tournament._id)
       : null;
 
+  // Between bracket rounds the rulebook needs the completed round's seat
+  // winners: the next round is paired from them, and a bracket whose every
+  // remaining seat-holder has left cannot be paired at all.
+  const bracketSeatWinners =
+    round?.roundStatus === "completed" &&
+    phase?.phaseType === SINGLE_ELIMINATION_FORMAT &&
+    phase.phaseTotalRounds !== null &&
+    (roundInPhase ?? 1) < phase.phaseTotalRounds
+      ? await singleEliminationSeatWinners(ctx, round._id)
+      : null;
+
   // Whether the next phase's entry requirement can be met from the completed
   // round's standings: the fixed top-8 cut for a playoff, or the finished
   // phase's configured cutoff. One computation feeds the board's
@@ -303,6 +329,7 @@ export async function analyzeProgression(
     unreportedMatchCount,
     currentRoundHasRecordedResult,
     activeRegistrations: registrations,
+    bracketSeatWinners,
     hasSwissPhase,
     hasUpcomingTopEightPlayoff,
     nextUpcomingPhase,
@@ -405,7 +432,26 @@ function generateNextRoundVerdict(
     phase.phaseTotalRounds === null ||
     (facts.roundInPhase ?? 1) < phase.phaseTotalRounds
   ) {
-    return { allowed: true, reason: null, phase, round, mode: "continuePhase" };
+    // A bracket round is paired from the completed round's seat winners.
+    // When every one of them has left the tournament, chained walkovers have
+    // no one left to award — the bracket is over, whatever its configured
+    // round count says.
+    if (
+      facts.bracketSeatWinners !== null &&
+      !facts.bracketSeatWinners.some(
+        (registration) => registration.participationStatus === "active",
+      )
+    ) {
+      return disallowed(BRACKET_NO_LIVE_PLAYERS);
+    }
+    return {
+      allowed: true,
+      reason: null,
+      phase,
+      round,
+      mode: "continuePhase",
+      bracketSeatWinners: facts.bracketSeatWinners,
+    };
   }
 
   const nextPhase = facts.nextUpcomingPhase;
@@ -651,7 +697,7 @@ async function executeCompleteRound(
   if (phase.phaseType === SINGLE_ELIMINATION_FORMAT) {
     // The rewrite above just made this the latest completed round, which is
     // where the elimination batch lands its standings-status repair.
-    await eliminateSingleEliminationLosers(ctx, matchesWithPlayers, round._id);
+    await eliminateSingleEliminationLosers(ctx, round, matchesWithPlayers);
   }
   const now = Date.now();
   await ctx.db.patch(round._id, {
@@ -718,12 +764,7 @@ async function executeGenerateNextRound(
   }
   const { roundId, playerCount } =
     step.mode === "continuePhase"
-      ? await continuePhaseWithNextRound(
-          ctx,
-          tournament,
-          step.phase,
-          step.round,
-        )
+      ? await continuePhaseWithNextRound(ctx, tournament, step)
       : await startNextPhaseFirstRound(ctx, tournament, step);
   await logAuditEvent(ctx, {
     tournamentId: tournament._id,
@@ -742,35 +783,48 @@ async function executeGenerateNextRound(
 async function continuePhaseWithNextRound(
   ctx: MutationCtx,
   tournament: Doc<"tournaments">,
-  phase: Doc<"tournamentPhases">,
-  currentRound: Doc<"tournamentRounds">,
+  step: Extract<
+    ProgressionActions["generateNextRound"],
+    { allowed: true; mode: "continuePhase" }
+  >,
 ) {
-  const registrations =
-    phase.phaseType === SINGLE_ELIMINATION_FORMAT
-      ? await singleEliminationAdvancers(ctx, currentRound._id)
-      : await activeRegistrations(ctx, tournament._id);
-  const roundId =
-    phase.phaseType === SINGLE_ELIMINATION_FORMAT
-      ? await createSingleEliminationRoundWithPairings(ctx, {
-          tournament,
-          phase,
-          roundNumber: currentRound.roundNumber + 1,
-          roundName: singleEliminationRoundName(registrations.length),
-          registrations,
-          seededFirstRound: false,
-        })
-      : await createRoundWithPairings(ctx, {
-          tournament,
-          phase,
-          roundNumber: currentRound.roundNumber + 1,
-          registrations,
-          previousRoundId: currentRound._id,
-        });
+  const { phase, round: currentRound } = step;
+  let roundId: Id<"tournamentRounds">;
+  let playerCount: number;
+  if (phase.phaseType === SINGLE_ELIMINATION_FORMAT) {
+    // The verdict that allowed this step loaded the seat winners and proved
+    // at least one is still live, so the plan below has a match to create.
+    const seatWinners =
+      step.bracketSeatWinners ??
+      (await singleEliminationSeatWinners(ctx, currentRound._id));
+    const pairings = planSingleEliminationPairings(seatWinners);
+    roundId = await createSingleEliminationRoundWithPairings(ctx, {
+      tournament,
+      phase,
+      roundNumber: currentRound.roundNumber + 1,
+      roundName: singleEliminationRoundName(seatWinners.length),
+      pairings,
+    });
+    playerCount = pairings.reduce(
+      (count, pairing) => count + (pairing.isBye ? 1 : 2),
+      0,
+    );
+  } else {
+    const registrations = await activeRegistrations(ctx, tournament._id);
+    roundId = await createRoundWithPairings(ctx, {
+      tournament,
+      phase,
+      roundNumber: currentRound.roundNumber + 1,
+      registrations,
+      previousRoundId: currentRound._id,
+    });
+    playerCount = registrations.length;
+  }
   await ctx.db.patch(phase._id, {
     phaseCurrentRound: roundId,
     updatedAt: Date.now(),
   });
-  return { roundId, playerCount: registrations.length };
+  return { roundId, playerCount };
 }
 
 // The phase's configured rounds are done: start the next phase. Round
@@ -833,8 +887,7 @@ async function startNextPhaseFirstRound(
           phase: playablePhase,
           roundNumber: currentRound.roundNumber + 1,
           roundName: "Quarterfinals",
-          registrations,
-          seededFirstRound: true,
+          pairings: buildTopEightSingleEliminationPairings(registrations),
         })
       : await createRoundWithPairings(ctx, {
           tournament,

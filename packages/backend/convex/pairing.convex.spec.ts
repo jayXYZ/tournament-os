@@ -10,6 +10,7 @@ import {
   type Pairing,
   type RankedRegistration,
 } from "./model/pairing";
+import { planSingleEliminationPairings } from "./model/singleElimination";
 
 test("top-eight bracket uses tournament seeding order", () => {
   const registrations = Array.from(
@@ -31,6 +32,68 @@ test("top-eight bracket uses tournament seeding order", () => {
     ["seed-2", "seed-7"],
     ["seed-3", "seed-6"],
   ]);
+});
+
+// Minimal registration factory for the walkover planner: only _id and
+// participationStatus matter.
+function seat(id: string, status: "active" | "dropped" = "active") {
+  return {
+    _id: id as unknown as Id<"tournamentRegistrations">,
+    participationStatus: status,
+  } as Doc<"tournamentRegistrations">;
+}
+
+function planKeys(pairings: Pairing[]): string[] {
+  return pairings.map((pairing) =>
+    pairing.isBye
+      ? `bye:${pairing.playerOne._id}`
+      : `${pairing.playerOne._id}v${pairing.playerTwo?._id}`,
+  );
+}
+
+test("bracket advancement pairs adjacent live seats", () => {
+  expect(
+    planKeys(
+      planSingleEliminationPairings([
+        seat("a"),
+        seat("b"),
+        seat("c"),
+        seat("d"),
+      ]),
+    ),
+  ).toEqual(["avb", "cvd"]);
+});
+
+test("a departed seat-holder's scheduled opponent receives a walkover Bye", () => {
+  expect(
+    planKeys(
+      planSingleEliminationPairings([
+        seat("a", "dropped"),
+        seat("b"),
+        seat("c"),
+        seat("d", "dropped"),
+      ]),
+    ),
+  ).toEqual(["bye:b", "bye:c"]);
+});
+
+test("a seat pair with no live player advances nobody, chaining the walkover", () => {
+  // The empty pair produces no match at all; the lone trailing seat is one
+  // whose scheduled opponent's seat emptied a round earlier.
+  expect(
+    planKeys(
+      planSingleEliminationPairings([
+        seat("a", "dropped"),
+        seat("b", "dropped"),
+        seat("c"),
+        seat("d"),
+      ]),
+    ),
+  ).toEqual(["cvd"]);
+  expect(planKeys(planSingleEliminationPairings([seat("c")]))).toEqual([
+    "bye:c",
+  ]);
+  expect(planSingleEliminationPairings([seat("c", "dropped")])).toEqual([]);
 });
 
 // Minimal RankedRegistration factory: only _id on the registration

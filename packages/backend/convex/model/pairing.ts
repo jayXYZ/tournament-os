@@ -57,15 +57,6 @@ export function buildTopEightSingleEliminationPairings(
   return pairAdjacentRegistrations(bracket);
 }
 
-export function buildSingleEliminationAdvancementPairings(
-  winnersInTableOrder: Doc<"tournamentRegistrations">[],
-): Pairing[] {
-  if (winnersInTableOrder.length < 2 || winnersInTableOrder.length % 2 !== 0) {
-    throw new Error("Single-elimination advancement requires an even field");
-  }
-  return pairAdjacentRegistrations(winnersInTableOrder);
-}
-
 function pairAdjacentRegistrations(
   registrations: Doc<"tournamentRegistrations">[],
 ): Pairing[] {
@@ -80,6 +71,10 @@ function pairAdjacentRegistrations(
   return pairings;
 }
 
+// Materializes a bracket round from an already-built pairing plan: the seeded
+// first-round bracket, or the walkover-aware advancement plan from
+// planSingleEliminationPairings (model/singleElimination.ts). A bye pairing
+// is a walkover — the same awarded Bye a Swiss bye records.
 export async function createSingleEliminationRoundWithPairings(
   ctx: MutationCtx,
   args: {
@@ -87,13 +82,12 @@ export async function createSingleEliminationRoundWithPairings(
     phase: Doc<"tournamentPhases">;
     roundNumber: number;
     roundName: string;
-    registrations: Doc<"tournamentRegistrations">[];
-    seededFirstRound: boolean;
+    pairings: Pairing[];
   },
 ) {
-  const pairings = args.seededFirstRound
-    ? buildTopEightSingleEliminationPairings(args.registrations)
-    : buildSingleEliminationAdvancementPairings(args.registrations);
+  if (args.pairings.length === 0) {
+    throw new Error("Single-elimination round requires at least one match");
+  }
   const now = Date.now();
   const roundId = await ctx.db.insert("tournamentRounds", {
     tournamentId: args.tournament._id,
@@ -105,18 +99,27 @@ export async function createSingleEliminationRoundWithPairings(
     updatedAt: now,
   });
 
-  for (const [index, pairing] of pairings.entries()) {
+  let tableNumber = 1;
+  for (const pairing of args.pairings) {
+    if (pairing.isBye || !pairing.playerTwo) {
+      await insertAwardedByeMatch(ctx, {
+        tournament: args.tournament,
+        phase: args.phase,
+        roundId,
+        registration: pairing.playerOne,
+        now,
+      });
+      continue;
+    }
     const matchId = await ctx.db.insert("tournamentMatches", {
       tournamentId: args.tournament._id,
       tournamentPhaseId: args.phase._id,
       tournamentRoundId: roundId,
-      tableNumber: index + 1,
+      tableNumber,
       matchStatus: "upcoming",
       updatedAt: now,
     });
-    if (!pairing.playerTwo) {
-      throw new Error("Single-elimination match is missing an opponent");
-    }
+    tableNumber += 1;
     await ctx.db.insert("tournamentMatchPlayers", {
       tournamentMatchId: matchId,
       playerId: pairing.playerOne._id,
@@ -135,6 +138,61 @@ export async function createSingleEliminationRoundWithPairings(
     });
   }
   return roundId;
+}
+
+// A Bye is an Awarded Result: the phase's required game wins to zero (2–0 in
+// best-of-3), completed at pairing time with a system-awarded revision (no
+// actor). One writer for both the Swiss bye and the bracket walkover.
+async function insertAwardedByeMatch(
+  ctx: MutationCtx,
+  args: {
+    tournament: Doc<"tournaments">;
+    phase: Doc<"tournamentPhases">;
+    roundId: Id<"tournamentRounds">;
+    registration: Doc<"tournamentRegistrations">;
+    now: number;
+  },
+) {
+  const matchId = await ctx.db.insert("tournamentMatches", {
+    tournamentId: args.tournament._id,
+    tournamentPhaseId: args.phase._id,
+    tournamentRoundId: args.roundId,
+    tableNumber: undefined,
+    matchStatus: "completed",
+    updatedAt: args.now,
+  });
+  const byeGameWins = requiredGameWins(args.phase.bestOf);
+  await ctx.db.insert("tournamentMatchPlayers", {
+    tournamentMatchId: matchId,
+    playerId: args.registration._id,
+    playerName: args.registration.playerName,
+    matchPointsEarned: BYE_MATCH_POINTS,
+    gameWins: byeGameWins,
+    gameLosses: 0,
+    gameDraws: 0,
+    isBye: true,
+    updatedAt: args.now,
+  });
+  const revisionId = await ctx.db.insert("matchResultRevisions", {
+    tournamentId: args.tournament._id,
+    tournamentMatchId: matchId,
+    kind: "bye",
+    lines: [
+      {
+        registrationId: args.registration._id,
+        outcome: "win",
+        matchPointsEarned: BYE_MATCH_POINTS,
+        gameWins: byeGameWins,
+        gameLosses: 0,
+        gameDraws: 0,
+      },
+    ],
+  });
+  await ctx.db.patch(matchId, {
+    currentResultRevisionId: revisionId,
+    currentResultKind: "bye",
+  });
+  return matchId;
 }
 
 export async function createRoundWithPairings(
@@ -184,73 +242,44 @@ export async function createRoundWithPairings(
 
   let tableNumber = 1;
   for (const pairing of pairings) {
+    if (pairing.isBye) {
+      await insertAwardedByeMatch(ctx, {
+        tournament: args.tournament,
+        phase: args.phase,
+        roundId,
+        registration: pairing.playerOne,
+        now,
+      });
+      continue;
+    }
+    if (!pairing.playerTwo) {
+      continue;
+    }
     const matchId = await ctx.db.insert("tournamentMatches", {
       tournamentId: args.tournament._id,
       tournamentPhaseId: args.phase._id,
       tournamentRoundId: roundId,
-      tableNumber: pairing.isBye ? undefined : tableNumber,
-      matchStatus: pairing.isBye ? "completed" : "upcoming",
+      tableNumber,
+      matchStatus: "upcoming",
       updatedAt: now,
     });
-
-    if (pairing.isBye) {
-      // A Bye is an Awarded Result: the phase's required game wins to zero
-      // (2–0 in best-of-3), not a fixed 2–0.
-      const byeGameWins = requiredGameWins(args.phase.bestOf);
-      await ctx.db.insert("tournamentMatchPlayers", {
-        tournamentMatchId: matchId,
-        playerId: pairing.playerOne._id,
-        playerName: pairing.playerOne.playerName,
-        matchPointsEarned: BYE_MATCH_POINTS,
-        gameWins: byeGameWins,
-        gameLosses: 0,
-        gameDraws: 0,
-        isBye: true,
-        updatedAt: now,
-      });
-      // Byes are results too, so they get a revision like any other outcome;
-      // no actor — the system awarded it at pairing time.
-      const revisionId = await ctx.db.insert("matchResultRevisions", {
-        tournamentId: args.tournament._id,
-        tournamentMatchId: matchId,
-        kind: "bye",
-        lines: [
-          {
-            registrationId: pairing.playerOne._id,
-            outcome: "win",
-            matchPointsEarned: BYE_MATCH_POINTS,
-            gameWins: byeGameWins,
-            gameLosses: 0,
-            gameDraws: 0,
-          },
-        ],
-      });
-      await ctx.db.patch(matchId, {
-        currentResultRevisionId: revisionId,
-        currentResultKind: "bye",
-      });
-    } else if (pairing.playerTwo) {
-      await ctx.db.insert("tournamentMatchPlayers", {
-        tournamentMatchId: matchId,
-        playerId: pairing.playerOne._id,
-        playerName: pairing.playerOne.playerName,
-        opponentPlayerId: pairing.playerTwo._id,
-        isBye: false,
-        updatedAt: now,
-      });
-      await ctx.db.insert("tournamentMatchPlayers", {
-        tournamentMatchId: matchId,
-        playerId: pairing.playerTwo._id,
-        playerName: pairing.playerTwo.playerName,
-        opponentPlayerId: pairing.playerOne._id,
-        isBye: false,
-        updatedAt: now,
-      });
-    }
-
-    if (!pairing.isBye) {
-      tableNumber += 1;
-    }
+    tableNumber += 1;
+    await ctx.db.insert("tournamentMatchPlayers", {
+      tournamentMatchId: matchId,
+      playerId: pairing.playerOne._id,
+      playerName: pairing.playerOne.playerName,
+      opponentPlayerId: pairing.playerTwo._id,
+      isBye: false,
+      updatedAt: now,
+    });
+    await ctx.db.insert("tournamentMatchPlayers", {
+      tournamentMatchId: matchId,
+      playerId: pairing.playerTwo._id,
+      playerName: pairing.playerTwo.playerName,
+      opponentPlayerId: pairing.playerOne._id,
+      isBye: false,
+      updatedAt: now,
+    });
   }
 
   return roundId;

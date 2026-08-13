@@ -136,6 +136,18 @@ export function pairingsNextStep(
     phase.phaseTotalRounds === null ||
     (facts.roundInPhase ?? 1) < phase.phaseTotalRounds
   ) {
+    // A bracket whose every remaining seat-holder has left cannot pair
+    // another round — chained walkovers have no one to award, so completing
+    // the tournament is the only move left (mirrors the entry-shortfall
+    // case below).
+    if (
+      facts.bracketSeatWinners !== null &&
+      !facts.bracketSeatWinners.some(
+        (registration) => registration.participationStatus === "active",
+      )
+    ) {
+      return { kind: "completeTournament", ready: true, reason: null };
+    }
     return {
       kind: "generateNextRound",
       ready: actions.generateNextRound.allowed,

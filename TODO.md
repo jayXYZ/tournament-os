@@ -242,7 +242,7 @@ no-shows, and disqualifications without each workflow inventing its own rules.
   - [x] Allow organizers to enter or override results during the active round
   - [x] Recompute standings when an active round is completed
   - [x] Rewind the latest untouched round and reopen the preceding round
-- [ ] Complete real-event drop and adjudication handling
+- [x] Complete real-event drop and adjudication handling
   - [x] Allow organizer and player drops during an event
   - [x] Keep a dropped player's current pairing available so its result can still be reported
   - [x] Record a mid-round drop as an immediate concession: both drop entry
@@ -262,7 +262,18 @@ no-shows, and disqualifications without each workflow inventing its own rules.
         land, an organizer covers a forfeit by manually entering the match
         result; the adjudication model here (revision kinds, awarded-result
         rules) stays the foundation those actions build on
-  - [ ] Replace bracket loser-revival with walkovers: the scheduled opponent receives a 2–0 bye when a bracket player leaves before their match; walkovers may chain; departed players keep the placement of the seat they reached (see ADR 0001)
+  - [x] Replace bracket loser-revival with walkovers (see ADR 0001): bracket
+        advancement is now by game winner regardless of participation status,
+        and pairing the next round awards a departed seat-holder's scheduled
+        opponent the match as a required-wins–0 bye
+        (`planSingleEliminationPairings`); walkovers chain — a seat pair with
+        no live player advances nobody and a final can be won by walkover —
+        and a bracket with no live players refuses another round, offering
+        tournament completion instead. Departed players keep the placement of
+        the seat they reached: completing the walkover round stamps their
+        elimination there (rewind clears and re-completion re-records it, and
+        reinstates restore it), and bracket standings rank a walked-over
+        seat-holder as eliminated in the round they were absent from
 - [ ] Add late entry after round 1 (blocked on an organizer
       manual-registration feature — section 3's admission work; players never
       self-join a started tournament)
@@ -281,7 +292,7 @@ no-shows, and disqualifications without each workflow inventing its own rules.
 
 Cuts and brackets per the 2026-08-09 domain-modeling session (see `CONTEXT.md`
 and `docs/adr/0001-bracket-walkover-to-scheduled-opponent.md`). Bracket
-walkover behavior itself lands with the adjudication model in section 1.
+walkover behavior itself landed with the adjudication model in section 1.
 
 - [ ] Decouple cuts from phase types
   - [ ] Allow a top-N or points-bar cut before any following phase type, defaulting to no cut between Swiss phases and a top-N cut into single elimination
