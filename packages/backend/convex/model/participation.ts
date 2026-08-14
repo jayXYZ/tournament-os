@@ -274,7 +274,7 @@ async function applyStateBatch(
   );
 }
 
-// Withdrawn players whose elimination is not yet on record. Rows already
+// Dropped players whose elimination is not yet on record. Rows already
 // carrying a preserved elimination keep it: the original round is the
 // authoritative record of when the player left (e.g. an earlier cut a later
 // cut must not overwrite).
@@ -285,7 +285,7 @@ function unstampedDrops(registrations: Doc<"tournamentRegistrations">[]) {
 }
 
 // The two halves of any elimination batch: active players leave play stamped
-// "eliminated"; already-withdrawn players keep their withdrawal but gain the
+// "eliminated"; already-dropped players keep their drop but gain the
 // stamp (unless one exists), so a later in-play reinstate restores them to
 // eliminated instead of reviving them past the round that cut them.
 async function applyEliminations(
@@ -323,8 +323,8 @@ async function applyEliminations(
 }
 
 // Records a round's eliminations: the active players its results remove from
-// play, and the already-withdrawn players whose elimination it also has to
-// record (a dropped player who lost on games — their withdrawal stands, the
+// play, and the already-dropped players whose elimination it also has to
+// record (a dropped player who lost on games — their drop stands, the
 // stamp keeps the loss on record).
 //
 // `byRoundId` must be the tournament's latest completed round. Both producers
@@ -459,8 +459,8 @@ export async function restoreEliminationsForRewind(
       registration.eliminatedByRoundId !== undefined &&
       sourceIds.has(registration.eliminatedByRoundId),
   );
-  // Dropped players can carry a preserved elimination (a withdrawal after
-  // being eliminated). The rewind undoes the elimination but the withdrawal
+  // Dropped players can carry a preserved elimination (a drop after
+  // being eliminated). The rewind undoes the elimination but the drop
   // stands, so only the stale round reference is cleared.
   const dropped = await ctx.db
     .query("tournamentRegistrations")
@@ -471,7 +471,7 @@ export async function restoreEliminationsForRewind(
         .eq("participationStatus", "dropped"),
     )
     .take(MAX_TOURNAMENT_PLAYERS);
-  const clearedWithdrawals = dropped.filter(
+  const clearedDrops = dropped.filter(
     (registration) =>
       registration.eliminatedByRoundId !== undefined &&
       sourceIds.has(registration.eliminatedByRoundId),
@@ -488,7 +488,7 @@ export async function restoreEliminationsForRewind(
       }),
   );
   await mapAsyncInBatches(
-    clearedWithdrawals,
+    clearedDrops,
     DATABASE_IO_BATCH_SIZE,
     async (registration) =>
       await patchRegistrationRow(ctx, registration._id, {

@@ -288,7 +288,7 @@ async function rankedStatsForRound(
       throw new Error("Single-elimination matches must have a winner");
     }
     // The game winner advances whether or not they are still in the
-    // tournament: a withdrawal never revives the defeated opponent — the
+    // tournament: a drop never revives the defeated opponent — the
     // seat advances and the next pairing walks it over (ADR 0001).
     currentAdvancers.add(
       firstWins > secondWins ? first.playerId : second.playerId,

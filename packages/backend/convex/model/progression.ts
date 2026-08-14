@@ -87,13 +87,13 @@ const REWIND_REQUIRES_ACTIVE_ROUND =
   "Only the current active round can be rewound";
 // Not a dead end, just not pairable as it stands: completeTournament is
 // allowed from this exact state (it runs the same partition), and when
-// withdrawn players still hold places in the field, reinstating one is the
+// dropped players still hold places in the field, reinstating one is the
 // only move that makes the phase playable — say so instead of leaving the
 // organizer to guess.
 const CUTOFF_TOO_FEW_QUALIFIERS =
   "The phase cutoff leaves fewer than two qualifying players; complete the tournament instead";
 const CUTOFF_TOO_FEW_QUALIFIERS_HELD_PLACES =
-  "The phase cutoff leaves fewer than two qualifying players; reinstate a withdrawn player who still holds a place in the field, or complete the tournament";
+  "The phase cutoff leaves fewer than two qualifying players; reinstate a dropped player who still holds a place in the field, or complete the tournament";
 const BRACKET_NO_LIVE_PLAYERS =
   "Every remaining bracket player has left the tournament; complete the tournament instead";
 

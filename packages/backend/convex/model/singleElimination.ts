@@ -49,7 +49,7 @@ function matchGameWinner({
 
 // The completed round's seat winners in table order: the registrations whose
 // seats the next bracket round is built from. Departed winners are included
-// deliberately — bracket structure is sacred, so a withdrawal never revives
+// deliberately — bracket structure is sacred, so a drop never revives
 // the defeated opponent; the seat advances and the walkover materializes when
 // the next round is paired (see ADR 0001 and CONTEXT.md "Walkover").
 export async function singleEliminationSeatWinners(
@@ -144,7 +144,7 @@ export async function eliminateSingleEliminationLosers(
       // returns them to the standings, not the bracket.
       eliminated.push(registration);
     } else if (registration?.participationStatus === "dropped") {
-      // The withdrawal stands; the stamp records where they left the bracket,
+      // The drop stands; the stamp records where they left the bracket,
       // so a rewind that cleared it re-records it when the round is
       // re-completed and a reinstate restores the elimination.
       droppedDepartures.push(registration);

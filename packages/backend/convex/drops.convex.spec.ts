@@ -252,7 +252,7 @@ test("a drop concession does not block rewinding the round", async () => {
     registration: await ctx.db.get(registrationIds[0]),
   }));
   // Round one rewinds back to registration; the un-paired match and its
-  // concession revision are gone, but the withdrawal itself stands.
+  // concession revision are gone, but the drop itself stands.
   expect(after.tournament?.lifecycle).toBe("registration");
   expect(after.match).toBeNull();
   expect(after.revisions).toEqual([]);

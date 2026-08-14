@@ -1415,7 +1415,7 @@ test("a superseded cut short of two qualifiers names its recovery, and reinstati
       tournamentId,
     }),
   ).rejects.toThrow(
-    "reinstate a withdrawn player who still holds a place in the field",
+    "reinstate a dropped player who still holds a place in the field",
   );
 
   // The held place is real: the withdrawal is unstamped, so reinstating

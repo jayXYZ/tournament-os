@@ -4083,15 +4083,15 @@ test("top-8 single elimination walks a departed winner's seat over without resee
   ).rejects.toThrow("Single-elimination matches cannot end in a draw");
 
   const quarterfinalWinners = await recordFirstPlayerWins(authed, quarterfinal);
-  const withdrawnWinner = quarterfinalWinners[0];
+  const droppedWinner = quarterfinalWinners[0];
   const defeatedOpponent = quarterfinal[0].players.find(
-    (player) => player.playerId !== withdrawnWinner,
+    (player) => player.playerId !== droppedWinner,
   );
   if (!defeatedOpponent) {
-    throw new Error("Expected the withdrawn winner to have an opponent");
+    throw new Error("Expected the dropped winner to have an opponent");
   }
   await authed.mutation(api.tournaments.registrations.dropRegistration, {
-    registrationId: withdrawnWinner,
+    registrationId: droppedWinner,
   });
   await authed.mutation(api.tournaments.rounds.completeRound, {
     roundId: quarterfinalId,
@@ -4153,7 +4153,7 @@ test("top-8 single elimination walks a departed winner's seat over without resee
   const semifinalPlayerIds = semifinal.flatMap(({ players }) =>
     players.map((player) => player.playerId),
   );
-  expect(semifinalPlayerIds).not.toContain(withdrawnWinner);
+  expect(semifinalPlayerIds).not.toContain(droppedWinner);
   expect(semifinalPlayerIds).not.toContain(defeatedOpponent.playerId);
   expect(semifinalPlayerIds).toContain(lockedWinner);
   expect(semifinalPlayerIds).not.toContain(lockedLoser);
@@ -4173,10 +4173,10 @@ test("top-8 single elimination walks a departed winner's seat over without resee
   // Completing the walkover round records the departed winner's exit at the
   // seat they reached: dropped, with the semifinal as their elimination
   // round, ranked with the semifinalists above every quarterfinal loser.
-  const withdrawnRegistration = (
+  const droppedRegistration = (
     await listRegistrations(authed, tournamentId)
-  ).find(({ registration }) => registration._id === withdrawnWinner);
-  expect(withdrawnRegistration?.registration).toMatchObject({
+  ).find(({ registration }) => registration._id === droppedWinner);
+  expect(droppedRegistration?.registration).toMatchObject({
     participationStatus: "dropped",
     eliminatedByRoundId: semifinalId,
   });
@@ -4188,7 +4188,7 @@ test("top-8 single elimination walks a departed winner's seat over without resee
   const rankByPlayer = new Map(
     semifinalStandings.map((row) => [row.playerId, row.rank]),
   );
-  expect(rankByPlayer.get(withdrawnWinner)).toBeLessThanOrEqual(4);
+  expect(rankByPlayer.get(droppedWinner)).toBeLessThanOrEqual(4);
   expect(rankByPlayer.get(defeatedOpponent.playerId)).toBeGreaterThan(4);
   const finalId = await authed.mutation(
     api.tournaments.rounds.generateNextRound,
