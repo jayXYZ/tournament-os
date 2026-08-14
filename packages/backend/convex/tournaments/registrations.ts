@@ -179,7 +179,7 @@ export const cancelMyRegistration = mutation({
     if (
       !registration ||
       registration.entryStatus !== "confirmed" ||
-      // Dropped rows are also accepted: a withdrawal preserved by a round-one
+      // Dropped rows are also accepted: a drop preserved by a round-one
       // rewind still holds the player's seat, and cancelling releases it so
       // they can later re-register if they change their mind.
       (registration.participationStatus !== "active" &&
@@ -417,7 +417,7 @@ export const reinstateRegistration = mutation({
       tournament.lifecycle === "registration" &&
       registration.entryStatus === "cancelled";
     // Dropped participants normally exist mid-play, but a round-one rewind
-    // preserves withdrawals into the reopened registration lifecycle, so both
+    // preserves drops into the reopened registration lifecycle, so both
     // lifecycles must offer the way back to active play.
     const restoringDroppedParticipant =
       (tournament.lifecycle === "registration" ||
@@ -431,7 +431,7 @@ export const reinstateRegistration = mutation({
       requireCapacityAvailable(tournament);
     }
     const now = Date.now();
-    // Reinstating undoes only the withdrawal: a player who was already
+    // Reinstating undoes only the drop: a player who was already
     // eliminated when they were dropped returns to eliminated, never to
     // active play mid-bracket. Before play there is no bracket — a rewind
     // back to registration deletes every round and clears the eliminations it

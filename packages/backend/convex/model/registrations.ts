@@ -162,7 +162,7 @@ export function playerVisibleRegistration(
 // now, or null when the action is unavailable. Before play the action cancels
 // the entry (freeing the seat), so it also covers dropped rows a round-one
 // rewind preserved; in play, active and eliminated players can still
-// withdraw, while dropped and disqualified ones cannot drop again.
+// drop, while dropped and disqualified ones cannot drop again.
 // dropRegistration enforces this rule and organizer roster rows report it, so
 // the client renders the action without re-deriving the rule.
 export function registrationDropEffect(
@@ -218,8 +218,8 @@ export async function activeRegistrations(
     .take(MAX_TOURNAMENT_PLAYERS);
 }
 
-// Every confirmed entrant who has withdrawn. Read from the index range rather
-// than by joining registrations to a round's standings: the withdrawn field is
+// Every confirmed entrant who has dropped. Read from the index range rather
+// than by joining registrations to a round's standings: the dropped field is
 // normally a small fraction of the roster, while standings carry a row per
 // participant.
 export async function droppedRegistrations(

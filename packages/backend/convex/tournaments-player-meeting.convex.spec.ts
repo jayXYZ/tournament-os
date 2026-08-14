@@ -568,7 +568,7 @@ test("a cutoff meeting's seats draw the boundary for dropped-player eliminations
     eliminatedByRoundId: finalRoundId,
   });
 
-  // The seated rank-5 player made the cut; their absence is pure withdrawal,
+  // The seated rank-5 player made the cut; their absence is a pure drop,
   // with no elimination record even though the reinstated rank-1 player would
   // push them below a live-standings boundary — so reinstating returns them
   // to active play.
@@ -624,7 +624,7 @@ test("a rewound next phase still cuts against its meeting seats when re-paired",
   expect(seatedIds).toHaveLength(3);
   const unseatedIds = registrationIds.filter((id) => !seatedIds.includes(id));
 
-  // A seated player withdraws during the meeting, then the freshly paired
+  // A seated player drops during the meeting, then the freshly paired
   // (result-free) first round of phase two is rewound.
   const droppedSeatedId = seatedIds[0];
   await organizer.mutation(api.tournaments.registrations.dropRegistration, {
@@ -664,7 +664,7 @@ test("a rewound next phase still cuts against its meeting seats when re-paired",
     })
   ).flatMap(({ players }) => players.map((player) => player.playerId));
   // Only the still-active seated players enter: no unseated player is
-  // backfilled into the seat the withdrawal left behind.
+  // backfilled into the seat the drop left behind.
   expect(repairedIds.sort()).toEqual(
     seatedIds.filter((id) => id !== droppedSeatedId).sort(),
   );
@@ -683,7 +683,7 @@ test("a rewound next phase still cuts against its meeting seats when re-paired",
       )
     ).page.map(({ registration }) => [registration._id, registration]),
   );
-  // The withdrawn player held a seat, so the re-run cut leaves them unstamped
+  // The dropped player held a seat, so the re-run cut leaves them unstamped
   // and reinstating still returns them to play.
   expect(registrationsById.get(droppedSeatedId)?.participationStatus).toBe(
     "dropped",
@@ -936,7 +936,7 @@ test("a rewind that corrects a result re-draws a completed meeting's cut", async
   });
 });
 
-test("a re-drawn cut still protects a seated player's withdrawal", async () => {
+test("a re-drawn cut still protects a seated player's drop", async () => {
   const t = createConvexTest();
   const { tournamentId } = await seedTournament(t, 5, [
     {
@@ -984,10 +984,10 @@ test("a re-drawn cut still protects a seated player's withdrawal", async () => {
     t,
     tournamentId,
   );
-  // A seated player who neither gained nor lost by the correction withdraws.
-  const withdrawnSeatedId = seatedIds.find((id) => id !== demotedId)!;
+  // A seated player who neither gained nor lost by the correction drops.
+  const droppedSeatedId = seatedIds.find((id) => id !== demotedId)!;
   await organizer.mutation(api.tournaments.registrations.dropRegistration, {
-    registrationId: withdrawnSeatedId,
+    registrationId: droppedSeatedId,
   });
   await organizer.mutation(api.tournaments.rounds.generateNextRound, {
     tournamentId,
@@ -1002,11 +1002,11 @@ test("a re-drawn cut still protects a seated player's withdrawal", async () => {
       roundId: repairedRound!._id,
     })
   ).flatMap(({ players }) => players.map((player) => player.playerId));
-  // The withdrawal's slot stays held, so the corrected cut promotes exactly one
+  // The drop's slot stays held, so the corrected cut promotes exactly one
   // player and nobody is backfilled into the vacated seat.
   expect(repairedIds.sort()).toEqual(
     [
-      ...seatedIds.filter((id) => id !== demotedId && id !== withdrawnSeatedId),
+      ...seatedIds.filter((id) => id !== demotedId && id !== droppedSeatedId),
       promotedId,
     ].sort(),
   );
@@ -1022,33 +1022,33 @@ test("a re-drawn cut still protects a seated player's withdrawal", async () => {
       ).page.map(({ registration }) => [registration._id, registration]),
     );
   // The seated player the correction pushed below the boundary is still cut,
-  // even though the withdrawal above left a place standing empty.
+  // even though the drop above left a place standing empty.
   expect((await registrationsById()).get(demotedId)).toMatchObject({
     participationStatus: "eliminated",
     eliminatedByRoundId: finalRoundId,
   });
-  // The seated withdrawal keeps its granted entry: no elimination record, so
+  // The seated drop keeps its granted entry: no elimination record, so
   // reinstating returns them to play rather than to "eliminated".
-  const withdrawn = (await registrationsById()).get(withdrawnSeatedId);
-  expect(withdrawn?.participationStatus).toBe("dropped");
-  expect(withdrawn?.eliminatedByRoundId).toBeUndefined();
+  const dropped = (await registrationsById()).get(droppedSeatedId);
+  expect(dropped?.participationStatus).toBe("dropped");
+  expect(dropped?.eliminatedByRoundId).toBeUndefined();
   await organizer.mutation(
     api.tournaments.registrations.reinstateRegistration,
-    { registrationId: withdrawnSeatedId },
+    { registrationId: droppedSeatedId },
   );
-  expect((await registrationsById()).get(withdrawnSeatedId)).toMatchObject({
+  expect((await registrationsById()).get(droppedSeatedId)).toMatchObject({
     participationStatus: "active",
   });
 });
 
 // Drives the one ordering where a granted entry and the corrected standings
 // disagree: a rewind correction pushes a SEATED player below the boundary and
-// that same player then withdraws. Their seat granted an entry, but the
+// that same player then drops. Their seat granted an entry, but the
 // standings it was drawn from are gone, so the entry no longer holds a place —
 // leaving them unstamped would let a reinstate re-enter a field they no longer
 // belong in. Run once per cutoff kind, because under a points bar there are no
 // places to hold at all and the stamp is the only rule available.
-async function reDrawCutAfterSeatedDemotionAndWithdrawal(
+async function reDrawCutAfterSeatedDemotionAndDrop(
   t: TestConvex<typeof schema>,
   phaseCutoff:
     | { kind: "top_X_players"; playerCount: number }
@@ -1106,7 +1106,7 @@ async function reDrawCutAfterSeatedDemotionAndWithdrawal(
   expect(seatedIds).toContain(demotedId);
   expect(seatedIds).not.toContain(promotedId);
 
-  // The demoted seat holder ITSELF withdraws before the cut is re-drawn.
+  // The demoted seat holder ITSELF drops before the cut is re-drawn.
   await organizer.mutation(api.tournaments.registrations.dropRegistration, {
     registrationId: demotedId,
   });
@@ -1155,7 +1155,7 @@ function confirmedActiveIds(registrations: Doc<"tournamentRegistrations">[]) {
     .map((registration) => registration._id);
 }
 
-test("a seated player demoted below a top-X boundary who withdraws is still cut", async () => {
+test("a seated player demoted below a top-X boundary who drops is still cut", async () => {
   const t = createConvexTest();
   const {
     organizer,
@@ -1165,12 +1165,12 @@ test("a seated player demoted below a top-X boundary who withdraws is still cut"
     promotedId,
     repairedIds,
     registrations,
-  } = await reDrawCutAfterSeatedDemotionAndWithdrawal(t, {
+  } = await reDrawCutAfterSeatedDemotionAndDrop(t, {
     kind: "top_X_players",
     playerCount: 3,
   });
 
-  // The correction had already moved the boundary past them, so the withdrawal
+  // The correction had already moved the boundary past them, so the drop
   // frees its place and all three go to players who now make the cut.
   expect(repairedIds.sort()).toEqual(
     [...seatedIds.filter((id) => id !== demotedId), promotedId].sort(),
@@ -1180,11 +1180,11 @@ test("a seated player demoted below a top-X boundary who withdraws is still cut"
   // Holding no place, they must carry an elimination record (the stamping
   // invariant) — otherwise reinstating them would put a fourth player into a
   // three-player field.
-  const withdrawn = (await registrations()).find(
+  const dropped = (await registrations()).find(
     (registration) => registration._id === demotedId,
   );
-  expect(withdrawn?.participationStatus).toBe("dropped");
-  expect(withdrawn?.eliminatedByRoundId).toBe(finalRoundId);
+  expect(dropped?.participationStatus).toBe("dropped");
+  expect(dropped?.eliminatedByRoundId).toBe(finalRoundId);
 
   await organizer.mutation(
     api.tournaments.registrations.reinstateRegistration,
@@ -1200,7 +1200,7 @@ test("a seated player demoted below a top-X boundary who withdraws is still cut"
   );
 });
 
-test("a seated player demoted below a points bar who withdraws is still cut", async () => {
+test("a seated player demoted below a points bar who drops is still cut", async () => {
   const t = createConvexTest();
   const {
     organizer,
@@ -1210,7 +1210,7 @@ test("a seated player demoted below a points bar who withdraws is still cut", as
     promotedId,
     repairedIds,
     registrations,
-  } = await reDrawCutAfterSeatedDemotionAndWithdrawal(t, {
+  } = await reDrawCutAfterSeatedDemotionAndDrop(t, {
     kind: "X_points_or_more",
     matchPoints: 3,
   });
@@ -1222,11 +1222,11 @@ test("a seated player demoted below a points bar who withdraws is still cut", as
   );
   expect(repairedIds).not.toContain(demotedId);
 
-  const withdrawn = (await registrations()).find(
+  const dropped = (await registrations()).find(
     (registration) => registration._id === demotedId,
   );
-  expect(withdrawn?.participationStatus).toBe("dropped");
-  expect(withdrawn?.eliminatedByRoundId).toBe(finalRoundId);
+  expect(dropped?.participationStatus).toBe("dropped");
+  expect(dropped?.eliminatedByRoundId).toBe(finalRoundId);
 
   // Without the stamp a reinstate would return them to "active", and
   // continuePhaseWithNextRound pairs active registrations tournament-wide —
@@ -1307,7 +1307,7 @@ test("a cutoff meeting can complete when its seated field drops below two", asyn
 // dead end: a top-2 cut whose meeting was consumed by pairing, the next
 // phase's first round rewound (stamping the meeting "superseded"), the final
 // round re-completed with its results untouched, and then one of the two seat
-// holders withdraws. The re-drawn boundary still clears them, so their granted
+// holders drops. The re-drawn boundary still clears them, so their granted
 // entry holds a place: the partition yields one qualifier plus one held place,
 // and the next phase cannot pair as it stands.
 async function supersededCutWithHeldPlaceBelowTwo(
@@ -1369,11 +1369,11 @@ async function supersededCutWithHeldPlaceBelowTwo(
     (await t.run(async (ctx) => ctx.db.get(phaseTwoId)))?.playerMeetingStatus,
   ).toBe("superseded");
 
-  // One of the two seat holders withdraws. Their rank still clears the top-2
+  // One of the two seat holders drops. Their rank still clears the top-2
   // boundary, so the granted entry holds their place instead of freeing it.
-  const withdrawnSeatedId = seatedIds[0];
+  const droppedSeatedId = seatedIds[0];
   await organizer.mutation(api.tournaments.registrations.dropRegistration, {
-    registrationId: withdrawnSeatedId,
+    registrationId: droppedSeatedId,
   });
 
   return {
@@ -1381,7 +1381,7 @@ async function supersededCutWithHeldPlaceBelowTwo(
     tournamentId,
     registrationIds,
     seatedIds,
-    withdrawnSeatedId,
+    droppedSeatedId,
     finalRoundId,
   };
 }
@@ -1393,7 +1393,7 @@ test("a superseded cut short of two qualifiers names its recovery, and reinstati
     tournamentId,
     registrationIds,
     seatedIds,
-    withdrawnSeatedId,
+    droppedSeatedId,
     finalRoundId,
   } = await supersededCutWithHeldPlaceBelowTwo(t);
 
@@ -1408,7 +1408,7 @@ test("a superseded cut short of two qualifiers names its recovery, and reinstati
   });
 
   // Pairing anyway refuses — and the error names the one move that makes the
-  // phase playable: the withdrawn seat holder is holding a place only their
+  // phase playable: the dropped seat holder is holding a place only their
   // reinstatement can fill.
   await expect(
     organizer.mutation(api.tournaments.rounds.generateNextRound, {
@@ -1418,14 +1418,14 @@ test("a superseded cut short of two qualifiers names its recovery, and reinstati
     "reinstate a dropped player who still holds a place in the field",
   );
 
-  // The held place is real: the withdrawal is unstamped, so reinstating
+  // The held place is real: the drop is unstamped, so reinstating
   // returns them to play...
-  const withdrawn = await t.run(async (ctx) => ctx.db.get(withdrawnSeatedId));
-  expect(withdrawn?.participationStatus).toBe("dropped");
-  expect(withdrawn?.eliminatedByRoundId).toBeUndefined();
+  const dropped = await t.run(async (ctx) => ctx.db.get(droppedSeatedId));
+  expect(dropped?.participationStatus).toBe("dropped");
+  expect(dropped?.eliminatedByRoundId).toBeUndefined();
   await organizer.mutation(
     api.tournaments.registrations.reinstateRegistration,
-    { registrationId: withdrawnSeatedId },
+    { registrationId: droppedSeatedId },
   );
 
   // ...and the next phase pairs with exactly the two seat holders: the held
@@ -1595,7 +1595,7 @@ test("deleteTournament clears meeting seats", async () => {
   expect(remaining).toHaveLength(0);
 });
 
-test("a meeting cut stamps only its own tournament's withdrawals", async () => {
+test("a meeting cut stamps only its own tournament's drops", async () => {
   const t = createConvexTest();
   const { tournamentId } = await seedTournament(t, 5, [
     {
@@ -1628,7 +1628,7 @@ test("a meeting cut stamps only its own tournament's withdrawals", async () => {
     })
   ).map(({ standing }) => standing.playerId);
 
-  // A concurrent, unrelated event with its own withdrawn player. Nothing about
+  // A concurrent, unrelated event with its own dropped player. Nothing about
   // this row belongs to the cut below, and no standings row of this
   // tournament's ever mentions it.
   const otherRegistrationId = await t.run(async (ctx) => {
@@ -1661,7 +1661,7 @@ test("a meeting cut stamps only its own tournament's withdrawals", async () => {
     });
   });
 
-  // The last-ranked player withdraws before the meeting, so they are unseated
+  // The last-ranked player drops before the meeting, so they are unseated
   // and the cut must record their elimination.
   await organizer.mutation(api.tournaments.registrations.dropRegistration, {
     registrationId: ranked[4],

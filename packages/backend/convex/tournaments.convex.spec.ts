@@ -560,7 +560,7 @@ test("listMyTournaments returns every confirmed seat for ongoing and upcoming ev
       entryStatus: "confirmed",
       participationStatus: "active",
     });
-    // A withdrawal preserved by a round-one rewind: the seat is still held
+    // A drop preserved by a round-one rewind: the seat is still held
     // (cancelling it is self-service), so the event stays discoverable.
     await ctx.db.insert("tournamentRegistrations", {
       ...registrationBase,
@@ -3053,14 +3053,14 @@ test("rewinding a playoff restores cut players and reopens the Swiss phase", asy
     tournamentId,
   });
   const cutRegistrations = await listRegistrations(authed, tournamentId);
-  const withdrawnCutPlayer = cutRegistrations.find(
+  const droppedCutPlayer = cutRegistrations.find(
     ({ registration }) => registration.participationStatus === "eliminated",
   );
-  if (!withdrawnCutPlayer) {
+  if (!droppedCutPlayer) {
     throw new Error("Expected a player below the playoff cut");
   }
   await authed.mutation(api.tournaments.registrations.dropRegistration, {
-    registrationId: withdrawnCutPlayer.registration._id,
+    registrationId: droppedCutPlayer.registration._id,
   });
 
   await authed.mutation(api.tournaments.rounds.rewindLatestRound, {
@@ -3077,7 +3077,7 @@ test("rewinding a playoff restores cut players and reopens the Swiss phase", asy
   expect(
     registrationsAfterRewind.find(
       ({ registration }) =>
-        registration._id === withdrawnCutPlayer.registration._id,
+        registration._id === droppedCutPlayer.registration._id,
     )?.registration.participationStatus,
   ).toBe("dropped");
   expect(setup.phases.map((phase) => phase.phaseStatus)).toEqual([
@@ -3141,7 +3141,7 @@ test("reinstating a dropped eliminated player restores the elimination, not acti
   expect(secondCutPlayer).toBeDefined();
 
   // Dropping a cut player then reinstating them must not revive them into
-  // the bracket: the elimination survives the withdrawal round-trip.
+  // the bracket: the elimination survives the drop round-trip.
   await authed.mutation(api.tournaments.registrations.dropRegistration, {
     registrationId: firstCutPlayer._id,
   });
@@ -3153,7 +3153,7 @@ test("reinstating a dropped eliminated player restores the elimination, not acti
   expect(reinstated?.eliminatedByRoundId).toBe(swiss.round._id);
 
   // Rewinding the cut restores the reinstated player like any other cut
-  // player, while a still-withdrawn player stays dropped but sheds the
+  // player, while a still-dropped player stays dropped but sheds the
   // undone elimination so a later reinstate returns them to active play.
   await authed.mutation(api.tournaments.registrations.dropRegistration, {
     registrationId: secondCutPlayer._id,
@@ -3254,7 +3254,7 @@ test("re-completing a rewound bracket round re-records a dropped loser's elimina
   expect(afterRewind?.eliminatedByRoundId).toBeUndefined();
 
   // Re-completing the quarterfinal with the same results re-records the
-  // dropped loser's elimination without disturbing the withdrawal...
+  // dropped loser's elimination without disturbing the drop...
   await authed.mutation(api.tournaments.rounds.completeRound, {
     roundId: quarterfinalId,
   });
@@ -3537,7 +3537,7 @@ test("a cut with no player meeting eliminates dropped players ranked above the b
   ).map(({ standing }) => standing.playerId);
   expect(ranked).toHaveLength(4);
 
-  // The rank-1 player withdraws after the phase-final round but before the
+  // The rank-1 player drops after the phase-final round but before the
   // next phase is paired. Nothing has frozen the entry field yet, so their
   // slot goes to the next active player instead of being held for them.
   await authed.mutation(api.tournaments.registrations.dropRegistration, {
@@ -3631,9 +3631,9 @@ test("a top-8 cut eliminates a dropped player the standings rank inside the brac
     })
   ).map(({ standing }) => standing.playerId);
 
-  // A player inside the top 8 withdraws before the bracket is paired: the
+  // A player inside the top 8 drops before the bracket is paired: the
   // rank-9 player backfills the vacated slot, so the bracket still seats
-  // eight and the withdrawn player is not one of them.
+  // eight and the dropped player is not one of them.
   await authed.mutation(api.tournaments.registrations.dropRegistration, {
     registrationId: ranked[2],
   });
@@ -3670,7 +3670,7 @@ test("a top-8 cut eliminates a dropped player the standings rank inside the brac
   });
 });
 
-test("a withdrawal preserved by a round-one rewind can be reinstated before play restarts", async () => {
+test("a drop preserved by a round-one rewind can be reinstated before play restarts", async () => {
   const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const authed = t.withIdentity(organizerIdentity);
@@ -3678,7 +3678,7 @@ test("a withdrawal preserved by a round-one rewind can be reinstated before play
     api.tournaments.lifecycle.createTournamentWithPhases,
     {
       organizationId,
-      name: "Rewound Withdrawal Reinstate",
+      name: "Rewound Drop Reinstate",
       startDate: Date.now(),
       playerCapacity: 8,
       format: "standard",
@@ -3692,12 +3692,12 @@ test("a withdrawal preserved by a round-one rewind can be reinstated before play
   await authed.mutation(api.tournaments.rounds.startTournament, {
     tournamentId,
   });
-  const [{ registration: withdrawnPlayer }] = await listRegistrations(
+  const [{ registration: droppedPlayer }] = await listRegistrations(
     authed,
     tournamentId,
   );
   await authed.mutation(api.tournaments.registrations.dropRegistration, {
-    registrationId: withdrawnPlayer._id,
+    registrationId: droppedPlayer._id,
   });
   await authed.mutation(api.tournaments.rounds.rewindLatestRound, {
     tournamentId,
@@ -3709,16 +3709,16 @@ test("a withdrawal preserved by a round-one rewind can be reinstated before play
         ({ registration }) => [registration._id, registration],
       ),
     );
-  // The withdrawal survives the rewind; only an explicit reinstate undoes it.
-  expect((await registrationsById()).get(withdrawnPlayer._id)).toMatchObject({
+  // The drop survives the rewind; only an explicit reinstate undoes it.
+  expect((await registrationsById()).get(droppedPlayer._id)).toMatchObject({
     entryStatus: "confirmed",
     participationStatus: "dropped",
   });
 
   await authed.mutation(api.tournaments.registrations.reinstateRegistration, {
-    registrationId: withdrawnPlayer._id,
+    registrationId: droppedPlayer._id,
   });
-  const reinstated = (await registrationsById()).get(withdrawnPlayer._id);
+  const reinstated = (await registrationsById()).get(droppedPlayer._id);
   expect(reinstated?.participationStatus).toBe("active");
   expect(reinstated?.eliminatedByRoundId).toBeUndefined();
   // The dropped row never left the confirmed count, so reinstating it must
@@ -3740,10 +3740,10 @@ test("a withdrawal preserved by a round-one rewind can be reinstated before play
   );
   expect(
     pairings.flatMap(({ players }) => players.map((player) => player.playerId)),
-  ).toContain(withdrawnPlayer._id);
+  ).toContain(droppedPlayer._id);
 });
 
-test("a withdrawal preserved by a round-one rewind can be dropped pre-play to free the seat", async () => {
+test("a drop preserved by a round-one rewind can be cancelled pre-play to free the seat", async () => {
   const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const authed = t.withIdentity(organizerIdentity);
@@ -3751,7 +3751,7 @@ test("a withdrawal preserved by a round-one rewind can be dropped pre-play to fr
     api.tournaments.lifecycle.createTournamentWithPhases,
     {
       organizationId,
-      name: "Rewound Withdrawal Cancel",
+      name: "Rewound Drop Cancel",
       startDate: Date.now(),
       playerCapacity: 8,
       format: "standard",
@@ -3765,12 +3765,12 @@ test("a withdrawal preserved by a round-one rewind can be dropped pre-play to fr
   await authed.mutation(api.tournaments.rounds.startTournament, {
     tournamentId,
   });
-  const [{ registration: withdrawnPlayer }] = await listRegistrations(
+  const [{ registration: droppedPlayer }] = await listRegistrations(
     authed,
     tournamentId,
   );
   await authed.mutation(api.tournaments.registrations.dropRegistration, {
-    registrationId: withdrawnPlayer._id,
+    registrationId: droppedPlayer._id,
   });
   await authed.mutation(api.tournaments.rounds.rewindLatestRound, {
     tournamentId,
@@ -3788,29 +3788,29 @@ test("a withdrawal preserved by a round-one rewind can be dropped pre-play to fr
         tournamentId,
       })
     ).tournament;
-  // The mid-play withdrawal still occupies its confirmed seat after the
+  // The mid-play drop still occupies its confirmed seat after the
   // rewind; dropping it again pre-play converts it to a cancelled entry.
   expect((await setup()).confirmedRegistrationCount).toBe(4);
   await authed.mutation(api.tournaments.registrations.dropRegistration, {
-    registrationId: withdrawnPlayer._id,
+    registrationId: droppedPlayer._id,
   });
-  const cancelled = (await registrationsById()).get(withdrawnPlayer._id);
+  const cancelled = (await registrationsById()).get(droppedPlayer._id);
   expect(cancelled?.entryStatus).toBe("cancelled");
   expect(cancelled?.participationStatus).toBeUndefined();
   expect((await setup()).confirmedRegistrationCount).toBe(3);
 
   // From here the entry follows the normal pre-play cancelled path.
   await authed.mutation(api.tournaments.registrations.reinstateRegistration, {
-    registrationId: withdrawnPlayer._id,
+    registrationId: droppedPlayer._id,
   });
-  expect((await registrationsById()).get(withdrawnPlayer._id)).toMatchObject({
+  expect((await registrationsById()).get(droppedPlayer._id)).toMatchObject({
     entryStatus: "confirmed",
     participationStatus: "active",
   });
   expect((await setup()).confirmedRegistrationCount).toBe(4);
 });
 
-test("a player whose withdrawal survived a rewind can cancel and re-register", async () => {
+test("a player whose drop survived a rewind can cancel and re-register", async () => {
   const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const organizer = t.withIdentity(organizerIdentity);
@@ -3818,7 +3818,7 @@ test("a player whose withdrawal survived a rewind can cancel and re-register", a
     api.tournaments.lifecycle.createTournamentWithPhases,
     {
       organizationId,
-      name: "Rewound Withdrawal Self-Service",
+      name: "Rewound Drop Self-Service",
       startDate: Date.now(),
       playerCapacity: 8,
       format: "standard",
@@ -3848,7 +3848,7 @@ test("a player whose withdrawal survived a rewind can cancel and re-register", a
     tournamentId,
   });
 
-  // The preserved withdrawal still holds the seat; cancelling releases it.
+  // The preserved drop still holds the seat; cancelling releases it.
   await player.mutation(api.tournaments.registrations.cancelMyRegistration, {
     tournamentId,
   });

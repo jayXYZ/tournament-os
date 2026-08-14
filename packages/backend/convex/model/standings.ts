@@ -374,7 +374,7 @@ async function cumulativeStatsThroughRound(
   matchesWithPlayers: RoundMatchWithPlayers[],
 ) {
   // Dropped players stay in the map so their records keep feeding their
-  // former opponents' OMW%/OGW% (MTR Appendix C: withdrawal does not erase
+  // former opponents' OMW%/OGW% (MTR Appendix C: a drop does not erase
   // a record); they also stay ranked, with their record frozen at the point
   // they stopped playing.
   const registrations = await participantRegistrations(ctx, tournament._id);

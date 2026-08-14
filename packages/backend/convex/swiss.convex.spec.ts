@@ -315,7 +315,7 @@ test("dropped players keep feeding their opponents' tiebreakers", async () => {
       return points / (3 * rows.length);
     };
 
-    // The dropped player's actual record (1-0, then withdrew) must count,
+    // The dropped player's actual record (1-0, then dropped) must count,
     // not the 0.33 floor a missing record would collapse to.
     expect(await matchWinPctFromHistory(droppedId)).toBe(1);
 
