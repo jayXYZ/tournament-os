@@ -1,6 +1,6 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
-import { previousTournamentRound } from "./phases";
+import { MAX_MATCHES_PER_PLAYER, previousTournamentRound } from "./phases";
 import {
   MAX_TOURNAMENT_PLAYERS,
   nonActiveParticipationStatuses,
@@ -461,7 +461,7 @@ export async function accumulatePlayerHistory(
     .withIndex("by_playerId", (q) =>
       q.eq("playerId", playerStats.registration._id),
     )
-    .take(256);
+    .take(MAX_MATCHES_PER_PLAYER);
 
   for (const playerRow of playerRows) {
     const match = await ctx.db.get(playerRow.tournamentMatchId);

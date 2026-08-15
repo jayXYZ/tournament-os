@@ -2,7 +2,11 @@ import { requiredGameWins } from "@tournament-os/shared/match-structure";
 
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
-import { requireResolvedPhaseTotalRounds, roundNumberInPhase } from "./phases";
+import {
+  MAX_MATCHES_PER_PLAYER,
+  requireResolvedPhaseTotalRounds,
+  roundNumberInPhase,
+} from "./phases";
 import { createSeededRandom, pairingSeed, seededShuffle } from "./random";
 import { MAX_TOURNAMENT_PLAYERS } from "./registrations";
 import {
@@ -585,8 +589,8 @@ function withoutIndex<T>(items: T[], index: number): T[] {
 // Fallback for registrations whose previous-round standings row predates the
 // denormalized history fields (or who have no row, e.g. after reinstatement).
 // Reads the player's whole tournament history: records and rematch avoidance
-// carry across Swiss phases, and rows are bounded by the round cap (16) times
-// the phase cap (16).
+// carry across Swiss phases, and rows are bounded by the round cap times the
+// phase cap (MAX_MATCHES_PER_PLAYER).
 async function playerPairingHistory(
   ctx: QueryCtx,
   playerId: Id<"tournamentRegistrations">,
@@ -594,7 +598,7 @@ async function playerPairingHistory(
   const rows = await ctx.db
     .query("tournamentMatchPlayers")
     .withIndex("by_playerId", (q) => q.eq("playerId", playerId))
-    .take(256);
+    .take(MAX_MATCHES_PER_PLAYER);
 
   const opponentIds = new Set<Id<"tournamentRegistrations">>();
   for (const row of rows) {

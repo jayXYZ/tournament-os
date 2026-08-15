@@ -49,7 +49,10 @@ export type TournamentCreationPhasePayload = {
   playerMeeting?: boolean;
 };
 
-export const MAX_TOURNAMENT_PHASES = 16;
+// The largest real events need 5–6 phases (e.g. draft, constructed, draft,
+// constructed, playoff), so 8 leaves headroom without allowing degenerate
+// structures. The backend validates against this same constant.
+export const MAX_TOURNAMENT_PHASES = 8;
 
 export function createDefaultTournamentCreationPhase(
   id: string,

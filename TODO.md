@@ -373,7 +373,14 @@ walkover behavior itself landed with the adjudication model in section 1.
       bracket halves whenever a round had two or more byes (e.g. any six-player
       field — the top two seeds met in the semifinal); bracket matches now
       store an explicit `bracketSeat` that next-round pairing reads instead
-- [ ] Lower the 16-phase cap to a realistic bound (the largest real events need 5–6)
+- [x] Lower the 16-phase cap to 8 (the largest real events need 5–6, so 8
+      leaves headroom): the shared `MAX_TOURNAMENT_PHASES` the phase editor
+      already used is now the single definition — backend validation and the
+      `phasesInOrder`/deletion read bounds import it — and the derived
+      per-player history bound is now the explicit
+      `MAX_MATCHES_PER_PLAYER = MAX_ROUNDS × MAX_TOURNAMENT_PHASES` (128,
+      formerly a literal 256) shared by pairing history, standings recompute,
+      match logs, and profile results
 
 ## 3. Player identity and admission
 

@@ -1,6 +1,7 @@
 import type { Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { deleteResultRevisionsForMatch } from "./matchResults";
+import { MAX_TOURNAMENT_PHASES } from "./phases";
 import { matchPlayers, roundMatches } from "./tournaments";
 
 // Deletion budget per transaction. Each invocation deletes at most this many
@@ -27,8 +28,8 @@ export async function deleteTournamentOperationalDataBatch(
   const phases = await ctx.db
     .query("tournamentPhases")
     .withIndex("by_tournamentId", (q) => q.eq("tournamentId", tournamentId))
-    .take(16);
-  sawFullPage ||= phases.length === 16;
+    .take(MAX_TOURNAMENT_PHASES);
+  sawFullPage ||= phases.length === MAX_TOURNAMENT_PHASES;
 
   for (const phase of phases) {
     const rounds = await ctx.db

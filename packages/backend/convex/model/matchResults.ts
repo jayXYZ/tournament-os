@@ -9,8 +9,11 @@ import {
   existingResultLines,
   logAuditEvent,
 } from "./auditLog";
-import { currentPhaseOrNull, requireValidMatchResult } from "./phases";
-import { MAX_MATCHES_PER_PLAYER } from "./playerResults";
+import {
+  MAX_MATCHES_PER_PLAYER,
+  currentPhaseOrNull,
+  requireValidMatchResult,
+} from "./phases";
 import { matchPointsForResult } from "./standings";
 import { matchPlayers } from "./tournaments";
 

@@ -2166,6 +2166,47 @@ test("createTournamentWithPhases rejects an empty phase list", async () => {
   ).rejects.toThrow("At least one phase is required");
 });
 
+test("createTournamentWithPhases enforces the phase cap", async () => {
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const authed = t.withIdentity(organizerIdentity);
+  const swissPhases = (count: number) =>
+    Array.from({ length: count }, (_, index) => ({
+      phaseOrder: index + 1,
+      phaseType: "swiss" as const,
+      phaseRoundMode: "dynamic" as const,
+    }));
+
+  // The largest real events need 5–6 phases; the cap is 8.
+  await expect(
+    authed.mutation(api.tournaments.lifecycle.createTournamentWithPhases, {
+      organizationId,
+      name: "Too Many Phases",
+      startDate: Date.now() + 86_400_000,
+      playerCapacity: 16,
+      format: "standard",
+      phases: swissPhases(9),
+    }),
+  ).rejects.toThrow("A tournament can have at most 8 phases");
+
+  const atCapId = await authed.mutation(
+    api.tournaments.lifecycle.createTournamentWithPhases,
+    {
+      organizationId,
+      name: "At The Phase Cap",
+      startDate: Date.now() + 86_400_000,
+      playerCapacity: 16,
+      format: "standard",
+      phases: swissPhases(8),
+    },
+  );
+  const setup = await authed.query(
+    api.tournaments.lifecycle.getTournamentSetup,
+    { tournamentId: atCapId },
+  );
+  expect(setup.phases).toHaveLength(8);
+});
+
 test("startTournament resolves dynamic Swiss rounds from active player count", async () => {
   const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);

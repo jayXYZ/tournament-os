@@ -4,15 +4,10 @@ import type { Doc, Id } from "../_generated/dataModel";
 import { env, type QueryCtx } from "../_generated/server";
 import { currentUserOrNull, getActiveMembership } from "./access";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "./batching";
-import { latestCompletedRound } from "./phases";
+import { MAX_MATCHES_PER_PLAYER, latestCompletedRound } from "./phases";
 import { parsePublicCode } from "./publicCodes";
 import { registrationForUser } from "./registrations";
 import { isPairingsVisibleToPlayers, isPubliclyViewable } from "./tournaments";
-
-// A registration plays at most one match per round, so a player's
-// tournamentMatchPlayers rows are bounded by the round cap (16) times the
-// phase cap (16).
-export const MAX_MATCHES_PER_PLAYER = 256;
 
 // The web UI currently asks for 10 results at a time, but pagination arguments
 // are public API input and cannot be trusted to preserve that bound. Keep result

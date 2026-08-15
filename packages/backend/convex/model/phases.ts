@@ -4,6 +4,7 @@ import {
   isBestOf,
   type BestOf,
 } from "@tournament-os/shared/match-structure";
+import { MAX_TOURNAMENT_PHASES } from "@tournament-os/shared/tournament-creation-utils";
 
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
@@ -19,8 +20,15 @@ export const DEFAULT_PLAYOFF_CUT_PLAYER_COUNT = 8;
 export const BRACKET_REQUIRES_TWO_PLAYERS =
   "A playoff needs at least two entering players";
 
-// Rounds are capped at 16 per phase.
+// Rounds are capped at 16 per phase; the phase cap is the shared
+// MAX_TOURNAMENT_PHASES the creation form also enforces.
 export const MAX_ROUNDS = 16;
+export { MAX_TOURNAMENT_PHASES };
+
+// A registration plays at most one match per round, so a player's
+// tournamentMatchPlayers rows are bounded by the round cap times the phase
+// cap. The bound behind every whole-history read for one player.
+export const MAX_MATCHES_PER_PLAYER = MAX_ROUNDS * MAX_TOURNAMENT_PHASES;
 
 export type TournamentPhaseCutoffInput =
   | { kind: "top_X_players"; playerCount: number }
@@ -55,7 +63,7 @@ export async function requirePhase(
   return phase;
 }
 
-// All phases in play order (bounded by the 16-phase cap).
+// All phases in play order (bounded by the phase cap).
 export async function phasesInOrder(
   ctx: QueryCtx,
   tournamentId: Id<"tournaments">,
@@ -65,7 +73,7 @@ export async function phasesInOrder(
     .withIndex("by_tournamentId_and_phaseOrder", (q) =>
       q.eq("tournamentId", tournamentId),
     )
-    .take(16);
+    .take(MAX_TOURNAMENT_PHASES);
 }
 
 export async function phaseByOrder(
@@ -399,8 +407,10 @@ export function validPhaseInputs(phases: TournamentPhaseInput[]) {
   if (phases.length < 1) {
     throw new Error("At least one phase is required");
   }
-  if (phases.length > 16) {
-    throw new Error("A tournament can have at most 16 phases");
+  if (phases.length > MAX_TOURNAMENT_PHASES) {
+    throw new Error(
+      `A tournament can have at most ${MAX_TOURNAMENT_PHASES} phases`,
+    );
   }
 
   return phases.map((phase, index) => {

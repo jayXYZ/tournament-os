@@ -10,6 +10,7 @@ import {
   concedeUnfinishedMatchOnDrop,
 } from "../model/matchResults";
 import {
+  MAX_MATCHES_PER_PLAYER,
   latestCompletedRound,
   requirePhase,
   roundNumberInPhase,
@@ -25,10 +26,7 @@ import {
   registrationForUser,
   resolveRegistrationDisplayName,
 } from "../model/registrations";
-import {
-  MAX_MATCHES_PER_PLAYER,
-  matchLogForRegistration,
-} from "../model/playerResults";
+import { matchLogForRegistration } from "../model/playerResults";
 import {
   isPairingsVisibleToPlayers,
   matchPlayers,
