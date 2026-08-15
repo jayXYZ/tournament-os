@@ -191,6 +191,25 @@ function MatchStatusSection({ currentMatch }: { currentMatch: MyActiveMatch }) {
   const scoreline = formatScoreline(me.gameWins, me.gameLosses, me.gameDraws)
   const reportedByMe = match.reportedByRegistrationId === me.registrationId
 
+  // A drop's concession (see CONTEXT.md "Concession") completes the match
+  // with no reporting player, so it must be distinguished before the
+  // organizer-entered fallback. The conceding player is the awarded loser.
+  if (match.currentResultKind === 'concession') {
+    return (
+      <ResultSummary
+        scoreline={scoreline}
+        badge={
+          <Badge variant="secondary">
+            {(me.gameWins ?? 0) < (me.gameLosses ?? 0)
+              ? 'You conceded'
+              : 'Opponent conceded'}
+          </Badge>
+        }
+        note="A drop during an unfinished match concedes it. Played to a result first? Find a judge or the tournament organizer."
+      />
+    )
+  }
+
   // A reported result counts immediately — there is no confirmation step.
   // Disputes go to the organizer, whose override supersedes the report.
   if (match.reportedByRegistrationId) {

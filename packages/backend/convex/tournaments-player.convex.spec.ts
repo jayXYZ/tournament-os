@@ -448,6 +448,7 @@ test("getMyCurrentMatch walks the tournament lifecycle", async () => {
   }
   expect(current.match.matchStatus).toBe("completed");
   expect(current.match.reportedByRegistrationId).toBe(registrationIds[0]);
+  expect(current.match.currentResultKind).toBe("played");
 
   const round = await currentRound(t, tournamentId);
   const otherNumber = await outsiderNumber(

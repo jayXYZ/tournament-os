@@ -94,6 +94,20 @@ test("a mid-round self-drop concedes the unfinished match to the opponent", asyn
   expect(conceded[0].event.player.registrationId).toBe(registrationIds[0]);
   expect(conceded[0].event.matchId).toBe(match._id);
 
+  // Both players' match cards see concession provenance, not an organizer
+  // entry: the query exposes the result kind alongside the (cleared)
+  // reporter.
+  for (const viewer of [1, opponent]) {
+    const view = await t
+      .withIdentity(playerIdentity(viewer))
+      .query(api.tournaments.player.getMyCurrentMatch, { tournamentId });
+    if (view.kind !== "match") {
+      throw new Error("Expected the concluded match to still be visible");
+    }
+    expect(view.match.currentResultKind).toBe("concession");
+    expect(view.match.reportedByRegistrationId).toBeNull();
+  }
+
   // The awarded result stands against player re-reports...
   await expect(
     t

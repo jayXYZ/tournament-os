@@ -210,6 +210,10 @@ export const getMyCurrentMatch = query({
         tableNumber: match.tableNumber ?? null,
         matchStatus: match.matchStatus,
         reportedByRegistrationId: match.reportedByRegistrationId ?? null,
+        // A concession from a mid-match drop completes the match with no
+        // reporting player; without the kind, the client cannot tell it
+        // apart from an organizer-entered result.
+        currentResultKind: match.currentResultKind ?? null,
         // The phase's Match Structure, so result entry can cap game wins at
         // what the structure allows instead of hardcoding best-of-3.
         bestOf: phase.bestOf,
