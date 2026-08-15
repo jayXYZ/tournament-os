@@ -51,10 +51,11 @@ export function pairingsNextStep(
   }
 
   if (tournament.lifecycle === "setup") {
+    const hasPhase = facts.phases.length > 0;
     return {
       kind: "publishTournament",
-      ready: facts.hasSwissPhase,
-      reason: facts.hasSwissPhase ? null : "Swiss phase is not configured",
+      ready: hasPhase,
+      reason: hasPhase ? null : "Tournament phase is not configured",
     };
   }
 

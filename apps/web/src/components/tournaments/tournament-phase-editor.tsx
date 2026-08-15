@@ -55,7 +55,7 @@ export function TournamentPhaseEditor({
       <FieldLegend>Tournament phases</FieldLegend>
       <FieldDescription>
         Add and order Swiss phases, with an optional single-elimination playoff
-        at the end.
+        at the end — or run a single-elimination bracket on its own.
       </FieldDescription>
       <FieldGroup>
         {phases.map((phase, index) => (
@@ -131,7 +131,7 @@ function TournamentPhaseField({
                 <SelectItem value="swiss">Swiss</SelectItem>
                 <SelectItem
                   value="single_elimination"
-                  disabled={index === 0 || index !== phases.length - 1}
+                  disabled={index !== phases.length - 1}
                 >
                   Single elimination
                 </SelectItem>
@@ -352,7 +352,9 @@ function TournamentPhaseField({
           </FieldLabel>
           <FieldDescription>
             {isSingleElimination
-              ? "The playoff is seeded from the previous phase's cut of its final standings."
+              ? index === 0
+                ? "The bracket is seeded randomly from the tournament's seed."
+                : "The playoff is seeded from the previous phase's cut of its final standings."
               : "Seat players alphabetically before this phase's first round for attendance and announcements."}
           </FieldDescription>
         </FieldContent>

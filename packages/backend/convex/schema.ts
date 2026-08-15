@@ -333,6 +333,11 @@ export default defineSchema({
     // Byes have no table assignment; in the round index they sort before
     // numbered matches because undefined orders first.
     tableNumber: v.optional(v.number()),
+    // Single elimination only: the match's 1-based seat-pair position within
+    // its bracket round, byes included. The next round is paired from seat
+    // winners in this order, which the table index cannot supply — byes have
+    // no table, so it hoists them out of their bracket position.
+    bracketSeat: v.optional(v.number()),
     matchStatus: tournamentMatchStatusValidator,
     // Set when a player self-reports the result; absent once an organizer
     // records or overrides it. "completed" + this field = unconfirmed report.

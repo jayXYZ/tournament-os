@@ -15,7 +15,7 @@ import {
   SINGLE_ELIMINATION_FORMAT,
   SWISS_FORMAT,
   phasesInOrder,
-  requireSwissPhase,
+  requireCurrentPhase,
   validPhaseInputs,
 } from "../model/phases";
 import { parsePublicCode } from "../model/publicCodes";
@@ -544,7 +544,7 @@ export const publishTournament = mutation({
       args.tournamentId,
     );
     requireSetupEditable(tournament);
-    await requireSwissPhase(ctx, args.tournamentId);
+    await requireCurrentPhase(ctx, args.tournamentId);
 
     await ctx.db.patch(args.tournamentId, {
       lifecycle: "registration",

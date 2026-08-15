@@ -79,7 +79,7 @@ test("moveTournamentCreationPhase reorders Swiss phases without moving a playoff
   assert.equal(canMoveTournamentCreationPhase(phases, "playoff", -1), false);
 });
 
-test("removeTournamentCreationPhase preserves a leading Swiss phase", () => {
+test("removeTournamentCreationPhase keeps at least one phase", () => {
   const onlyPhase = [createDefaultTournamentCreationPhase("phase-1")];
   const twoPhases = addTournamentCreationPhase(onlyPhase, "phase-2");
   const swissAndPlayoff = [
@@ -98,20 +98,44 @@ test("removeTournamentCreationPhase preserves a leading Swiss phase", () => {
   assert.deepEqual(removeTournamentCreationPhase(twoPhases, "phase-1"), [
     createDefaultTournamentCreationPhase("phase-2"),
   ]);
+  // Removing the Swiss feeder leaves a bracket-only tournament, which is a
+  // valid shape: the bracket seeds from the tournament's random seed.
   assert.equal(
     canRemoveTournamentCreationPhase(swissAndPlayoff, "phase-1"),
-    false,
+    true,
   );
-  assert.deepEqual(
-    removeTournamentCreationPhase(swissAndPlayoff, "phase-1"),
-    swissAndPlayoff,
-  );
+  assert.deepEqual(removeTournamentCreationPhase(swissAndPlayoff, "phase-1"), [
+    swissAndPlayoff[1],
+  ]);
   assert.equal(
     canRemoveTournamentCreationPhase(swissAndPlayoff, "playoff"),
     true,
   );
   assert.deepEqual(removeTournamentCreationPhase(swissAndPlayoff, "playoff"), [
     createDefaultTournamentCreationPhase("phase-1"),
+  ]);
+});
+
+test("a lone phase can become a single-elimination bracket", () => {
+  const onlyPhase = [createDefaultTournamentCreationPhase("phase-1")];
+  const bracketOnly = setTournamentCreationPhaseType(
+    onlyPhase,
+    "phase-1",
+    "single_elimination",
+  );
+
+  assert.deepEqual(bracketOnly, [
+    {
+      ...createDefaultTournamentCreationPhase("phase-1"),
+      phaseType: "single_elimination",
+      playerMeeting: false,
+    },
+  ]);
+  // Adding a Swiss phase to a bracket-only tournament inserts it in front of
+  // the playoff with the default top-8 cut pre-filled.
+  assert.deepEqual(addTournamentCreationPhase(bracketOnly, "phase-2"), [
+    withDefaultPlayoffCut(createDefaultTournamentCreationPhase("phase-2")),
+    bracketOnly[0],
   ]);
 });
 

@@ -360,7 +360,19 @@ walkover behavior itself landed with the adjudication model in section 1.
         rounds remaining in the resolved bracket — so chained-walkover
         thinning can't misname a stage, with `Round of ${2^n}` above eight
         seats
-- [ ] Allow single elimination as the first phase, seeded from the tournament's random seed
+- [x] Allow single elimination as the first phase, seeded from the tournament's
+      random seed (reset the dev DB: bracket matches store a new field). The
+      phase editor and backend accept a lone single-elimination phase — it must
+      still be the final phase, so a bracket-first tournament is bracket-only —
+      publishing and starting no longer require a Swiss phase, and
+      startTournament pairs the bracket from `firstPhaseBracketSeedOrder`: the
+      per-player `tiebreakRandom` already derived from the tournament seed, so
+      a rewound round 1 re-pairs the identical draw. Landing it exposed and
+      fixed a pre-existing bracket bug: seat winners were read back in table
+      order, which hoists byes (no table) out of position and corrupted the
+      bracket halves whenever a round had two or more byes (e.g. any six-player
+      field — the top two seeds met in the semifinal); bracket matches now
+      store an explicit `bracketSeat` that next-round pairing reads instead
 - [ ] Lower the 16-phase cap to a realistic bound (the largest real events need 5–6)
 
 ## 3. Player identity and admission

@@ -397,7 +397,7 @@ export function validPhaseCutoff(cutoff: TournamentPhaseCutoffInput) {
 
 export function validPhaseInputs(phases: TournamentPhaseInput[]) {
   if (phases.length < 1) {
-    throw new Error("At least one Swiss phase is required");
+    throw new Error("At least one phase is required");
   }
   if (phases.length > 16) {
     throw new Error("A tournament can have at most 16 phases");
@@ -409,9 +409,6 @@ export function validPhaseInputs(phases: TournamentPhaseInput[]) {
       throw new Error("Tournament phases must be ordered starting at 1");
     }
     const phaseType = phase.phaseType ?? SWISS_FORMAT;
-    if (index === 0 && phaseType !== SWISS_FORMAT) {
-      throw new Error("A single-elimination phase must follow a Swiss phase");
-    }
     if (
       phaseType === SINGLE_ELIMINATION_FORMAT &&
       index !== phases.length - 1
@@ -457,9 +454,10 @@ export function validPhaseInputs(phases: TournamentPhaseInput[]) {
       return {
         phaseOrder: expectedOrder,
         phaseType,
-        // The bracket's round count is a property of the field the previous
-        // phase's cut hands it, so like a dynamic Swiss phase's it resolves
-        // when the phase starts (resolvePhaseTotalRounds).
+        // The bracket's round count is a property of the field that enters
+        // it — the previous phase's cut, or the starting roster when the
+        // bracket is the first phase — so like a dynamic Swiss phase's it
+        // resolves when the phase starts (resolvePhaseTotalRounds).
         phaseRoundMode: "dynamic" as const,
         phaseTotalRounds: null,
         bestOf,

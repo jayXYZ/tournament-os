@@ -164,11 +164,12 @@ export function addTournamentCreationPhase(
   ]);
 }
 
+// Single elimination must be the final phase (it ends with one player); a
+// bracket-only tournament — a single single-elimination phase — is valid.
 function hasValidTournamentPhaseOrder(phases: TournamentCreationPhaseForm[]) {
   return (
     phases.length > 0 &&
     phases.length <= MAX_TOURNAMENT_PHASES &&
-    phases[0].phaseType === "swiss" &&
     phases.every(
       (phase, index) =>
         phase.phaseType !== "single_elimination" || index === phases.length - 1,
@@ -221,7 +222,7 @@ export function canRemoveTournamentCreationPhase(
   const remainingPhases = phases.filter((phase) => phase.id !== id);
   return (
     remainingPhases.length < phases.length &&
-    remainingPhases[0]?.phaseType === "swiss"
+    hasValidTournamentPhaseOrder(remainingPhases)
   );
 }
 

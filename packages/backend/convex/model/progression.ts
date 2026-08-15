@@ -14,6 +14,7 @@ import {
   buildSingleEliminationPairings,
   createRoundWithPairings,
   createSingleEliminationRoundWithPairings,
+  firstPhaseBracketSeedOrder,
 } from "./pairing";
 import {
   SINGLE_ELIMINATION_FORMAT,
@@ -65,7 +66,8 @@ import {
 const TOURNAMENT_NOT_IN_PROGRESS = "Tournament is not in progress";
 const MUST_BE_PUBLISHED_FIRST =
   "Tournament must be published before it can start";
-const MUST_START_WITH_SWISS = "A tournament must start with a Swiss phase";
+const MUST_START_WITH_FIRST_PHASE =
+  "Tournament must start with its first phase";
 const PLAYER_MEETING_REQUIRED = "Player meeting must be started first";
 const AT_LEAST_TWO_PLAYERS = "At least two active players are required";
 const CURRENT_ROUND_NOT_FOUND = "Current round not found";
@@ -126,7 +128,6 @@ export type ProgressionFacts = {
   // rounds, where the next-round verdict and mutation need them; null
   // everywhere else.
   bracketSeatWinners: Doc<"tournamentRegistrations">[] | null;
-  hasSwissPhase: boolean;
   // The first later phase still waiting to be played, and whether its entry
   // requirement can be met from the completed round's standings. The cutoff
   // partition is kept so the mutation that applies the cut reuses the walk
@@ -257,9 +258,6 @@ export async function analyzeProgression(
       ? await previousTournamentRound(ctx, round)
       : null;
 
-  const hasSwissPhase = phases.some(
-    (candidate) => candidate.phaseType === SWISS_FORMAT,
-  );
   const laterUpcomingPhases = phase
     ? phases.filter(
         (candidate) =>
@@ -321,7 +319,6 @@ export async function analyzeProgression(
     currentRoundHasRecordedResult,
     activeRegistrations: registrations,
     bracketSeatWinners,
-    hasSwissPhase,
     nextUpcomingPhase,
     laterUpcomingPhases,
     nextPhaseCutoffPartition,
@@ -360,8 +357,12 @@ function startTournamentVerdict(
   if (!phase) {
     return disallowed("Tournament phase is not configured");
   }
-  if (phase.phaseType !== SWISS_FORMAT || phase.phaseOrder !== 1) {
-    return disallowed(MUST_START_WITH_SWISS);
+  // Defensive: pre-start the current phase is the first upcoming one, so a
+  // later phase here means the phase records are inconsistent. Any phase
+  // type may open the tournament — a first-phase bracket seeds from the
+  // tournament's random seed (CONTEXT.md "Bracket").
+  if (phase.phaseOrder !== 1) {
+    return disallowed(MUST_START_WITH_FIRST_PHASE);
   }
   const registrations = facts.activeRegistrations ?? [];
   if (playerMeetingPending(phase)) {
@@ -585,12 +586,27 @@ export async function pairFirstRoundOfTournament(
   );
   const playablePhase = { ...phase, phaseTotalRounds };
 
-  const roundId = await createRoundWithPairings(ctx, {
-    tournament,
-    phase: playablePhase,
-    roundNumber: 1,
-    registrations,
-  });
+  const roundId =
+    phase.phaseType === SINGLE_ELIMINATION_FORMAT
+      ? await createSingleEliminationRoundWithPairings(ctx, {
+          tournament,
+          phase: playablePhase,
+          roundNumber: 1,
+          // No standings precede a first-phase bracket, so the tournament's
+          // random seed orders the field (CONTEXT.md "Bracket"). The phase's
+          // first round has every resolved round still to play, which names
+          // its stage.
+          roundName: singleEliminationRoundName(phaseTotalRounds),
+          pairings: buildSingleEliminationPairings(
+            firstPhaseBracketSeedOrder(registrations),
+          ),
+        })
+      : await createRoundWithPairings(ctx, {
+          tournament,
+          phase: playablePhase,
+          roundNumber: 1,
+          registrations,
+        });
   const now = Date.now();
   await ctx.db.patch(tournament._id, {
     lifecycle: "in_progress",

@@ -53,6 +53,22 @@ function standardBracketOrder(size: number): number[] {
   return seeds.map((seed) => seed - 1);
 }
 
+// The seeding order for a bracket no standings precede — a single-elimination
+// first phase (CONTEXT.md "Bracket"): the tournament's random seed decides it,
+// through the same per-player random that breaks perfect standings ties
+// (model/random.ts). The order matches what compareStandingRows produces for
+// an all-zero field, and is fixed for the whole tournament by construction —
+// a rewound first round re-pairs the identical bracket.
+export function firstPhaseBracketSeedOrder(
+  registrations: Doc<"tournamentRegistrations">[],
+): Doc<"tournamentRegistrations">[] {
+  return [...registrations].sort(
+    (left, right) =>
+      right.tiebreakRandom - left.tiebreakRandom ||
+      (left._id as string).localeCompare(right._id as string),
+  );
+}
+
 // Seeds occupy a fixed standard bracket: the smallest power of two that fits
 // the field (CONTEXT.md "Bracket"). A field that doesn't fill it exactly
 // leaves its lowest seats empty, and each empty seat's scheduled opponent —
@@ -93,7 +109,10 @@ export function buildSingleEliminationPairings(
 // Materializes a bracket round from an already-built pairing plan: the seeded
 // first-round bracket, or the walkover-aware advancement plan from
 // planSingleEliminationPairings (model/singleElimination.ts). A bye pairing
-// is a walkover — the same awarded Bye a Swiss bye records.
+// is a walkover — the same awarded Bye a Swiss bye records. The plan's order
+// is the bracket's seat order, stamped onto every match (byes included) as
+// bracketSeat so the next round's pairing can read the seats back in bracket
+// order — the table index can't supply it, since byes have no table.
 export async function createSingleEliminationRoundWithPairings(
   ctx: MutationCtx,
   args: {
@@ -119,13 +138,14 @@ export async function createSingleEliminationRoundWithPairings(
   });
 
   let tableNumber = 1;
-  for (const pairing of args.pairings) {
+  for (const [seatIndex, pairing] of args.pairings.entries()) {
     if (pairing.isBye || !pairing.playerTwo) {
       await insertAwardedByeMatch(ctx, {
         tournament: args.tournament,
         phase: args.phase,
         roundId,
         registration: pairing.playerOne,
+        bracketSeat: seatIndex + 1,
         now,
       });
       continue;
@@ -135,6 +155,7 @@ export async function createSingleEliminationRoundWithPairings(
       tournamentPhaseId: args.phase._id,
       tournamentRoundId: roundId,
       tableNumber,
+      bracketSeat: seatIndex + 1,
       matchStatus: "upcoming",
       updatedAt: now,
     });
@@ -169,6 +190,8 @@ async function insertAwardedByeMatch(
     phase: Doc<"tournamentPhases">;
     roundId: Id<"tournamentRounds">;
     registration: Doc<"tournamentRegistrations">;
+    // The bye's seat-pair position in a bracket round; absent for Swiss byes.
+    bracketSeat?: number;
     now: number;
   },
 ) {
@@ -177,6 +200,7 @@ async function insertAwardedByeMatch(
     tournamentPhaseId: args.phase._id,
     tournamentRoundId: args.roundId,
     tableNumber: undefined,
+    bracketSeat: args.bracketSeat,
     matchStatus: "completed",
     updatedAt: args.now,
   });

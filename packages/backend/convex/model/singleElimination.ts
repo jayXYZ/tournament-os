@@ -28,18 +28,25 @@ function matchGameWinner({
   return firstWins > secondWins ? first : second;
 }
 
-// The completed round's seat winners in table order: the registrations whose
-// seats the next bracket round is built from. Departed winners are included
-// deliberately — bracket structure is sacred, so a drop never revives
-// the defeated opponent; the seat advances and the walkover materializes when
-// the next round is paired (see ADR 0001 and CONTEXT.md "Walkover").
+// The completed round's seat winners in bracket-seat order: the registrations
+// whose seats the next bracket round is built from. The stored bracketSeat is
+// what carries the order — the round's matches read back in table order
+// instead would hoist every bye (no table) out of its bracket position and
+// corrupt the bracket's halves. Departed winners are included deliberately —
+// bracket structure is sacred, so a drop never revives the defeated opponent;
+// the seat advances and the walkover materializes when the next round is
+// paired (see ADR 0001 and CONTEXT.md "Walkover").
 export async function singleEliminationSeatWinners(
   ctx: QueryCtx,
   roundId: Id<"tournamentRounds">,
 ): Promise<Doc<"tournamentRegistrations">[]> {
   const matchesWithPlayers = await roundMatchesWithPlayers(ctx, roundId);
+  const bySeat = [...matchesWithPlayers].sort(
+    (left, right) =>
+      requireBracketSeat(left.match) - requireBracketSeat(right.match),
+  );
   return await mapAsyncInBatches(
-    matchesWithPlayers.map((match) => matchGameWinner(match).playerId),
+    bySeat.map((match) => matchGameWinner(match).playerId),
     DATABASE_IO_BATCH_SIZE,
     async (playerId) => {
       const registration = await ctx.db.get(playerId);
@@ -49,6 +56,13 @@ export async function singleEliminationSeatWinners(
       return registration;
     },
   );
+}
+
+function requireBracketSeat(match: Doc<"tournamentMatches">): number {
+  if (match.bracketSeat === undefined) {
+    throw new Error("Single-elimination match is missing its bracket seat");
+  }
+  return match.bracketSeat;
 }
 
 // Pairs a bracket round from the previous round's seat winners, materializing

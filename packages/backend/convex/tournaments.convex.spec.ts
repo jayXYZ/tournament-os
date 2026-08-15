@@ -2163,7 +2163,7 @@ test("createTournamentWithPhases rejects an empty phase list", async () => {
         format: "standard",
         phases: [],
       }),
-  ).rejects.toThrow("At least one Swiss phase is required");
+  ).rejects.toThrow("At least one phase is required");
 });
 
 test("startTournament resolves dynamic Swiss rounds from active player count", async () => {
@@ -4690,6 +4690,118 @@ test("a seven-player top-8 playoff plays a quarterfinal bracket with a bye", asy
     { tournamentId },
   );
   expect(setup.phases[1].phaseTotalRounds).toBe(3);
+});
+
+// Regression: a bracket round's seats must advance in bracket order, not the
+// round index's table order — byes have no table, so reading the matches back
+// by table hoists every bye to the front. With two byes that corrupted the
+// halves: the top two seeds met in the semifinal instead of the final. The
+// stored bracketSeat keeps each bye in its bracket position.
+test("a six-player playoff preserves the bracket halves through the semifinals", async () => {
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const authed = t.withIdentity(organizerIdentity);
+  const tournamentId = await authed.mutation(
+    api.tournaments.lifecycle.createTournamentWithPhases,
+    {
+      organizationId,
+      name: "Six-Player Playoff Halves",
+      startDate: Date.now(),
+      playerCapacity: 6,
+      format: "standard",
+      phases: [
+        {
+          phaseOrder: 1,
+          phaseType: "swiss",
+          phaseRoundMode: "fixed",
+          phaseTotalRounds: 1,
+        },
+        {
+          phaseOrder: 2,
+          phaseType: "single_elimination",
+          phaseRoundMode: "fixed",
+        },
+      ],
+    },
+  );
+  await authed.mutation(api.tournaments.lifecycle.updatePairingsAutoPublish, {
+    tournamentId,
+    autoPublishPairings: true,
+  });
+  await seedActiveRegistrations(t, tournamentId, 6);
+  await authed.mutation(api.tournaments.lifecycle.publishTournament, {
+    tournamentId,
+  });
+  await authed.mutation(api.tournaments.rounds.startTournament, {
+    tournamentId,
+  });
+  const swiss = await playOutCurrentRound(authed, tournamentId);
+  const seeds = (
+    await authed.query(api.tournaments.rounds.listRoundStandings, {
+      roundId: swiss.round._id,
+    })
+  ).map(({ standing }) => standing.playerId);
+
+  // Six qualifiers in an eight-seat bracket: byes for seeds 1 and 2, played
+  // pairs 4v5 and 3v6.
+  const quarterfinalId = await authed.mutation(
+    api.tournaments.rounds.generateNextRound,
+    { tournamentId },
+  );
+  const quarterfinal = await authed.query(
+    api.tournaments.rounds.listRoundPairings,
+    { roundId: quarterfinalId },
+  );
+  expect(
+    quarterfinal
+      .filter(({ players }) => players.length === 1)
+      .map(({ players }) => players[0].playerId)
+      .sort(),
+  ).toEqual([seeds[0], seeds[1]].sort());
+
+  // The lower seed wins both played quarterfinals.
+  for (const [winner, loser] of [
+    [seeds[4], seeds[3]],
+    [seeds[5], seeds[2]],
+  ]) {
+    const match = quarterfinal.find(
+      ({ players }) =>
+        players.length === 2 &&
+        players.every((player) => [winner, loser].includes(player.playerId)),
+    );
+    if (!match) {
+      throw new Error("Expected quarterfinal match not found");
+    }
+    await authed.mutation(api.tournaments.rounds.recordMatchResult, {
+      matchId: match.match._id,
+      playerOneRegistrationId: winner,
+      playerTwoRegistrationId: loser,
+      playerOneGameWins: 2,
+      playerTwoGameWins: 0,
+    });
+  }
+  await authed.mutation(api.tournaments.rounds.completeRound, {
+    roundId: quarterfinalId,
+  });
+
+  // Seed 1's bye meets the 4v5 winner and seed 2's bye meets the 3v6 winner;
+  // the top two seeds cannot meet before the final.
+  const semifinalId = await authed.mutation(
+    api.tournaments.rounds.generateNextRound,
+    { tournamentId },
+  );
+  const semifinalTables = (
+    await authed.query(api.tournaments.rounds.listRoundPairings, {
+      roundId: semifinalId,
+    })
+  )
+    .filter(({ players }) => players.length === 2)
+    .sort((a, b) => (a.match.tableNumber ?? 0) - (b.match.tableNumber ?? 0))
+    .map(({ players }) => new Set(players.map((player) => player.playerId)));
+  expect(semifinalTables).toEqual([
+    new Set([seeds[0], seeds[4]]),
+    new Set([seeds[1], seeds[5]]),
+  ]);
 });
 
 // An explicit no-cut into the playoff (phaseCutoff: null) is the small
