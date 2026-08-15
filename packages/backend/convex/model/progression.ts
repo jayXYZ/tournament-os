@@ -5,21 +5,24 @@ import { deleteResultRevisionsForMatch } from "./matchResults";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "./batching";
 import {
   type CutoffPartition,
+  activeRegistrationsInRankOrder,
   cutoffPartitionForNextPhase,
   cutoffQualifiers,
 } from "./cutoffs";
 import { type PairingsNextStep, pairingsNextStep } from "./nextStep";
 import {
-  buildTopEightSingleEliminationPairings,
+  buildSingleEliminationPairings,
   createRoundWithPairings,
   createSingleEliminationRoundWithPairings,
 } from "./pairing";
 import {
+  BRACKET_REQUIRES_PLAYABLE_FIELD,
   SINGLE_ELIMINATION_FORMAT,
-  SINGLE_ELIMINATION_PLAYERS,
   SWISS_FORMAT,
+  isPlayableBracketSize,
   phasesInOrder,
   playerMeetingPending,
+  playoffCutPlayersRequiredMessage,
   previousTournamentRound,
   requirePhase,
   requireResolvedPhaseTotalRounds,
@@ -42,7 +45,6 @@ import {
   planSingleEliminationPairings,
   singleEliminationRoundName,
   singleEliminationSeatWinners,
-  topEightCutFromStandings,
 } from "./singleElimination";
 import {
   type RoundMatchWithPlayers,
@@ -69,8 +71,6 @@ const MUST_BE_PUBLISHED_FIRST =
 const MUST_START_WITH_SWISS = "A tournament must start with a Swiss phase";
 const PLAYER_MEETING_REQUIRED = "Player meeting must be started first";
 const AT_LEAST_TWO_PLAYERS = "At least two active players are required";
-const TOP_EIGHT_REQUIRES_EIGHT =
-  "A top-8 playoff requires at least eight active players";
 const CURRENT_ROUND_NOT_FOUND = "Current round not found";
 const ROUND_NOT_COMPLETED = "Current round must be completed first";
 const ROUND_NOT_IN_PROGRESS = "Current round is not in progress";
@@ -94,6 +94,7 @@ const CUTOFF_TOO_FEW_QUALIFIERS =
   "The phase cutoff leaves fewer than two qualifying players; complete the tournament instead";
 const CUTOFF_TOO_FEW_QUALIFIERS_HELD_PLACES =
   "The phase cutoff leaves fewer than two qualifying players; reinstate a dropped player who still holds a place in the field, or complete the tournament";
+const BRACKET_ENTRY_NOT_PLAYABLE = `${BRACKET_REQUIRES_PLAYABLE_FIELD}; complete the tournament instead`;
 const BRACKET_NO_LIVE_PLAYERS =
   "Every remaining bracket player has left the tournament; complete the tournament instead";
 
@@ -130,15 +131,21 @@ export type ProgressionFacts = {
   // everywhere else.
   bracketSeatWinners: Doc<"tournamentRegistrations">[] | null;
   hasSwissPhase: boolean;
-  hasUpcomingTopEightPlayoff: boolean;
+  // The player count of a configured top-N cut feeding an upcoming playoff:
+  // the one predictable pre-start entry requirement, guarding tournament
+  // start. Null when no playoff is upcoming or its feed is a points bar,
+  // whose field size is unknowable before play.
+  upcomingPlayoffCutPlayerCount: number | null;
   // The first later phase still waiting to be played, and whether its entry
   // requirement can be met from the completed round's standings. The cutoff
   // partition is kept so the mutation that applies the cut reuses the walk
-  // the verdict already paid for.
+  // the verdict already paid for. "bracketField" means the entering field
+  // cannot exactly fill a playable bracket; "swissField" means fewer than two
+  // players would enter the next Swiss phase.
   nextUpcomingPhase: Doc<"tournamentPhases"> | null;
   laterUpcomingPhases: Doc<"tournamentPhases">[];
   nextPhaseCutoffPartition: CutoffPartition | null;
-  nextPhaseEntryShortfall: "topEightShort" | "cutoffShort" | null;
+  nextPhaseEntryShortfall: "bracketField" | "swissField" | null;
 };
 
 // A verdict either allows an action — carrying everything the transition
@@ -261,11 +268,22 @@ export async function analyzeProgression(
   const hasSwissPhase = phases.some(
     (candidate) => candidate.phaseType === SWISS_FORMAT,
   );
-  const hasUpcomingTopEightPlayoff = phases.some(
+  const upcomingPlayoff = phases.find(
     (candidate) =>
       candidate.phaseType === SINGLE_ELIMINATION_FORMAT &&
       candidate.phaseStatus === "upcoming",
   );
+  // The cut that feeds the playoff lives on the phase before it; only a
+  // top-N cut yields a pre-start player requirement.
+  const playoffFeedCutoff = upcomingPlayoff
+    ? (phases.find(
+        (candidate) => candidate.phaseOrder === upcomingPlayoff.phaseOrder - 1,
+      )?.phaseCutoff ?? null)
+    : null;
+  const upcomingPlayoffCutPlayerCount =
+    playoffFeedCutoff?.kind === "top_X_players"
+      ? playoffFeedCutoff.playerCount
+      : null;
   const laterUpcomingPhases = phase
     ? phases.filter(
         (candidate) =>
@@ -293,28 +311,33 @@ export async function analyzeProgression(
       : null;
 
   // Whether the next phase's entry requirement can be met from the completed
-  // round's standings: the fixed top-8 cut for a playoff, or the finished
-  // phase's configured cutoff. One computation feeds the board's
-  // completeTournament offer, generateNextRound's refusal, and
-  // completeTournament's skip-unplayable-phase permission.
+  // round's standings. The finished phase's configured cutoff decides who
+  // enters — whatever the next phase's type — and the next phase's type
+  // decides what field it can play: a Swiss phase needs at least two
+  // players, a playoff a field that exactly fills a playable bracket. One
+  // computation feeds the board's completeTournament offer,
+  // generateNextRound's refusal, and completeTournament's
+  // skip-unplayable-phase permission.
   let nextPhaseCutoffPartition: CutoffPartition | null = null;
   let nextPhaseEntryShortfall: ProgressionFacts["nextPhaseEntryShortfall"] =
     null;
   if (round?.roundStatus === "completed" && phase && nextUpcomingPhase) {
-    if (nextUpcomingPhase.phaseType === SINGLE_ELIMINATION_FORMAT) {
-      if ((registrations?.length ?? 0) < SINGLE_ELIMINATION_PLAYERS) {
-        nextPhaseEntryShortfall = "topEightShort";
-      }
-    } else if (phase.phaseCutoff !== null) {
+    if (phase.phaseCutoff !== null) {
       nextPhaseCutoffPartition = await cutoffPartitionForNextPhase(
         ctx,
         round._id,
         phase.phaseCutoff,
         nextUpcomingPhase,
       );
-      if (nextPhaseCutoffPartition.qualifiers.length < 2) {
-        nextPhaseEntryShortfall = "cutoffShort";
+    }
+    const enteringPlayerCount =
+      nextPhaseCutoffPartition?.qualifiers.length ?? registrations?.length ?? 0;
+    if (nextUpcomingPhase.phaseType === SINGLE_ELIMINATION_FORMAT) {
+      if (!isPlayableBracketSize(enteringPlayerCount)) {
+        nextPhaseEntryShortfall = "bracketField";
       }
+    } else if (enteringPlayerCount < 2) {
+      nextPhaseEntryShortfall = "swissField";
     }
   }
 
@@ -331,7 +354,7 @@ export async function analyzeProgression(
     activeRegistrations: registrations,
     bracketSeatWinners,
     hasSwissPhase,
-    hasUpcomingTopEightPlayoff,
+    upcomingPlayoffCutPlayerCount,
     nextUpcomingPhase,
     laterUpcomingPhases,
     nextPhaseCutoffPartition,
@@ -375,10 +398,12 @@ function startTournamentVerdict(
   }
   const registrations = facts.activeRegistrations ?? [];
   if (
-    facts.hasUpcomingTopEightPlayoff &&
-    registrations.length < SINGLE_ELIMINATION_PLAYERS
+    facts.upcomingPlayoffCutPlayerCount !== null &&
+    registrations.length < facts.upcomingPlayoffCutPlayerCount
   ) {
-    return disallowed(TOP_EIGHT_REQUIRES_EIGHT);
+    return disallowed(
+      playoffCutPlayersRequiredMessage(facts.upcomingPlayoffCutPlayerCount),
+    );
   }
   if (playerMeetingPending(phase)) {
     return disallowed(PLAYER_MEETING_REQUIRED);
@@ -461,22 +486,21 @@ function generateNextRoundVerdict(
   if (playerMeetingPending(nextPhase)) {
     return disallowed(PLAYER_MEETING_REQUIRED);
   }
-  if (facts.nextPhaseEntryShortfall === "topEightShort") {
-    return disallowed(TOP_EIGHT_REQUIRES_EIGHT);
+  if (facts.nextPhaseEntryShortfall === "bracketField") {
+    return disallowed(BRACKET_ENTRY_NOT_PLAYABLE);
   }
-  if (facts.nextPhaseEntryShortfall === "cutoffShort") {
+  if (facts.nextPhaseEntryShortfall === "swissField") {
+    // With no cut configured the shortfall is a plain thin field; with one,
+    // the cut is what left the phase short, and held places name the one
+    // recovery move besides completion.
+    if (facts.nextPhaseCutoffPartition === null) {
+      return disallowed(AT_LEAST_TWO_PLAYERS);
+    }
     return disallowed(
-      (facts.nextPhaseCutoffPartition?.heldPlaces.length ?? 0) > 0
+      facts.nextPhaseCutoffPartition.heldPlaces.length > 0
         ? CUTOFF_TOO_FEW_QUALIFIERS_HELD_PLACES
         : CUTOFF_TOO_FEW_QUALIFIERS,
     );
-  }
-  if (
-    nextPhase.phaseType !== SINGLE_ELIMINATION_FORMAT &&
-    phase.phaseCutoff === null &&
-    (facts.activeRegistrations?.length ?? 0) < 2
-  ) {
-    return disallowed(AT_LEAST_TWO_PLAYERS);
   }
   return {
     allowed: true,
@@ -506,10 +530,10 @@ function completeTournamentVerdict(
   // round has been played, so the checks above pass. Without this guard the
   // tournament could be marked completed while a playable later phase is
   // still upcoming, permanently stranding it. An unplayable next phase may
-  // be skipped: a top-8 playoff without eight active players, or a Swiss
-  // phase whose entry cutoff fewer than two players cleared. Phases after it
-  // are unplayable too — nobody advances through a skipped phase — so they
-  // are all cancelled when the skip happens.
+  // be skipped: a playoff whose entering field cannot fill a playable
+  // bracket, or a Swiss phase left with fewer than two entering players.
+  // Phases after it are unplayable too — nobody advances through a skipped
+  // phase — so they are all cancelled when the skip happens.
   if (facts.nextUpcomingPhase && facts.nextPhaseEntryShortfall === null) {
     return disallowed(NEXT_PHASE_UNPLAYED);
   }
@@ -842,22 +866,16 @@ async function startNextPhaseFirstRound(
   },
 ) {
   const { phase, round: currentRound, nextPhase } = step;
-  // Who enters the next phase: the fixed top-8 cut for a playoff, the
-  // finished phase's configured cutoff, otherwise every active player. One
-  // partition supplies both the qualifiers and the dropped players who keep
-  // an elimination record (see eliminateNonQualifiers), so the two sides of
-  // the cut can never disagree about where the boundary sits. The verdict
-  // that allowed this step already proved the entering field is big enough.
+  // Who enters the next phase: the finished phase's configured cutoff —
+  // whatever the next phase's type (CONTEXT.md "Cut") — otherwise every
+  // active player. One partition supplies both the qualifiers and the
+  // dropped players who keep an elimination record (see
+  // eliminateNonQualifiers), so the two sides of the cut can never disagree
+  // about where the boundary sits. The verdict that allowed this step
+  // already proved the entering field can play the phase.
   let registrations: Doc<"tournamentRegistrations">[];
   let appliedCut: CutoffPartition | null = null;
-  if (nextPhase.phaseType === SINGLE_ELIMINATION_FORMAT) {
-    appliedCut = await topEightCutFromStandings(
-      ctx,
-      tournament._id,
-      currentRound._id,
-    );
-    registrations = appliedCut.qualifiers;
-  } else if (phase.phaseCutoff !== null) {
+  if (phase.phaseCutoff !== null) {
     appliedCut =
       step.cutoffPartition ??
       (await cutoffPartitionForNextPhase(
@@ -867,6 +885,15 @@ async function startNextPhaseFirstRound(
         nextPhase,
       ));
     registrations = appliedCut.qualifiers;
+  } else if (nextPhase.phaseType === SINGLE_ELIMINATION_FORMAT) {
+    // No cut, but a bracket seeds from the finished phase's final standings,
+    // so the whole advancing field must arrive in rank order — a Swiss next
+    // phase re-pairs from scratch and takes the roster as-is below.
+    registrations = await activeRegistrationsInRankOrder(
+      ctx,
+      tournament._id,
+      currentRound._id,
+    );
   } else {
     registrations = await activeRegistrations(ctx, tournament._id);
   }
@@ -886,8 +913,10 @@ async function startNextPhaseFirstRound(
           tournament,
           phase: playablePhase,
           roundNumber: currentRound.roundNumber + 1,
-          roundName: "Quarterfinals",
-          pairings: buildTopEightSingleEliminationPairings(registrations),
+          // The qualifiers arrive in standings rank order, which is the
+          // bracket seeding order.
+          roundName: singleEliminationRoundName(registrations.length),
+          pairings: buildSingleEliminationPairings(registrations),
         })
       : await createRoundWithPairings(ctx, {
           tournament,

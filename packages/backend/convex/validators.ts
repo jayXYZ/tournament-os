@@ -138,8 +138,10 @@ export const tournamentPhaseBestOfValidator = v.union(
 
 // How a phase cuts the field when it completes: keep only the top N ranked
 // players, or everyone at or above a match-point bar. Null means no cut —
-// every active player advances. Only configurable on a Swiss phase followed by
-// another Swiss phase; a top-8 playoff always applies its own fixed cut.
+// every active player advances. Configurable on any phase with a following
+// phase, whatever its type; a phase feeding the single-elimination playoff
+// defaults to a top-8 cut when the input omits the field, while an explicit
+// null keeps no cut (see validPhaseInputs in model/phases.ts).
 const topPlayersCutoffValidator = v.object({
   kind: v.literal("top_X_players"),
   playerCount: v.number(),

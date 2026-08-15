@@ -11,8 +11,29 @@ import { MAX_TOURNAMENT_PLAYERS } from "./registrations";
 
 export const SWISS_FORMAT = "swiss";
 export const SINGLE_ELIMINATION_FORMAT = "single_elimination";
-export const SINGLE_ELIMINATION_PLAYERS = 8;
-export const SINGLE_ELIMINATION_ROUNDS = 3;
+
+// The cut a phase feeding a playoff falls back to when none is configured
+// (CONTEXT.md "Cut": into single elimination the default is a top-N cut).
+export const DEFAULT_PLAYOFF_CUT_PLAYER_COUNT = 8;
+
+// The bracket sizes the playoff can currently seed and name (Finals,
+// Semifinals, Quarterfinals). The domain model (CONTEXT.md "Bracket") sizes a
+// bracket as the smallest power of two that fits any entering field of at
+// least two; until that generalization lands (TODO.md section 2), only a
+// field that exactly fills one of these brackets is playable.
+export function isPlayableBracketSize(playerCount: number) {
+  return playerCount === 2 || playerCount === 4 || playerCount === 8;
+}
+
+export const BRACKET_REQUIRES_PLAYABLE_FIELD =
+  "A playoff needs exactly 2, 4, or 8 entering players";
+
+// The pre-start guard for a configured top-N cut into a playoff: the cut can
+// only fill its bracket when at least N players are registered. A points-bar
+// cut has no equivalent — its field size is unknowable before play.
+export function playoffCutPlayersRequiredMessage(playerCount: number) {
+  return `A top-${playerCount} playoff cut requires at least ${playerCount} active players`;
+}
 
 // Rounds are capped at 16 per phase.
 export const MAX_ROUNDS = 16;
@@ -266,14 +287,20 @@ export async function resolvePhaseTotalRounds(
   activePlayerCount: number,
 ) {
   if (phase.phaseType === SINGLE_ELIMINATION_FORMAT) {
-    if (phase.phaseTotalRounds !== SINGLE_ELIMINATION_ROUNDS) {
+    // The bracket's round count is a property of the field that enters it,
+    // so it resolves at start like a dynamic Swiss phase's. The progression
+    // verdict has already refused an unplayable field by the time this runs.
+    if (!isPlayableBracketSize(activePlayerCount)) {
+      throw new Error(BRACKET_REQUIRES_PLAYABLE_FIELD);
+    }
+    const phaseTotalRounds = Math.log2(activePlayerCount);
+    if (phase.phaseTotalRounds !== phaseTotalRounds) {
       await ctx.db.patch(phase._id, {
-        phaseRoundMode: "fixed",
-        phaseTotalRounds: SINGLE_ELIMINATION_ROUNDS,
+        phaseTotalRounds,
         updatedAt: Date.now(),
       });
     }
-    return SINGLE_ELIMINATION_ROUNDS;
+    return phaseTotalRounds;
   }
   if (phase.phaseRoundMode === "fixed") {
     if (phase.phaseTotalRounds === null) {
@@ -409,17 +436,42 @@ export function validPhaseInputs(phases: TournamentPhaseInput[]) {
     // Absent-default convention: store true or leave the field off entirely.
     const playerMeeting = phase.playerMeeting === true ? true : undefined;
     // A cutoff cuts the field when its phase completes, so it needs a
-    // following Swiss phase to cut into. A phase feeding the top-8 playoff
-    // cannot configure one — the playoff applies its own fixed cut.
+    // following phase to cut into — of any type (CONTEXT.md "Cut"). Null
+    // means no cut: every active player advances. Omitting the field takes
+    // the default — no cut between Swiss phases, a top-N cut into the
+    // playoff — so only an explicit null sends the whole surviving field
+    // into the bracket. A top-N cut into the playoff must fill a playable
+    // bracket exactly, until short fields land with the bracket
+    // generalization work; a points bar or no cut feeding the playoff is
+    // legal but its field size is unpredictable, so the UI warns and the
+    // progression verdict refuses an unplayable field when the playoff
+    // starts.
     const nextPhaseType =
       index === phases.length - 1
         ? null
         : (phases[index + 1].phaseType ?? SWISS_FORMAT);
     const rawCutoff = phase.phaseCutoff ?? null;
-    if (rawCutoff !== null && nextPhaseType !== SWISS_FORMAT) {
-      throw new Error("A phase cutoff requires a following Swiss phase");
+    if (rawCutoff !== null && nextPhaseType === null) {
+      throw new Error("A phase cutoff requires a following phase");
     }
-    const phaseCutoff = rawCutoff === null ? null : validPhaseCutoff(rawCutoff);
+    let phaseCutoff = rawCutoff === null ? null : validPhaseCutoff(rawCutoff);
+    if (nextPhaseType === SINGLE_ELIMINATION_FORMAT) {
+      if (phase.phaseCutoff === undefined) {
+        phaseCutoff = {
+          kind: "top_X_players",
+          playerCount: DEFAULT_PLAYOFF_CUT_PLAYER_COUNT,
+        };
+      }
+      if (
+        phaseCutoff !== null &&
+        phaseCutoff.kind === "top_X_players" &&
+        !isPlayableBracketSize(phaseCutoff.playerCount)
+      ) {
+        throw new Error(
+          "A player-count cut into the playoff must keep 2, 4, or 8 players",
+        );
+      }
+    }
     const bestOf = validBestOf(phase.bestOf);
     if (phaseType === SINGLE_ELIMINATION_FORMAT) {
       if (playerMeeting) {
@@ -430,8 +482,11 @@ export function validPhaseInputs(phases: TournamentPhaseInput[]) {
       return {
         phaseOrder: expectedOrder,
         phaseType,
-        phaseRoundMode: "fixed" as const,
-        phaseTotalRounds: SINGLE_ELIMINATION_ROUNDS,
+        // The bracket's round count is a property of the field the previous
+        // phase's cut hands it, so like a dynamic Swiss phase's it resolves
+        // when the phase starts (resolvePhaseTotalRounds).
+        phaseRoundMode: "dynamic" as const,
+        phaseTotalRounds: null,
         bestOf,
         phaseCutoff: null,
         playerMeeting: undefined,

@@ -1,5 +1,8 @@
 import type { Id } from "../_generated/dataModel";
-import { SINGLE_ELIMINATION_PLAYERS, playerMeetingPending } from "./phases";
+import {
+  playerMeetingPending,
+  playoffCutPlayersRequiredMessage,
+} from "./phases";
 import { isPairingsVisibleToPlayers } from "./tournaments";
 import type { ProgressionActions, ProgressionFacts } from "./progression";
 
@@ -68,13 +71,15 @@ export function pairingsNextStep(
     }
     const registrationCount = facts.activeRegistrations?.length ?? 0;
     if (
-      facts.hasUpcomingTopEightPlayoff &&
-      registrationCount < SINGLE_ELIMINATION_PLAYERS
+      facts.upcomingPlayoffCutPlayerCount !== null &&
+      registrationCount < facts.upcomingPlayoffCutPlayerCount
     ) {
       return {
         kind: "startTournament",
         ready: false,
-        reason: "A top-8 playoff requires at least eight active players",
+        reason: playoffCutPlayersRequiredMessage(
+          facts.upcomingPlayoffCutPlayerCount,
+        ),
       };
     }
     // The meeting is offered exactly once: after it starts (or completes) the
@@ -159,9 +164,10 @@ export function pairingsNextStep(
   // the next phase, which generateNextRound starts.
   const nextPhase = facts.nextUpcomingPhase;
   if (nextPhase && nextPhase.phaseOrder === phase.phaseOrder + 1) {
-    // An entry shortfall (a top-8 playoff without eight players, or a cutoff
-    // fewer than two players cleared) leaves the next phase unpairable;
-    // completing the tournament is the only move left.
+    // An entry shortfall (a playoff field that cannot fill a playable
+    // bracket, or a next Swiss phase left with fewer than two entering
+    // players) leaves the next phase unpairable; completing the tournament
+    // is the only move left.
     if (facts.nextPhaseEntryShortfall !== null) {
       return { kind: "completeTournament", ready: true, reason: null };
     }

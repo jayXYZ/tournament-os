@@ -312,11 +312,37 @@ Cuts and brackets per the 2026-08-09 domain-modeling session (see `CONTEXT.md`
 and `docs/adr/0001-bracket-walkover-to-scheduled-opponent.md`). Bracket
 walkover behavior itself landed with the adjudication model in section 1.
 
-- [ ] Decouple cuts from phase types
-  - [ ] Allow a top-N or points-bar cut before any following phase type, defaulting to no cut between Swiss phases and a top-N cut into single elimination
-  - [ ] Remove the special-cased top-8 cut in favor of an ordinary cut to 8
-  - [ ] Warn in the UI when a points-bar cut feeds a single-elimination phase, since the bracket size becomes unpredictable
-- [ ] Generalize single-elimination brackets
+- [x] Decouple cuts from phase types (reset the dev DB: a phase feeding the
+      playoff now stores its cut explicitly — validation defaults a missing
+      one to top-8 — and a single-elimination phase stores a null round count
+      resolved from its entering field at start, like a dynamic Swiss phase)
+  - [x] Allow a top-N or points-bar cut before any following phase type:
+        `validPhaseInputs` accepts a cutoff on any phase with a following
+        phase, defaulting to no cut between Swiss phases and a top-8 cut
+        into single elimination, and progression applies the finished
+        phase's configured cut uniformly through
+        `cutoffPartitionForNextPhase` whatever the next phase's type
+  - [x] Remove the special-cased top-8 cut in favor of an ordinary cut to 8:
+        `topEightCutFromStandings`, the fixed 8-player/3-round constants,
+        and the hardcoded "Quarterfinals" are gone — bracket seeding
+        (`buildSingleEliminationPairings`, standard order for any power of
+        two), round count (log2 of the field), and the first-round name all
+        derive from the entering field. Until the bracket generalization
+        below lands, a playable field is exactly 2, 4, or 8 players
+        (`isPlayableBracketSize`): a top-N cut into the playoff validates N
+        against those sizes, and an entering field that misses them (drops,
+        points bars, no cut) refuses the round and offers tournament
+        completion
+  - [x] Warn in the UI when a points-bar cut feeds a single-elimination
+        phase: the phase editor keeps every cut option on a playoff-feeding
+        phase (a phase newly put in front of a playoff is pre-filled with
+        the default top-8, and an explicit "No cut" sends the whole
+        surviving field into the bracket) and shows the
+        unpredictable-bracket-size warning under a points bar or no cut
+- [ ] Generalize single-elimination brackets (power-of-two fields of 2, 4,
+      or 8 already play, landed with the cut decoupling above; what remains
+      is fitting fields that don't exactly fill a bracket and bigger
+      brackets)
   - [ ] Support any entry size of at least 2: the bracket is the smallest power of two that fits the field, standard-seeded
   - [ ] Give the highest seeds first-round byes when the field is short instead of skipping the phase
   - [ ] Complete the tournament instead of playing a one-player phase

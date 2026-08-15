@@ -4,34 +4,54 @@ import { expect, test } from "vitest";
 
 import type { Doc, Id } from "./_generated/dataModel";
 import {
+  buildSingleEliminationPairings,
   buildSwissPairings,
-  buildTopEightSingleEliminationPairings,
   type PairingOptions,
   type Pairing,
   type RankedRegistration,
 } from "./model/pairing";
 import { planSingleEliminationPairings } from "./model/singleElimination";
 
-test("top-eight bracket uses tournament seeding order", () => {
-  const registrations = Array.from(
-    { length: 8 },
+function seededRegistrations(count: number) {
+  return Array.from(
+    { length: count },
     (_, index) =>
       ({
         _id: `seed-${index + 1}` as unknown as Id<"tournamentRegistrations">,
       }) as Doc<"tournamentRegistrations">,
   );
+}
 
-  expect(
-    buildTopEightSingleEliminationPairings(registrations).map((pairing) => [
-      pairing.playerOne._id,
-      pairing.playerTwo?._id,
-    ]),
-  ).toEqual([
+function bracketKeys(registrations: Doc<"tournamentRegistrations">[]) {
+  return buildSingleEliminationPairings(registrations).map((pairing) => [
+    pairing.playerOne._id,
+    pairing.playerTwo?._id,
+  ]);
+}
+
+test("an eight-player bracket uses the standard seeding order", () => {
+  expect(bracketKeys(seededRegistrations(8))).toEqual([
     ["seed-1", "seed-8"],
     ["seed-4", "seed-5"],
     ["seed-2", "seed-7"],
     ["seed-3", "seed-6"],
   ]);
+});
+
+test("smaller power-of-two brackets are standard-seeded too", () => {
+  expect(bracketKeys(seededRegistrations(4))).toEqual([
+    ["seed-1", "seed-4"],
+    ["seed-2", "seed-3"],
+  ]);
+  expect(bracketKeys(seededRegistrations(2))).toEqual([["seed-1", "seed-2"]]);
+});
+
+test("a bracket refuses a field that is not a power of two", () => {
+  for (const size of [0, 1, 3, 6]) {
+    expect(() =>
+      buildSingleEliminationPairings(seededRegistrations(size)),
+    ).toThrow("power-of-two field");
+  }
 });
 
 // Minimal registration factory for the walkover planner: only _id and

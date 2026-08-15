@@ -242,8 +242,8 @@ async function rankedStatsForRound(
   // alone decide order, so non-active players sink naturally as the field
   // keeps scoring. The stats map contains only confirmed entries; cancelled,
   // rejected, pending, and waitlisted registrations never reach standings.
-  // Cutoffs and top-8 seeding live-join participation status and skip players
-  // who are no longer active.
+  // Cutoffs and bracket seeding live-join participation status and skip
+  // players who are no longer active.
   if (phase.phaseType !== "single_elimination") {
     return [...stats.values()]
       .sort((left, right) => comparePlayerStats(left, right, stats))

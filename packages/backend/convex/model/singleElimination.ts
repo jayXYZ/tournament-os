@@ -1,30 +1,11 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "./batching";
-import { type CutoffPartition, cutoffPartition } from "./cutoffs";
 import type { Pairing } from "./pairing";
 import { eliminatePlayers } from "./participation";
-import { SINGLE_ELIMINATION_PLAYERS, previousTournamentRound } from "./phases";
+import { previousTournamentRound } from "./phases";
 import type { RoundMatchWithPlayers } from "./standings";
 import { roundMatchesWithPlayers } from "./tournaments";
-
-// The top-8 playoff entry is a fixed top-X cut over the phase-final round's
-// standings; the shared partition also names the dropped players who keep an
-// elimination record (see eliminateNonQualifiers in model/participation.ts).
-export async function topEightCutFromStandings(
-  ctx: QueryCtx,
-  tournamentId: Id<"tournaments">,
-  roundId: Id<"tournamentRounds">,
-): Promise<CutoffPartition> {
-  const cut = await cutoffPartition(ctx, tournamentId, roundId, {
-    kind: "top_X_players",
-    playerCount: SINGLE_ELIMINATION_PLAYERS,
-  });
-  if (cut.qualifiers.length !== SINGLE_ELIMINATION_PLAYERS) {
-    throw new Error("A top-8 playoff requires at least eight active players");
-  }
-  return cut;
-}
 
 // The game-winner of a bracket match: a bye's lone player, otherwise whoever
 // took more games. Participation status never factors in — a departed winner
@@ -162,8 +143,13 @@ export async function eliminateSingleEliminationLosers(
 
 // Named from the seat count the round is built from, so a bracket thinned by
 // chained walkovers keeps its structural name: a lone remaining seat still
-// plays (and can win) the Finals by walkover.
+// plays (and can win) the Finals by walkover. Covers the playable bracket
+// sizes (isPlayableBracketSize in model/phases.ts); "Round of 16" and larger
+// land with the bracket generalization work (TODO.md section 2).
 export function singleEliminationRoundName(seatCount: number) {
+  if (seatCount === 8) {
+    return "Quarterfinals";
+  }
   if (seatCount === 4) {
     return "Semifinals";
   }

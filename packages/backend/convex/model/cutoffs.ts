@@ -365,6 +365,35 @@ export async function cutoffQualifiersForNextPhase(
     .qualifiers;
 }
 
+// The entering field when a phase boundary has no cut: every confirmed active
+// player advances (CONTEXT.md "Cut"), ordered by the finished phase's final
+// standings. A bracket seeds straight from this order, which is why it isn't
+// just activeRegistrations: that index range comes back in creation order. An
+// active player the standings never ranked still advances — no cut means no
+// one is left behind — seeded below every ranked player.
+export async function activeRegistrationsInRankOrder(
+  ctx: QueryCtx,
+  tournamentId: Id<"tournaments">,
+  roundId: Id<"tournamentRounds">,
+): Promise<Doc<"tournamentRegistrations">[]> {
+  const standings = await standingsInRankOrder(ctx, roundId);
+  const activeById = new Map(
+    (await activeRegistrations(ctx, tournamentId)).map((registration) => [
+      registration._id,
+      registration,
+    ]),
+  );
+  const ranked: Doc<"tournamentRegistrations">[] = [];
+  for (const standing of standings) {
+    const registration = activeById.get(standing.playerId);
+    if (registration) {
+      ranked.push(registration);
+      activeById.delete(standing.playerId);
+    }
+  }
+  return [...ranked, ...activeById.values()];
+}
+
 async function meetingSeatRows(ctx: QueryCtx, phaseId: Id<"tournamentPhases">) {
   return await ctx.db
     .query("playerMeetingSeats")

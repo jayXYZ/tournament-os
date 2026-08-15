@@ -40,18 +40,32 @@ export type Pairing = {
   isBye: boolean;
 };
 
-const TOP_EIGHT_BRACKET_ORDER = [0, 7, 3, 4, 1, 6, 2, 5] as const;
+// The standard bracket order for a power-of-two field (1v8, 4v5, 2v7, 3v6
+// for eight, generalized): grown by repeatedly expanding each seed s in a
+// round of n seats to the pair (s, n+1-s), so seed 1 meets the lowest seed
+// and the top seeds stay in opposite halves through the final.
+function standardBracketOrder(size: number): number[] {
+  let seeds = [1];
+  while (seeds.length < size) {
+    const roundSize = seeds.length * 2;
+    seeds = seeds.flatMap((seed) => [seed, roundSize + 1 - seed]);
+  }
+  return seeds.map((seed) => seed - 1);
+}
 
-// Seeds occupy a fixed bracket: 1v8, 4v5, 2v7, 3v6. Keeping matches in this
-// table order makes later rounds a simple adjacent-winner pairing without a
-// reseed, preserving the two halves of the bracket through the final.
-export function buildTopEightSingleEliminationPairings(
+// Seeds occupy a fixed standard bracket. Keeping matches in this table order
+// makes later rounds a simple adjacent-winner pairing without a reseed,
+// preserving the halves of the bracket through the final.
+export function buildSingleEliminationPairings(
   registrationsBySeed: Doc<"tournamentRegistrations">[],
 ): Pairing[] {
-  if (registrationsBySeed.length !== 8) {
-    throw new Error("Single elimination requires exactly eight seeded players");
+  const size = registrationsBySeed.length;
+  if (size < 2 || !Number.isInteger(Math.log2(size))) {
+    throw new Error(
+      "Single elimination requires a power-of-two field of seeded players",
+    );
   }
-  const bracket = TOP_EIGHT_BRACKET_ORDER.map(
+  const bracket = standardBracketOrder(size).map(
     (seedIndex) => registrationsBySeed[seedIndex],
   );
   return pairAdjacentRegistrations(bracket);

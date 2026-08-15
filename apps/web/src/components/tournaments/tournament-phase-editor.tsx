@@ -9,6 +9,8 @@ import {
   canRemoveTournamentCreationPhase,
   moveTournamentCreationPhase,
   removeTournamentCreationPhase,
+  setTournamentCreationPhaseType,
+  tournamentCreationPhaseCutoffFeedsPlayoff,
 } from '@tournament-os/shared/tournament-creation-utils'
 import { RoundConfigurationFields } from './tournament-fields'
 import type { TournamentCreationPhaseForm } from '@tournament-os/shared/tournament-creation-utils'
@@ -52,7 +54,8 @@ export function TournamentPhaseEditor({
     <FieldSet>
       <FieldLegend>Tournament phases</FieldLegend>
       <FieldDescription>
-        Add and order Swiss phases, with an optional top-8 playoff at the end.
+        Add and order Swiss phases, with an optional single-elimination playoff
+        at the end.
       </FieldDescription>
       <FieldGroup>
         {phases.map((phase, index) => (
@@ -97,6 +100,10 @@ function TournamentPhaseField({
     phases,
     index,
   )
+  const cutoffFeedsPlayoff = tournamentCreationPhaseCutoffFeedsPlayoff(
+    phases,
+    index,
+  )
 
   return (
     <Field className="rounded-md border border-border p-3">
@@ -107,21 +114,10 @@ function TournamentPhaseField({
             value={phase.phaseType}
             onValueChange={(phaseType) =>
               onPhasesChange(
-                phases.map((current) =>
-                  current.id === phase.id
-                    ? {
-                        ...current,
-                        phaseType:
-                          phaseType as TournamentCreationPhaseForm['phaseType'],
-                        ...(phaseType === 'single_elimination'
-                          ? {
-                              phaseRoundMode: 'fixed' as const,
-                              phaseTotalRounds: '3',
-                              playerMeeting: false,
-                            }
-                          : {}),
-                      }
-                    : current,
+                setTournamentCreationPhaseType(
+                  phases,
+                  phase.id,
+                  phaseType as TournamentCreationPhaseForm['phaseType'],
                 ),
               )
             }
@@ -137,7 +133,7 @@ function TournamentPhaseField({
                   value="single_elimination"
                   disabled={index === 0 || index !== phases.length - 1}
                 >
-                  Top 8 playoff
+                  Single elimination
                 </SelectItem>
               </SelectGroup>
             </SelectContent>
@@ -279,6 +275,25 @@ function TournamentPhaseField({
               Players who miss the cut are eliminated when the next phase
               starts.
             </FieldDescription>
+            {cutoffFeedsPlayoff ? (
+              phase.phaseCutoffKind === 'X_points_or_more' ? (
+                <FieldDescription className="text-destructive">
+                  A points bar makes the playoff bracket size unpredictable —
+                  the playoff can only start when exactly 2, 4, or 8 players
+                  clear it.
+                </FieldDescription>
+              ) : phase.phaseCutoffKind === 'none' ? (
+                <FieldDescription className="text-destructive">
+                  With no cut the whole remaining field enters the playoff — it
+                  can only start with exactly 2, 4, or 8 active players.
+                </FieldDescription>
+              ) : (
+                <FieldDescription>
+                  The playoff bracket is seeded from this cut; keep 2, 4, or 8
+                  players.
+                </FieldDescription>
+              )
+            ) : null}
           </Field>
           <Field
             data-disabled={
@@ -335,7 +350,7 @@ function TournamentPhaseField({
           </FieldLabel>
           <FieldDescription>
             {isSingleElimination
-              ? 'The playoff begins directly from the final Swiss standings.'
+              ? "The playoff is seeded from the previous phase's cut of its final standings."
               : "Seat players alphabetically before this phase's first round for attendance and announcements."}
           </FieldDescription>
         </FieldContent>

@@ -117,8 +117,8 @@ export function CreateTournamentDialog() {
           <DialogHeader>
             <DialogTitle>Create tournament</DialogTitle>
             <DialogDescription>
-              Add the tournament details, Swiss rounds, and an optional top-8
-              playoff.
+              Add the tournament details, Swiss rounds, and an optional
+              single-elimination playoff.
             </DialogDescription>
           </DialogHeader>
 

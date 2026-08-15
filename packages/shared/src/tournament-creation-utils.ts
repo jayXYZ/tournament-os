@@ -43,7 +43,9 @@ export type TournamentCreationPhasePayload = {
   phaseRoundMode: TournamentCreationPhaseRoundMode;
   phaseTotalRounds?: number;
   bestOf?: BestOf;
-  phaseCutoff?: TournamentCreationPhaseCutoffPayload;
+  // Null is an explicit "no cut". Into a playoff the backend defaults an
+  // omitted cut to top-8, so the two are not interchangeable there.
+  phaseCutoff?: TournamentCreationPhaseCutoffPayload | null;
   playerMeeting?: boolean;
 };
 
@@ -64,16 +66,82 @@ export function createDefaultTournamentCreationPhase(
   };
 }
 
-// A cutoff cuts the field when its phase completes, so it is configurable
-// only on a Swiss phase followed by another Swiss phase — the top-8 playoff
-// applies its own fixed cut.
+// A cutoff cuts the field when its phase completes, so it is configurable on
+// any phase with a following phase to cut into, whatever that phase's type.
 export function canConfigureTournamentCreationPhaseCutoff(
   phases: TournamentCreationPhaseForm[],
   index: number,
 ) {
   return (
+    phases[index]?.phaseType === "swiss" && phases[index + 1] !== undefined
+  );
+}
+
+// Whether this phase's cut is what seeds a single-elimination playoff. Such
+// a phase defaults to a top-8 cut, and both a points bar and "no cut" here
+// deserve a warning: the bracket size becomes unpredictable.
+export function tournamentCreationPhaseCutoffFeedsPlayoff(
+  phases: TournamentCreationPhaseForm[],
+  index: number,
+) {
+  return (
     phases[index]?.phaseType === "swiss" &&
-    phases[index + 1]?.phaseType === "swiss"
+    phases[index + 1]?.phaseType === "single_elimination"
+  );
+}
+
+// Into a playoff the default cut is top-8 (CONTEXT.md "Cut"), so a
+// structural edit that puts a phase in front of a playoff pre-fills that
+// default where the organizer can see it — and change it, including to an
+// explicit "No cut". Only a phase that newly feeds the playoff is touched:
+// a "none" the organizer chose on a phase already feeding it survives later
+// structural edits.
+function withPlayoffCutDefaults(
+  previousPhases: TournamentCreationPhaseForm[],
+  phases: TournamentCreationPhaseForm[],
+) {
+  const previouslyFeedingIds = new Set(
+    previousPhases
+      .filter((_, index) =>
+        tournamentCreationPhaseCutoffFeedsPlayoff(previousPhases, index),
+      )
+      .map((phase) => phase.id),
+  );
+  return phases.map((phase, index) =>
+    phase.phaseCutoffKind === "none" &&
+    !previouslyFeedingIds.has(phase.id) &&
+    tournamentCreationPhaseCutoffFeedsPlayoff(phases, index)
+      ? {
+          ...phase,
+          phaseCutoffKind: "top_X_players" as const,
+          phaseCutoffValue: "8",
+        }
+      : phase,
+  );
+}
+
+export function setTournamentCreationPhaseType(
+  phases: TournamentCreationPhaseForm[],
+  id: string,
+  phaseType: TournamentCreationPhaseType,
+) {
+  return withPlayoffCutDefaults(
+    phases,
+    phases.map((phase) =>
+      phase.id === id
+        ? {
+            ...phase,
+            phaseType,
+            ...(phaseType === "single_elimination"
+              ? {
+                  phaseRoundMode: "fixed" as const,
+                  phaseTotalRounds: "3",
+                  playerMeeting: false,
+                }
+              : {}),
+          }
+        : phase,
+    ),
   );
 }
 
@@ -88,11 +156,11 @@ export function addTournamentCreationPhase(
   if (playoffIndex === -1) {
     return [...phases, nextPhase];
   }
-  return [
+  return withPlayoffCutDefaults(phases, [
     ...phases.slice(0, playoffIndex),
     nextPhase,
     ...phases.slice(playoffIndex),
-  ];
+  ]);
 }
 
 function hasValidTournamentPhaseOrder(phases: TournamentCreationPhaseForm[]) {
@@ -142,7 +210,7 @@ export function moveTournamentCreationPhase(
     reordered[nextIndex],
     reordered[currentIndex],
   ];
-  return reordered;
+  return withPlayoffCutDefaults(phases, reordered);
 }
 
 export function canRemoveTournamentCreationPhase(
@@ -163,7 +231,10 @@ export function removeTournamentCreationPhase(
   if (!canRemoveTournamentCreationPhase(phases, id)) {
     return phases;
   }
-  return phases.filter((phase) => phase.id !== id);
+  return withPlayoffCutDefaults(
+    phases,
+    phases.filter((phase) => phase.id !== id),
+  );
 }
 
 export function toTournamentCreationPhasePayload(
@@ -179,15 +250,18 @@ export function toTournamentCreationPhasePayload(
     // a missing value to best-of-3.
     const parsedBestOf = Number(phase.bestOf);
     const bestOf = isBestOf(parsedBestOf) ? { bestOf: parsedBestOf } : {};
-    // Dropped rather than sent for phases that cannot carry one (last phase,
-    // or feeding the playoff), so a cutoff configured before a reorder or
-    // phase-type change does not fail backend validation.
-    const phaseCutoff =
-      phase.phaseCutoffKind !== "none" &&
-      canConfigureTournamentCreationPhaseCutoff(phases, index)
-        ? {
-            phaseCutoff:
-              phase.phaseCutoffKind === "top_X_players"
+    // The form's cut is stated explicitly wherever one can apply — null for
+    // "none", since into a playoff the backend defaults an omitted cut to
+    // top-8 and a form showing "No cut" must say so. Dropped entirely where
+    // no cut can apply (the last phase has nothing to cut into), so a cutoff
+    // configured before a reorder or phase-type change does not fail backend
+    // validation.
+    const phaseCutoff = canConfigureTournamentCreationPhaseCutoff(phases, index)
+      ? {
+          phaseCutoff:
+            phase.phaseCutoffKind === "none"
+              ? null
+              : phase.phaseCutoffKind === "top_X_players"
                 ? {
                     kind: "top_X_players" as const,
                     playerCount: Number(phase.phaseCutoffValue),
@@ -196,8 +270,8 @@ export function toTournamentCreationPhasePayload(
                     kind: "X_points_or_more" as const,
                     matchPoints: Number(phase.phaseCutoffValue),
                   },
-          }
-        : {};
+        }
+      : {};
     if (phase.phaseType === "single_elimination") {
       return {
         phaseOrder,
