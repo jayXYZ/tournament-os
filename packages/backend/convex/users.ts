@@ -18,6 +18,7 @@ import {
   resolvePublicPlayer,
   takeConfirmedRegistrationsAfter,
 } from "./model/playerResults";
+import { participantForUser } from "./model/participants";
 import {
   playerVisibleParticipationStatus,
   registrationForUser,
@@ -147,6 +148,18 @@ export const getPublicPlayerResults = query({
         ? null
         : await decodeProfileResultsCursor(args.paginationOpts.cursor);
 
+    // Registrations belong to the player's participant identity (ADR 0002);
+    // a user without one has never held a registration. Checked after cursor
+    // decoding so a malformed cursor still gets the InvalidCursor handshake.
+    const participant = await participantForUser(ctx, user._id);
+    if (!participant) {
+      return {
+        page: [],
+        isDone: true,
+        continueCursor: "",
+      };
+    }
+
     const membershipCache = new Map<Id<"organizations">, Promise<boolean>>();
     const results = [];
     let rowsExamined = 0;
@@ -167,7 +180,7 @@ export const getPublicPlayerResults = query({
       );
       const batch = await takeConfirmedRegistrationsAfter(
         ctx,
-        user._id,
+        participant._id,
         position,
         limit,
       );

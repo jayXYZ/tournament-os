@@ -388,11 +388,30 @@ Guest enrollment, invitations, favorites, email, and payments need a player
 identity that can exist without an authenticated account and can later be
 claimed by one.
 
-- [ ] Separate tournament player identity from authenticated users
-  - [ ] Add a player/participant entity with an optional linked user
-  - [ ] Store normalized contact email and organizer-provided display name
-  - [ ] Point registrations at the participant identity
-  - [ ] Define how a guest participant is claimed or merged after account creation
+- [x] Separate tournament player identity from authenticated users (reset the
+      dev DB: registrations now point at a new `participants` table; see
+      CONTEXT.md "Participant"/"Guest"/"Claim" and ADR 0002)
+  - [x] Add a player/participant entity with an optional linked user: the
+        `participants` table carries at most one linked user, exactly one
+        participant exists per account (created lazily by
+        `ensureParticipantForUser`), and a Guest is a participant without one
+  - [x] Store normalized contact email and organizer-provided display name:
+        guest-only fields written by `createGuestParticipant` (the email
+        normalized with the same rule as invitations);
+        `participantPublicIdentity` resolves names through the user for
+        linked participants and never exposes an email
+  - [x] Point registrations at the participant identity: `participantId`
+        replaces `userId` on registrations (indexes renamed to match), every
+        user-keyed read hops through `participantForUser`, and seeded test
+        players are now Guests — the synthetic test users are gone
+  - [x] Define how a guest participant is claimed or merged after account
+        creation (ADR 0002): claiming is automatic at sign-in by
+        verified-email match, mirroring invitation acceptance —
+        registrations repoint and the guest row is deleted — and merges are
+        whole-guest-or-nothing: a guest sharing a tournament with the
+        claiming participant stays unclaimed, preserving the
+        one-registration-per-participant-per-tournament invariant; covered
+        by `participants.convex.spec.ts`
 - [ ] Centralize registration and participation state transitions
   - [x] Keep entry status separate from competitive participation status
   - [x] Reserve pending, waitlisted, confirmed, cancelled, and rejected entry states

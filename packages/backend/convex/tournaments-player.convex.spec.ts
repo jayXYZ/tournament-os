@@ -13,6 +13,7 @@ import {
 import { compareStandingRows } from "./model/standings";
 import schema from "./schema";
 import {
+  insertLinkedParticipant,
   organizerIdentity,
   playOutCurrentRound,
   seedOrganizer,
@@ -1316,10 +1317,11 @@ async function seedTournament(
         name: identity.name,
         updatedAt: now,
       });
+      const participant0Id = await insertLinkedParticipant(ctx, userId);
       ids.push(
         await ctx.db.insert("tournamentRegistrations", {
           tournamentId,
-          userId,
+          participantId: participant0Id,
           tournamentStartDate: tournament.startDate,
           entryStatus: "confirmed",
           participationStatus: "active",

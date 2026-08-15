@@ -77,7 +77,7 @@ test("rewind result detection counts entered results, not automatic ones", () =>
 
 test("tournament schema includes operational indexes and test config tables", () => {
   expect(schemaSource).toMatch(
-    /\.index\("by_tournamentId_and_userId", \["tournamentId", "userId"\]\)/,
+    /\.index\("by_tournamentId_and_participantId", \[\s*"tournamentId",\s*"participantId",?\s*\]\)/,
   );
   expect(schemaSource).toMatch(
     /\.index\("by_tournamentId_and_entryStatus_and_participationStatus", \[\s*"tournamentId",\s*"entryStatus",\s*"participationStatus",?\s*\]\)/,
@@ -87,10 +87,10 @@ test("tournament schema includes operational indexes and test config tables", ()
   // long history cannot bury the event they are currently in (see
   // listMyTournaments).
   expect(schemaSource).toMatch(
-    /\.index\("by_userId_and_entryStatus_and_tournamentStartDate", \[\s*"userId",\s*"entryStatus",\s*"tournamentStartDate",?\s*\]\)/,
+    /\.index\("by_participantId_and_entryStatus_and_tournamentStartDate", \[\s*"participantId",\s*"entryStatus",\s*"tournamentStartDate",?\s*\]\)/,
   );
   expect(schemaSource).not.toMatch(
-    /\.index\("by_userId_and_entryStatus_and_participationStatus"/,
+    /\.index\("by_participantId_and_entryStatus_and_participationStatus"/,
   );
   expect(schemaSource).toMatch(/roundNumber: v\.number\(\)/);
   expect(schemaSource).toMatch(
@@ -207,8 +207,9 @@ test("tournament functions expose setup registration operation and test APIs", (
   const tournamentsModel = readFileSync(modelModules.tournaments, "utf8");
   expect(tournamentsModel).toMatch(/tournament\.isTestEvent !== true/);
 
+  // Test players are Guest participants: the seeding model creates no user
+  // rows (the old synthetic tokenIdentifier scheme is gone for good).
   const testingModel = readFileSync(modelModules.testing, "utf8");
-  expect(testingModel).toMatch(
-    /test:\$\{tournamentId\}:player:\$\{playerNumber\}/,
-  );
+  expect(testingModel).toMatch(/createGuestParticipant/);
+  expect(testingModel).not.toMatch(/tokenIdentifier/);
 });

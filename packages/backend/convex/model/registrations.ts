@@ -1,5 +1,6 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
+import { participantForUser, participantPublicIdentity } from "./participants";
 
 // Hard ceiling on players (and therefore matches) per tournament. Bounds every
 // per-tournament `.take(...)` so list and standings queries stay well under
@@ -67,9 +68,10 @@ export function playerDisplayName(
   return user?.name ?? user?.email ?? undefined;
 }
 
-// Name for a player, preferring the denormalized copy and only reading through
-// to the user document when a (legacy) registration lacks one. Used by readers
-// as the fallback path so a missing denormalized name never blocks correctness.
+// Name for a player, preferring the denormalized copy and only reading
+// through to the participant identity when a registration lacks one. Used by
+// readers as the fallback path so a missing denormalized name never blocks
+// correctness.
 export async function registrationDisplayName(
   ctx: QueryCtx,
   registrationId: Id<"tournamentRegistrations">,
@@ -81,7 +83,11 @@ export async function registrationDisplayName(
   if (registration.playerName !== undefined) {
     return registration.playerName;
   }
-  return playerDisplayName(await ctx.db.get(registration.userId));
+  const participant = await ctx.db.get(registration.participantId);
+  if (!participant) {
+    return undefined;
+  }
+  return (await participantPublicIdentity(ctx, participant)).name ?? undefined;
 }
 
 export async function resolveRegistrationDisplayName(
@@ -121,17 +127,33 @@ export async function requireRegistration(
   return registration;
 }
 
+export async function registrationForParticipant(
+  ctx: QueryCtx,
+  tournamentId: Id<"tournaments">,
+  participantId: Id<"participants">,
+) {
+  return await ctx.db
+    .query("tournamentRegistrations")
+    .withIndex("by_tournamentId_and_participantId", (q) =>
+      q.eq("tournamentId", tournamentId).eq("participantId", participantId),
+    )
+    .unique();
+}
+
+// The account holder's registration for a tournament, resolved through their
+// participant identity (registrations belong to participants, not users —
+// see ADR 0002). Null when the user has no participant yet: every
+// registration points at one, so none can exist.
 export async function registrationForUser(
   ctx: QueryCtx,
   tournamentId: Id<"tournaments">,
   userId: Id<"users">,
 ) {
-  return await ctx.db
-    .query("tournamentRegistrations")
-    .withIndex("by_tournamentId_and_userId", (q) =>
-      q.eq("tournamentId", tournamentId).eq("userId", userId),
-    )
-    .unique();
+  const participant = await participantForUser(ctx, userId);
+  if (!participant) {
+    return null;
+  }
+  return await registrationForParticipant(ctx, tournamentId, participant._id);
 }
 
 // Public/player-facing surfaces treat a disqualification as a drop; only

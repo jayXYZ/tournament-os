@@ -4,6 +4,7 @@ import type { Doc, Id } from "../_generated/dataModel";
 import { env, type QueryCtx } from "../_generated/server";
 import { currentUserOrNull, getActiveMembership } from "./access";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "./batching";
+import { participantPublicIdentity } from "./participants";
 import { MAX_MATCHES_PER_PLAYER, latestCompletedRound } from "./phases";
 import { parsePublicCode } from "./publicCodes";
 import { registrationForUser } from "./registrations";
@@ -225,27 +226,31 @@ export async function decodeProfileResultsCursor(
 // index has no rows past the ones returned.
 export async function takeConfirmedRegistrationsAfter(
   ctx: QueryCtx,
-  userId: Id<"users">,
+  participantId: Id<"participants">,
   position: ProfileResultsCursorPosition | null,
   limit: number,
 ) {
   if (position === null) {
     return await ctx.db
       .query("tournamentRegistrations")
-      .withIndex("by_userId_and_entryStatus_and_tournamentStartDate", (q) =>
-        q.eq("userId", userId).eq("entryStatus", "confirmed"),
+      .withIndex(
+        "by_participantId_and_entryStatus_and_tournamentStartDate",
+        (q) =>
+          q.eq("participantId", participantId).eq("entryStatus", "confirmed"),
       )
       .order("desc")
       .take(limit);
   }
   const sameStartDate = await ctx.db
     .query("tournamentRegistrations")
-    .withIndex("by_userId_and_entryStatus_and_tournamentStartDate", (q) =>
-      q
-        .eq("userId", userId)
-        .eq("entryStatus", "confirmed")
-        .eq("tournamentStartDate", position.startDate)
-        .lt("_creationTime", position.creationTime),
+    .withIndex(
+      "by_participantId_and_entryStatus_and_tournamentStartDate",
+      (q) =>
+        q
+          .eq("participantId", participantId)
+          .eq("entryStatus", "confirmed")
+          .eq("tournamentStartDate", position.startDate)
+          .lt("_creationTime", position.creationTime),
     )
     .order("desc")
     .take(limit);
@@ -254,11 +259,13 @@ export async function takeConfirmedRegistrationsAfter(
   }
   const olderStartDates = await ctx.db
     .query("tournamentRegistrations")
-    .withIndex("by_userId_and_entryStatus_and_tournamentStartDate", (q) =>
-      q
-        .eq("userId", userId)
-        .eq("entryStatus", "confirmed")
-        .lt("tournamentStartDate", position.startDate),
+    .withIndex(
+      "by_participantId_and_entryStatus_and_tournamentStartDate",
+      (q) =>
+        q
+          .eq("participantId", participantId)
+          .eq("entryStatus", "confirmed")
+          .lt("tournamentStartDate", position.startDate),
     )
     .order("desc")
     .take(limit - sameStartDate.length);
@@ -437,17 +444,20 @@ export async function matchLogForRegistration(
         return null;
       }
 
-      // Opponent names read through to the user document (not the denormalized
-      // playerName) so an account without a name never leaks its email here.
+      // Opponent names read through the participant identity (not the
+      // denormalized playerName) so an account without a name never leaks its
+      // email here; a guest shows their organizer-provided display name.
       let opponentName: string | null = null;
       if (playerRow.opponentPlayerId) {
         const opponentRegistration = await ctx.db.get(
           playerRow.opponentPlayerId,
         );
-        const opponentUser = opponentRegistration
-          ? await ctx.db.get(opponentRegistration.userId)
+        const opponentParticipant = opponentRegistration
+          ? await ctx.db.get(opponentRegistration.participantId)
           : null;
-        opponentName = opponentUser?.name ?? null;
+        opponentName = opponentParticipant
+          ? (await participantPublicIdentity(ctx, opponentParticipant)).name
+          : null;
       }
 
       return {

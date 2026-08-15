@@ -12,7 +12,11 @@ import { expect, test } from "vitest";
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import schema from "./schema";
-import { organizerIdentity, seedOrganizer } from "./specHelpers";
+import {
+  insertLinkedParticipant,
+  organizerIdentity,
+  seedOrganizer,
+} from "./specHelpers";
 import { createConvexTest } from "./specHelpers.runtime";
 
 test("a mid-round self-drop concedes the unfinished match to the opponent", async () => {
@@ -348,10 +352,11 @@ async function seedStartedTournament(
         name: identity.name,
         updatedAt: now,
       });
+      const participant0Id = await insertLinkedParticipant(ctx, userId);
       ids.push(
         await ctx.db.insert("tournamentRegistrations", {
           tournamentId,
-          userId,
+          participantId: participant0Id,
           tournamentStartDate: tournament.startDate,
           entryStatus: "confirmed",
           participationStatus: "active",

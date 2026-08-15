@@ -151,9 +151,29 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("by_key", ["key"]),
 
+  // The durable competitor identity registrations belong to (CONTEXT.md
+  // "Participant"): at most one linked user account per participant, exactly
+  // one participant per account (created lazily at first need), and a
+  // participant without one is a Guest. Conduct history and favorites anchor
+  // here as they land, so identity survives individual registrations.
+  participants: defineTable({
+    // The linked account; absent for Guests. See ADR 0002 for how a Guest is
+    // claimed into an account holder's participant at sign-in.
+    userId: v.optional(v.id("users")),
+    // Guest fields: the organizer-provided display name shown wherever the
+    // guest plays, and the normalized contact email that keys claiming (and
+    // later invitations). A user-linked participant reads name and avatar
+    // through its user instead and leaves both unset.
+    displayName: v.optional(v.string()),
+    contactEmail: v.optional(v.string()),
+    updatedAt: v.number(),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_contactEmail", ["contactEmail"]),
+
   tournamentRegistrations: defineTable({
     tournamentId: v.id("tournaments"),
-    userId: v.id("users"),
+    participantId: v.id("participants"),
     // Denormalized from the tournament so a player's history can be indexed
     // and paginated newest-first without joining every registration first.
     tournamentStartDate: v.number(),
@@ -195,14 +215,17 @@ export default defineSchema({
       "tournamentId",
       "tournamentStartDate",
     ])
-    .index("by_tournamentId_and_userId", ["tournamentId", "userId"])
+    .index("by_tournamentId_and_participantId", [
+      "tournamentId",
+      "participantId",
+    ])
     .index("by_tournamentId_and_entryStatus_and_participationStatus", [
       "tournamentId",
       "entryStatus",
       "participationStatus",
     ])
-    .index("by_userId_and_entryStatus_and_tournamentStartDate", [
-      "userId",
+    .index("by_participantId_and_entryStatus_and_tournamentStartDate", [
+      "participantId",
       "entryStatus",
       "tournamentStartDate",
     ])
@@ -484,13 +507,17 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("by_tournamentId", ["tournamentId"]),
 
+  // Seeded dummy players are Guest participants (no user account), so test
+  // events exercise the same identity paths a real guest enrollment will.
   testTournamentPlayers: defineTable({
     tournamentId: v.id("tournaments"),
-    userId: v.id("users"),
+    participantId: v.id("participants"),
     playerNumber: v.number(),
     updatedAt: v.number(),
   })
     .index("by_tournamentId", ["tournamentId"])
-    .index("by_tournamentId_and_playerNumber", ["tournamentId", "playerNumber"])
-    .index("by_userId", ["userId"]),
+    .index("by_tournamentId_and_playerNumber", [
+      "tournamentId",
+      "playerNumber",
+    ]),
 });

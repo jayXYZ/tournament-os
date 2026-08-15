@@ -1,6 +1,7 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { requireIdentity } from "../auth";
+import { claimGuestParticipants } from "./participants";
 import { nextPublicCode } from "./publicCodes";
 import { normalizeEmail } from "../validators";
 
@@ -63,6 +64,14 @@ export async function upsertUser(
       });
 
   await acceptPendingInvitations(ctx, {
+    userId,
+    email: fields.email,
+    now,
+  });
+  // Same sign-in trigger as invitations: guest participants whose contact
+  // email matches this verified email merge into the account holder's
+  // participant (CONTEXT.md "Claim", ADR 0002).
+  await claimGuestParticipants(ctx, {
     userId,
     email: fields.email,
     now,

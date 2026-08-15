@@ -25,7 +25,11 @@ import {
   recomputeStatsThroughRound,
 } from "./model/standings";
 import { simulatedMatchResult } from "./model/testing";
-import { organizerIdentity, seedOrganizer } from "./specHelpers";
+import {
+  insertLinkedParticipant,
+  organizerIdentity,
+  seedOrganizer,
+} from "./specHelpers";
 import { createConvexTest } from "./specHelpers.runtime";
 
 type Test = ReturnType<typeof createConvexTest>;
@@ -358,9 +362,10 @@ async function seedGenerativeField(
         name: `Player ${playerNumber}`,
         updatedAt: now,
       });
+      const participant0Id = await insertLinkedParticipant(ctx, userId);
       await ctx.db.insert("tournamentRegistrations", {
         tournamentId,
-        userId,
+        participantId: participant0Id,
         tournamentStartDate: tournament.startDate,
         entryStatus: "confirmed",
         participationStatus: "active",

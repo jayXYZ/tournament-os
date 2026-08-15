@@ -8,12 +8,17 @@ import { auditPlayerRef, logAuditEvent } from "../model/auditLog";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
 import { concedeUnfinishedMatchOnDrop } from "../model/matchResults";
 import { clampPageSize } from "../model/pagination";
+import {
+  ensureParticipantForUser,
+  participantForUser,
+} from "../model/participants";
 import { setRegistrationState } from "../model/participation";
 import { tiebreakRandom } from "../model/random";
 import {
   adjustConfirmedRegistrationCount,
   playerDisplayName,
   playerVisibleRegistration,
+  registrationDisplayName,
   registrationDropEffect,
   registrationForUser,
   requireCapacityAvailable,
@@ -34,8 +39,8 @@ async function registrationRows(
   registrations: Array<Doc<"tournamentRegistrations">>,
 ) {
   // Names come from the denormalized copy on the registration; only rows
-  // missing it (legacy data) fall back to a live user lookup, so the common
-  // path does zero per-row joins.
+  // missing it fall back to a live identity lookup, so the common path does
+  // zero per-row joins.
   return await mapAsyncInBatches(
     registrations,
     DATABASE_IO_BATCH_SIZE,
@@ -43,7 +48,7 @@ async function registrationRows(
       registration,
       playerName:
         registration.playerName ??
-        playerDisplayName(await ctx.db.get(registration.userId)),
+        (await registrationDisplayName(ctx, registration._id)),
       // What dropRegistration would do to this row right now (null when it
       // is unavailable), so the client renders the drop action from server
       // truth instead of mirroring the lifecycle rules.
@@ -123,11 +128,12 @@ export const registerSelf = mutation({
     requireCapacityAvailable(tournament);
     const now = Date.now();
     const playerName = playerDisplayName(user);
+    const participant = await ensureParticipantForUser(ctx, user._id);
     const registrationId =
       existing?._id ??
       (await ctx.db.insert("tournamentRegistrations", {
         tournamentId: args.tournamentId,
-        userId: user._id,
+        participantId: participant._id,
         tournamentStartDate: tournament.startDate,
         entryStatus: "confirmed",
         participationStatus: "active",
@@ -247,10 +253,16 @@ export const listMyTournaments = query({
     // long history would spend the whole take on finished events and never
     // reach the running one they were cut from. Live and upcoming events have
     // the newest start dates, so they lead here.
+    const participant = await participantForUser(ctx, user._id);
+    if (!participant) {
+      return [];
+    }
     const registrations = await ctx.db
       .query("tournamentRegistrations")
-      .withIndex("by_userId_and_entryStatus_and_tournamentStartDate", (q) =>
-        q.eq("userId", user._id).eq("entryStatus", "confirmed"),
+      .withIndex(
+        "by_participantId_and_entryStatus_and_tournamentStartDate",
+        (q) =>
+          q.eq("participantId", participant._id).eq("entryStatus", "confirmed"),
       )
       .order("desc")
       .take(100);

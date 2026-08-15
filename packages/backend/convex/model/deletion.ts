@@ -136,7 +136,9 @@ export async function deleteTournamentOperationalDataBatch(
       return false;
     }
     await ctx.db.delete(testPlayer._id);
-    await ctx.db.delete(testPlayer.userId);
+    // A dummy player's Guest participant belongs to this tournament alone,
+    // so it dies with the test data.
+    await ctx.db.delete(testPlayer.participantId);
     budget -= 2;
   }
 

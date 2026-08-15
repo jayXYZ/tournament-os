@@ -6,13 +6,10 @@ import {
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { applyMatchResult } from "./matchResults";
+import { createGuestParticipant } from "./participants";
 import { requirePhase } from "./phases";
 import { createSeededRandom, tiebreakRandom } from "./random";
-import {
-  adjustConfirmedRegistrationCount,
-  registrationForUser,
-} from "./registrations";
-import { nextUserPublicCode } from "./users";
+import { adjustConfirmedRegistrationCount } from "./registrations";
 import {
   matchPlayers,
   requireTestTournament,
@@ -128,55 +125,37 @@ export async function seedTestPlayers(
       continue;
     }
 
-    const tokenIdentifier = `test:${tournamentId}:player:${playerNumber}`;
-    const existingUser = await ctx.db
-      .query("users")
-      .withIndex("by_tokenIdentifier", (q) =>
-        q.eq("tokenIdentifier", tokenIdentifier),
-      )
-      .unique();
-    const userId =
-      existingUser?._id ??
-      (await ctx.db.insert("users", {
-        tokenIdentifier,
-        publicCode: await nextUserPublicCode(ctx, now),
-        email: `player${playerNumber}@test.tournament.local`,
-        name: `Test Player ${playerNumber}`,
-        updatedAt: now,
-      }));
-
+    // Dummy players are Guest participants — no user account and no contact
+    // email, so they are never claimable — which puts every seeded test
+    // event on the same identity paths a real guest enrollment uses.
+    const playerName = `Test Player ${playerNumber}`;
+    const participantId = await createGuestParticipant(ctx, {
+      displayName: playerName,
+    });
     await ctx.db.insert("testTournamentPlayers", {
       tournamentId,
-      userId,
+      participantId,
       playerNumber,
       updatedAt: now,
     });
-
-    const existingRegistration = await registrationForUser(
-      ctx,
+    await ctx.db.insert("tournamentRegistrations", {
       tournamentId,
-      userId,
-    );
-    if (!existingRegistration) {
-      await ctx.db.insert("tournamentRegistrations", {
-        tournamentId,
-        userId,
-        tournamentStartDate: tournament.startDate,
-        entryStatus: "confirmed",
-        participationStatus: "active",
-        playerName: existingUser?.name ?? `Test Player ${playerNumber}`,
-        createdAt: now + playerNumber,
-        // Keyed on the player number — a test player's stable identity — so
-        // the same seed reproduces identical pairings across test-tournament
-        // resets and re-creations (real registrations key on the user's
-        // stable publicCode instead).
-        tiebreakRandom: tiebreakRandom(
-          tournament.seed ?? tournament.publicCode,
-          String(playerNumber),
-        ),
-        updatedAt: now,
-      });
-    }
+      participantId,
+      tournamentStartDate: tournament.startDate,
+      entryStatus: "confirmed",
+      participationStatus: "active",
+      playerName,
+      createdAt: now + playerNumber,
+      // Keyed on the player number — a test player's stable identity — so
+      // the same seed reproduces identical pairings across test-tournament
+      // resets and re-creations (real registrations key on the user's
+      // stable publicCode instead).
+      tiebreakRandom: tiebreakRandom(
+        tournament.seed ?? tournament.publicCode,
+        String(playerNumber),
+      ),
+      updatedAt: now,
+    });
     created += 1;
     playerNumber += 1;
   }

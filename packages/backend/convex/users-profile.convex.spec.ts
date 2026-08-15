@@ -12,6 +12,7 @@ import {
 import { START_DATE_SYNC_BATCH_SIZE } from "./model/registrations";
 import schema from "./schema";
 import {
+  insertLinkedParticipant,
   organizerIdentity,
   playOutCurrentRound,
   seedOrganizer,
@@ -240,9 +241,10 @@ test("getPublicPlayerResults paginates completed tournaments newest first", asyn
         confirmedRegistrationCount: 1,
         updatedAt: now,
       });
+      const participant0Id = await insertLinkedParticipant(ctx, userId);
       await ctx.db.insert("tournamentRegistrations", {
         tournamentId,
-        userId,
+        participantId: participant0Id,
         tournamentStartDate: event.startDate,
         entryStatus: "confirmed",
         participationStatus: "active",
@@ -302,9 +304,10 @@ test("getPublicPlayerResults bounds hostile and non-finite page sizes", async ()
         confirmedRegistrationCount: 1,
         updatedAt: now,
       });
+      const participant1Id = await insertLinkedParticipant(ctx, userId);
       await ctx.db.insert("tournamentRegistrations", {
         tournamentId,
-        userId,
+        participantId: participant1Id,
         tournamentStartDate: startDate,
         entryStatus: "confirmed",
         participationStatus: "active",
@@ -377,9 +380,10 @@ test("getPublicPlayerResults pages through tournaments sharing a start date", as
         confirmedRegistrationCount: 1,
         updatedAt: now,
       });
+      const participant2Id = await insertLinkedParticipant(ctx, userId);
       await ctx.db.insert("tournamentRegistrations", {
         tournamentId,
-        userId,
+        participantId: participant2Id,
         tournamentStartDate: event.startDate,
         entryStatus: "confirmed",
         participationStatus: "active",
@@ -469,9 +473,10 @@ test("getPublicPlayerResults filters hidden registrations out of every page", as
         confirmedRegistrationCount: 1,
         updatedAt: now,
       });
+      const participant3Id = await insertLinkedParticipant(ctx, userId);
       await ctx.db.insert("tournamentRegistrations", {
         tournamentId,
-        userId,
+        participantId: participant3Id,
         tournamentStartDate: event.startDate,
         entryStatus: "confirmed",
         participationStatus: "active",
@@ -523,9 +528,10 @@ test("getPublicPlayerResults exhausts an entirely hidden history in one page", a
       confirmedRegistrationCount: 1,
       updatedAt: now,
     });
+    const participant4Id = await insertLinkedParticipant(ctx, userId);
     await ctx.db.insert("tournamentRegistrations", {
       tournamentId,
-      userId,
+      participantId: participant4Id,
       tournamentStartDate: now,
       entryStatus: "confirmed",
       participationStatus: "active",
@@ -575,9 +581,10 @@ test("getPublicPlayerResults surfaces sparse visible rows in a single request", 
     });
     // Newest 25 index rows are all hidden from anonymous viewers.
     for (let index = 0; index < hiddenRows; index += 1) {
+      const participant5Id = await insertLinkedParticipant(ctx, userId);
       await ctx.db.insert("tournamentRegistrations", {
         tournamentId: hiddenTournamentId,
-        userId,
+        participantId: participant5Id,
         tournamentStartDate: now - index * 1_000,
         entryStatus: "confirmed",
         participationStatus: "active",
@@ -607,9 +614,10 @@ test("getPublicPlayerResults surfaces sparse visible rows in a single request", 
         confirmedRegistrationCount: 1,
         updatedAt: now,
       });
+      const participant6Id = await insertLinkedParticipant(ctx, userId);
       await ctx.db.insert("tournamentRegistrations", {
         tournamentId,
-        userId,
+        participantId: participant6Id,
         tournamentStartDate: startDate,
         entryStatus: "confirmed",
         participationStatus: "active",
@@ -668,9 +676,10 @@ test("getPublicPlayerResults caps an all-hidden scan at the read budget but keep
       updatedAt: now,
     });
     for (let index = 0; index < hiddenRows; index += 1) {
+      const participant7Id = await insertLinkedParticipant(ctx, userId);
       await ctx.db.insert("tournamentRegistrations", {
         tournamentId: hiddenTournamentId,
-        userId,
+        participantId: participant7Id,
         tournamentStartDate: now - index * 1_000,
         entryStatus: "confirmed",
         participationStatus: "active",
@@ -696,9 +705,10 @@ test("getPublicPlayerResults caps an all-hidden scan at the read budget but keep
       confirmedRegistrationCount: 1,
       updatedAt: now,
     });
+    const participant8Id = await insertLinkedParticipant(ctx, userId);
     await ctx.db.insert("tournamentRegistrations", {
       tournamentId: visibleTournamentId,
-      userId,
+      participantId: participant8Id,
       tournamentStartDate: visibleStartDate,
       entryStatus: "confirmed",
       participationStatus: "active",
@@ -823,9 +833,10 @@ test("getPublicPlayerResults cursor keys come from the deployment environment", 
         confirmedRegistrationCount: 1,
         updatedAt: now,
       });
+      const participant9Id = await insertLinkedParticipant(ctx, userId);
       await ctx.db.insert("tournamentRegistrations", {
         tournamentId,
-        userId,
+        participantId: participant9Id,
         tournamentStartDate: event.startDate,
         entryStatus: "confirmed",
         participationStatus: "active",
@@ -943,9 +954,10 @@ test("start date edits drain oversized registration sets via scheduled batches",
         name: `Churn ${index}`,
         updatedAt: now,
       });
+      const participant10Id = await insertLinkedParticipant(ctx, userId);
       await ctx.db.insert("tournamentRegistrations", {
         tournamentId,
-        userId,
+        participantId: participant10Id,
         tournamentStartDate: originalStartDate,
         ...(index % 2 === 0
           ? {
@@ -1038,9 +1050,10 @@ test("a reschedule during an in-flight sync converges on the latest date", async
         name: `Retarget ${index}`,
         updatedAt: now,
       });
+      const participant11Id = await insertLinkedParticipant(ctx, userId);
       await ctx.db.insert("tournamentRegistrations", {
         tournamentId,
-        userId,
+        participantId: participant11Id,
         tournamentStartDate: originalStartDate,
         entryStatus: "confirmed" as const,
         participationStatus: "active" as const,
@@ -1344,10 +1357,11 @@ async function registerUsers(
     }
     const ids: Id<"tournamentRegistrations">[] = [];
     for (const [index, userId] of userIds.entries()) {
+      const participant12Id = await insertLinkedParticipant(ctx, userId);
       ids.push(
         await ctx.db.insert("tournamentRegistrations", {
           tournamentId,
-          userId,
+          participantId: participant12Id,
           tournamentStartDate: tournament.startDate,
           entryStatus: "confirmed",
           participationStatus: "active",

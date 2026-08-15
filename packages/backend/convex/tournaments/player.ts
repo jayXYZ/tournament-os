@@ -26,6 +26,7 @@ import {
   registrationForUser,
   resolveRegistrationDisplayName,
 } from "../model/registrations";
+import { participantPublicIdentity } from "../model/participants";
 import { matchLogForRegistration } from "../model/playerResults";
 import {
   isPairingsVisibleToPlayers,
@@ -187,13 +188,16 @@ export const getMyCurrentMatch = query({
     let opponent: OpponentSummary | null = null;
     if (opponentRow) {
       const opponentRegistration = await ctx.db.get(opponentRow.playerId);
-      const opponentUser = opponentRegistration
-        ? await ctx.db.get(opponentRegistration.userId)
+      const opponentParticipant = opponentRegistration
+        ? await ctx.db.get(opponentRegistration.participantId)
         : null;
+      const identity = opponentParticipant
+        ? await participantPublicIdentity(ctx, opponentParticipant)
+        : { name: null, avatarUrl: null };
       opponent = {
         registrationId: opponentRow.playerId,
-        name: opponentUser?.name ?? null,
-        avatarUrl: opponentUser?.avatarUrl ?? null,
+        name: identity.name,
+        avatarUrl: identity.avatarUrl,
       };
     }
 

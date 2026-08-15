@@ -118,6 +118,23 @@ default.
 
 ### Participation
 
+**Participant**:
+The durable competitor identity a registration belongs to, persisting across
+tournaments. A Participant is linked to at most one user account; one without
+an account is a Guest.
+_Avoid_: player identity, competitor record
+
+**Guest**:
+A Participant with no linked user account, enrolled by an organizer with a
+display name and optional contact email. Guests hold registrations like any
+Participant but have no profile page and take no self-serve actions.
+
+**Claim**:
+The automatic merge, at sign-in, of every Guest whose contact email matches
+the account's verified email into that account holder's Participant. A Guest
+whose merge would collide — both identities registered in the same
+tournament — stays unclaimed.
+
 **Entry Status**:
 A registration's admission state (pending, waitlisted, confirmed, cancelled,
 rejected). Independent of competitive state.

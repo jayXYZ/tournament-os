@@ -7,6 +7,7 @@ import { api } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import schema from "./schema";
 import {
+  insertLinkedParticipant,
   organizerIdentity,
   playOutCurrentRound,
   seedOrganizer,
@@ -1514,9 +1515,10 @@ test("players see their meeting seat, late registrants see none, and pairing is 
       name: "Zed",
       updatedAt: now,
     });
+    const participant0Id = await insertLinkedParticipant(ctx, userId);
     return await ctx.db.insert("tournamentRegistrations", {
       tournamentId,
-      userId,
+      participantId: participant0Id,
       tournamentStartDate: tournament.startDate,
       entryStatus: "confirmed",
       participationStatus: "active",
@@ -1648,9 +1650,10 @@ test("a meeting cut stamps only its own tournament's drops", async () => {
       name: "Other Player",
       updatedAt: Date.now(),
     });
+    const participant1Id = await insertLinkedParticipant(ctx, userId);
     return await ctx.db.insert("tournamentRegistrations", {
       tournamentId: otherTournamentId,
-      userId,
+      participantId: participant1Id,
       tournamentStartDate: source.startDate,
       entryStatus: "confirmed",
       participationStatus: "dropped",
@@ -1736,10 +1739,11 @@ async function seedTournament(
         name: playerName,
         updatedAt: now,
       });
+      const participant2Id = await insertLinkedParticipant(ctx, userId);
       ids.push(
         await ctx.db.insert("tournamentRegistrations", {
           tournamentId,
-          userId,
+          participantId: participant2Id,
           tournamentStartDate: tournament.startDate,
           entryStatus: "confirmed",
           participationStatus: "active",

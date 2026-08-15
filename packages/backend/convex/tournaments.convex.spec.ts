@@ -8,7 +8,11 @@ import type { Id } from "./_generated/dataModel";
 import { setRegistrationState } from "./model/participation";
 import { MAX_TOURNAMENT_PLAYERS } from "./model/registrations";
 import { generateTestResults } from "./model/testing";
-import { organizerIdentity, seedOrganizer } from "./specHelpers";
+import {
+  insertLinkedParticipant,
+  organizerIdentity,
+  seedOrganizer,
+} from "./specHelpers";
 import { createConvexTest } from "./specHelpers.runtime";
 
 test("listUpcomingPublic returns future public tournaments in start date order", async () => {
@@ -166,9 +170,10 @@ test("getPublicTournament hides private and unpublished events and reports regis
       throw new Error("Expected seeded player");
     }
     const now = Date.now();
+    const participant0Id = await insertLinkedParticipant(ctx, user._id);
     await ctx.db.insert("tournamentRegistrations", {
       tournamentId: rows.setupId,
-      userId: user._id,
+      participantId: participant0Id,
       tournamentStartDate: now + 60_000,
       entryStatus: "confirmed",
       participationStatus: "active",
@@ -275,9 +280,10 @@ test("getPublicTournament keeps private events resolvable for registered players
       lifecycle: "in_progress",
       startDate: now - 60_000,
     });
+    const participant1Id = await insertLinkedParticipant(ctx, playerUserId);
     const registrationId = await ctx.db.insert("tournamentRegistrations", {
       tournamentId,
-      userId: playerUserId,
+      participantId: participant1Id,
       tournamentStartDate: now - 60_000,
       entryStatus: "confirmed",
       participationStatus: "active",
@@ -421,9 +427,10 @@ test("registerSelf lets a cancelled player rejoin a private event but admits no 
       throw new Error("Seeded player missing");
     }
     await ctx.db.patch(tournamentId, { confirmedRegistrationCount: 1 });
+    const participant2Id = await insertLinkedParticipant(ctx, playerUser._id);
     return await ctx.db.insert("tournamentRegistrations", {
       tournamentId,
-      userId: playerUser._id,
+      participantId: participant2Id,
       tournamentStartDate: now + 60_000,
       entryStatus: "confirmed",
       participationStatus: "active",
@@ -494,8 +501,12 @@ test("listMyTournaments returns every confirmed seat for ongoing and upcoming ev
       confirmedRegistrationCount: 0,
       updatedAt: now,
     };
+    const playerParticipantId = await insertLinkedParticipant(
+      ctx,
+      playerUserId,
+    );
     const registrationBase = {
-      userId: playerUserId,
+      participantId: playerParticipantId,
       createdAt: now,
       tiebreakRandom: 1,
       updatedAt: now,
@@ -1138,10 +1149,11 @@ test("organizers can page through registration churn beyond tournament capacity"
         name: `Churn Player ${playerNumber}`,
         updatedAt: now,
       });
+      const participant3Id = await insertLinkedParticipant(ctx, userId);
       ids.push(
         await ctx.db.insert("tournamentRegistrations", {
           tournamentId,
-          userId,
+          participantId: participant3Id,
           tournamentStartDate: now + 86_400_000,
           entryStatus: "cancelled",
           playerName: `Churn Player ${playerNumber}`,
@@ -1223,10 +1235,11 @@ test("a full registration page is not flagged for splitting", async () => {
         name: `Large Roster Player ${playerNumber}`,
         updatedAt: now,
       });
+      const participant4Id = await insertLinkedParticipant(ctx, userId);
       ids.push(
         await ctx.db.insert("tournamentRegistrations", {
           tournamentId,
-          userId,
+          participantId: participant4Id,
           tournamentStartDate: now + 86_400_000,
           entryStatus: "cancelled",
           playerName: `Large Roster Player ${playerNumber}`,
@@ -1316,9 +1329,10 @@ test("organizers can search registrations by player name scoped to one tournamen
         name: playerName,
         updatedAt: now,
       });
+      const participant5Id = await insertLinkedParticipant(ctx, userId);
       await ctx.db.insert("tournamentRegistrations", {
         tournamentId: registeredIn,
-        userId,
+        participantId: participant5Id,
         tournamentStartDate: now + 86_400_000,
         entryStatus: "cancelled",
         playerName,
@@ -1364,9 +1378,10 @@ test("seedTestPlayers fills only remaining active registration seats", async () 
       name: "Real Player",
       updatedAt: now,
     });
+    const participant6Id = await insertLinkedParticipant(ctx, userId);
     await ctx.db.insert("tournamentRegistrations", {
       tournamentId,
-      userId,
+      participantId: participant6Id,
       tournamentStartDate: now + 86_400_000,
       entryStatus: "confirmed",
       participationStatus: "active",
@@ -1441,9 +1456,10 @@ test("seedTestPlayers count is seats to add, not a target total", async () => {
       name: "Real Player",
       updatedAt: now,
     });
+    const participant7Id = await insertLinkedParticipant(ctx, userId);
     await ctx.db.insert("tournamentRegistrations", {
       tournamentId,
-      userId,
+      participantId: participant7Id,
       tournamentStartDate: now + 86_400_000,
       entryStatus: "confirmed",
       participationStatus: "active",
@@ -1762,7 +1778,7 @@ test("updateTournamentSetup rejects a non-finite start date and never corrupts r
     async (ctx) =>
       await ctx.db
         .query("tournamentRegistrations")
-        .withIndex("by_tournamentId_and_userId", (q) =>
+        .withIndex("by_tournamentId_and_participantId", (q) =>
           q.eq("tournamentId", tournamentId),
         )
         .collect(),
@@ -3528,9 +3544,10 @@ test("a registration cannot leave the confirmed state while it holds a standings
       name: "Late Player",
       updatedAt: now,
     });
+    const participant8Id = await insertLinkedParticipant(ctx, userId);
     return await ctx.db.insert("tournamentRegistrations", {
       tournamentId,
-      userId,
+      participantId: participant8Id,
       tournamentStartDate: tournament.startDate,
       entryStatus: "confirmed",
       participationStatus: "active",
@@ -5469,21 +5486,22 @@ test("test tournaments seed players, generate Swiss rounds, and complete", async
   );
   expect(setup.tournament.lifecycle).toBe("completed");
   expect(setup.testConfig?.seed).toBe(4242);
-  const testPlayer = t.withIdentity({
-    issuer: "https://convex.test",
-    subject: "test-player-1",
-    tokenIdentifier: `test:${tournamentId}:player:1`,
+  // Test players are Guest participants (ADR 0002): no user account exists
+  // for them — so there is no identity to sign in with — and no contact
+  // email, so they can never be claimed.
+  await t.run(async (ctx) => {
+    const testPlayers = await ctx.db
+      .query("testTournamentPlayers")
+      .withIndex("by_tournamentId", (q) => q.eq("tournamentId", tournamentId))
+      .collect();
+    expect(testPlayers.length).toBeGreaterThan(0);
+    for (const testPlayer of testPlayers) {
+      const participant = await ctx.db.get(testPlayer.participantId);
+      expect(participant?.userId).toBeUndefined();
+      expect(participant?.contactEmail).toBeUndefined();
+      expect(participant?.displayName).toMatch(/^Test Player \d+$/);
+    }
   });
-  expect(
-    await testPlayer.query(api.tournaments.player.getMyMatchHistory, {
-      tournamentId,
-    }),
-  ).toHaveLength(2);
-  expect(
-    await testPlayer.query(api.tournaments.player.getMyCurrentMatch, {
-      tournamentId,
-    }),
-  ).toMatchObject({ kind: "between_rounds" });
 
   await authed.mutation(api.tournaments.testing.resetTestTournament, {
     tournamentId,
@@ -5829,9 +5847,10 @@ async function seedActiveRegistrations(
         name: `Player ${playerNumber}`,
         updatedAt: now,
       });
+      const participant9Id = await insertLinkedParticipant(ctx, userId);
       await ctx.db.insert("tournamentRegistrations", {
         tournamentId,
-        userId,
+        participantId: participant9Id,
         tournamentStartDate: tournament.startDate,
         entryStatus: "confirmed",
         participationStatus: "active",
