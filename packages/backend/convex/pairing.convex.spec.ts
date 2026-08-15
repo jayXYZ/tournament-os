@@ -10,7 +10,10 @@ import {
   type Pairing,
   type RankedRegistration,
 } from "./model/pairing";
-import { planSingleEliminationPairings } from "./model/singleElimination";
+import {
+  planSingleEliminationPairings,
+  singleEliminationRoundName,
+} from "./model/singleElimination";
 
 function seededRegistrations(count: number) {
   return Array.from(
@@ -46,12 +49,55 @@ test("smaller power-of-two brackets are standard-seeded too", () => {
   expect(bracketKeys(seededRegistrations(2))).toEqual([["seed-1", "seed-2"]]);
 });
 
-test("a bracket refuses a field that is not a power of two", () => {
-  for (const size of [0, 1, 3, 6]) {
+// A short field plays the smallest power-of-two bracket that fits, with the
+// unfilled lowest seats' scheduled opponents — the highest seeds — taking
+// first-round byes (CONTEXT.md "Bracket"). An `undefined` second key below is
+// such a bye.
+test("a short field gives the top seeds first-round byes", () => {
+  expect(bracketKeys(seededRegistrations(3))).toEqual([
+    ["seed-1", undefined],
+    ["seed-2", "seed-3"],
+  ]);
+  expect(bracketKeys(seededRegistrations(6))).toEqual([
+    ["seed-1", undefined],
+    ["seed-4", "seed-5"],
+    ["seed-2", undefined],
+    ["seed-3", "seed-6"],
+  ]);
+  const fiveOfEight = buildSingleEliminationPairings(seededRegistrations(5));
+  expect(
+    fiveOfEight.map((pairing) => [
+      pairing.playerOne._id,
+      pairing.playerTwo?._id,
+    ]),
+  ).toEqual([
+    ["seed-1", undefined],
+    ["seed-4", "seed-5"],
+    ["seed-2", undefined],
+    ["seed-3", undefined],
+  ]);
+  expect(fiveOfEight.map((pairing) => pairing.isBye)).toEqual([
+    true,
+    false,
+    true,
+    true,
+  ]);
+});
+
+test("a bracket refuses a field of fewer than two players", () => {
+  for (const size of [0, 1]) {
     expect(() =>
       buildSingleEliminationPairings(seededRegistrations(size)),
-    ).toThrow("power-of-two field");
+    ).toThrow("at least two seeded players");
   }
+});
+
+test("bracket rounds are named from their structural position", () => {
+  expect(singleEliminationRoundName(1)).toBe("Finals");
+  expect(singleEliminationRoundName(2)).toBe("Semifinals");
+  expect(singleEliminationRoundName(3)).toBe("Quarterfinals");
+  expect(singleEliminationRoundName(4)).toBe("Round of 16");
+  expect(singleEliminationRoundName(5)).toBe("Round of 32");
 });
 
 // Minimal registration factory for the walkover planner: only _id and

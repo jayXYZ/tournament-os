@@ -1,8 +1,5 @@
 import type { Id } from "../_generated/dataModel";
-import {
-  playerMeetingPending,
-  playoffCutPlayersRequiredMessage,
-} from "./phases";
+import { playerMeetingPending } from "./phases";
 import { isPairingsVisibleToPlayers } from "./tournaments";
 import type { ProgressionActions, ProgressionFacts } from "./progression";
 
@@ -70,18 +67,6 @@ export function pairingsNextStep(
       };
     }
     const registrationCount = facts.activeRegistrations?.length ?? 0;
-    if (
-      facts.upcomingPlayoffCutPlayerCount !== null &&
-      registrationCount < facts.upcomingPlayoffCutPlayerCount
-    ) {
-      return {
-        kind: "startTournament",
-        ready: false,
-        reason: playoffCutPlayersRequiredMessage(
-          facts.upcomingPlayoffCutPlayerCount,
-        ),
-      };
-    }
     // The meeting is offered exactly once: after it starts (or completes) the
     // flag no longer matters and play falls through to startTournament, which
     // closes an in-progress meeting itself.
@@ -164,11 +149,10 @@ export function pairingsNextStep(
   // the next phase, which generateNextRound starts.
   const nextPhase = facts.nextUpcomingPhase;
   if (nextPhase && nextPhase.phaseOrder === phase.phaseOrder + 1) {
-    // An entry shortfall (a playoff field that cannot fill a playable
-    // bracket, or a next Swiss phase left with fewer than two entering
-    // players) leaves the next phase unpairable; completing the tournament
-    // is the only move left.
-    if (facts.nextPhaseEntryShortfall !== null) {
+    // An entry shortfall (fewer than two entering players, whatever the next
+    // phase's type) leaves the next phase unpairable; completing the
+    // tournament is the only move left.
+    if (facts.nextPhaseEntryShortfall) {
       return { kind: "completeTournament", ready: true, reason: null };
     }
     // A later phase can hold its own meeting (e.g. a day-2 seating) before its

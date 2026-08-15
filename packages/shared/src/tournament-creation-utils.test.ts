@@ -214,7 +214,7 @@ test("toTournamentCreationPhasePayload sends the cut feeding a playoff", () => {
     {
       phaseOrder: 2,
       phaseType: "single_elimination",
-      phaseRoundMode: "fixed",
+      phaseRoundMode: "dynamic",
       bestOf: 3,
     },
   ]);
@@ -242,7 +242,7 @@ test("toTournamentCreationPhasePayload sends an explicit no-cut feeding a playof
     {
       phaseOrder: 2,
       phaseType: "single_elimination",
-      phaseRoundMode: "fixed",
+      phaseRoundMode: "dynamic",
       bestOf: 3,
     },
   ]);
@@ -282,14 +282,15 @@ test("setTournamentCreationPhaseType defaults the feeding phase's cut to top-8",
       {
         ...createDefaultTournamentCreationPhase("phase-2"),
         phaseType: "single_elimination",
-        phaseRoundMode: "fixed",
         playerMeeting: false,
       },
     ],
   );
 });
 
-test("toTournamentCreationPhasePayload fixes a single-elimination phase at three rounds", () => {
+// A bracket's round count resolves from its entering field at phase start,
+// so the payload states the dynamic mode and no round count.
+test("toTournamentCreationPhasePayload sends a single-elimination phase as dynamic", () => {
   const phase = {
     ...createDefaultTournamentCreationPhase("playoff"),
     phaseType: "single_elimination" as const,
@@ -299,7 +300,7 @@ test("toTournamentCreationPhasePayload fixes a single-elimination phase at three
     {
       phaseOrder: 1,
       phaseType: "single_elimination",
-      phaseRoundMode: "fixed",
+      phaseRoundMode: "dynamic",
       bestOf: 3,
     },
   ]);

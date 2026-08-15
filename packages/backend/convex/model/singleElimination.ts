@@ -141,20 +141,19 @@ export async function eliminateSingleEliminationLosers(
   });
 }
 
-// Named from the seat count the round is built from, so a bracket thinned by
-// chained walkovers keeps its structural name: a lone remaining seat still
-// plays (and can win) the Finals by walkover. Covers the playable bracket
-// sizes (isPlayableBracketSize in model/phases.ts); "Round of 16" and larger
-// land with the bracket generalization work (TODO.md section 2).
-export function singleEliminationRoundName(seatCount: number) {
-  if (seatCount === 8) {
-    return "Quarterfinals";
-  }
-  if (seatCount === 4) {
-    return "Semifinals";
-  }
-  if (seatCount === 2 || seatCount === 1) {
+// Named from the round's structural position — how many bracket rounds remain,
+// counting the round being named — so a bracket thinned by chained walkovers
+// keeps its structural name: a lone remaining seat still plays (and can win)
+// the Finals by walkover.
+export function singleEliminationRoundName(roundsRemaining: number) {
+  if (roundsRemaining <= 1) {
     return "Finals";
   }
-  throw new Error("Unexpected single-elimination bracket size");
+  if (roundsRemaining === 2) {
+    return "Semifinals";
+  }
+  if (roundsRemaining === 3) {
+    return "Quarterfinals";
+  }
+  return `Round of ${2 ** roundsRemaining}`;
 }

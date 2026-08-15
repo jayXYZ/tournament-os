@@ -53,34 +53,39 @@ function standardBracketOrder(size: number): number[] {
   return seeds.map((seed) => seed - 1);
 }
 
-// Seeds occupy a fixed standard bracket. Keeping matches in this table order
-// makes later rounds a simple adjacent-winner pairing without a reseed,
-// preserving the halves of the bracket through the final.
+// Seeds occupy a fixed standard bracket: the smallest power of two that fits
+// the field (CONTEXT.md "Bracket"). A field that doesn't fill it exactly
+// leaves its lowest seats empty, and each empty seat's scheduled opponent —
+// by construction the highest seeds — takes a first-round bye. Keeping
+// matches in this table order makes later rounds a simple adjacent-winner
+// pairing without a reseed, preserving the halves of the bracket through the
+// final.
 export function buildSingleEliminationPairings(
   registrationsBySeed: Doc<"tournamentRegistrations">[],
 ): Pairing[] {
-  const size = registrationsBySeed.length;
-  if (size < 2 || !Number.isInteger(Math.log2(size))) {
-    throw new Error(
-      "Single elimination requires a power-of-two field of seeded players",
-    );
+  const fieldSize = registrationsBySeed.length;
+  if (fieldSize < 2) {
+    throw new Error("Single elimination requires at least two seeded players");
   }
-  const bracket = standardBracketOrder(size).map(
-    (seedIndex) => registrationsBySeed[seedIndex],
+  const bracketSize = 2 ** Math.ceil(Math.log2(fieldSize));
+  const bracket = standardBracketOrder(bracketSize).map((seedIndex) =>
+    registrationsBySeed.at(seedIndex),
   );
-  return pairAdjacentRegistrations(bracket);
-}
-
-function pairAdjacentRegistrations(
-  registrations: Doc<"tournamentRegistrations">[],
-): Pairing[] {
   const pairings: Pairing[] = [];
-  for (let index = 0; index < registrations.length; index += 2) {
-    pairings.push({
-      playerOne: registrations[index],
-      playerTwo: registrations[index + 1],
-      isBye: false,
-    });
+  for (let index = 0; index < bracket.length; index += 2) {
+    const one = bracket[index];
+    const two = bracket[index + 1];
+    if (!one) {
+      // standardBracketOrder puts each pair's higher seed first, and the
+      // smallest fitting bracket fills more than half its seats, so a pair's
+      // first seat always holds a player.
+      throw new Error("Bracket pair is missing its higher seed");
+    }
+    pairings.push(
+      two
+        ? { playerOne: one, playerTwo: two, isBye: false }
+        : { playerOne: one, isBye: true },
+    );
   }
   return pairings;
 }

@@ -339,14 +339,27 @@ walkover behavior itself landed with the adjudication model in section 1.
         the default top-8, and an explicit "No cut" sends the whole
         surviving field into the bracket) and shows the
         unpredictable-bracket-size warning under a points bar or no cut
-- [ ] Generalize single-elimination brackets (power-of-two fields of 2, 4,
-      or 8 already play, landed with the cut decoupling above; what remains
-      is fitting fields that don't exactly fill a bracket and bigger
-      brackets)
-  - [ ] Support any entry size of at least 2: the bracket is the smallest power of two that fits the field, standard-seeded
-  - [ ] Give the highest seeds first-round byes when the field is short instead of skipping the phase
-  - [ ] Complete the tournament instead of playing a one-player phase
-  - [ ] Generalize bracket round names (Round of 16, Quarterfinals, Semifinals, Finals)
+- [x] Generalize single-elimination brackets (CONTEXT.md "Bracket" is now
+      implemented as written)
+  - [x] Support any entry size of at least 2: the bracket is the smallest
+        power of two that fits the field, standard-seeded
+        (`buildSingleEliminationPairings`); the interim
+        `isPlayableBracketSize` gate and the top-N-cut-into-playoff size
+        restriction are gone, and a configured top-N cut no longer imposes a
+        pre-start player floor — a short field just plays a short bracket
+  - [x] Give the highest seeds first-round byes when the field is short
+        instead of skipping the phase: unfilled lowest seats award their
+        scheduled opponents — by construction the highest seeds — the same
+        pairing-time Bye a walkover records
+  - [x] Complete the tournament instead of playing a one-player phase: the
+        next-phase entry shortfall is now uniformly "fewer than two entering
+        players" whatever the phase type, refusing the round and offering
+        completion
+  - [x] Generalize bracket round names (Round of 16, Quarterfinals,
+        Semifinals, Finals): named from the round's structural position —
+        rounds remaining in the resolved bracket — so chained-walkover
+        thinning can't misname a stage, with `Round of ${2^n}` above eight
+        seats
 - [ ] Allow single elimination as the first phase, seeded from the tournament's random seed
 - [ ] Lower the 16-phase cap to a realistic bound (the largest real events need 5–6)
 

@@ -16,13 +16,10 @@ import {
   createSingleEliminationRoundWithPairings,
 } from "./pairing";
 import {
-  BRACKET_REQUIRES_PLAYABLE_FIELD,
   SINGLE_ELIMINATION_FORMAT,
   SWISS_FORMAT,
-  isPlayableBracketSize,
   phasesInOrder,
   playerMeetingPending,
-  playoffCutPlayersRequiredMessage,
   previousTournamentRound,
   requirePhase,
   requireResolvedPhaseTotalRounds,
@@ -94,7 +91,6 @@ const CUTOFF_TOO_FEW_QUALIFIERS =
   "The phase cutoff leaves fewer than two qualifying players; complete the tournament instead";
 const CUTOFF_TOO_FEW_QUALIFIERS_HELD_PLACES =
   "The phase cutoff leaves fewer than two qualifying players; reinstate a dropped player who still holds a place in the field, or complete the tournament";
-const BRACKET_ENTRY_NOT_PLAYABLE = `${BRACKET_REQUIRES_PLAYABLE_FIELD}; complete the tournament instead`;
 const BRACKET_NO_LIVE_PLAYERS =
   "Every remaining bracket player has left the tournament; complete the tournament instead";
 
@@ -131,21 +127,17 @@ export type ProgressionFacts = {
   // everywhere else.
   bracketSeatWinners: Doc<"tournamentRegistrations">[] | null;
   hasSwissPhase: boolean;
-  // The player count of a configured top-N cut feeding an upcoming playoff:
-  // the one predictable pre-start entry requirement, guarding tournament
-  // start. Null when no playoff is upcoming or its feed is a points bar,
-  // whose field size is unknowable before play.
-  upcomingPlayoffCutPlayerCount: number | null;
   // The first later phase still waiting to be played, and whether its entry
   // requirement can be met from the completed round's standings. The cutoff
   // partition is kept so the mutation that applies the cut reuses the walk
-  // the verdict already paid for. "bracketField" means the entering field
-  // cannot exactly fill a playable bracket; "swissField" means fewer than two
-  // players would enter the next Swiss phase.
+  // the verdict already paid for. The shortfall is true when fewer than two
+  // players would enter the next phase — one player can pair nothing,
+  // whatever the phase's type (a one-player bracket is never played;
+  // CONTEXT.md "Bracket").
   nextUpcomingPhase: Doc<"tournamentPhases"> | null;
   laterUpcomingPhases: Doc<"tournamentPhases">[];
   nextPhaseCutoffPartition: CutoffPartition | null;
-  nextPhaseEntryShortfall: "bracketField" | "swissField" | null;
+  nextPhaseEntryShortfall: boolean;
 };
 
 // A verdict either allows an action — carrying everything the transition
@@ -268,22 +260,6 @@ export async function analyzeProgression(
   const hasSwissPhase = phases.some(
     (candidate) => candidate.phaseType === SWISS_FORMAT,
   );
-  const upcomingPlayoff = phases.find(
-    (candidate) =>
-      candidate.phaseType === SINGLE_ELIMINATION_FORMAT &&
-      candidate.phaseStatus === "upcoming",
-  );
-  // The cut that feeds the playoff lives on the phase before it; only a
-  // top-N cut yields a pre-start player requirement.
-  const playoffFeedCutoff = upcomingPlayoff
-    ? (phases.find(
-        (candidate) => candidate.phaseOrder === upcomingPlayoff.phaseOrder - 1,
-      )?.phaseCutoff ?? null)
-    : null;
-  const upcomingPlayoffCutPlayerCount =
-    playoffFeedCutoff?.kind === "top_X_players"
-      ? playoffFeedCutoff.playerCount
-      : null;
   const laterUpcomingPhases = phase
     ? phases.filter(
         (candidate) =>
@@ -312,15 +288,13 @@ export async function analyzeProgression(
 
   // Whether the next phase's entry requirement can be met from the completed
   // round's standings. The finished phase's configured cutoff decides who
-  // enters — whatever the next phase's type — and the next phase's type
-  // decides what field it can play: a Swiss phase needs at least two
-  // players, a playoff a field that exactly fills a playable bracket. One
-  // computation feeds the board's completeTournament offer,
-  // generateNextRound's refusal, and completeTournament's
-  // skip-unplayable-phase permission.
+  // enters — whatever the next phase's type — and any phase type can play
+  // any entering field of at least two: a bracket sizes itself to the field
+  // with byes for the top seeds when it falls short. One computation feeds
+  // the board's completeTournament offer, generateNextRound's refusal, and
+  // completeTournament's skip-unplayable-phase permission.
   let nextPhaseCutoffPartition: CutoffPartition | null = null;
-  let nextPhaseEntryShortfall: ProgressionFacts["nextPhaseEntryShortfall"] =
-    null;
+  let nextPhaseEntryShortfall = false;
   if (round?.roundStatus === "completed" && phase && nextUpcomingPhase) {
     if (phase.phaseCutoff !== null) {
       nextPhaseCutoffPartition = await cutoffPartitionForNextPhase(
@@ -332,13 +306,7 @@ export async function analyzeProgression(
     }
     const enteringPlayerCount =
       nextPhaseCutoffPartition?.qualifiers.length ?? registrations?.length ?? 0;
-    if (nextUpcomingPhase.phaseType === SINGLE_ELIMINATION_FORMAT) {
-      if (!isPlayableBracketSize(enteringPlayerCount)) {
-        nextPhaseEntryShortfall = "bracketField";
-      }
-    } else if (enteringPlayerCount < 2) {
-      nextPhaseEntryShortfall = "swissField";
-    }
+    nextPhaseEntryShortfall = enteringPlayerCount < 2;
   }
 
   const facts: ProgressionFacts = {
@@ -354,7 +322,6 @@ export async function analyzeProgression(
     activeRegistrations: registrations,
     bracketSeatWinners,
     hasSwissPhase,
-    upcomingPlayoffCutPlayerCount,
     nextUpcomingPhase,
     laterUpcomingPhases,
     nextPhaseCutoffPartition,
@@ -397,14 +364,6 @@ function startTournamentVerdict(
     return disallowed(MUST_START_WITH_SWISS);
   }
   const registrations = facts.activeRegistrations ?? [];
-  if (
-    facts.upcomingPlayoffCutPlayerCount !== null &&
-    registrations.length < facts.upcomingPlayoffCutPlayerCount
-  ) {
-    return disallowed(
-      playoffCutPlayersRequiredMessage(facts.upcomingPlayoffCutPlayerCount),
-    );
-  }
   if (playerMeetingPending(phase)) {
     return disallowed(PLAYER_MEETING_REQUIRED);
   }
@@ -486,10 +445,7 @@ function generateNextRoundVerdict(
   if (playerMeetingPending(nextPhase)) {
     return disallowed(PLAYER_MEETING_REQUIRED);
   }
-  if (facts.nextPhaseEntryShortfall === "bracketField") {
-    return disallowed(BRACKET_ENTRY_NOT_PLAYABLE);
-  }
-  if (facts.nextPhaseEntryShortfall === "swissField") {
+  if (facts.nextPhaseEntryShortfall) {
     // With no cut configured the shortfall is a plain thin field; with one,
     // the cut is what left the phase short, and held places name the one
     // recovery move besides completion.
@@ -530,11 +486,10 @@ function completeTournamentVerdict(
   // round has been played, so the checks above pass. Without this guard the
   // tournament could be marked completed while a playable later phase is
   // still upcoming, permanently stranding it. An unplayable next phase may
-  // be skipped: a playoff whose entering field cannot fill a playable
-  // bracket, or a Swiss phase left with fewer than two entering players.
-  // Phases after it are unplayable too — nobody advances through a skipped
-  // phase — so they are all cancelled when the skip happens.
-  if (facts.nextUpcomingPhase && facts.nextPhaseEntryShortfall === null) {
+  // be skipped: one left with fewer than two entering players, whatever its
+  // type. Phases after it are unplayable too — nobody advances through a
+  // skipped phase — so they are all cancelled when the skip happens.
+  if (facts.nextUpcomingPhase && !facts.nextPhaseEntryShortfall) {
     return disallowed(NEXT_PHASE_UNPLAYED);
   }
   return {
@@ -822,11 +777,19 @@ async function continuePhaseWithNextRound(
       step.bracketSeatWinners ??
       (await singleEliminationSeatWinners(ctx, currentRound._id));
     const pairings = planSingleEliminationPairings(seatWinners);
+    // The name comes from the new round's structural position, so a bracket
+    // thinned by chained walkovers keeps its stage names.
+    const newRoundInPhase = await roundNumberInPhase(ctx, {
+      tournamentPhaseId: phase._id,
+      roundNumber: currentRound.roundNumber + 1,
+    });
+    const roundsRemaining =
+      requireResolvedPhaseTotalRounds(phase) - newRoundInPhase + 1;
     roundId = await createSingleEliminationRoundWithPairings(ctx, {
       tournament,
       phase,
       roundNumber: currentRound.roundNumber + 1,
-      roundName: singleEliminationRoundName(seatWinners.length),
+      roundName: singleEliminationRoundName(roundsRemaining),
       pairings,
     });
     playerCount = pairings.reduce(
@@ -914,8 +877,9 @@ async function startNextPhaseFirstRound(
           phase: playablePhase,
           roundNumber: currentRound.roundNumber + 1,
           // The qualifiers arrive in standings rank order, which is the
-          // bracket seeding order.
-          roundName: singleEliminationRoundName(registrations.length),
+          // bracket seeding order. The phase's first round has every
+          // resolved round still to play, which names its stage.
+          roundName: singleEliminationRoundName(nextPhaseTotalRounds),
           pairings: buildSingleEliminationPairings(registrations),
         })
       : await createRoundWithPairings(ctx, {

@@ -132,10 +132,11 @@ export function setTournamentCreationPhaseType(
         ? {
             ...phase,
             phaseType,
+            // A bracket's round count resolves from its entering field when
+            // the phase starts, like a dynamic Swiss phase's.
             ...(phaseType === "single_elimination"
               ? {
-                  phaseRoundMode: "fixed" as const,
-                  phaseTotalRounds: "3",
+                  phaseRoundMode: "dynamic" as const,
                   playerMeeting: false,
                 }
               : {}),
@@ -276,7 +277,7 @@ export function toTournamentCreationPhasePayload(
       return {
         phaseOrder,
         phaseType: "single_elimination" as const,
-        phaseRoundMode: "fixed" as const,
+        phaseRoundMode: "dynamic" as const,
         ...bestOf,
       };
     }

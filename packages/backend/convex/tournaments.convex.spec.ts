@@ -2744,24 +2744,28 @@ test("phase cutoffs are validated against the phase structure", async () => {
     ]),
   ).rejects.toThrow("A phase cutoff requires a following phase");
 
-  // A player-count cut into the playoff must exactly fill a playable
-  // bracket until short-field byes land with the bracket generalization.
-  await expect(
-    createWithPhases([
-      {
-        phaseOrder: 1,
-        phaseRoundMode: "dynamic",
-        phaseCutoff: { kind: "top_X_players", playerCount: 6 },
-      },
-      {
-        phaseOrder: 2,
-        phaseType: "single_elimination",
-        phaseRoundMode: "fixed",
-      },
-    ]),
-  ).rejects.toThrow(
-    "A player-count cut into the playoff must keep 2, 4, or 8 players",
+  // Any player count of at least two may feed the playoff: a top-6 cut
+  // plays an eight-seat bracket with byes for the top two seeds.
+  const topSixCutId = await createWithPhases([
+    {
+      phaseOrder: 1,
+      phaseRoundMode: "dynamic",
+      phaseCutoff: { kind: "top_X_players", playerCount: 6 },
+    },
+    {
+      phaseOrder: 2,
+      phaseType: "single_elimination",
+      phaseRoundMode: "fixed",
+    },
+  ]);
+  const topSixCutSetup = await authed.query(
+    api.tournaments.lifecycle.getTournamentSetup,
+    { tournamentId: topSixCutId },
   );
+  expect(topSixCutSetup.phases[0].phaseCutoff).toEqual({
+    kind: "top_X_players",
+    playerCount: 6,
+  });
 
   // A phase feeding the playoff with an omitted cut defaults to top-8;
   // an explicit cut — including a points bar — is kept as configured.
@@ -4597,7 +4601,12 @@ test("top-8 cut promotes the next-ranked active player when a qualifier drops", 
   expect(cutPlayers).toContain(swissStandings[8].playerId);
 });
 
-test("top-8 tournaments cannot start with fewer than eight active players", async () => {
+// A configured top-8 cut imposes no pre-start player floor: a short field
+// plays the smallest bracket that fits it, with first-round byes for the top
+// seeds (CONTEXT.md "Bracket"). Seven entrants still play an eight-seat
+// quarterfinal — the unfilled eighth seat's scheduled opponent is the top
+// seed, who is walked straight through.
+test("a seven-player top-8 playoff plays a quarterfinal bracket with a bye", async () => {
   const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const authed = t.withIdentity(organizerIdentity);
@@ -4634,12 +4643,53 @@ test("top-8 tournaments cannot start with fewer than eight active players", asyn
   });
   expect(board.nextStep).toEqual({
     kind: "startTournament",
-    ready: false,
-    reason: "A top-8 playoff cut requires at least 8 active players",
+    ready: true,
+    reason: null,
   });
-  await expect(
-    authed.mutation(api.tournaments.rounds.startTournament, { tournamentId }),
-  ).rejects.toThrow("A top-8 playoff cut requires at least 8 active players");
+  await authed.mutation(api.tournaments.rounds.startTournament, {
+    tournamentId,
+  });
+  const swiss = await playOutCurrentRound(authed, tournamentId);
+  const seeds = (
+    await authed.query(api.tournaments.rounds.listRoundStandings, {
+      roundId: swiss.round._id,
+    })
+  ).map(({ standing }) => standing.playerId);
+
+  const quarterfinalId = await authed.mutation(
+    api.tournaments.rounds.generateNextRound,
+    { tournamentId },
+  );
+  const quarterfinalRound = await authed.query(
+    api.tournaments.rounds.getCurrentRound,
+    { tournamentId },
+  );
+  expect(quarterfinalRound?.roundName).toBe("Quarterfinals");
+  const pairings = await authed.query(
+    api.tournaments.rounds.listRoundPairings,
+    { roundId: quarterfinalId },
+  );
+  const byes = pairings.filter(({ players }) => players.length === 1);
+  expect(byes).toHaveLength(1);
+  expect(byes[0].players[0].playerId).toBe(seeds[0]);
+  expect(byes[0].players[0].isBye).toBe(true);
+  const playedTables = pairings
+    .filter(({ players }) => players.length === 2)
+    .sort((a, b) => (a.match.tableNumber ?? 0) - (b.match.tableNumber ?? 0))
+    .map(({ players }) => new Set(players.map((player) => player.playerId)));
+  // Standard eight-seat order minus the bye pair: 4v5, 2v7, 3v6.
+  expect(playedTables).toEqual([
+    new Set([seeds[3], seeds[4]]),
+    new Set([seeds[1], seeds[6]]),
+    new Set([seeds[2], seeds[5]]),
+  ]);
+
+  // The round count resolved from the eight-seat bracket, not the raw field.
+  const setup = await authed.query(
+    api.tournaments.lifecycle.getTournamentSetup,
+    { tournamentId },
+  );
+  expect(setup.phases[1].phaseTotalRounds).toBe(3);
 });
 
 // An explicit no-cut into the playoff (phaseCutoff: null) is the small
@@ -4790,7 +4840,10 @@ test("a four-player no-cut event starts and seeds its semifinal from the standin
   });
 });
 
-test("an unplayable top-8 phase can be cancelled after Swiss", async () => {
+// A short entering field plays a bracket with byes now, so what makes the
+// playoff unplayable is a field of fewer than two: the cut skips dropped
+// players, and one surviving player can pair nothing (CONTEXT.md "Bracket").
+test("a playoff left with fewer than two entering players can be cancelled after Swiss", async () => {
   const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const authed = t.withIdentity(organizerIdentity);
@@ -4827,10 +4880,19 @@ test("an unplayable top-8 phase can be cancelled after Swiss", async () => {
   await playOutCurrentRound(authed, tournamentId);
 
   const registrations = await listRegistrations(authed, tournamentId);
-  await authed.mutation(api.tournaments.registrations.dropRegistration, {
-    registrationId: registrations[0].registration._id,
-  });
+  for (const { registration } of registrations.slice(1)) {
+    await authed.mutation(api.tournaments.registrations.dropRegistration, {
+      registrationId: registration._id,
+    });
+  }
 
+  await expect(
+    authed.mutation(api.tournaments.rounds.generateNextRound, {
+      tournamentId,
+    }),
+  ).rejects.toThrow(
+    "The phase cutoff leaves fewer than two qualifying players; complete the tournament instead",
+  );
   const board = await authed.query(api.tournaments.rounds.getPairingsBoard, {
     tournamentId,
   });
@@ -4966,7 +5028,7 @@ test("a top-4 cut seeds a two-round playoff from the Swiss standings", async () 
   expect(finished.tournament.lifecycle).toBe("completed");
 });
 
-test("a points bar feeds the playoff when the clearing field fills a bracket", async () => {
+test("a sixteen-player no-cut playoff opens with a Round of 16", async () => {
   const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const authed = t.withIdentity(organizerIdentity);
@@ -4974,9 +5036,9 @@ test("a points bar feeds the playoff when the clearing field fills a bracket", a
     api.tournaments.lifecycle.createTournamentWithPhases,
     {
       organizationId,
-      name: "Points Bar Playoff",
+      name: "Round of 16",
       startDate: Date.now(),
-      playerCapacity: 8,
+      playerCapacity: 16,
       format: "standard",
       phases: [
         {
@@ -4984,7 +5046,7 @@ test("a points bar feeds the playoff when the clearing field fills a bracket", a
           phaseType: "swiss",
           phaseRoundMode: "fixed",
           phaseTotalRounds: 1,
-          phaseCutoff: { kind: "X_points_or_more", matchPoints: 3 },
+          phaseCutoff: null,
         },
         {
           phaseOrder: 2,
@@ -4994,7 +5056,7 @@ test("a points bar feeds the playoff when the clearing field fills a bracket", a
       ],
     },
   );
-  await seedActiveRegistrations(t, tournamentId, 8);
+  await seedActiveRegistrations(t, tournamentId, 16);
   await authed.mutation(api.tournaments.lifecycle.publishTournament, {
     tournamentId,
   });
@@ -5003,25 +5065,39 @@ test("a points bar feeds the playoff when the clearing field fills a bracket", a
   });
   await playOutCurrentRound(authed, tournamentId);
 
-  // One played round leaves exactly the four match winners at 3 points, so
-  // the bar happens to fill a four-player bracket.
-  const semifinalId = await authed.mutation(
+  const openerRoundId = await authed.mutation(
     api.tournaments.rounds.generateNextRound,
     { tournamentId },
   );
-  const semifinal = await authed.query(
-    api.tournaments.rounds.listRoundPairings,
-    { roundId: semifinalId },
-  );
-  const semifinalRound = await authed.query(
+  const openerRound = await authed.query(
     api.tournaments.rounds.getCurrentRound,
     { tournamentId },
   );
-  expect(semifinalRound?.roundName).toBe("Semifinals");
-  expect(semifinal).toHaveLength(2);
+  expect(openerRound?.roundName).toBe("Round of 16");
+  expect(
+    await authed.query(api.tournaments.rounds.listRoundPairings, {
+      roundId: openerRoundId,
+    }),
+  ).toHaveLength(8);
+  const setup = await authed.query(
+    api.tournaments.lifecycle.getTournamentSetup,
+    { tournamentId },
+  );
+  expect(setup.phases[1].phaseTotalRounds).toBe(4);
+
+  // The next bracket round's name comes from its position, not the field.
+  await playOutCurrentRound(authed, tournamentId);
+  await authed.mutation(api.tournaments.rounds.generateNextRound, {
+    tournamentId,
+  });
+  const quarterfinalRound = await authed.query(
+    api.tournaments.rounds.getCurrentRound,
+    { tournamentId },
+  );
+  expect(quarterfinalRound?.roundName).toBe("Quarterfinals");
 });
 
-test("a points bar that cannot fill a bracket ends the tournament instead", async () => {
+test("a points bar feeds the playoff whatever field clears it", async () => {
   const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const authed = t.withIdentity(organizerIdentity);
@@ -5029,7 +5105,7 @@ test("a points bar that cannot fill a bracket ends the tournament instead", asyn
     api.tournaments.lifecycle.createTournamentWithPhases,
     {
       organizationId,
-      name: "Unpredictable Points Bar",
+      name: "Points Bar Playoff",
       startDate: Date.now(),
       playerCapacity: 8,
       format: "standard",
@@ -5058,13 +5134,73 @@ test("a points bar that cannot fill a bracket ends the tournament instead", asyn
   });
   await playOutCurrentRound(authed, tournamentId);
 
-  // Three match winners clear the bar — not a playable bracket size.
+  // One played round leaves the three match winners at 3 points — a field
+  // that doesn't fill a bracket, so the top seed of the four-seat semifinal
+  // takes the first-round bye.
+  const semifinalId = await authed.mutation(
+    api.tournaments.rounds.generateNextRound,
+    { tournamentId },
+  );
+  const semifinal = await authed.query(
+    api.tournaments.rounds.listRoundPairings,
+    { roundId: semifinalId },
+  );
+  const semifinalRound = await authed.query(
+    api.tournaments.rounds.getCurrentRound,
+    { tournamentId },
+  );
+  expect(semifinalRound?.roundName).toBe("Semifinals");
+  expect(semifinal).toHaveLength(2);
+  expect(semifinal.filter(({ players }) => players.length === 1)).toHaveLength(
+    1,
+  );
+});
+
+test("a points bar fewer than two players clear ends the tournament instead", async () => {
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const authed = t.withIdentity(organizerIdentity);
+  const tournamentId = await authed.mutation(
+    api.tournaments.lifecycle.createTournamentWithPhases,
+    {
+      organizationId,
+      name: "Unpredictable Points Bar",
+      startDate: Date.now(),
+      playerCapacity: 8,
+      format: "standard",
+      phases: [
+        {
+          phaseOrder: 1,
+          phaseType: "swiss",
+          phaseRoundMode: "fixed",
+          phaseTotalRounds: 1,
+          phaseCutoff: { kind: "X_points_or_more", matchPoints: 6 },
+        },
+        {
+          phaseOrder: 2,
+          phaseType: "single_elimination",
+          phaseRoundMode: "fixed",
+        },
+      ],
+    },
+  );
+  await seedActiveRegistrations(t, tournamentId, 6);
+  await authed.mutation(api.tournaments.lifecycle.publishTournament, {
+    tournamentId,
+  });
+  await authed.mutation(api.tournaments.rounds.startTournament, {
+    tournamentId,
+  });
+  await playOutCurrentRound(authed, tournamentId);
+
+  // Nobody reaches six match points after a single round, so the bar leaves
+  // no playable field.
   await expect(
     authed.mutation(api.tournaments.rounds.generateNextRound, {
       tournamentId,
     }),
   ).rejects.toThrow(
-    "A playoff needs exactly 2, 4, or 8 entering players; complete the tournament instead",
+    "The phase cutoff leaves fewer than two qualifying players; complete the tournament instead",
   );
   const board = await authed.query(api.tournaments.rounds.getPairingsBoard, {
     tournamentId,

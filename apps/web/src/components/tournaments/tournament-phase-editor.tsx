@@ -278,19 +278,21 @@ function TournamentPhaseField({
             {cutoffFeedsPlayoff ? (
               phase.phaseCutoffKind === 'X_points_or_more' ? (
                 <FieldDescription className="text-destructive">
-                  A points bar makes the playoff bracket size unpredictable —
-                  the playoff can only start when exactly 2, 4, or 8 players
-                  clear it.
+                  A points bar makes the playoff field unpredictable — the top
+                  seeds get first-round byes when it falls short of a bracket,
+                  and if fewer than two players clear the bar the tournament
+                  completes without a playoff.
                 </FieldDescription>
               ) : phase.phaseCutoffKind === 'none' ? (
-                <FieldDescription className="text-destructive">
-                  With no cut the whole remaining field enters the playoff — it
-                  can only start with exactly 2, 4, or 8 active players.
+                <FieldDescription>
+                  With no cut the whole remaining field enters the playoff, with
+                  first-round byes for the top seeds when it doesn't fill a
+                  bracket.
                 </FieldDescription>
               ) : (
                 <FieldDescription>
-                  The playoff bracket is seeded from this cut; keep 2, 4, or 8
-                  players.
+                  The playoff bracket is seeded from this cut; a short field
+                  gives the top seeds first-round byes.
                 </FieldDescription>
               )
             ) : null}
