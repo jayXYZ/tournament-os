@@ -1,5 +1,6 @@
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react'
 
+import { bestOfOptions } from '@tournament-os/shared/match-structure'
 import {
   MAX_TOURNAMENT_PHASES,
   addTournamentCreationPhase,
@@ -8,6 +9,8 @@ import {
   canRemoveTournamentCreationPhase,
   moveTournamentCreationPhase,
   removeTournamentCreationPhase,
+  setTournamentCreationPhaseType,
+  tournamentCreationPhaseCutoffFeedsPlayoff,
 } from '@tournament-os/shared/tournament-creation-utils'
 import { RoundConfigurationFields } from './tournament-fields'
 import type { TournamentCreationPhaseForm } from '@tournament-os/shared/tournament-creation-utils'
@@ -43,10 +46,7 @@ export function TournamentPhaseEditor({
 }) {
   function handleAddPhase() {
     onChange(
-      addTournamentCreationPhase(
-        phases,
-        `phase-local-${crypto.randomUUID()}`,
-      ),
+      addTournamentCreationPhase(phases, `phase-local-${crypto.randomUUID()}`),
     )
   }
 
@@ -54,7 +54,8 @@ export function TournamentPhaseEditor({
     <FieldSet>
       <FieldLegend>Tournament phases</FieldLegend>
       <FieldDescription>
-        Add and order Swiss phases, with an optional top-8 playoff at the end.
+        Add and order Swiss phases, with an optional single-elimination playoff
+        at the end — or run a single-elimination bracket on its own.
       </FieldDescription>
       <FieldGroup>
         {phases.map((phase, index) => (
@@ -99,31 +100,24 @@ function TournamentPhaseField({
     phases,
     index,
   )
+  const cutoffFeedsPlayoff = tournamentCreationPhaseCutoffFeedsPlayoff(
+    phases,
+    index,
+  )
 
   return (
     <Field className="rounded-md border border-border p-3">
-      <div className="grid gap-3 md:grid-cols-[180px_minmax(0,1fr)_auto] md:items-end">
+      <div className="grid gap-3 md:grid-cols-[180px_140px_minmax(0,1fr)_auto] md:items-end">
         <Field data-disabled={disabled || undefined}>
           <FieldLabel>Phase {index + 1}</FieldLabel>
           <Select
             value={phase.phaseType}
             onValueChange={(phaseType) =>
               onPhasesChange(
-                phases.map((current) =>
-                  current.id === phase.id
-                    ? {
-                        ...current,
-                        phaseType:
-                          phaseType as TournamentCreationPhaseForm['phaseType'],
-                        ...(phaseType === 'single_elimination'
-                          ? {
-                              phaseRoundMode: 'fixed' as const,
-                              phaseTotalRounds: '3',
-                              playerMeeting: false,
-                            }
-                          : {}),
-                      }
-                    : current,
+                setTournamentCreationPhaseType(
+                  phases,
+                  phase.id,
+                  phaseType as TournamentCreationPhaseForm['phaseType'],
                 ),
               )
             }
@@ -137,10 +131,38 @@ function TournamentPhaseField({
                 <SelectItem value="swiss">Swiss</SelectItem>
                 <SelectItem
                   value="single_elimination"
-                  disabled={index === 0 || index !== phases.length - 1}
+                  disabled={index !== phases.length - 1}
                 >
-                  Top 8 playoff
+                  Single elimination
                 </SelectItem>
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        </Field>
+
+        <Field data-disabled={disabled || undefined}>
+          <FieldLabel>Match structure</FieldLabel>
+          <Select
+            value={phase.bestOf}
+            onValueChange={(bestOf) =>
+              onPhasesChange(
+                phases.map((current) =>
+                  current.id === phase.id ? { ...current, bestOf } : current,
+                ),
+              )
+            }
+            disabled={disabled}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                {bestOfOptions.map((option) => (
+                  <SelectItem key={option} value={String(option)}>
+                    Best of {option}
+                  </SelectItem>
+                ))}
               </SelectGroup>
             </SelectContent>
           </Select>
@@ -175,13 +197,10 @@ function TournamentPhaseField({
             variant="outline"
             size="icon"
             onClick={() =>
-              onPhasesChange(
-                moveTournamentCreationPhase(phases, phase.id, -1),
-              )
+              onPhasesChange(moveTournamentCreationPhase(phases, phase.id, -1))
             }
             disabled={
-              disabled ||
-              !canMoveTournamentCreationPhase(phases, phase.id, -1)
+              disabled || !canMoveTournamentCreationPhase(phases, phase.id, -1)
             }
             aria-label={`Move phase ${index + 1} up`}
           >
@@ -192,13 +211,10 @@ function TournamentPhaseField({
             variant="outline"
             size="icon"
             onClick={() =>
-              onPhasesChange(
-                moveTournamentCreationPhase(phases, phase.id, 1),
-              )
+              onPhasesChange(moveTournamentCreationPhase(phases, phase.id, 1))
             }
             disabled={
-              disabled ||
-              !canMoveTournamentCreationPhase(phases, phase.id, 1)
+              disabled || !canMoveTournamentCreationPhase(phases, phase.id, 1)
             }
             aria-label={`Move phase ${index + 1} down`}
           >
@@ -209,9 +225,7 @@ function TournamentPhaseField({
             variant="outline"
             size="icon"
             onClick={() =>
-              onPhasesChange(
-                removeTournamentCreationPhase(phases, phase.id),
-              )
+              onPhasesChange(removeTournamentCreationPhase(phases, phase.id))
             }
             disabled={
               disabled || !canRemoveTournamentCreationPhase(phases, phase.id)
@@ -261,6 +275,27 @@ function TournamentPhaseField({
               Players who miss the cut are eliminated when the next phase
               starts.
             </FieldDescription>
+            {cutoffFeedsPlayoff ? (
+              phase.phaseCutoffKind === 'X_points_or_more' ? (
+                <FieldDescription className="text-destructive">
+                  A points bar makes the playoff field unpredictable — the top
+                  seeds get first-round byes when it falls short of a bracket,
+                  and if fewer than two players clear the bar the tournament
+                  completes without a playoff.
+                </FieldDescription>
+              ) : phase.phaseCutoffKind === 'none' ? (
+                <FieldDescription>
+                  With no cut the whole remaining field enters the playoff, with
+                  first-round byes for the top seeds when it doesn't fill a
+                  bracket.
+                </FieldDescription>
+              ) : (
+                <FieldDescription>
+                  The playoff bracket is seeded from this cut; a short field
+                  gives the top seeds first-round byes.
+                </FieldDescription>
+              )
+            ) : null}
           </Field>
           <Field
             data-disabled={
@@ -317,7 +352,9 @@ function TournamentPhaseField({
           </FieldLabel>
           <FieldDescription>
             {isSingleElimination
-              ? 'The playoff begins directly from the final Swiss standings.'
+              ? index === 0
+                ? "The bracket is seeded randomly from the tournament's seed."
+                : "The playoff is seeded from the previous phase's cut of its final standings."
               : "Seat players alphabetically before this phase's first round for attendance and announcements."}
           </FieldDescription>
         </FieldContent>

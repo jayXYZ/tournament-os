@@ -22,6 +22,7 @@ import {
   requireTournament,
 } from "../model/tournaments";
 import { ensureCurrentUser } from "../model/users";
+import { enforceRateLimit } from "../rateLimits";
 import { decklistCardEntryValidator } from "../validators";
 
 // Creates or wholly replaces the caller's decklist for the tournament. The
@@ -38,6 +39,7 @@ export const submitMyDecklist = mutation({
     rawText: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<Id<"tournamentDecklists">> => {
+    await enforceRateLimit(ctx, "submitDecklist");
     const user = await ensureCurrentUser(ctx);
     const tournament = await requireTournament(ctx, args.tournamentId);
     const registration = await registrationForUser(

@@ -5,7 +5,30 @@ import type { TestConvex } from "convex-test";
 
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import type { MutationCtx } from "./_generated/server";
 import type schema from "./schema";
+
+// Registrations belong to participants (ADR 0002), so spec seeding that
+// inserts registrations directly must create the identity hop registerSelf
+// performs: a participant row linked to the player's user account.
+// Get-or-create, because exactly one participant may exist per user and
+// suites seed the same user into several tournaments.
+export async function insertLinkedParticipant(
+  ctx: MutationCtx,
+  userId: Id<"users">,
+): Promise<Id<"participants">> {
+  const existing = await ctx.db
+    .query("participants")
+    .withIndex("by_userId", (q) => q.eq("userId", userId))
+    .unique();
+  if (existing) {
+    return existing._id;
+  }
+  return await ctx.db.insert("participants", {
+    userId,
+    updatedAt: Date.now(),
+  });
+}
 
 export const organizerIdentity = {
   issuer: "https://convex.test",

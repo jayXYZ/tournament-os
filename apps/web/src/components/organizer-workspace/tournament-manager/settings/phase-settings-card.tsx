@@ -42,9 +42,8 @@ export function PhaseSettingsCard({
       phaseType: phase.phaseType,
       phaseRoundMode: phase.phaseRoundMode,
       phaseTotalRounds:
-        phase.phaseTotalRounds === null
-          ? '3'
-          : String(phase.phaseTotalRounds),
+        phase.phaseTotalRounds === null ? '3' : String(phase.phaseTotalRounds),
+      bestOf: String(phase.bestOf),
       phaseCutoffKind: phase.phaseCutoff?.kind ?? 'none',
       phaseCutoffValue:
         phase.phaseCutoff === null

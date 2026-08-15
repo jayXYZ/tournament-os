@@ -26,10 +26,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import {
-  DataTable,
-  DataTableColumnHeader,
-} from '@/components/ui/data-table'
+import { DataTable, DataTableColumnHeader } from '@/components/ui/data-table'
 
 export type TournamentTableVariant = 'public' | 'registered' | 'manage'
 

@@ -1,0 +1,21 @@
+# Prettier only reads the ignore files in its working directory, so the root
+# check must re-state the build outputs that nested .gitignores already cover.
+**/dist/
+apps/web/.tanstack/
+apps/web/.nitro/
+apps/web/.output/
+apps/web/test-results/
+apps/web/playwright-report/
+apps/web/blob-report/
+apps/web/e2e/.auth/
+apps/web/public/
+apps/native/.expo/
+apps/native/android/
+apps/native/ios/
+apps/native/web-build/
+apps/native/expo-env.d.ts
+
+# generated code owned by tools
+apps/web/src/routeTree.gen.ts
+packages/backend/convex/_generated/
+pnpm-lock.yaml

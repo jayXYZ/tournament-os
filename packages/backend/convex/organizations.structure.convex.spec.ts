@@ -11,7 +11,10 @@ const accessModelSource = readFileSync(
   new URL("./model/access.ts", import.meta.url),
   "utf8",
 );
-const schemaSource = readFileSync(new URL("./schema.ts", import.meta.url), "utf8");
+const schemaSource = readFileSync(
+  new URL("./schema.ts", import.meta.url),
+  "utf8",
+);
 
 test("membership authorization uses an organization-scoped active membership index", () => {
   expect(schemaSource).toMatch(
@@ -42,9 +45,11 @@ test("organization profile functions enforce owner or admin access without filte
 
 test("organization profile image metadata is validated before attachment", () => {
   expect(organizationsSource).toMatch(
-    /ctx\.db\.system\.get\("_storage", args\.profileImageStorageId\)/,
+    /ctx\.db\.system\.get\(\s*"_storage",\s*args\.profileImageStorageId,?\s*\)/,
   );
-  expect(organizationsSource).toMatch(/validateOrganizationProfileImageDetails/);
+  expect(organizationsSource).toMatch(
+    /validateOrganizationProfileImageDetails/,
+  );
   expect(organizationsSource).toMatch(
     /profileImageStorageId: args\.profileImageStorageId/,
   );

@@ -1,14 +1,34 @@
+import {
+  DEFAULT_BEST_OF,
+  gameWinsEntryError,
+  isBestOf,
+  type BestOf,
+} from "@tournament-os/shared/match-structure";
+import { MAX_TOURNAMENT_PHASES } from "@tournament-os/shared/tournament-creation-utils";
+
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { MAX_TOURNAMENT_PLAYERS } from "./registrations";
 
 export const SWISS_FORMAT = "swiss";
 export const SINGLE_ELIMINATION_FORMAT = "single_elimination";
-export const SINGLE_ELIMINATION_PLAYERS = 8;
-export const SINGLE_ELIMINATION_ROUNDS = 3;
 
-// Rounds are capped at 16 per phase.
+// The cut a phase feeding a playoff falls back to when none is configured
+// (CONTEXT.md "Cut": into single elimination the default is a top-N cut).
+export const DEFAULT_PLAYOFF_CUT_PLAYER_COUNT = 8;
+
+export const BRACKET_REQUIRES_TWO_PLAYERS =
+  "A playoff needs at least two entering players";
+
+// Rounds are capped at 16 per phase; the phase cap is the shared
+// MAX_TOURNAMENT_PHASES the creation form also enforces.
 export const MAX_ROUNDS = 16;
+export { MAX_TOURNAMENT_PHASES };
+
+// A registration plays at most one match per round, so a player's
+// tournamentMatchPlayers rows are bounded by the round cap times the phase
+// cap. The bound behind every whole-history read for one player.
+export const MAX_MATCHES_PER_PLAYER = MAX_ROUNDS * MAX_TOURNAMENT_PHASES;
 
 export type TournamentPhaseCutoffInput =
   | { kind: "top_X_players"; playerCount: number }
@@ -19,6 +39,7 @@ export type TournamentPhaseInput = {
   phaseType?: "swiss" | "single_elimination";
   phaseRoundMode: "dynamic" | "fixed";
   phaseTotalRounds?: number;
+  bestOf?: number;
   phaseCutoff?: TournamentPhaseCutoffInput | null;
   playerMeeting?: boolean;
 };
@@ -42,7 +63,7 @@ export async function requirePhase(
   return phase;
 }
 
-// All phases in play order (bounded by the 16-phase cap).
+// All phases in play order (bounded by the phase cap).
 export async function phasesInOrder(
   ctx: QueryCtx,
   tournamentId: Id<"tournaments">,
@@ -52,7 +73,7 @@ export async function phasesInOrder(
     .withIndex("by_tournamentId_and_phaseOrder", (q) =>
       q.eq("tournamentId", tournamentId),
     )
-    .take(16);
+    .take(MAX_TOURNAMENT_PHASES);
 }
 
 export async function phaseByOrder(
@@ -243,6 +264,7 @@ export async function createPhases(
       phaseStatus: "upcoming",
       phaseRoundMode: phase.phaseRoundMode,
       phaseTotalRounds: phase.phaseTotalRounds,
+      bestOf: phase.bestOf,
       phaseCutoff: phase.phaseCutoff,
       powerPairFinalRound: phase.phaseType === SWISS_FORMAT ? true : undefined,
       playerMeeting: phase.playerMeeting,
@@ -257,14 +279,21 @@ export async function resolvePhaseTotalRounds(
   activePlayerCount: number,
 ) {
   if (phase.phaseType === SINGLE_ELIMINATION_FORMAT) {
-    if (phase.phaseTotalRounds !== SINGLE_ELIMINATION_ROUNDS) {
+    // The bracket's round count is a property of the field that enters it —
+    // one round per halving of the smallest power-of-two bracket that fits —
+    // so it resolves at start like a dynamic Swiss phase's. The progression
+    // verdict has already refused a one-player field by the time this runs.
+    if (activePlayerCount < 2) {
+      throw new Error(BRACKET_REQUIRES_TWO_PLAYERS);
+    }
+    const phaseTotalRounds = Math.ceil(Math.log2(activePlayerCount));
+    if (phase.phaseTotalRounds !== phaseTotalRounds) {
       await ctx.db.patch(phase._id, {
-        phaseRoundMode: "fixed",
-        phaseTotalRounds: SINGLE_ELIMINATION_ROUNDS,
+        phaseTotalRounds,
         updatedAt: Date.now(),
       });
     }
-    return SINGLE_ELIMINATION_ROUNDS;
+    return phaseTotalRounds;
   }
   if (phase.phaseRoundMode === "fixed") {
     if (phase.phaseTotalRounds === null) {
@@ -294,11 +323,24 @@ export function requireResolvedPhaseTotalRounds(
   return phase.phaseTotalRounds;
 }
 
-export function requireDecisiveEliminationResult(
+// The one gate for a reported scoreline: the structure bounds derived from
+// the phase's Match Structure, plus the phase-type draw rule — drawn matches
+// are always valid in Swiss and never valid in single elimination.
+export function requireValidMatchResult(
   phase: Doc<"tournamentPhases">,
   playerOneGameWins: number,
   playerTwoGameWins: number,
+  gameDraws = 0,
 ) {
+  const entryError = gameWinsEntryError(
+    phase.bestOf,
+    playerOneGameWins,
+    playerTwoGameWins,
+    gameDraws,
+  );
+  if (entryError !== null) {
+    throw new Error(entryError);
+  }
   if (
     phase.phaseType === SINGLE_ELIMINATION_FORMAT &&
     playerOneGameWins === playerTwoGameWins
@@ -310,10 +352,26 @@ export function requireDecisiveEliminationResult(
 // A configured player meeting is a backend lifecycle prerequisite, not only a
 // UI step. Once the meeting is in progress, pairing the phase's first round is
 // what completes it.
+export function playerMeetingPending(phase: Doc<"tournamentPhases">) {
+  return (
+    phase.playerMeeting === true && phase.playerMeetingStatus === undefined
+  );
+}
+
 export function requirePlayerMeetingStarted(phase: Doc<"tournamentPhases">) {
-  if (phase.playerMeeting && phase.playerMeetingStatus === undefined) {
+  if (playerMeetingPending(phase)) {
     throw new Error("Player meeting must be started first");
   }
+}
+
+export function validBestOf(value: number | undefined): BestOf {
+  if (value === undefined) {
+    return DEFAULT_BEST_OF;
+  }
+  if (!isBestOf(value)) {
+    throw new Error("Matches must be best of 1, 3, or 5");
+  }
+  return value;
 }
 
 export function validRoundCount(value: number) {
@@ -347,10 +405,12 @@ export function validPhaseCutoff(cutoff: TournamentPhaseCutoffInput) {
 
 export function validPhaseInputs(phases: TournamentPhaseInput[]) {
   if (phases.length < 1) {
-    throw new Error("At least one Swiss phase is required");
+    throw new Error("At least one phase is required");
   }
-  if (phases.length > 16) {
-    throw new Error("A tournament can have at most 16 phases");
+  if (phases.length > MAX_TOURNAMENT_PHASES) {
+    throw new Error(
+      `A tournament can have at most ${MAX_TOURNAMENT_PHASES} phases`,
+    );
   }
 
   return phases.map((phase, index) => {
@@ -359,9 +419,6 @@ export function validPhaseInputs(phases: TournamentPhaseInput[]) {
       throw new Error("Tournament phases must be ordered starting at 1");
     }
     const phaseType = phase.phaseType ?? SWISS_FORMAT;
-    if (index === 0 && phaseType !== SWISS_FORMAT) {
-      throw new Error("A single-elimination phase must follow a Swiss phase");
-    }
     if (
       phaseType === SINGLE_ELIMINATION_FORMAT &&
       index !== phases.length - 1
@@ -371,17 +428,33 @@ export function validPhaseInputs(phases: TournamentPhaseInput[]) {
     // Absent-default convention: store true or leave the field off entirely.
     const playerMeeting = phase.playerMeeting === true ? true : undefined;
     // A cutoff cuts the field when its phase completes, so it needs a
-    // following Swiss phase to cut into. A phase feeding the top-8 playoff
-    // cannot configure one — the playoff applies its own fixed cut.
+    // following phase to cut into — of any type (CONTEXT.md "Cut"). Null
+    // means no cut: every active player advances. Omitting the field takes
+    // the default — no cut between Swiss phases, a top-N cut into the
+    // playoff — so only an explicit null sends the whole surviving field
+    // into the bracket. Whatever the cut hands the playoff, any entering
+    // field of at least two plays: the bracket is the smallest power of two
+    // that fits, with first-round byes for the top seeds when the field
+    // falls short (CONTEXT.md "Bracket").
     const nextPhaseType =
       index === phases.length - 1
         ? null
         : (phases[index + 1].phaseType ?? SWISS_FORMAT);
     const rawCutoff = phase.phaseCutoff ?? null;
-    if (rawCutoff !== null && nextPhaseType !== SWISS_FORMAT) {
-      throw new Error("A phase cutoff requires a following Swiss phase");
+    if (rawCutoff !== null && nextPhaseType === null) {
+      throw new Error("A phase cutoff requires a following phase");
     }
-    const phaseCutoff = rawCutoff === null ? null : validPhaseCutoff(rawCutoff);
+    let phaseCutoff = rawCutoff === null ? null : validPhaseCutoff(rawCutoff);
+    if (
+      nextPhaseType === SINGLE_ELIMINATION_FORMAT &&
+      phase.phaseCutoff === undefined
+    ) {
+      phaseCutoff = {
+        kind: "top_X_players",
+        playerCount: DEFAULT_PLAYOFF_CUT_PLAYER_COUNT,
+      };
+    }
+    const bestOf = validBestOf(phase.bestOf);
     if (phaseType === SINGLE_ELIMINATION_FORMAT) {
       if (playerMeeting) {
         throw new Error(
@@ -391,8 +464,13 @@ export function validPhaseInputs(phases: TournamentPhaseInput[]) {
       return {
         phaseOrder: expectedOrder,
         phaseType,
-        phaseRoundMode: "fixed" as const,
-        phaseTotalRounds: SINGLE_ELIMINATION_ROUNDS,
+        // The bracket's round count is a property of the field that enters
+        // it — the previous phase's cut, or the starting roster when the
+        // bracket is the first phase — so like a dynamic Swiss phase's it
+        // resolves when the phase starts (resolvePhaseTotalRounds).
+        phaseRoundMode: "dynamic" as const,
+        phaseTotalRounds: null,
+        bestOf,
         phaseCutoff: null,
         playerMeeting: undefined,
       };
@@ -403,6 +481,7 @@ export function validPhaseInputs(phases: TournamentPhaseInput[]) {
         phaseType,
         phaseRoundMode: "dynamic" as const,
         phaseTotalRounds: null,
+        bestOf,
         phaseCutoff,
         playerMeeting,
       };
@@ -413,6 +492,7 @@ export function validPhaseInputs(phases: TournamentPhaseInput[]) {
       phaseType,
       phaseRoundMode: "fixed" as const,
       phaseTotalRounds: validRoundCount(phase.phaseTotalRounds ?? 0),
+      bestOf,
       phaseCutoff,
       playerMeeting,
     };

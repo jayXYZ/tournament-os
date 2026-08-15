@@ -1,22 +1,24 @@
 /// <reference types="vite/client" />
 
-import { convexTest, type TestConvex } from "convex-test";
+import type { TestConvex } from "convex-test";
 import { expect, test } from "vitest";
 
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
-import { setRegistrationState } from "./model/registrations";
-import { eliminateNonQualifiers } from "./model/singleElimination";
+import {
+  eliminateNonQualifiers,
+  setRegistrationState,
+} from "./model/participation";
 import { compareStandingRows } from "./model/standings";
 import schema from "./schema";
 import {
+  insertLinkedParticipant,
   organizerIdentity,
   playOutCurrentRound,
   seedOrganizer,
 } from "./specHelpers";
-
-const modules = import.meta.glob("./**/*.ts");
+import { createConvexTest } from "./specHelpers.runtime";
 
 function playerIdentity(playerNumber: number) {
   return {
@@ -29,7 +31,7 @@ function playerIdentity(playerNumber: number) {
 }
 
 test("reportMyMatchResult records the result for both players", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId, registrationIds } = await seedStartedTournament(t, 4);
   const match = await matchForPlayer(t, tournamentId, 1, registrationIds[0]);
 
@@ -69,7 +71,7 @@ test("reportMyMatchResult records the result for both players", async () => {
 });
 
 test("reportMyMatchResult rejects outsiders, byes, re-reports, and bad scores", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   // Five players: the lowest-seeded player gets the round-one bye.
   const { tournamentId, registrationIds } = await seedStartedTournament(t, 5);
   const match = await matchForPlayer(t, tournamentId, 1, registrationIds[0]);
@@ -122,7 +124,27 @@ test("reportMyMatchResult rejects outsiders, byes, re-reports, and bad scores", 
         myGameWins: 3,
         opponentGameWins: 0,
       }),
-  ).rejects.toThrow("Game wins must be a whole number between 0 and 2");
+  ).rejects.toThrow("A best-of-3 match is won at 2 game wins");
+
+  await expect(
+    t
+      .withIdentity(playerIdentity(1))
+      .mutation(api.tournaments.player.reportMyMatchResult, {
+        matchId: match._id,
+        myGameWins: 2,
+        opponentGameWins: 2,
+      }),
+  ).rejects.toThrow("Game wins can total at most 3 in a best-of-3 match");
+
+  await expect(
+    t
+      .withIdentity(playerIdentity(1))
+      .mutation(api.tournaments.player.reportMyMatchResult, {
+        matchId: match._id,
+        myGameWins: -1,
+        opponentGameWins: 0,
+      }),
+  ).rejects.toThrow("Game wins must be a whole number of 0 or more");
 
   await t
     .withIdentity(playerIdentity(1))
@@ -142,8 +164,8 @@ test("reportMyMatchResult rejects outsiders, byes, re-reports, and bad scores", 
   ).rejects.toThrow("Match already has a result");
 });
 
-test("confirmMatchResult requires the opponent; organizer override clears the report", async () => {
-  const t = convexTest(schema, modules);
+test("a report counts immediately and an organizer override supersedes it", async () => {
+  const t = createConvexTest();
   const { tournamentId, registrationIds } = await seedStartedTournament(t, 4);
   const match = await matchForPlayer(t, tournamentId, 1, registrationIds[0]);
   const opponent = await opponentNumber(
@@ -153,14 +175,6 @@ test("confirmMatchResult requires the opponent; organizer override clears the re
     registrationIds,
   );
 
-  await expect(
-    t
-      .withIdentity(playerIdentity(opponent))
-      .mutation(api.tournaments.player.confirmMatchResult, {
-        matchId: match._id,
-      }),
-  ).rejects.toThrow("Match has no player-reported result to confirm");
-
   await t
     .withIdentity(playerIdentity(1))
     .mutation(api.tournaments.player.reportMyMatchResult, {
@@ -168,26 +182,13 @@ test("confirmMatchResult requires the opponent; organizer override clears the re
       myGameWins: 2,
       opponentGameWins: 1,
     });
-
-  await expect(
-    t
-      .withIdentity(playerIdentity(1))
-      .mutation(api.tournaments.player.confirmMatchResult, {
-        matchId: match._id,
-      }),
-  ).rejects.toThrow("The reporting player cannot confirm their own result");
-
-  await t
-    .withIdentity(playerIdentity(opponent))
-    .mutation(api.tournaments.player.confirmMatchResult, {
-      matchId: match._id,
-    });
   let stored = await t.run(async (ctx) => await ctx.db.get(match._id));
-  expect(stored?.matchStatus).toBe("confirmed");
+  expect(stored?.matchStatus).toBe("completed");
   expect(stored?.reportedByRegistrationId).toBe(registrationIds[0]);
 
-  // The organizer can still override a player-reported result; doing so
-  // makes the result organizer-final.
+  // There is no confirmation step: disputes resolve through an organizer
+  // override, which clears the reporter stamp and makes the result
+  // organizer-final.
   await t
     .withIdentity(organizerIdentity)
     .mutation(api.tournaments.rounds.recordMatchResult, {
@@ -203,16 +204,10 @@ test("confirmMatchResult requires the opponent; organizer override clears the re
 });
 
 test("player-reported results complete rounds and feed standings", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId, registrationIds } = await seedStartedTournament(t, 4);
   const round = await currentRound(t, tournamentId);
   const matchOne = await matchForPlayer(t, tournamentId, 1, registrationIds[0]);
-  const opponentOne = await opponentNumber(
-    t,
-    matchOne._id,
-    registrationIds[0],
-    registrationIds,
-  );
   // The other table is whichever match player 1 is not in.
   const otherNumber = await outsiderNumber(t, matchOne._id, registrationIds);
   const matchTwo = await matchForPlayer(
@@ -222,7 +217,7 @@ test("player-reported results complete rounds and feed standings", async () => {
     registrationIds[otherNumber - 1],
   );
 
-  // Player 1 wins and the opponent confirms.
+  // Both tables report; each report counts as a result immediately.
   await t
     .withIdentity(playerIdentity(1))
     .mutation(api.tournaments.player.reportMyMatchResult, {
@@ -231,12 +226,6 @@ test("player-reported results complete rounds and feed standings", async () => {
       opponentGameWins: 0,
     });
   await t
-    .withIdentity(playerIdentity(opponentOne))
-    .mutation(api.tournaments.player.confirmMatchResult, {
-      matchId: matchOne._id,
-    });
-  // The other table reports but leaves it unconfirmed.
-  await t
     .withIdentity(playerIdentity(otherNumber))
     .mutation(api.tournaments.player.reportMyMatchResult, {
       matchId: matchTwo._id,
@@ -244,7 +233,6 @@ test("player-reported results complete rounds and feed standings", async () => {
       opponentGameWins: 1,
     });
 
-  // One confirmed and one unconfirmed report both count as results.
   await t
     .withIdentity(organizerIdentity)
     .mutation(api.tournaments.rounds.completeRound, { roundId: round._id });
@@ -262,7 +250,7 @@ test("player-reported results complete rounds and feed standings", async () => {
 });
 
 test("playoff standings lock placements by elimination round", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId, registrationIds } = await seedTournament(t, 12, [
     {
       phaseOrder: 1,
@@ -336,20 +324,22 @@ test("playoff standings lock placements by elimination round", async () => {
   expect(
     standings?.rows.slice(4, 8).map((row) => row.eliminatedInRoundNumber),
   ).toEqual([2, 2, 2, 2]);
-  const quarterfinalLoserRows = standings?.rows.slice(4, 8) ?? [];
-  expect(quarterfinalLoserRows).toEqual(
-    [...quarterfinalLoserRows].sort((left, right) =>
-      compareStandingRows(
-        {
-          ...left,
-          createdAt: Number(left.name?.replace("Player ", "")),
-        },
-        {
-          ...right,
-          createdAt: Number(right.name?.replace("Player ", "")),
-        },
-      ),
-    ),
+  // The payload does not expose the seed-derived tiebreak, so the sort check
+  // uses a stable index tiebreak: rows that tie on every public tiebreaker
+  // keep their returned order, and any misordering of the public tiebreakers
+  // still fails.
+  const quarterfinalLoserRows = (standings?.rows.slice(4, 8) ?? []).map(
+    (row, index) => ({
+      row,
+      comparable: { ...row, tiebreakRandom: 0, tiebreakId: String(index) },
+    }),
+  );
+  expect(quarterfinalLoserRows.map(({ row }) => row)).toEqual(
+    [...quarterfinalLoserRows]
+      .sort((left, right) =>
+        compareStandingRows(left.comparable, right.comparable),
+      )
+      .map(({ row }) => row),
   );
   expect(standings?.rows.slice(8).map((row) => row.playoffStatus)).toEqual([
     "cut",
@@ -411,7 +401,7 @@ test("playoff standings lock placements by elimination round", async () => {
 });
 
 test("getMyCurrentMatch walks the tournament lifecycle", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId, registrationIds } = await seedTournament(t, 4);
   const playerOne = t.withIdentity(playerIdentity(1));
 
@@ -458,6 +448,7 @@ test("getMyCurrentMatch walks the tournament lifecycle", async () => {
   }
   expect(current.match.matchStatus).toBe("completed");
   expect(current.match.reportedByRegistrationId).toBe(registrationIds[0]);
+  expect(current.match.currentResultKind).toBe("played");
 
   const round = await currentRound(t, tournamentId);
   const otherNumber = await outsiderNumber(
@@ -489,7 +480,7 @@ test("getMyCurrentMatch walks the tournament lifecycle", async () => {
 });
 
 test("pairings stay private until published and auto-publish applies to future rounds", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId, registrationIds } = await seedTournament(
     t,
     4,
@@ -564,7 +555,7 @@ test("pairings stay private until published and auto-publish applies to future r
 });
 
 test("unpublished rounds do not promise pairings to excluded players", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId, registrationIds } = await seedTournament(
     t,
     4,
@@ -592,7 +583,7 @@ test("unpublished rounds do not promise pairings to excluded players", async () 
 });
 
 test("completing unpublished pairings preserves the round in match history", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId } = await seedTournament(
     t,
     4,
@@ -627,7 +618,7 @@ test("completing unpublished pairings preserves the round in match history", asy
 });
 
 test("isFinalRound is only true in the tournament's last phase", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId } = await seedTournament(t, 4, [
     { phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 1 },
     { phaseOrder: 2, phaseRoundMode: "fixed", phaseTotalRounds: 1 },
@@ -678,7 +669,7 @@ test("isFinalRound is only true in the tournament's last phase", async () => {
 });
 
 test("getMyMatchHistory reports per-round outcomes", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId, registrationIds } = await seedStartedTournament(t, 4);
   const match = await matchForPlayer(t, tournamentId, 1, registrationIds[0]);
   const opponent = await opponentNumber(
@@ -712,7 +703,7 @@ test("getMyMatchHistory reports per-round outcomes", async () => {
 });
 
 test("dropSelf removes the player from future rounds but keeps read access", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId, registrationIds } = await seedTournament(t, 4);
   const playerFour = t.withIdentity(playerIdentity(4));
 
@@ -874,7 +865,7 @@ test("dropSelf removes the player from future rounds but keeps read access", asy
 // batch. Each test checks both what the player sees and what is stored on the
 // row, since a stale stored value is what would break the query.
 test("standings track a drop and a reinstate made between rounds", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId, registrationIds } = await seedStartedTournament(t, 4);
   const organizer = t.withIdentity(organizerIdentity);
   const viewer = t.withIdentity(playerIdentity(1));
@@ -957,7 +948,7 @@ test("standings track a drop and a reinstate made between rounds", async () => {
 });
 
 test("standings show a cut's elimination batch on the round that produced it", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId, registrationIds } = await seedTournament(t, 4, [
     {
       phaseOrder: 1,
@@ -998,14 +989,14 @@ test("standings show a cut's elimination batch on the round that produced it", a
   );
   expect(standings?.roundNumber).toBe(finalSwissRound.roundNumber);
   for (const eliminatedId of eliminatedIds) {
-    expect(await storedStandingStatus(t, finalSwissRound._id, eliminatedId)).toBe(
-      "eliminated",
-    );
+    expect(
+      await storedStandingStatus(t, finalSwissRound._id, eliminatedId),
+    ).toBe("eliminated");
   }
   for (const qualifierId of qualifierIds) {
-    expect(await storedStandingStatus(t, finalSwissRound._id, qualifierId)).toBe(
-      "active",
-    );
+    expect(
+      await storedStandingStatus(t, finalSwissRound._id, qualifierId),
+    ).toBe("active");
   }
   // The organizer view of the same round still live-joins the registration, so
   // the denormalized copy the players read has to agree with it row for row.
@@ -1034,7 +1025,7 @@ test("standings show a cut's elimination batch on the round that produced it", a
 // however large the field is. Counting the reads is the only way to see this:
 // both shapes leave exactly the same rows on disk.
 test("a cut's elimination batch reaches standings through one index range", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId, registrationIds } = await seedTournament(t, 8, [
     {
       phaseOrder: 1,
@@ -1102,7 +1093,10 @@ test("a cut's elimination batch reaches standings through one index range", asyn
           if (property === "patch" && standingIds.has(args[0] as string)) {
             counts.standingsPatches += 1;
           }
-          return (value as (...inner: unknown[]) => unknown).apply(target, args);
+          return (value as (...inner: unknown[]) => unknown).apply(
+            target,
+            args,
+          );
         };
       },
     });
@@ -1131,19 +1125,19 @@ test("a cut's elimination batch reaches standings through one index range", asyn
   expect(tally.standingsPatches).toBe(eliminatedIds.length);
   // …and the denormalized copy is still exact, which is what the range buys.
   for (const eliminatedId of eliminatedIds) {
-    expect(await storedStandingStatus(t, finalSwissRound._id, eliminatedId)).toBe(
-      "eliminated",
-    );
+    expect(
+      await storedStandingStatus(t, finalSwissRound._id, eliminatedId),
+    ).toBe("eliminated");
   }
   for (const qualifierId of qualifierIds) {
-    expect(await storedStandingStatus(t, finalSwissRound._id, qualifierId)).toBe(
-      "active",
-    );
+    expect(
+      await storedStandingStatus(t, finalSwissRound._id, qualifierId),
+    ).toBe("active");
   }
 });
 
 test("a rewind past a drop does not resurrect the dropped player", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId, registrationIds } = await seedStartedTournament(t, 4);
   const organizer = t.withIdentity(organizerIdentity);
   const viewer = t.withIdentity(playerIdentity(1));
@@ -1184,6 +1178,52 @@ test("a rewind past a drop does not resurrect the dropped player", async () => {
   );
 });
 
+// The tests above pin the write side: the participation module keeps the
+// denormalized copy exact. This pins the read side — getLatestStandings
+// believes the row rather than live-joining registrations. Severing the copy
+// from the registration (patching the row directly, behind the participation
+// module's back) changes what players see even though no registration
+// changed; a query that joined registrations would report the drop anyway,
+// and would pay a document read and a subscription dependency per non-active
+// player, per viewer, to do it.
+test("getLatestStandings reports the status stored on the row, not the registration", async () => {
+  const t = createConvexTest();
+  const { tournamentId, registrationIds } = await seedStartedTournament(t, 4);
+  const organizer = t.withIdentity(organizerIdentity);
+  const viewer = t.withIdentity(playerIdentity(1));
+  const droppedId = registrationIds[3];
+
+  await playOutCurrentRound(t, tournamentId);
+  const roundOne = await currentRound(t, tournamentId);
+  await organizer.mutation(api.tournaments.registrations.dropRegistration, {
+    registrationId: droppedId,
+  });
+  expect(await storedStandingStatus(t, roundOne._id, droppedId)).toBe(
+    "dropped",
+  );
+
+  await t.run(async (ctx) => {
+    const standing = await ctx.db
+      .query("roundStandings")
+      .withIndex("by_tournamentRoundId_and_playerId", (q) =>
+        q.eq("tournamentRoundId", roundOne._id).eq("playerId", droppedId),
+      )
+      .unique();
+    if (!standing) {
+      throw new Error("Standings row not found in test setup");
+    }
+    await ctx.db.patch(standing._id, { participationStatus: "active" });
+  });
+
+  const standings = await viewer.query(
+    api.tournaments.player.getLatestStandings,
+    { tournamentId },
+  );
+  expect(
+    standings?.rows.find((row) => row.name === "Player 4")?.registrationStatus,
+  ).toBe("active");
+});
+
 // The participation status stored on a round's standings row, which is what
 // getLatestStandings reports.
 async function storedStandingStatus(
@@ -1206,7 +1246,7 @@ async function storedStandingStatus(
 }
 
 test("player queries reject users who never registered", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId } = await seedStartedTournament(t, 4);
   const outsider = t.withIdentity(playerIdentity(99));
 
@@ -1278,14 +1318,19 @@ async function seedTournament(
         name: identity.name,
         updatedAt: now,
       });
+      const participant0Id = await insertLinkedParticipant(ctx, userId);
       ids.push(
         await ctx.db.insert("tournamentRegistrations", {
           tournamentId,
-          userId,
+          participantId: participant0Id,
           tournamentStartDate: tournament.startDate,
           entryStatus: "confirmed",
           participationStatus: "active",
           createdAt: now + playerNumber,
+          // Descending so equal records rank in player-number order, keeping
+          // this suite's pairing expectations stable; tiebreak realism lives
+          // in the pairing and swiss suites.
+          tiebreakRandom: 100_000 - playerNumber,
           updatedAt: now,
         }),
       );

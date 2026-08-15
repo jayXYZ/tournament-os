@@ -1,14 +1,17 @@
 /// <reference types="vite/client" />
 
-import { convexTest, type TestConvex } from "convex-test";
+import type { TestConvex } from "convex-test";
 import { expect, test } from "vitest";
 
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import schema from "./schema";
-import { organizerIdentity, seedOrganizer } from "./specHelpers";
-
-const modules = import.meta.glob("./**/*.ts");
+import {
+  insertLinkedParticipant,
+  organizerIdentity,
+  seedOrganizer,
+} from "./specHelpers";
+import { createConvexTest } from "./specHelpers.runtime";
 
 function playerIdentity(playerNumber: number) {
   return {
@@ -63,15 +66,17 @@ async function seedOpenTournament(
         name: identity.name,
         updatedAt: now,
       });
+      const participant0Id = await insertLinkedParticipant(ctx, userId);
       ids.push(
         await ctx.db.insert("tournamentRegistrations", {
           tournamentId,
-          userId,
+          participantId: participant0Id,
           tournamentStartDate: tournament.startDate,
           entryStatus: "confirmed",
           participationStatus: "active",
           playerName: identity.name,
           createdAt: now + playerNumber,
+          tiebreakRandom: playerNumber,
           updatedAt: now + playerNumber,
         }),
       );
@@ -99,7 +104,7 @@ async function decklistAuditEvents(
 }
 
 test("submitMyDecklist normalizes the boards and getMyDecklist returns them", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId, registrationIds } = await seedOpenTournament(t, 1);
 
   const decklistId = await t
@@ -156,7 +161,7 @@ test("submitMyDecklist normalizes the boards and getMyDecklist returns them", as
 });
 
 test("resubmitting replaces the list in place and clears omitted fields", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId, registrationIds } = await seedOpenTournament(t, 1);
   const player = t.withIdentity(playerIdentity(1));
 
@@ -218,7 +223,7 @@ test("resubmitting replaces the list in place and clears omitted fields", async 
 });
 
 test("submitMyDecklist rejects signed-out, unregistered, and malformed submissions", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId } = await seedOpenTournament(t, 1);
   const validBoards = {
     tournamentId,
@@ -268,7 +273,7 @@ test("submitMyDecklist rejects signed-out, unregistered, and malformed submissio
 });
 
 test("decklist submission closes once the tournament starts", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId } = await seedOpenTournament(t, 4);
   const player = t.withIdentity(playerIdentity(1));
 
@@ -310,7 +315,7 @@ test("decklist submission closes once the tournament starts", async () => {
 });
 
 test("getMyDecklist is null for signed-out, unregistered, and cancelled callers", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId } = await seedOpenTournament(t, 1);
 
   expect(
@@ -342,7 +347,7 @@ test("getMyDecklist is null for signed-out, unregistered, and cancelled callers"
 });
 
 test("events that don't collect decklists refuse submissions until the flag turns on", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId } = await seedOpenTournament(t, 1, false);
   const player = t.withIdentity(playerIdentity(1));
   const boards = {
@@ -377,7 +382,7 @@ test("events that don't collect decklists refuse submissions until the flag turn
 });
 
 test("a list surviving cancel → rename → re-register carries no stale name copy", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId, registrationIds } = await seedOpenTournament(t, 1);
 
   await t
@@ -436,7 +441,7 @@ test("a list surviving cancel → rename → re-register carries no stale name c
 });
 
 test("getDecklistForRegistration serves organizers and rejects everyone else", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId, registrationIds } = await seedOpenTournament(t, 2);
 
   const decklistId = await t

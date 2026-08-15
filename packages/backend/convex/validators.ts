@@ -127,10 +127,21 @@ export const tournamentPhaseRoundModeValidator = v.union(
   v.literal("fixed"),
 );
 
+// A phase's Match Structure: best-of-1, -3, or -5, meaning first to ⌈X/2⌉
+// game wins (see CONTEXT.md "Match Structure" and
+// @tournament-os/shared/match-structure for the derived rules).
+export const tournamentPhaseBestOfValidator = v.union(
+  v.literal(1),
+  v.literal(3),
+  v.literal(5),
+);
+
 // How a phase cuts the field when it completes: keep only the top N ranked
 // players, or everyone at or above a match-point bar. Null means no cut —
-// every active player advances. Only configurable on a Swiss phase followed by
-// another Swiss phase; a top-8 playoff always applies its own fixed cut.
+// every active player advances. Configurable on any phase with a following
+// phase, whatever its type; a phase feeding the single-elimination playoff
+// defaults to a top-8 cut when the input omits the field, while an explicit
+// null keeps no cut (see validPhaseInputs in model/phases.ts).
 const topPlayersCutoffValidator = v.object({
   kind: v.literal("top_X_players"),
   playerCount: v.number(),
@@ -171,11 +182,13 @@ export const tournamentRoundStatusValidator = v.union(
   v.literal("cancelled"),
 );
 
+// No "confirmed" status: a Reported Result counts immediately and there is
+// no opponent-confirmation step (see CONTEXT.md); disputes resolve through
+// organizer override.
 export const tournamentMatchStatusValidator = v.union(
   v.literal("upcoming"),
   v.literal("in_progress"),
   v.literal("completed"),
-  v.literal("confirmed"),
   v.literal("cancelled"),
 );
 
@@ -210,6 +223,40 @@ const auditMatchResultLineValidator = v.object({
   playerName: v.union(v.string(), v.null()),
   gameWins: v.number(),
   gameLosses: v.number(),
+  gameDraws: v.number(),
+});
+
+// How a match outcome came about (see CONTEXT.md): a played result, or one
+// of the Awarded Result kinds. "played", "bye", and "concession" (a drop
+// during the player's own unfinished match) have writers today; forfeit,
+// no-show, and DQ land with the judge adjudication actions (TODO.md
+// section 5), and walkovers are byes.
+export const matchResultKindValidator = v.union(
+  v.literal("played"),
+  v.literal("bye"),
+  v.literal("concession"),
+  v.literal("forfeit"),
+  v.literal("no_show"),
+  v.literal("dq"),
+);
+
+// A player's side of a match outcome. Stored explicitly rather than derived
+// from game wins so awarded results and double losses stay representable.
+export const matchOutcomeValidator = v.union(
+  v.literal("win"),
+  v.literal("loss"),
+  v.literal("draw"),
+);
+
+// One player's line of a result revision. Match points are stored alongside
+// the outcome they derive from so readers never re-derive scoring rules.
+export const matchResultLineValidator = v.object({
+  registrationId: v.id("tournamentRegistrations"),
+  outcome: matchOutcomeValidator,
+  matchPointsEarned: v.number(),
+  gameWins: v.number(),
+  gameLosses: v.number(),
+  gameDraws: v.number(),
 });
 
 // What happened, as a discriminated union so the log view renders each kind
@@ -235,10 +282,17 @@ export const tournamentAuditEventValidator = v.union(
     result: v.array(auditMatchResultLineValidator),
   }),
   v.object({
-    type: v.literal("match_result_confirmed"),
+    // A drop during the player's own unfinished match: the awarded
+    // concession the drop recorded, alongside the player_dropped event the
+    // drop itself logs. The actor is whoever recorded the drop — the player
+    // themself or an organizer.
+    type: v.literal("match_conceded"),
     matchId: v.id("tournamentMatches"),
     roundNumber: v.number(),
     tableNumber: v.union(v.number(), v.null()),
+    // The player whose drop conceded the match.
+    player: auditPlayerRefValidator,
+    result: v.array(auditMatchResultLineValidator),
   }),
   v.object({
     type: v.literal("player_registered"),

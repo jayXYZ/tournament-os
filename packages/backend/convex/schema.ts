@@ -4,6 +4,9 @@ import { v } from "convex/values";
 import {
   auditActorRoleValidator,
   invitationStatusValidator,
+  matchResultKindValidator,
+  matchResultLineValidator,
+  tournamentPhaseBestOfValidator,
   membershipStatusValidator,
   organizationStatusValidator,
   organizerRoleValidator,
@@ -148,9 +151,29 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("by_key", ["key"]),
 
+  // The durable competitor identity registrations belong to (CONTEXT.md
+  // "Participant"): at most one linked user account per participant, exactly
+  // one participant per account (created lazily at first need), and a
+  // participant without one is a Guest. Conduct history and favorites anchor
+  // here as they land, so identity survives individual registrations.
+  participants: defineTable({
+    // The linked account; absent for Guests. See ADR 0002 for how a Guest is
+    // claimed into an account holder's participant at sign-in.
+    userId: v.optional(v.id("users")),
+    // Guest fields: the organizer-provided display name shown wherever the
+    // guest plays, and the normalized contact email that keys claiming (and
+    // later invitations). A user-linked participant reads name and avatar
+    // through its user instead and leaves both unset.
+    displayName: v.optional(v.string()),
+    contactEmail: v.optional(v.string()),
+    updatedAt: v.number(),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_contactEmail", ["contactEmail"]),
+
   tournamentRegistrations: defineTable({
     tournamentId: v.id("tournaments"),
-    userId: v.id("users"),
+    participantId: v.id("participants"),
     // Denormalized from the tournament so a player's history can be indexed
     // and paginated newest-first without joining every registration first.
     tournamentStartDate: v.number(),
@@ -175,9 +198,13 @@ export default defineSchema({
     // key off decklistId — an unnamed list has no deckName here either.
     decklistId: v.optional(v.id("tournamentDecklists")),
     deckName: v.optional(v.string()),
-    // Kept alongside _creationTime: pairing and standings tie-break on this,
-    // and test seeding deliberately offsets it per player for determinism.
     createdAt: v.number(),
+    // The player's fixed random tiebreaker for this tournament, breaking
+    // otherwise-perfect standings ties. Derived at registration time from
+    // the tournament seed and the user's stable publicCode (see
+    // model/random.ts) so it is reproducible across reseeds and never
+    // correlates with registration order.
+    tiebreakRandom: v.number(),
     updatedAt: v.number(),
   })
     // Whole-tournament scans prefix-query this on tournamentId alone; the
@@ -188,14 +215,17 @@ export default defineSchema({
       "tournamentId",
       "tournamentStartDate",
     ])
-    .index("by_tournamentId_and_userId", ["tournamentId", "userId"])
+    .index("by_tournamentId_and_participantId", [
+      "tournamentId",
+      "participantId",
+    ])
     .index("by_tournamentId_and_entryStatus_and_participationStatus", [
       "tournamentId",
       "entryStatus",
       "participationStatus",
     ])
-    .index("by_userId_and_entryStatus_and_tournamentStartDate", [
-      "userId",
+    .index("by_participantId_and_entryStatus_and_tournamentStartDate", [
+      "participantId",
       "entryStatus",
       "tournamentStartDate",
     ])
@@ -259,6 +289,10 @@ export default defineSchema({
     phaseOrder: v.number(),
     phaseStatus: tournamentPhaseStatusValidator,
     phaseRoundMode: tournamentPhaseRoundModeValidator,
+    // The phase's Match Structure (best-of-1/3/5). Drives result-entry
+    // validation and the bye scoreline; editable pre-start like the rest of
+    // the phase configuration.
+    bestOf: tournamentPhaseBestOfValidator,
     phaseTotalRounds: v.union(v.number(), v.null()),
     phaseCurrentRound: v.optional(v.id("tournamentRounds")),
     phaseCutoff: tournamentPhaseCutoffValidator,
@@ -322,10 +356,23 @@ export default defineSchema({
     // Byes have no table assignment; in the round index they sort before
     // numbered matches because undefined orders first.
     tableNumber: v.optional(v.number()),
+    // Single elimination only: the match's 1-based seat-pair position within
+    // its bracket round, byes included. The next round is paired from seat
+    // winners in this order, which the table index cannot supply — byes have
+    // no table, so it hoists them out of their bracket position.
+    bracketSeat: v.optional(v.number()),
     matchStatus: tournamentMatchStatusValidator,
     // Set when a player self-reports the result; absent once an organizer
     // records or overrides it. "completed" + this field = unconfirmed report.
     reportedByRegistrationId: v.optional(v.id("tournamentRegistrations")),
+    // The revision that is the match's current result; absent while the
+    // match has none. Older revisions for the match are superseded history.
+    currentResultRevisionId: v.optional(v.id("matchResultRevisions")),
+    // The current revision's kind, denormalized so round-level guards (the
+    // rewind "untouched round" check) can tell entered results from
+    // automatic ones without reading every revision. Written together with
+    // currentResultRevisionId, absent exactly when it is.
+    currentResultKind: v.optional(matchResultKindValidator),
     updatedAt: v.number(),
   })
     .index("by_tournamentRoundId", ["tournamentRoundId"])
@@ -333,6 +380,27 @@ export default defineSchema({
       "tournamentRoundId",
       "tableNumber",
     ]),
+
+  // Append-only history of every result a match has carried, one row per
+  // entry or override — the adjudication record behind the denormalized
+  // current-result fields on tournamentMatchPlayers, which stay the hot read
+  // model for standings and pairings. Rows are immutable (no updatedAt;
+  // _creationTime is the entry timestamp) and are deleted only when their
+  // match is deleted (a rewind un-pairing the round, or tournament deletion).
+  matchResultRevisions: defineTable({
+    tournamentId: v.id("tournaments"),
+    tournamentMatchId: v.id("tournamentMatches"),
+    kind: matchResultKindValidator,
+    // One line per player: two for played results, one for byes.
+    lines: v.array(matchResultLineValidator),
+    // Who entered the result. Absent for system-written revisions: byes at
+    // pairing time and seeded test simulation.
+    actorUserId: v.optional(v.id("users")),
+    actorRole: v.optional(auditActorRoleValidator),
+    // Optional organizer note explaining a correction, for dispute context
+    // beyond what the audit log records.
+    note: v.optional(v.string()),
+  }).index("by_tournamentMatchId", ["tournamentMatchId"]),
 
   tournamentMatchPlayers: defineTable({
     tournamentMatchId: v.id("tournamentMatches"),
@@ -344,6 +412,10 @@ export default defineSchema({
     matchPointsEarned: v.optional(v.number()),
     gameWins: v.optional(v.number()),
     gameLosses: v.optional(v.number()),
+    // Drawn games are shared by both players, so a match's two rows always
+    // carry the same value. Absent (like the fields above) until a result is
+    // recorded.
+    gameDraws: v.optional(v.number()),
     isBye: v.boolean(),
     updatedAt: v.number(),
   })
@@ -370,11 +442,15 @@ export default defineSchema({
     // Cumulative totals through this round, denormalized so the next round's
     // standings and pairings never re-read full match history. Optional only
     // for rows written before these fields existed; readers fall back to a
-    // per-player history walk when they are missing.
+    // per-player history walk when they are missing. byeCount and
+    // byeGameWins exist so the percentages a player feeds into opponents'
+    // tiebreakers can exclude their byes (see model/standings.ts).
     gameWins: v.optional(v.number()),
     gameLosses: v.optional(v.number()),
+    gameDraws: v.optional(v.number()),
     opponentIds: v.optional(v.array(v.id("tournamentRegistrations"))),
-    hasHadBye: v.optional(v.boolean()),
+    byeCount: v.optional(v.number()),
+    byeGameWins: v.optional(v.number()),
     opponentMatchWinPct: v.number(),
     gameWinPct: v.number(),
     opponentGameWinPct: v.number(),
@@ -392,9 +468,9 @@ export default defineSchema({
     // query every player in the event subscribes to never reads a registration
     // document (see getLatestStandings). Absent means "active" — the common
     // case, and what a legacy row without the field must read as. Written when
-    // the row is created and written through by setRegistrationState whenever
-    // the status changes afterwards, so the copy on the tournament's latest
-    // completed round is always the live value.
+    // the row is created and written through by the participation module
+    // (model/participation.ts) whenever the status changes afterwards, so the
+    // copy on the tournament's latest completed round is always the live value.
     participationStatus: v.optional(tournamentParticipationStatusValidator),
     sortKey: v.number(),
     updatedAt: v.number(),
@@ -431,13 +507,17 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("by_tournamentId", ["tournamentId"]),
 
+  // Seeded dummy players are Guest participants (no user account), so test
+  // events exercise the same identity paths a real guest enrollment will.
   testTournamentPlayers: defineTable({
     tournamentId: v.id("tournaments"),
-    userId: v.id("users"),
+    participantId: v.id("participants"),
     playerNumber: v.number(),
     updatedAt: v.number(),
   })
     .index("by_tournamentId", ["tournamentId"])
-    .index("by_tournamentId_and_playerNumber", ["tournamentId", "playerNumber"])
-    .index("by_userId", ["userId"]),
+    .index("by_tournamentId_and_playerNumber", [
+      "tournamentId",
+      "playerNumber",
+    ]),
 });

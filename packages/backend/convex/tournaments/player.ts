@@ -3,34 +3,31 @@ import { v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import { mutation, query } from "../_generated/server";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
-import {
-  auditPlayerRef,
-  auditResultLine,
-  logAuditEvent,
-} from "../model/auditLog";
+import { auditPlayerRef, logAuditEvent } from "../model/auditLog";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
 import {
+  applyMatchResult,
+  concedeUnfinishedMatchOnDrop,
+} from "../model/matchResults";
+import {
+  MAX_MATCHES_PER_PLAYER,
   latestCompletedRound,
-  requireDecisiveEliminationResult,
   requirePhase,
   roundNumberInPhase,
   phaseByOrder,
   phasesInOrder,
   selectCurrentPhase,
 } from "../model/phases";
+import { setRegistrationState } from "../model/participation";
 import {
   MAX_TOURNAMENT_PLAYERS,
   playerVisibleParticipationStatus,
   playerVisibleRegistration,
   registrationForUser,
   resolveRegistrationDisplayName,
-  setRegistrationState,
 } from "../model/registrations";
-import {
-  MAX_MATCHES_PER_PLAYER,
-  matchLogForRegistration,
-} from "../model/playerResults";
-import { matchPointsForResult } from "../model/standings";
+import { participantPublicIdentity } from "../model/participants";
+import { matchLogForRegistration } from "../model/playerResults";
 import {
   isPairingsVisibleToPlayers,
   matchPlayers,
@@ -40,6 +37,7 @@ import {
   requireTournament,
 } from "../model/tournaments";
 import { ensureCurrentUser } from "../model/users";
+import { enforceRateLimit } from "../rateLimits";
 
 type OpponentSummary = {
   registrationId: Id<"tournamentRegistrations">;
@@ -190,13 +188,16 @@ export const getMyCurrentMatch = query({
     let opponent: OpponentSummary | null = null;
     if (opponentRow) {
       const opponentRegistration = await ctx.db.get(opponentRow.playerId);
-      const opponentUser = opponentRegistration
-        ? await ctx.db.get(opponentRegistration.userId)
+      const opponentParticipant = opponentRegistration
+        ? await ctx.db.get(opponentRegistration.participantId)
         : null;
+      const identity = opponentParticipant
+        ? await participantPublicIdentity(ctx, opponentParticipant)
+        : { name: null, avatarUrl: null };
       opponent = {
         registrationId: opponentRow.playerId,
-        name: opponentUser?.name ?? null,
-        avatarUrl: opponentUser?.avatarUrl ?? null,
+        name: identity.name,
+        avatarUrl: identity.avatarUrl,
       };
     }
 
@@ -209,11 +210,19 @@ export const getMyCurrentMatch = query({
         tableNumber: match.tableNumber ?? null,
         matchStatus: match.matchStatus,
         reportedByRegistrationId: match.reportedByRegistrationId ?? null,
+        // A concession from a mid-match drop completes the match with no
+        // reporting player; without the kind, the client cannot tell it
+        // apart from an organizer-entered result.
+        currentResultKind: match.currentResultKind ?? null,
+        // The phase's Match Structure, so result entry can cap game wins at
+        // what the structure allows instead of hardcoding best-of-3.
+        bestOf: phase.bestOf,
       },
       me: {
         registrationId: registration._id,
         gameWins: myRow.gameWins ?? null,
         gameLosses: myRow.gameLosses ?? null,
+        gameDraws: myRow.gameDraws ?? null,
         isBye: myRow.isBye,
       },
       opponent,
@@ -256,8 +265,8 @@ export const getLatestStandings = query({
       .take(MAX_TOURNAMENT_PLAYERS);
     // Every player in the event subscribes to this query, so it reads no
     // registration documents at all: participation status is denormalized onto
-    // the standings row, and setRegistrationState writes each change through to
-    // the latest completed round's rows (see syncStandingParticipationStatus).
+    // the standings row, and the participation module writes each change
+    // through to the latest completed round's rows (see model/participation.ts).
     // A drop or reinstate between rounds therefore still shows immediately —
     // it patches the very rows this query reads — while a 500-player field no
     // longer costs one read and one subscription dependency per non-active
@@ -300,93 +309,24 @@ export const reportMyMatchResult = mutation({
     matchId: v.id("tournamentMatches"),
     myGameWins: v.number(),
     opponentGameWins: v.number(),
+    gameDraws: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const { match, myRow, opponentRow, user } = await requireMatchParticipant(
-      ctx,
-      args.matchId,
-    );
-    if (match.matchStatus !== "upcoming") {
-      throw new Error("Match already has a result");
-    }
-    const myGameWins = validGameWins(args.myGameWins);
-    const opponentGameWins = validGameWins(args.opponentGameWins);
-    requireDecisiveEliminationResult(
-      await requirePhase(ctx, match.tournamentPhaseId),
-      myGameWins,
-      opponentGameWins,
-    );
-
-    const [myPoints, opponentPoints] = matchPointsForResult({
-      playerOneGameWins: myGameWins,
-      playerTwoGameWins: opponentGameWins,
-    });
-    const now = Date.now();
-    await ctx.db.patch(myRow._id, {
-      matchPointsEarned: myPoints,
-      gameWins: myGameWins,
-      gameLosses: opponentGameWins,
-      updatedAt: now,
-    });
-    await ctx.db.patch(opponentRow._id, {
-      matchPointsEarned: opponentPoints,
-      gameWins: opponentGameWins,
-      gameLosses: myGameWins,
-      updatedAt: now,
-    });
-    await ctx.db.patch(match._id, {
-      matchStatus: "completed",
-      reportedByRegistrationId: myRow.playerId,
-      updatedAt: now,
-    });
-    const round = await requireRound(ctx, match.tournamentRoundId);
-    await logAuditEvent(ctx, {
-      tournamentId: match.tournamentId,
-      actor: user,
-      actorRole: "player",
-      event: {
-        type: "match_result_reported",
-        matchId: match._id,
-        roundNumber: round.roundNumber,
-        tableNumber: match.tableNumber ?? null,
-        result: [
-          auditResultLine(myRow, myGameWins, opponentGameWins),
-          auditResultLine(opponentRow, opponentGameWins, myGameWins),
-        ],
-      },
-    });
-    return match._id;
-  },
-});
-
-export const confirmMatchResult = mutation({
-  args: { matchId: v.id("tournamentMatches") },
-  handler: async (ctx, args) => {
-    const { match, myRow, user } = await requireMatchParticipant(
-      ctx,
-      args.matchId,
-    );
-    if (match.matchStatus !== "completed" || !match.reportedByRegistrationId) {
-      throw new Error("Match has no player-reported result to confirm");
-    }
-    if (match.reportedByRegistrationId === myRow.playerId) {
-      throw new Error("The reporting player cannot confirm their own result");
-    }
-
-    await ctx.db.patch(match._id, {
-      matchStatus: "confirmed",
-      updatedAt: Date.now(),
-    });
-    const round = await requireRound(ctx, match.tournamentRoundId);
-    await logAuditEvent(ctx, {
-      tournamentId: match.tournamentId,
-      actor: user,
-      actorRole: "player",
-      event: {
-        type: "match_result_confirmed",
-        matchId: match._id,
-        roundNumber: round.roundNumber,
-        tableNumber: match.tableNumber ?? null,
+    await enforceRateLimit(ctx, "reportResult");
+    const { match, round, myRow, opponentRow, user } =
+      await requireMatchParticipant(ctx, args.matchId);
+    await applyMatchResult(ctx, {
+      match,
+      phase: await requirePhase(ctx, match.tournamentPhaseId),
+      round,
+      players: [myRow, opponentRow],
+      playerOneGameWins: args.myGameWins,
+      playerTwoGameWins: args.opponentGameWins,
+      gameDraws: args.gameDraws ?? 0,
+      policy: {
+        kind: "player",
+        actor: user,
+        reporterRegistrationId: myRow.playerId,
       },
     });
     return match._id;
@@ -396,6 +336,7 @@ export const confirmMatchResult = mutation({
 export const dropSelf = mutation({
   args: { tournamentId: v.id("tournaments") },
   handler: async (ctx, args) => {
+    await enforceRateLimit(ctx, "dropSelf");
     const user = await ensureCurrentUser(ctx);
     const tournament = await requireTournament(ctx, args.tournamentId);
     if (tournament.lifecycle !== "in_progress") {
@@ -426,6 +367,14 @@ export const dropSelf = mutation({
       actorRole: "player",
       event: { type: "player_dropped", player: auditPlayerRef(registration) },
     });
+    // A drop during the player's own unfinished match concedes it (see
+    // CONTEXT.md "Concession").
+    await concedeUnfinishedMatchOnDrop(ctx, {
+      tournament,
+      registration,
+      actor: user,
+      actorRole: "player",
+    });
     return registration._id;
   },
 });
@@ -448,8 +397,9 @@ async function playerMatchInRound(
   return null;
 }
 
-// Being one of the match's two players is the authorization: a dropped player
-// may still owe the result for the round they dropped in.
+// Being one of the match's two players is the authorization — participation
+// status is not checked, because a match can outlive it (a drop concedes the
+// player's own unfinished match, but never touches a finished one).
 async function requireMatchParticipant(
   ctx: MutationCtx,
   matchId: Id<"tournamentMatches">,
@@ -486,12 +436,14 @@ async function requireMatchParticipant(
     throw new Error("Opponent not found for this match");
   }
 
-  return { match, tournament, registration, players, myRow, opponentRow, user };
-}
-
-function validGameWins(value: number) {
-  if (!Number.isInteger(value) || value < 0 || value > 2) {
-    throw new Error("Game wins must be a whole number between 0 and 2");
-  }
-  return value;
+  return {
+    match,
+    round,
+    tournament,
+    registration,
+    players,
+    myRow,
+    opponentRow,
+    user,
+  };
 }

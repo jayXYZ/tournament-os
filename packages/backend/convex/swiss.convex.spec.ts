@@ -1,6 +1,5 @@
 /// <reference types="vite/client" />
 
-import { convexTest } from "convex-test";
 import { expect, test } from "vitest";
 
 import { api } from "./_generated/api";
@@ -10,13 +9,11 @@ import {
   compareStandingRows,
   recomputeStatsThroughRound,
 } from "./model/standings";
-import schema from "./schema";
 import { organizerIdentity, seedOrganizer } from "./specHelpers";
-
-const modules = import.meta.glob("./**/*.ts");
+import { createConvexTest } from "./specHelpers.runtime";
 
 function createTest() {
-  return convexTest(schema, modules);
+  return createConvexTest();
 }
 type Test = ReturnType<typeof createTest>;
 
@@ -114,7 +111,9 @@ test("odd-sized Swiss events give byes to distinct players and stay consistent",
         q.eq("tournamentRoundId", firstRoundId!),
       )
       .collect();
-    const byeStanding = roundOneStandings.find((row) => row.hasHadBye);
+    const byeStanding = roundOneStandings.find(
+      (row) => (row.byeCount ?? 0) > 0,
+    );
     expect(byeStanding).toBeDefined();
     expect(byeStanding!.opponentMatchWinPct).toBe(0.33);
     expect(byeStanding!.opponentGameWinPct).toBe(0.33);
@@ -176,8 +175,10 @@ test("standings and pairings fall back to match history for legacy rows", async 
       await ctx.db.patch(standing._id, {
         gameWins: undefined,
         gameLosses: undefined,
+        gameDraws: undefined,
         opponentIds: undefined,
-        hasHadBye: undefined,
+        byeCount: undefined,
+        byeGameWins: undefined,
       });
     }
   });
@@ -314,7 +315,7 @@ test("dropped players keep feeding their opponents' tiebreakers", async () => {
       return points / (3 * rows.length);
     };
 
-    // The dropped player's actual record (1-0, then withdrew) must count,
+    // The dropped player's actual record (1-0, then dropped) must count,
     // not the 0.33 floor a missing record would collapse to.
     expect(await matchWinPctFromHistory(droppedId)).toBe(1);
 
@@ -461,7 +462,9 @@ async function expectStandingsMatchOracle(
       expect(standing.matchDraws).toBe(stats!.matchDraws);
       expect(standing.gameWins).toBe(stats!.gameWins);
       expect(standing.gameLosses).toBe(stats!.gameLosses);
-      expect(standing.hasHadBye).toBe(stats!.hasHadBye);
+      expect(standing.gameDraws).toBe(stats!.gameDraws);
+      expect(standing.byeCount).toBe(stats!.byeCount);
+      expect(standing.byeGameWins).toBe(stats!.byeGameWins);
       expect([...(standing.opponentIds ?? [])].sort()).toEqual(
         [...stats!.opponentIds].sort(),
       );

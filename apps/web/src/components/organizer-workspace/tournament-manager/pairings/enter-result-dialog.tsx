@@ -4,6 +4,11 @@ import { toast } from 'sonner'
 
 import { api } from '@tournament-os/backend/convex/_generated/api'
 import { displayPlayerName } from '@tournament-os/core'
+import {
+  MAX_GAME_DRAWS,
+  requiredGameWins,
+} from '@tournament-os/shared/match-structure'
+import type { BestOf } from '@tournament-os/shared/match-structure'
 import type { FormEvent } from 'react'
 import type { PairingRow } from './pairing-row'
 import { Button } from '@/components/ui/button'
@@ -22,16 +27,19 @@ import { useBusyAction } from '@/hooks/use-busy-action'
 
 export function EnterResultDialog({
   row,
+  bestOf,
   open,
   onOpenChange,
 }: {
   row: PairingRow
+  bestOf: BestOf
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
   const recordMatchResult = useMutation(
     api.tournaments.rounds.recordMatchResult,
   )
+  const maxGameWins = requiredGameWins(bestOf)
   const playerOne = row.players.at(0)
   const playerTwo = row.players.at(1)
 
@@ -42,6 +50,8 @@ export function EnterResultDialog({
   const [playerTwoWins, setPlayerTwoWins] = useState(
     String(playerTwo?.gameWins ?? 0),
   )
+  const [gameDraws, setGameDraws] = useState(String(playerOne?.gameDraws ?? 0))
+  const [note, setNote] = useState('')
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -56,6 +66,8 @@ export function EnterResultDialog({
         playerTwoRegistrationId: playerTwo.playerId,
         playerOneGameWins: Number.parseInt(playerOneWins, 10),
         playerTwoGameWins: Number.parseInt(playerTwoWins, 10),
+        gameDraws: Number.parseInt(gameDraws, 10) || 0,
+        ...(note.trim() === '' ? {} : { note: note.trim() }),
       })
       onOpenChange(false)
       toast.success('Match result recorded.')
@@ -96,7 +108,7 @@ export function EnterResultDialog({
                   onChange={(event) => setPlayerOneWins(event.target.value)}
                   type="number"
                   min={0}
-                  max={2}
+                  max={maxGameWins}
                   disabled={busy}
                   required
                 />
@@ -111,9 +123,38 @@ export function EnterResultDialog({
                   onChange={(event) => setPlayerTwoWins(event.target.value)}
                   type="number"
                   min={0}
-                  max={2}
+                  max={maxGameWins}
                   disabled={busy}
                   required
+                />
+              </Field>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field>
+                <FieldLabel htmlFor={`game-draws-${row.match._id}`}>
+                  Drawn games
+                </FieldLabel>
+                <Input
+                  id={`game-draws-${row.match._id}`}
+                  value={gameDraws}
+                  onChange={(event) => setGameDraws(event.target.value)}
+                  type="number"
+                  min={0}
+                  max={MAX_GAME_DRAWS}
+                  disabled={busy}
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor={`result-note-${row.match._id}`}>
+                  Note (optional)
+                </FieldLabel>
+                <Input
+                  id={`result-note-${row.match._id}`}
+                  value={note}
+                  onChange={(event) => setNote(event.target.value)}
+                  placeholder="Why this correction?"
+                  maxLength={500}
+                  disabled={busy}
                 />
               </Field>
             </div>

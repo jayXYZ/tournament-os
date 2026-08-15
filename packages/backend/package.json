@@ -7,17 +7,23 @@
   "scripts": {
     "dev": "convex dev",
     "deploy": "convex deploy",
-    "test": "vitest run"
+    "test": "vitest run",
+    "lint": "eslint . --max-warnings 0",
+    "typecheck": "tsc --noEmit -p convex/tsconfig.json"
   },
   "dependencies": {
+    "@convex-dev/rate-limiter": "^0.3.2",
     "@tournament-os/shared": "workspace:*",
-    "convex": "^1.42.0"
+    "convex": "catalog:"
   },
   "devDependencies": {
+    "@convex-dev/eslint-plugin": "^2.0.0",
     "@edge-runtime/vm": "^5.0.0",
     "convex-test": "^0.0.53",
-    "typescript": "^5",
-    "vite": "^8.0.16",
-    "vitest": "^4.1.8"
+    "eslint": "^9.39.4",
+    "typescript": "catalog:",
+    "typescript-eslint": "^8.60.0",
+    "vite": "catalog:",
+    "vitest": "catalog:"
   }
 }

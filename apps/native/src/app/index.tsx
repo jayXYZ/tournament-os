@@ -1,6 +1,5 @@
 import { AuthView, UserButton } from "@clerk/expo/native";
-import { api } from "@tournament-os/backend/convex/_generated/api";
-import { useConvexAuth, useQuery } from "convex/react";
+import { useConvexAuthReadiness, useMyTournaments } from "@tournament-os/core";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
@@ -15,22 +14,16 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function HomeScreen() {
-  // Gate on Convex's auth state, not raw Clerk state: isLoading stays true
-  // through the window where Clerk is signed in but the token hasn't been
-  // confirmed by the Convex backend yet. During that window listMyTournaments
-  // would run unauthenticated and return [] — rendering a false "No active
-  // tournaments" — so the query must not fire until isAuthenticated.
-  const { isLoading: authLoading, isAuthenticated } = useConvexAuth();
+  const auth = useConvexAuthReadiness();
   const router = useRouter();
   const [authOpen, setAuthOpen] = useState(false);
 
-  // Player's active tournaments. `undefined` while loading (Convex convention).
-  const tournaments = useQuery(
-    api.tournaments.registrations.listMyTournaments,
-    isAuthenticated ? {} : "skip",
-  );
+  // Player's active tournaments. `undefined` while loading (Convex convention);
+  // stays `undefined` until Convex auth is ready, so the token-lag window can
+  // never render a false "No active tournaments".
+  const tournaments = useMyTournaments();
 
-  if (authLoading) {
+  if (auth === "pending") {
     return (
       <View style={styles.centered}>
         <ActivityIndicator />
@@ -41,7 +34,7 @@ export default function HomeScreen() {
   // Signed out. Convex also treats Clerk sessions with pending tasks (e.g.
   // MFA) as signed out; AuthView completes those tasks too, so this branch
   // is the path back to a working session rather than a dead end.
-  if (!isAuthenticated) {
+  if (auth !== "ready") {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.signedOut}>

@@ -1,18 +1,14 @@
 import { ConvexError } from "convex/values";
 
 import type { Doc, Id } from "../_generated/dataModel";
-import type { QueryCtx } from "../_generated/server";
+import { env, type QueryCtx } from "../_generated/server";
 import { currentUserOrNull, getActiveMembership } from "./access";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "./batching";
-import { latestCompletedRound } from "./phases";
+import { participantPublicIdentity } from "./participants";
+import { MAX_MATCHES_PER_PLAYER, latestCompletedRound } from "./phases";
 import { parsePublicCode } from "./publicCodes";
 import { registrationForUser } from "./registrations";
 import { isPairingsVisibleToPlayers, isPubliclyViewable } from "./tournaments";
-
-// A registration plays at most one match per round, so a player's
-// tournamentMatchPlayers rows are bounded by the round cap (16) times the
-// phase cap (16).
-export const MAX_MATCHES_PER_PLAYER = 256;
 
 // The web UI currently asks for 10 results at a time, but pagination arguments
 // are public API input and cannot be trusted to preserve that bound. Keep result
@@ -71,7 +67,6 @@ const PROFILE_RESULTS_CURSOR_NONCE_BYTES = 12;
 // source: still opaque to app clients (they can never read deployed function
 // source), but not a real secret for anyone with repo access, so it is a
 // dev/test fallback only, not security for production data.
-const PROFILE_RESULTS_CURSOR_KEY_ENV_VAR = "PROFILE_RESULTS_CURSOR_KEY";
 const PROFILE_RESULTS_CURSOR_DEV_FALLBACK_SECRET =
   "dev-only-fallback--set-PROFILE_RESULTS_CURSOR_KEY-in-production";
 
@@ -87,9 +82,7 @@ const cursorKeyCache = new Map<string, Promise<ProfileResultsCursorKeys>>();
 
 function profileResultsCursorKeys(): Promise<ProfileResultsCursorKeys> {
   const secret =
-    (typeof process === "undefined"
-      ? undefined
-      : process.env[PROFILE_RESULTS_CURSOR_KEY_ENV_VAR]) ||
+    env.PROFILE_RESULTS_CURSOR_KEY ||
     PROFILE_RESULTS_CURSOR_DEV_FALLBACK_SECRET;
   let keys = cursorKeyCache.get(secret);
   if (keys === undefined) {
@@ -114,10 +107,13 @@ async function deriveProfileResultsCursorKeys(
     encoder.encode(`${secret}|profileResultsCursor.nonce`),
   );
   const [encryptionKey, nonceKey] = await Promise.all([
-    crypto.subtle.importKey("raw", encryptionKeyBytes, { name: "AES-GCM" }, false, [
-      "encrypt",
-      "decrypt",
-    ]),
+    crypto.subtle.importKey(
+      "raw",
+      encryptionKeyBytes,
+      { name: "AES-GCM" },
+      false,
+      ["encrypt", "decrypt"],
+    ),
     crypto.subtle.importKey(
       "raw",
       nonceKeyBytes,
@@ -134,7 +130,10 @@ function toBase64Url(bytes: Uint8Array): string {
   for (const byte of bytes) {
     binary += String.fromCharCode(byte);
   }
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  return btoa(binary)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
 }
 
 // Throws on non-base64url input; callers treat any throw as a bad cursor.
@@ -227,27 +226,31 @@ export async function decodeProfileResultsCursor(
 // index has no rows past the ones returned.
 export async function takeConfirmedRegistrationsAfter(
   ctx: QueryCtx,
-  userId: Id<"users">,
+  participantId: Id<"participants">,
   position: ProfileResultsCursorPosition | null,
   limit: number,
 ) {
   if (position === null) {
     return await ctx.db
       .query("tournamentRegistrations")
-      .withIndex("by_userId_and_entryStatus_and_tournamentStartDate", (q) =>
-        q.eq("userId", userId).eq("entryStatus", "confirmed"),
+      .withIndex(
+        "by_participantId_and_entryStatus_and_tournamentStartDate",
+        (q) =>
+          q.eq("participantId", participantId).eq("entryStatus", "confirmed"),
       )
       .order("desc")
       .take(limit);
   }
   const sameStartDate = await ctx.db
     .query("tournamentRegistrations")
-    .withIndex("by_userId_and_entryStatus_and_tournamentStartDate", (q) =>
-      q
-        .eq("userId", userId)
-        .eq("entryStatus", "confirmed")
-        .eq("tournamentStartDate", position.startDate)
-        .lt("_creationTime", position.creationTime),
+    .withIndex(
+      "by_participantId_and_entryStatus_and_tournamentStartDate",
+      (q) =>
+        q
+          .eq("participantId", participantId)
+          .eq("entryStatus", "confirmed")
+          .eq("tournamentStartDate", position.startDate)
+          .lt("_creationTime", position.creationTime),
     )
     .order("desc")
     .take(limit);
@@ -256,11 +259,13 @@ export async function takeConfirmedRegistrationsAfter(
   }
   const olderStartDates = await ctx.db
     .query("tournamentRegistrations")
-    .withIndex("by_userId_and_entryStatus_and_tournamentStartDate", (q) =>
-      q
-        .eq("userId", userId)
-        .eq("entryStatus", "confirmed")
-        .lt("tournamentStartDate", position.startDate),
+    .withIndex(
+      "by_participantId_and_entryStatus_and_tournamentStartDate",
+      (q) =>
+        q
+          .eq("participantId", participantId)
+          .eq("entryStatus", "confirmed")
+          .lt("tournamentStartDate", position.startDate),
     )
     .order("desc")
     .take(limit - sameStartDate.length);
@@ -439,17 +444,20 @@ export async function matchLogForRegistration(
         return null;
       }
 
-      // Opponent names read through to the user document (not the denormalized
-      // playerName) so an account without a name never leaks its email here.
+      // Opponent names read through the participant identity (not the
+      // denormalized playerName) so an account without a name never leaks its
+      // email here; a guest shows their organizer-provided display name.
       let opponentName: string | null = null;
       if (playerRow.opponentPlayerId) {
         const opponentRegistration = await ctx.db.get(
           playerRow.opponentPlayerId,
         );
-        const opponentUser = opponentRegistration
-          ? await ctx.db.get(opponentRegistration.userId)
+        const opponentParticipant = opponentRegistration
+          ? await ctx.db.get(opponentRegistration.participantId)
           : null;
-        opponentName = opponentUser?.name ?? null;
+        opponentName = opponentParticipant
+          ? (await participantPublicIdentity(ctx, opponentParticipant)).name
+          : null;
       }
 
       return {
@@ -459,6 +467,7 @@ export async function matchLogForRegistration(
         isBye: playerRow.isBye,
         myGameWins: playerRow.gameWins ?? null,
         myGameLosses: playerRow.gameLosses ?? null,
+        myGameDraws: playerRow.gameDraws ?? null,
         result: matchResultForRow(match, playerRow),
       };
     },
@@ -477,7 +486,7 @@ export function matchResultForRow(
   match: Doc<"tournamentMatches">,
   playerRow: Doc<"tournamentMatchPlayers">,
 ) {
-  if (match.matchStatus !== "completed" && match.matchStatus !== "confirmed") {
+  if (match.matchStatus !== "completed") {
     return "pending" as const;
   }
   const gameWins = playerRow.gameWins ?? 0;

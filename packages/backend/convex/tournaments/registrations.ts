@@ -6,22 +6,30 @@ import { mutation, query, type QueryCtx } from "../_generated/server";
 import { currentUserOrNull } from "../model/access";
 import { auditPlayerRef, logAuditEvent } from "../model/auditLog";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
+import { concedeUnfinishedMatchOnDrop } from "../model/matchResults";
 import { clampPageSize } from "../model/pagination";
+import {
+  ensureParticipantForUser,
+  participantForUser,
+} from "../model/participants";
+import { setRegistrationState } from "../model/participation";
+import { tiebreakRandom } from "../model/random";
 import {
   adjustConfirmedRegistrationCount,
   playerDisplayName,
   playerVisibleRegistration,
+  registrationDisplayName,
   registrationDropEffect,
   registrationForUser,
   requireCapacityAvailable,
   requireRegistration,
-  setRegistrationState,
 } from "../model/registrations";
 import { ensureCurrentUser } from "../model/users";
 import {
   requireOrganizerAccess,
   requireTournament,
 } from "../model/tournaments";
+import { enforceRateLimit } from "../rateLimits";
 
 const REGISTRATION_PAGE_SIZE = 100;
 
@@ -31,8 +39,8 @@ async function registrationRows(
   registrations: Array<Doc<"tournamentRegistrations">>,
 ) {
   // Names come from the denormalized copy on the registration; only rows
-  // missing it (legacy data) fall back to a live user lookup, so the common
-  // path does zero per-row joins.
+  // missing it fall back to a live identity lookup, so the common path does
+  // zero per-row joins.
   return await mapAsyncInBatches(
     registrations,
     DATABASE_IO_BATCH_SIZE,
@@ -40,7 +48,7 @@ async function registrationRows(
       registration,
       playerName:
         registration.playerName ??
-        playerDisplayName(await ctx.db.get(registration.userId)),
+        (await registrationDisplayName(ctx, registration._id)),
       // What dropRegistration would do to this row right now (null when it
       // is unavailable), so the client renders the drop action from server
       // truth instead of mirroring the lifecycle rules.
@@ -87,6 +95,7 @@ function existingEntryBlocksRegistration(
 export const registerSelf = mutation({
   args: { tournamentId: v.id("tournaments") },
   handler: async (ctx, args): Promise<Id<"tournamentRegistrations">> => {
+    await enforceRateLimit(ctx, "registerSelf");
     const user = await ensureCurrentUser(ctx);
     const tournament = await requireTournament(ctx, args.tournamentId);
     const existing = await registrationForUser(
@@ -119,16 +128,21 @@ export const registerSelf = mutation({
     requireCapacityAvailable(tournament);
     const now = Date.now();
     const playerName = playerDisplayName(user);
+    const participant = await ensureParticipantForUser(ctx, user._id);
     const registrationId =
       existing?._id ??
       (await ctx.db.insert("tournamentRegistrations", {
         tournamentId: args.tournamentId,
-        userId: user._id,
+        participantId: participant._id,
         tournamentStartDate: tournament.startDate,
         entryStatus: "confirmed",
         participationStatus: "active",
         playerName,
         createdAt: now,
+        tiebreakRandom: tiebreakRandom(
+          tournament.seed ?? tournament.publicCode,
+          String(user.publicCode),
+        ),
         updatedAt: now,
       }));
     if (existing) {
@@ -157,6 +171,7 @@ export const registerSelf = mutation({
 export const cancelMyRegistration = mutation({
   args: { tournamentId: v.id("tournaments") },
   handler: async (ctx, args) => {
+    await enforceRateLimit(ctx, "cancelRegistration");
     const user = await ensureCurrentUser(ctx);
     const tournament = await requireTournament(ctx, args.tournamentId);
     if (tournament.lifecycle !== "registration") {
@@ -170,7 +185,7 @@ export const cancelMyRegistration = mutation({
     if (
       !registration ||
       registration.entryStatus !== "confirmed" ||
-      // Dropped rows are also accepted: a withdrawal preserved by a round-one
+      // Dropped rows are also accepted: a drop preserved by a round-one
       // rewind still holds the player's seat, and cancelling releases it so
       // they can later re-register if they change their mind.
       (registration.participationStatus !== "active" &&
@@ -238,10 +253,16 @@ export const listMyTournaments = query({
     // long history would spend the whole take on finished events and never
     // reach the running one they were cut from. Live and upcoming events have
     // the newest start dates, so they lead here.
+    const participant = await participantForUser(ctx, user._id);
+    if (!participant) {
+      return [];
+    }
     const registrations = await ctx.db
       .query("tournamentRegistrations")
-      .withIndex("by_userId_and_entryStatus_and_tournamentStartDate", (q) =>
-        q.eq("userId", user._id).eq("entryStatus", "confirmed"),
+      .withIndex(
+        "by_participantId_and_entryStatus_and_tournamentStartDate",
+        (q) =>
+          q.eq("participantId", participant._id).eq("entryStatus", "confirmed"),
       )
       .order("desc")
       .take(100);
@@ -382,6 +403,16 @@ export const dropRegistration = mutation({
         player: auditPlayerRef(registration),
       },
     });
+    if (!beforePlay) {
+      // A mid-play drop during the player's own unfinished match concedes it
+      // (see CONTEXT.md "Concession"), recorded with the organizer as actor.
+      await concedeUnfinishedMatchOnDrop(ctx, {
+        tournament,
+        registration,
+        actor: user,
+        actorRole: "organizer",
+      });
+    }
     return args.registrationId;
   },
 });
@@ -398,7 +429,7 @@ export const reinstateRegistration = mutation({
       tournament.lifecycle === "registration" &&
       registration.entryStatus === "cancelled";
     // Dropped participants normally exist mid-play, but a round-one rewind
-    // preserves withdrawals into the reopened registration lifecycle, so both
+    // preserves drops into the reopened registration lifecycle, so both
     // lifecycles must offer the way back to active play.
     const restoringDroppedParticipant =
       (tournament.lifecycle === "registration" ||
@@ -412,7 +443,7 @@ export const reinstateRegistration = mutation({
       requireCapacityAvailable(tournament);
     }
     const now = Date.now();
-    // Reinstating undoes only the withdrawal: a player who was already
+    // Reinstating undoes only the drop: a player who was already
     // eliminated when they were dropped returns to eliminated, never to
     // active play mid-bracket. Before play there is no bracket — a rewind
     // back to registration deletes every round and clears the eliminations it

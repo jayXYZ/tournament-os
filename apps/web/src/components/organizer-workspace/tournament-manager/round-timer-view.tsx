@@ -12,7 +12,7 @@ import {
   formatTimer,
   minutesToDurationMs,
 } from '@tournament-os/shared/timer-utils'
-import { useRoundTimer } from '@tournament-os/core'
+import { mutationErrorMessage, useRoundTimer } from '@tournament-os/core'
 
 import { activeRoundTimer } from './round-timer-chip'
 import type { FormEvent } from 'react'
@@ -110,9 +110,7 @@ function TimerCard({ board }: { board: PairingsBoard }) {
     try {
       await clearTimer({ tournamentId })
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Could not reset the timer.',
-      )
+      toast.error(mutationErrorMessage(error, 'Could not reset the timer.'))
       throw error
     }
   }
@@ -304,7 +302,9 @@ function RoundLengthCard({
   const setRoundDuration = useMutation(api.tournaments.timer.setRoundDuration)
   const [minutes, setMinutes] = useState(
     String(
-      durationMsToMinutes(tournament.roundDurationMs ?? DEFAULT_ROUND_DURATION_MS),
+      durationMsToMinutes(
+        tournament.roundDurationMs ?? DEFAULT_ROUND_DURATION_MS,
+      ),
     ),
   )
   const { busy, run } = useBusyAction()

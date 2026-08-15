@@ -17,11 +17,14 @@ import type * as model_batching from "../model/batching.js";
 import type * as model_cutoffs from "../model/cutoffs.js";
 import type * as model_decklists from "../model/decklists.js";
 import type * as model_deletion from "../model/deletion.js";
+import type * as model_matchResults from "../model/matchResults.js";
 import type * as model_nextStep from "../model/nextStep.js";
 import type * as model_pagination from "../model/pagination.js";
 import type * as model_pairing from "../model/pairing.js";
+import type * as model_participation from "../model/participation.js";
 import type * as model_phases from "../model/phases.js";
 import type * as model_playerResults from "../model/playerResults.js";
+import type * as model_progression from "../model/progression.js";
 import type * as model_publicCodes from "../model/publicCodes.js";
 import type * as model_random from "../model/random.js";
 import type * as model_registrations from "../model/registrations.js";
@@ -31,6 +34,7 @@ import type * as model_testing from "../model/testing.js";
 import type * as model_tournaments from "../model/tournaments.js";
 import type * as model_users from "../model/users.js";
 import type * as organizations from "../organizations.js";
+import type * as rateLimits from "../rateLimits.js";
 import type * as specHelpers from "../specHelpers.js";
 import type * as tournaments_auditLog from "../tournaments/auditLog.js";
 import type * as tournaments_decklists from "../tournaments/decklists.js";
@@ -60,11 +64,14 @@ declare const fullApi: ApiFromModules<{
   "model/cutoffs": typeof model_cutoffs;
   "model/decklists": typeof model_decklists;
   "model/deletion": typeof model_deletion;
+  "model/matchResults": typeof model_matchResults;
   "model/nextStep": typeof model_nextStep;
   "model/pagination": typeof model_pagination;
   "model/pairing": typeof model_pairing;
+  "model/participation": typeof model_participation;
   "model/phases": typeof model_phases;
   "model/playerResults": typeof model_playerResults;
+  "model/progression": typeof model_progression;
   "model/publicCodes": typeof model_publicCodes;
   "model/random": typeof model_random;
   "model/registrations": typeof model_registrations;
@@ -74,6 +81,7 @@ declare const fullApi: ApiFromModules<{
   "model/tournaments": typeof model_tournaments;
   "model/users": typeof model_users;
   organizations: typeof organizations;
+  rateLimits: typeof rateLimits;
   specHelpers: typeof specHelpers;
   "tournaments/auditLog": typeof tournaments_auditLog;
   "tournaments/decklists": typeof tournaments_decklists;
@@ -114,4 +122,6 @@ export declare const internal: FilterApi<
   FunctionReference<any, "internal">
 >;
 
-export declare const components: {};
+export declare const components: {
+  rateLimiter: import("@convex-dev/rate-limiter/_generated/component.js").ComponentApi<"rateLimiter">;
+};

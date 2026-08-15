@@ -1,15 +1,15 @@
 import { AuthView } from "@clerk/expo/native";
-import { api } from "@tournament-os/backend/convex/_generated/api";
 import type { Id } from "@tournament-os/backend/convex/_generated/dataModel";
 import {
   displayPlayerName,
   formatRecord,
   standingStatusLabel,
+  useConvexAuthReadiness,
   useLatestStandings,
   useMyCurrentMatch,
+  useMyRegistration,
   useRoundTimer,
 } from "@tournament-os/core";
-import { useConvexAuth, useQuery } from "convex/react";
 import { useLocalSearchParams, useNavigation } from "expo-router";
 import { useEffect, useState } from "react";
 import {
@@ -27,21 +27,13 @@ export default function TournamentScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const tournamentId = (id ?? null) as Id<"tournaments"> | null;
 
-  // Gate on Convex's auth state, not raw Clerk state: isLoading stays true
-  // through the window where Clerk is signed in but the token hasn't been
-  // confirmed by the Convex backend yet. During that window getMyRegistration
-  // would run unauthenticated and return null — indistinguishable from "not
-  // registered" — so the query must not fire until isAuthenticated.
-  const { isLoading: authLoading, isAuthenticated } = useConvexAuth();
+  const auth = useConvexAuthReadiness();
   const [authOpen, setAuthOpen] = useState(false);
 
   // The player queries reject entries that are not confirmed (e.g. a
   // registration cancelled while this screen is open), so gate them on
   // entryStatus to match the server's requireRegisteredPlayer.
-  const registration = useQuery(
-    api.tournaments.registrations.getMyRegistration,
-    isAuthenticated && tournamentId ? { tournamentId } : "skip",
-  );
+  const registration = useMyRegistration(tournamentId);
   const confirmedTournamentId =
     registration?.entryStatus === "confirmed" ? tournamentId : null;
   const current = useMyCurrentMatch(confirmedTournamentId);
@@ -70,7 +62,7 @@ export default function TournamentScreen() {
   }
 
   // Auth still resolving, or the registration query in flight.
-  if (authLoading || (isAuthenticated && registration === undefined)) {
+  if (auth === "pending" || (auth === "ready" && registration === undefined)) {
     return (
       <SafeAreaView style={styles.container} edges={["bottom"]}>
         <View style={styles.centered}>
@@ -83,7 +75,7 @@ export default function TournamentScreen() {
   // Signed out (a deep link can land here without a session). Note Convex
   // also treats Clerk sessions with pending tasks (e.g. MFA) as signed out;
   // AuthView completes those tasks too.
-  if (!isAuthenticated) {
+  if (auth !== "ready") {
     return (
       <SafeAreaView style={styles.container} edges={["bottom"]}>
         <View style={styles.signedOut}>
@@ -193,8 +185,8 @@ function CurrentMatch({
             {current.meeting.seatmateName
               ? `Seated with ${current.meeting.seatmateName}. `
               : ""}
-            Take your seat and check in with the organizer. Pairings will
-            appear here once the meeting wraps up.
+            Take your seat and check in with the organizer. Pairings will appear
+            here once the meeting wraps up.
           </Text>
         </View>
       );
@@ -209,8 +201,7 @@ function CurrentMatch({
       return (
         <Text style={styles.muted}>
           Round {current.round.roundNumber} pairings pending. The organizer is
-          reviewing this round’s pairings. They will appear here once
-          published.
+          reviewing this round’s pairings. They will appear here once published.
         </Text>
       );
     case "no_match":

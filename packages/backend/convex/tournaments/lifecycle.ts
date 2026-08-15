@@ -15,7 +15,7 @@ import {
   SINGLE_ELIMINATION_FORMAT,
   SWISS_FORMAT,
   phasesInOrder,
-  requireSwissPhase,
+  requireCurrentPhase,
   validPhaseInputs,
 } from "../model/phases";
 import { parsePublicCode } from "../model/publicCodes";
@@ -24,9 +24,10 @@ import {
   registrationForUser,
   syncRegistrationStartDatesBatch,
 } from "../model/registrations";
+import { completeTournament as completeTournamentTransition } from "../model/progression";
+import { enforceRateLimit } from "../rateLimits";
 import {
   cleanName,
-  completeTournament as completeTournamentModel,
   createTournament as createTournamentModel,
   isPubliclyViewable,
   requireOrganizerAccess,
@@ -38,6 +39,7 @@ import {
 } from "../model/tournaments";
 import {
   tournamentFormatValidator,
+  tournamentPhaseBestOfValidator,
   tournamentPhaseCutoffValidator,
   tournamentPhaseRoundModeValidator,
   tournamentPhaseTypeValidator,
@@ -221,6 +223,7 @@ export const createTournament = mutation({
     decklistRequired: v.optional(v.boolean()),
   },
   handler: async (ctx, args): Promise<Id<"tournaments">> => {
+    await enforceRateLimit(ctx, "createTournament");
     return await createTournamentModel(ctx, {
       organizationId: args.organizationId,
       name: args.name,
@@ -249,12 +252,14 @@ export const createTournamentWithPhases = mutation({
         phaseType: v.optional(tournamentPhaseTypeValidator),
         phaseRoundMode: tournamentPhaseRoundModeValidator,
         phaseTotalRounds: v.optional(v.number()),
+        bestOf: v.optional(tournamentPhaseBestOfValidator),
         phaseCutoff: v.optional(tournamentPhaseCutoffValidator),
         playerMeeting: v.optional(v.boolean()),
       }),
     ),
   },
   handler: async (ctx, args): Promise<Id<"tournaments">> => {
+    await enforceRateLimit(ctx, "createTournament");
     return await createTournamentModel(ctx, {
       organizationId: args.organizationId,
       name: args.name,
@@ -302,7 +307,11 @@ export const updateTournamentSetup = mutation({
         // limits. The tournament document patched below is the source of truth
         // throughout, so its readers never see a stale date.
         if (
-          !(await syncRegistrationStartDatesBatch(ctx, tournament._id, startDate))
+          !(await syncRegistrationStartDatesBatch(
+            ctx,
+            tournament._id,
+            startDate,
+          ))
         ) {
           await ctx.scheduler.runAfter(
             0,
@@ -432,6 +441,7 @@ export const updateTournamentPhases = mutation({
         phaseType: tournamentPhaseTypeValidator,
         phaseRoundMode: tournamentPhaseRoundModeValidator,
         phaseTotalRounds: v.optional(v.number()),
+        bestOf: v.optional(tournamentPhaseBestOfValidator),
         phaseCutoff: v.optional(tournamentPhaseCutoffValidator),
         playerMeeting: v.optional(v.boolean()),
       }),
@@ -498,6 +508,7 @@ export const updateTournamentPhases = mutation({
         phaseStatus: "upcoming" as const,
         phaseRoundMode: phase.phaseRoundMode,
         phaseTotalRounds: phase.phaseTotalRounds,
+        bestOf: phase.bestOf,
         phaseCurrentRound: undefined,
         phaseCutoff: phase.phaseCutoff,
         powerPairFinalRound:
@@ -533,7 +544,7 @@ export const publishTournament = mutation({
       args.tournamentId,
     );
     requireSetupEditable(tournament);
-    await requireSwissPhase(ctx, args.tournamentId);
+    await requireCurrentPhase(ctx, args.tournamentId);
 
     await ctx.db.patch(args.tournamentId, {
       lifecycle: "registration",
@@ -648,7 +659,8 @@ export const continueDeleteTournament = internalMutation({
 export const completeTournament = mutation({
   args: { tournamentId: v.id("tournaments") },
   handler: async (ctx, args) => {
-    await completeTournamentModel(ctx, args.tournamentId);
+    const access = await requireOrganizerAccess(ctx, args.tournamentId);
+    await completeTournamentTransition(ctx, access);
     return args.tournamentId;
   },
 });

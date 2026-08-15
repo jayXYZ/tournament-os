@@ -453,7 +453,7 @@ function ManagePlayerMenu({
         description={
           cancelsEntry
             ? 'Their entry will be cancelled and their seat freed, so it does not count as tournament participation.'
-            : 'This player will be removed from future pairings. An elimination already on record is kept.'
+            : 'This player will be removed from future pairings. An unfinished match in the current round is conceded to their opponent; an elimination already on record is kept.'
         }
         actionLabel="Drop player"
         failureMessage="Could not drop player."

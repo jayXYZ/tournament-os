@@ -1,25 +1,26 @@
 import { v } from "convex/values";
 
+import { DEFAULT_BEST_OF } from "@tournament-os/shared/match-structure";
+
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { internalMutation, mutation } from "../_generated/server";
 import { requireActiveMembership } from "../model/access";
 import { deleteTournamentOperationalDataBatch } from "../model/deletion";
-import { createRoundWithPairings } from "../model/pairing";
 import {
   SWISS_FORMAT,
   defaultSwissRoundCount,
+  requireCurrentPhase,
   requirePhase,
   requireResolvedPhaseTotalRounds,
   requireSwissPhase,
   validRoundCount,
 } from "../model/phases";
+import { advance, pairFirstRoundOfTournament } from "../model/progression";
 import { activeRegistrations } from "../model/registrations";
-import { replaceStandingsForRound } from "../model/standings";
 import {
   cleanName,
-  completeTournament,
   requireOrganizerAccess,
   requireRound,
   requireTestTournament,
@@ -33,6 +34,7 @@ import {
   requireTestConfig,
   seedTestPlayers as seedTestPlayersModel,
 } from "../model/testing";
+import { enforceRateLimit } from "../rateLimits";
 import { tournamentFormatValidator } from "../validators";
 
 export const createTestTournament = mutation({
@@ -48,6 +50,7 @@ export const createTestTournament = mutation({
     autoStart: v.optional(v.boolean()),
   },
   handler: async (ctx, args): Promise<Id<"tournaments">> => {
+    await enforceRateLimit(ctx, "createTournament");
     const { user } = await requireActiveMembership(ctx, args.organizationId);
     const dummyPlayerCount = validCapacity(args.dummyPlayerCount ?? 8);
     const playerCapacity = validCapacity(
@@ -94,6 +97,7 @@ export const createTestTournament = mutation({
       phaseStatus: "upcoming",
       phaseRoundMode: "fixed",
       phaseTotalRounds: roundsToGenerate,
+      bestOf: DEFAULT_BEST_OF,
       phaseCutoff: null,
       powerPairFinalRound: true,
       updatedAt: now,
@@ -109,22 +113,15 @@ export const createTestTournament = mutation({
     await seedTestPlayersModel(ctx, tournamentId, dummyPlayerCount);
 
     if (args.autoStart === true) {
+      // Test seeding starts play straight from "setup" (the event is never
+      // published), so it skips startTournament's gate and audit trail but
+      // shares the one first-round pairing sequence with it.
       const tournament = await requireTournament(ctx, tournamentId);
       const phase = await requirePhase(ctx, phaseId);
-      const roundId = await createRoundWithPairings(ctx, {
+      await pairFirstRoundOfTournament(ctx, {
         tournament,
         phase,
-        roundNumber: 1,
         registrations: await activeRegistrations(ctx, tournamentId),
-      });
-      await ctx.db.patch(tournamentId, {
-        lifecycle: "in_progress",
-        updatedAt: now,
-      });
-      await ctx.db.patch(phaseId, {
-        phaseStatus: "in_progress",
-        phaseCurrentRound: roundId,
-        updatedAt: now,
       });
     }
 
@@ -138,6 +135,7 @@ export const seedTestPlayers = mutation({
     count: v.number(),
   },
   handler: async (ctx, args) => {
+    await enforceRateLimit(ctx, "seedTestPlayers");
     const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
     requireTestTournament(tournament);
     const addedCount = await seedTestPlayersModel(
@@ -175,49 +173,37 @@ export const generateTestRoundResults = mutation({
 export const advanceTestRound = mutation({
   args: { tournamentId: v.id("tournaments") },
   handler: async (ctx, args) => {
-    const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
+    const access = await requireOrganizerAccess(ctx, args.tournamentId);
+    const { tournament } = access;
     requireTestTournament(tournament);
-    const phase = await requireSwissPhase(ctx, args.tournamentId);
+    const phase = await requireCurrentPhase(ctx, args.tournamentId);
     if (!phase.phaseCurrentRound) {
       throw new Error("Current round not found");
     }
-
     const round = await requireRound(ctx, phase.phaseCurrentRound);
     await generateTestResults(ctx, tournament, round);
-    await replaceStandingsForRound(ctx, tournament, phase, round);
-    const now = Date.now();
-    await ctx.db.patch(round._id, {
-      roundStatus: "completed",
-      // Keep this shortcut aligned with completeRound: completed pairings are
-      // part of the player-visible tournament record even when this test event
-      // uses manual publication for newly generated rounds.
-      pairingsPublishedAt: round.pairingsPublishedAt ?? now,
-      updatedAt: now,
-    });
 
+    // The shortcut is the same advance the organizer's board drives —
+    // standings, eliminations, timer clear, phase transitions, audit — plus
+    // one test policy: stop where the test config's round budget says to
+    // (Swiss only; a playoff always plays out its bracket).
     const config = await requireTestConfig(ctx, args.tournamentId);
-    const lastRoundNumber = Math.min(
-      config.roundsToGenerate,
-      requireResolvedPhaseTotalRounds(phase),
-    );
-    if (round.roundNumber >= lastRoundNumber) {
-      await completeTournament(ctx, args.tournamentId);
-      return { tournamentId: args.tournamentId, roundId: round._id };
-    }
-
-    const nextRoundId = await createRoundWithPairings(ctx, {
-      tournament,
-      phase,
-      roundNumber: round.roundNumber + 1,
-      registrations: await activeRegistrations(ctx, args.tournamentId),
-      previousRoundId: round._id,
+    const outcome = await advance(ctx, access, {
+      completeTournamentAfterRound:
+        phase.phaseType === SWISS_FORMAT
+          ? Math.min(
+              config.roundsToGenerate,
+              requireResolvedPhaseTotalRounds(phase),
+            )
+          : undefined,
     });
-    await ctx.db.patch(phase._id, {
-      phaseStatus: "in_progress",
-      phaseCurrentRound: nextRoundId,
-      updatedAt: Date.now(),
-    });
-    return { tournamentId: args.tournamentId, roundId: nextRoundId };
+    return {
+      tournamentId: args.tournamentId,
+      roundId:
+        outcome.kind === "nextRoundPaired"
+          ? outcome.nextRoundId
+          : outcome.completedRoundId,
+    };
   },
 });
 
@@ -244,6 +230,7 @@ async function finishTestTournamentReset(
     phaseStatus: "upcoming",
     phaseRoundMode: "fixed",
     phaseTotalRounds: args.roundsToGenerate,
+    bestOf: DEFAULT_BEST_OF,
     phaseCutoff: null,
     powerPairFinalRound: true,
     updatedAt: now,

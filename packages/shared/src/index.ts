@@ -1,4 +1,5 @@
 export * from "./decklist-limits";
+export * from "./match-structure";
 export * from "./organizer-utils";
 export * from "./registration-status";
 export * from "./tournament-creation-utils";

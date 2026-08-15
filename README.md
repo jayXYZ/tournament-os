@@ -16,6 +16,10 @@ Install dependencies from the repo root:
 pnpm install
 ```
 
+Copy each app's `.env.example` to `.env.local` and fill it in — see
+[docs/environment.md](./docs/environment.md) for the full environment
+contract, including the variables set on the Convex deployment itself.
+
 Run the web app and the Convex backend together:
 
 ```bash
@@ -31,9 +35,11 @@ pnpm dev:backend    # packages/backend (convex dev)
 
 ## Scripts
 
-- `pnpm build` — build the web app
+- `pnpm build` — build the web app and export the native bundles
 - `pnpm start` — serve the built web app
-- `pnpm lint` — lint the web app
+- `pnpm lint` — lint the web and native apps (both include `tsc`)
+- `pnpm typecheck` — run package typecheck scripts (currently the backend)
+- `pnpm format` / `pnpm format:check` — prettier over the whole repo
 
 ## Roadmap
 

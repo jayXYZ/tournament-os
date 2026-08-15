@@ -2,7 +2,7 @@ import { usePaginatedQuery } from 'convex/react'
 import { ScrollText } from 'lucide-react'
 
 import { api } from '@tournament-os/backend/convex/_generated/api'
-import { displayPlayerName } from '@tournament-os/core'
+import { displayPlayerName, formatGameScoreline } from '@tournament-os/core'
 import type { FunctionReturnType } from 'convex/server'
 import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
 import { Badge } from '@/components/ui/badge'
@@ -51,8 +51,8 @@ export function AuditLogView({
         <CardHeader>
           <CardTitle>Audit log</CardTitle>
           <CardDescription>
-            Every result entry, edit, drop, and lifecycle change, newest first
-            — for resolving disputes after the fact.
+            Every result entry, edit, drop, and lifecycle change, newest first —
+            for resolving disputes after the fact.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -102,17 +102,22 @@ export function AuditLogView({
 }
 
 function AuditEventItem({ row }: { row: AuditEventRow }) {
-  const isEdit =
-    row.event.type === 'match_result_recorded' &&
-    row.event.previousResult !== null
+  // Any result-changing event that replaced an existing result is an edit
+  // and shows what it replaced, whichever event type carried it.
+  const previousResult =
+    'previousResult' in row.event ? row.event.previousResult : null
 
   return (
     <li className="flex flex-col gap-1 py-3">
       <div className="flex flex-wrap items-center gap-2">
-        <Badge variant={row.actorRole === 'organizer' ? 'default' : 'secondary'}>
+        <Badge
+          variant={row.actorRole === 'organizer' ? 'default' : 'secondary'}
+        >
           {row.actorRole === 'organizer' ? 'Organizer' : 'Player'}
         </Badge>
-        {isEdit && <Badge variant="destructive">Result edit</Badge>}
+        {previousResult !== null && (
+          <Badge variant="destructive">Result edit</Badge>
+        )}
         <span className="text-sm font-medium">
           {row.actorName ?? 'Unknown user'}
         </span>
@@ -124,9 +129,9 @@ function AuditEventItem({ row }: { row: AuditEventRow }) {
         </span>
       </div>
       <p className="text-sm text-muted-foreground">{describeEvent(row)}</p>
-      {isEdit && row.event.type === 'match_result_recorded' && (
+      {previousResult !== null && (
         <p className="text-sm text-muted-foreground">
-          Previous result: {formatScoreline(row.event.previousResult!)}
+          Previous result: {formatScoreline(previousResult)}
         </p>
       )}
     </li>
@@ -140,8 +145,8 @@ function describeEvent(row: AuditEventRow): string {
       return `Recorded ${formatScoreline(event.result)} ${matchLocation(event)}`
     case 'match_result_reported':
       return `Reported ${formatScoreline(event.result)} ${matchLocation(event)}`
-    case 'match_result_confirmed':
-      return `Confirmed the reported result ${matchLocation(event)}`
+    case 'match_conceded':
+      return `${displayPlayerName(event.player.playerName)} conceded by dropping: ${formatScoreline(event.result)} ${matchLocation(event)}`
     case 'player_registered':
       return `${displayPlayerName(event.player.playerName)} registered for the event`
     case 'decklist_submitted':
@@ -192,7 +197,12 @@ function formatScoreline(lines: Array<ResultLine>) {
   if (!first || !second) {
     return 'a match result'
   }
-  return `${displayPlayerName(first.playerName)} ${first.gameWins}–${second.gameWins} ${displayPlayerName(second.playerName)}`
+  const scoreline = formatGameScoreline(
+    first.gameWins,
+    second.gameWins,
+    first.gameDraws,
+  )
+  return `${displayPlayerName(first.playerName)} ${scoreline} ${displayPlayerName(second.playerName)}`
 }
 
 function formatTimestamp(creationTime: number) {

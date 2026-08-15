@@ -1,6 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import {
   displayPlayerName,
+  formatGameScoreline,
   useDropSelf,
   useMyMatchHistory,
 } from '@tournament-os/core'
@@ -180,7 +181,11 @@ function MatchHistoryCard({
               </span>
               {entry.result !== 'pending' ? (
                 <span className="text-sm tabular-nums text-muted-foreground">
-                  {entry.myGameWins ?? 0}–{entry.myGameLosses ?? 0}
+                  {formatGameScoreline(
+                    entry.myGameWins ?? 0,
+                    entry.myGameLosses ?? 0,
+                    entry.myGameDraws ?? 0,
+                  )}
                 </span>
               ) : null}
               <ResultBadge result={entry.result} />
@@ -244,7 +249,7 @@ function DropCard({
           title="Drop from this tournament?"
           description={
             hasUnreportedMatch
-              ? 'Your current match has no result yet — report it (or tell the organizer) before you leave. Dropping cannot be undone from here; the organizer can reinstate you.'
+              ? 'Your current match has no result yet — dropping now concedes it, and your opponent takes the win. If you actually finished the match, report the real result first. Dropping cannot be undone from here; the organizer can reinstate you.'
               : 'You will not be paired in any future rounds. Dropping cannot be undone from here; the organizer can reinstate you.'
           }
           cancelLabel="Stay in"

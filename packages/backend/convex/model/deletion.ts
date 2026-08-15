@@ -1,5 +1,7 @@
 import type { Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
+import { deleteResultRevisionsForMatch } from "./matchResults";
+import { MAX_TOURNAMENT_PHASES } from "./phases";
 import { matchPlayers, roundMatches } from "./tournaments";
 
 // Deletion budget per transaction. Each invocation deletes at most this many
@@ -26,8 +28,8 @@ export async function deleteTournamentOperationalDataBatch(
   const phases = await ctx.db
     .query("tournamentPhases")
     .withIndex("by_tournamentId", (q) => q.eq("tournamentId", tournamentId))
-    .take(16);
-  sawFullPage ||= phases.length === 16;
+    .take(MAX_TOURNAMENT_PHASES);
+  sawFullPage ||= phases.length === MAX_TOURNAMENT_PHASES;
 
   for (const phase of phases) {
     const rounds = await ctx.db
@@ -42,13 +44,16 @@ export async function deleteTournamentOperationalDataBatch(
       sawFullPage ||= matches.length === 512;
       for (const match of matches) {
         const players = await matchPlayers(ctx, match._id);
-        if (budget < players.length + 1) {
+        // Revisions per match are bounded by result overrides — budget a
+        // handful alongside the player rows and the match itself.
+        if (budget < players.length + 8) {
           return false;
         }
         for (const player of players) {
           await ctx.db.delete(player._id);
           budget -= 1;
         }
+        budget -= await deleteResultRevisionsForMatch(ctx, match._id);
         await ctx.db.delete(match._id);
         budget -= 1;
       }
@@ -131,7 +136,9 @@ export async function deleteTournamentOperationalDataBatch(
       return false;
     }
     await ctx.db.delete(testPlayer._id);
-    await ctx.db.delete(testPlayer.userId);
+    // A dummy player's Guest participant belongs to this tournament alone,
+    // so it dies with the test data.
+    await ctx.db.delete(testPlayer.participantId);
     budget -= 2;
   }
 

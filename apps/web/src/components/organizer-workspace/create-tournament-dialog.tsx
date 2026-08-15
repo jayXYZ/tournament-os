@@ -16,9 +16,7 @@ import type {
 } from '@tournament-os/shared/tournament-creation-utils'
 import type { FormEvent } from 'react'
 import type { TournamentBasicsValue } from '@/components/tournaments'
-import {
-  TournamentBasicsFields,
-} from '@/components/tournaments'
+import { TournamentBasicsFields } from '@/components/tournaments'
 import { TournamentPhaseEditor } from '@/components/tournaments/tournament-phase-editor'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -119,8 +117,8 @@ export function CreateTournamentDialog() {
           <DialogHeader>
             <DialogTitle>Create tournament</DialogTitle>
             <DialogDescription>
-              Add the tournament details, Swiss rounds, and an optional top-8
-              playoff.
+              Add the tournament details, Swiss rounds, and an optional
+              single-elimination playoff.
             </DialogDescription>
           </DialogHeader>
 

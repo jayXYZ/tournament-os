@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 
 import {
   addTournamentCreationPhase,
@@ -8,8 +8,21 @@ import {
   createDefaultTournamentCreationPhase,
   moveTournamentCreationPhase,
   removeTournamentCreationPhase,
+  setTournamentCreationPhaseType,
   toTournamentCreationPhasePayload,
+  type TournamentCreationPhaseForm,
 } from "./tournament-creation-utils.ts";
+
+// A phase newly put in front of a playoff gets the default top-8 cut
+// pre-filled in place of its untouched "none" (see withPlayoffCutDefaults);
+// an explicit "No cut" on a phase already feeding the playoff is kept.
+function withDefaultPlayoffCut(phase: TournamentCreationPhaseForm) {
+  return {
+    ...phase,
+    phaseCutoffKind: "top_X_players" as const,
+    phaseCutoffValue: "8",
+  };
+}
 
 test("createDefaultTournamentCreationPhase creates a dynamic Swiss phase", () => {
   assert.deepEqual(createDefaultTournamentCreationPhase("phase-1"), {
@@ -17,6 +30,7 @@ test("createDefaultTournamentCreationPhase creates a dynamic Swiss phase", () =>
     phaseType: "swiss",
     phaseRoundMode: "dynamic",
     phaseTotalRounds: "3",
+    bestOf: "3",
     phaseCutoffKind: "none",
     phaseCutoffValue: "8",
     playerMeeting: false,
@@ -39,10 +53,11 @@ test("addTournamentCreationPhase inserts a Swiss phase before a playoff", () => 
     phaseType: "single_elimination" as const,
   };
 
-  assert.deepEqual(
-    addTournamentCreationPhase([swiss, playoff], "phase-2"),
-    [swiss, createDefaultTournamentCreationPhase("phase-2"), playoff],
-  );
+  assert.deepEqual(addTournamentCreationPhase([swiss, playoff], "phase-2"), [
+    swiss,
+    withDefaultPlayoffCut(createDefaultTournamentCreationPhase("phase-2")),
+    playoff,
+  ]);
 });
 
 test("moveTournamentCreationPhase reorders Swiss phases without moving a playoff", () => {
@@ -54,26 +69,17 @@ test("moveTournamentCreationPhase reorders Swiss phases without moving a playoff
   };
   const phases = [phaseOne, phaseTwo, playoff];
 
-  assert.equal(
-    canMoveTournamentCreationPhase(phases, "phase-1", 1),
-    true,
-  );
+  assert.equal(canMoveTournamentCreationPhase(phases, "phase-1", 1), true);
   assert.deepEqual(moveTournamentCreationPhase(phases, "phase-1", 1), [
     phaseTwo,
-    phaseOne,
+    withDefaultPlayoffCut(phaseOne),
     playoff,
   ]);
-  assert.equal(
-    canMoveTournamentCreationPhase(phases, "phase-2", 1),
-    false,
-  );
-  assert.equal(
-    canMoveTournamentCreationPhase(phases, "playoff", -1),
-    false,
-  );
+  assert.equal(canMoveTournamentCreationPhase(phases, "phase-2", 1), false);
+  assert.equal(canMoveTournamentCreationPhase(phases, "playoff", -1), false);
 });
 
-test("removeTournamentCreationPhase preserves a leading Swiss phase", () => {
+test("removeTournamentCreationPhase keeps at least one phase", () => {
   const onlyPhase = [createDefaultTournamentCreationPhase("phase-1")];
   const twoPhases = addTournamentCreationPhase(onlyPhase, "phase-2");
   const swissAndPlayoff = [
@@ -92,20 +98,44 @@ test("removeTournamentCreationPhase preserves a leading Swiss phase", () => {
   assert.deepEqual(removeTournamentCreationPhase(twoPhases, "phase-1"), [
     createDefaultTournamentCreationPhase("phase-2"),
   ]);
+  // Removing the Swiss feeder leaves a bracket-only tournament, which is a
+  // valid shape: the bracket seeds from the tournament's random seed.
   assert.equal(
     canRemoveTournamentCreationPhase(swissAndPlayoff, "phase-1"),
-    false,
+    true,
   );
-  assert.deepEqual(
-    removeTournamentCreationPhase(swissAndPlayoff, "phase-1"),
-    swissAndPlayoff,
-  );
+  assert.deepEqual(removeTournamentCreationPhase(swissAndPlayoff, "phase-1"), [
+    swissAndPlayoff[1],
+  ]);
   assert.equal(
     canRemoveTournamentCreationPhase(swissAndPlayoff, "playoff"),
     true,
   );
   assert.deepEqual(removeTournamentCreationPhase(swissAndPlayoff, "playoff"), [
     createDefaultTournamentCreationPhase("phase-1"),
+  ]);
+});
+
+test("a lone phase can become a single-elimination bracket", () => {
+  const onlyPhase = [createDefaultTournamentCreationPhase("phase-1")];
+  const bracketOnly = setTournamentCreationPhaseType(
+    onlyPhase,
+    "phase-1",
+    "single_elimination",
+  );
+
+  assert.deepEqual(bracketOnly, [
+    {
+      ...createDefaultTournamentCreationPhase("phase-1"),
+      phaseType: "single_elimination",
+      playerMeeting: false,
+    },
+  ]);
+  // Adding a Swiss phase to a bracket-only tournament inserts it in front of
+  // the playoff with the default top-8 cut pre-filled.
+  assert.deepEqual(addTournamentCreationPhase(bracketOnly, "phase-2"), [
+    withDefaultPlayoffCut(createDefaultTournamentCreationPhase("phase-2")),
+    bracketOnly[0],
   ]);
 });
 
@@ -120,14 +150,22 @@ test("toTournamentCreationPhasePayload sends contiguous phase orders", () => {
   ];
 
   // playerMeeting stays absent when false, matching the backend's
-  // absent-default field.
+  // absent-default field; a phase with a following phase states its "none"
+  // cut as an explicit null.
   assert.deepEqual(toTournamentCreationPhasePayload(phases), [
-    { phaseOrder: 1, phaseType: "swiss", phaseRoundMode: "dynamic" },
+    {
+      phaseOrder: 1,
+      phaseType: "swiss",
+      phaseRoundMode: "dynamic",
+      bestOf: 3,
+      phaseCutoff: null,
+    },
     {
       phaseOrder: 2,
       phaseType: "swiss",
       phaseRoundMode: "fixed",
       phaseTotalRounds: 5,
+      bestOf: 3,
     },
   ]);
 });
@@ -142,6 +180,7 @@ test("toTournamentCreationPhasePayload emits playerMeeting only when enabled", (
       phaseOrder: 1,
       phaseType: "swiss",
       phaseRoundMode: "dynamic",
+      bestOf: 3,
       playerMeeting: true,
     },
   ]);
@@ -168,17 +207,19 @@ test("toTournamentCreationPhasePayload emits a cutoff only where one can apply",
       phaseOrder: 1,
       phaseType: "swiss",
       phaseRoundMode: "dynamic",
+      bestOf: 3,
       phaseCutoff: { kind: "top_X_players", playerCount: 16 },
     },
-    { phaseOrder: 2, phaseType: "swiss", phaseRoundMode: "dynamic" },
+    { phaseOrder: 2, phaseType: "swiss", phaseRoundMode: "dynamic", bestOf: 3 },
   ]);
 });
 
-test("toTournamentCreationPhasePayload drops a cutoff on the phase feeding a playoff", () => {
+test("toTournamentCreationPhasePayload sends the cut feeding a playoff", () => {
   const phases = [
     {
       ...createDefaultTournamentCreationPhase("phase-1"),
       phaseCutoffKind: "top_X_players" as const,
+      phaseCutoffValue: "4",
     },
     {
       ...createDefaultTournamentCreationPhase("playoff"),
@@ -187,16 +228,93 @@ test("toTournamentCreationPhasePayload drops a cutoff on the phase feeding a pla
   ];
 
   assert.deepEqual(toTournamentCreationPhasePayload(phases), [
-    { phaseOrder: 1, phaseType: "swiss", phaseRoundMode: "dynamic" },
+    {
+      phaseOrder: 1,
+      phaseType: "swiss",
+      phaseRoundMode: "dynamic",
+      bestOf: 3,
+      phaseCutoff: { kind: "top_X_players", playerCount: 4 },
+    },
     {
       phaseOrder: 2,
       phaseType: "single_elimination",
-      phaseRoundMode: "fixed",
+      phaseRoundMode: "dynamic",
+      bestOf: 3,
     },
   ]);
 });
 
-test("toTournamentCreationPhasePayload fixes a single-elimination phase at three rounds", () => {
+test("toTournamentCreationPhasePayload sends an explicit no-cut feeding a playoff", () => {
+  const phases = [
+    createDefaultTournamentCreationPhase("phase-1"),
+    {
+      ...createDefaultTournamentCreationPhase("playoff"),
+      phaseType: "single_elimination" as const,
+    },
+  ];
+
+  // An omitted cut would be defaulted to top-8 by the backend, so a form
+  // showing "No cut" must send the null explicitly.
+  assert.deepEqual(toTournamentCreationPhasePayload(phases), [
+    {
+      phaseOrder: 1,
+      phaseType: "swiss",
+      phaseRoundMode: "dynamic",
+      bestOf: 3,
+      phaseCutoff: null,
+    },
+    {
+      phaseOrder: 2,
+      phaseType: "single_elimination",
+      phaseRoundMode: "dynamic",
+      bestOf: 3,
+    },
+  ]);
+});
+
+test("an explicit no-cut on the playoff feeder survives unrelated structural edits", () => {
+  const phaseOne = createDefaultTournamentCreationPhase("phase-1");
+  const phaseTwo = createDefaultTournamentCreationPhase("phase-2");
+  // Feeds the playoff and explicitly keeps "none" — the organizer's choice.
+  const feeder = createDefaultTournamentCreationPhase("phase-3");
+  const playoff = {
+    ...createDefaultTournamentCreationPhase("playoff"),
+    phaseType: "single_elimination" as const,
+  };
+  const phases = [phaseOne, phaseTwo, feeder, playoff];
+
+  // Reordering the earlier Swiss phases leaves the feeder feeding the
+  // playoff before and after, so its "none" is not upgraded to top-8.
+  assert.deepEqual(moveTournamentCreationPhase(phases, "phase-1", 1), [
+    phaseTwo,
+    phaseOne,
+    feeder,
+    playoff,
+  ]);
+});
+
+test("setTournamentCreationPhaseType defaults the feeding phase's cut to top-8", () => {
+  const phases = [
+    createDefaultTournamentCreationPhase("phase-1"),
+    { ...createDefaultTournamentCreationPhase("phase-2"), playerMeeting: true },
+  ];
+
+  assert.deepEqual(
+    setTournamentCreationPhaseType(phases, "phase-2", "single_elimination"),
+    [
+      withDefaultPlayoffCut(createDefaultTournamentCreationPhase("phase-1")),
+      {
+        ...createDefaultTournamentCreationPhase("phase-2"),
+        phaseType: "single_elimination",
+        playerMeeting: false,
+      },
+    ],
+  );
+});
+
+// A bracket's round count resolves from its entering field at phase start,
+// so the payload states the dynamic mode and no round count.
+test("toTournamentCreationPhasePayload sends a single-elimination phase as dynamic", () => {
   const phase = {
     ...createDefaultTournamentCreationPhase("playoff"),
     phaseType: "single_elimination" as const,
@@ -206,7 +324,8 @@ test("toTournamentCreationPhasePayload fixes a single-elimination phase at three
     {
       phaseOrder: 1,
       phaseType: "single_elimination",
-      phaseRoundMode: "fixed",
+      phaseRoundMode: "dynamic",
+      bestOf: 3,
     },
   ]);
 });

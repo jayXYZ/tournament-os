@@ -11,6 +11,10 @@
     "jsx": "react-jsx",
     "skipLibCheck": true,
     "allowSyntheticDefaultImports": true,
+    /* TypeScript 6 no longer auto-includes hoisted @types packages; the
+     * .convex.spec.ts files import node:fs, so include node types explicitly
+     * (they were part of the program implicitly under TypeScript 5). */
+    "types": ["node"],
 
     /* These compiler options are required by Convex */
     "target": "ESNext",

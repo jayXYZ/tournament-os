@@ -1,13 +1,15 @@
+import {
+  requiredGameWins,
+  type BestOf,
+} from "@tournament-os/shared/match-structure";
+
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
-import { requireDecisiveEliminationResult, requirePhase } from "./phases";
-import { createSeededRandom } from "./random";
-import {
-  adjustConfirmedRegistrationCount,
-  registrationForUser,
-} from "./registrations";
-import { matchPointsForResult } from "./standings";
-import { nextUserPublicCode } from "./users";
+import { applyMatchResult } from "./matchResults";
+import { createGuestParticipant } from "./participants";
+import { requirePhase } from "./phases";
+import { createSeededRandom, tiebreakRandom } from "./random";
+import { adjustConfirmedRegistrationCount } from "./registrations";
 import {
   matchPlayers,
   requireTestTournament,
@@ -21,30 +23,48 @@ export type SimulatedMatchResult = {
   draws: number;
 };
 
+// Scorelines are drawn from the phase's Match Structure: the winner takes the
+// required game wins, the loser 0 or one short of winning, and a drawn match
+// splits below the requirement (0–0 in best of 1). Best-of-3 output is
+// identical to the pre-structure generator, so seeded expectations hold.
 export function simulatedMatchResult(
   random: () => number,
-  allowDraws = true,
+  options: { bestOf: BestOf; allowDraws?: boolean },
 ): SimulatedMatchResult {
+  const required = requiredGameWins(options.bestOf);
+  const drawnWins = Math.min(1, required - 1);
   const roll = random();
 
   if (roll < 0.08) {
-    if (allowDraws) {
-      return { playerOneGameWins: 1, playerTwoGameWins: 1, draws: 1 };
+    if (options.allowDraws !== false) {
+      return {
+        playerOneGameWins: drawnWins,
+        playerTwoGameWins: drawnWins,
+        draws: 1,
+      };
     }
     return random() < 0.5
-      ? { playerOneGameWins: 2, playerTwoGameWins: 0, draws: 0 }
-      : { playerOneGameWins: 0, playerTwoGameWins: 2, draws: 0 };
+      ? { playerOneGameWins: required, playerTwoGameWins: 0, draws: 0 }
+      : { playerOneGameWins: 0, playerTwoGameWins: required, draws: 0 };
   }
 
   if (roll < 0.54) {
     return random() < 0.7
-      ? { playerOneGameWins: 2, playerTwoGameWins: 0, draws: 0 }
-      : { playerOneGameWins: 2, playerTwoGameWins: 1, draws: 0 };
+      ? { playerOneGameWins: required, playerTwoGameWins: 0, draws: 0 }
+      : {
+          playerOneGameWins: required,
+          playerTwoGameWins: required - 1,
+          draws: 0,
+        };
   }
 
   return random() < 0.7
-    ? { playerOneGameWins: 0, playerTwoGameWins: 2, draws: 0 }
-    : { playerOneGameWins: 1, playerTwoGameWins: 2, draws: 0 };
+    ? { playerOneGameWins: 0, playerTwoGameWins: required, draws: 0 }
+    : {
+        playerOneGameWins: required - 1,
+        playerTwoGameWins: required,
+        draws: 0,
+      };
 }
 
 export async function getTestConfig(
@@ -105,47 +125,37 @@ export async function seedTestPlayers(
       continue;
     }
 
-    const tokenIdentifier = `test:${tournamentId}:player:${playerNumber}`;
-    const existingUser = await ctx.db
-      .query("users")
-      .withIndex("by_tokenIdentifier", (q) =>
-        q.eq("tokenIdentifier", tokenIdentifier),
-      )
-      .unique();
-    const userId =
-      existingUser?._id ??
-      (await ctx.db.insert("users", {
-        tokenIdentifier,
-        publicCode: await nextUserPublicCode(ctx, now),
-        email: `player${playerNumber}@test.tournament.local`,
-        name: `Test Player ${playerNumber}`,
-        updatedAt: now,
-      }));
-
+    // Dummy players are Guest participants — no user account and no contact
+    // email, so they are never claimable — which puts every seeded test
+    // event on the same identity paths a real guest enrollment uses.
+    const playerName = `Test Player ${playerNumber}`;
+    const participantId = await createGuestParticipant(ctx, {
+      displayName: playerName,
+    });
     await ctx.db.insert("testTournamentPlayers", {
       tournamentId,
-      userId,
+      participantId,
       playerNumber,
       updatedAt: now,
     });
-
-    const existingRegistration = await registrationForUser(
-      ctx,
+    await ctx.db.insert("tournamentRegistrations", {
       tournamentId,
-      userId,
-    );
-    if (!existingRegistration) {
-      await ctx.db.insert("tournamentRegistrations", {
-        tournamentId,
-        userId,
-        tournamentStartDate: tournament.startDate,
-        entryStatus: "confirmed",
-        participationStatus: "active",
-        playerName: existingUser?.name ?? `Test Player ${playerNumber}`,
-        createdAt: now + playerNumber,
-        updatedAt: now,
-      });
-    }
+      participantId,
+      tournamentStartDate: tournament.startDate,
+      entryStatus: "confirmed",
+      participationStatus: "active",
+      playerName,
+      createdAt: now + playerNumber,
+      // Keyed on the player number — a test player's stable identity — so
+      // the same seed reproduces identical pairings across test-tournament
+      // resets and re-creations (real registrations key on the user's
+      // stable publicCode instead).
+      tiebreakRandom: tiebreakRandom(
+        tournament.seed ?? tournament.publicCode,
+        String(playerNumber),
+      ),
+      updatedAt: now,
+    });
     created += 1;
     playerNumber += 1;
   }
@@ -172,40 +182,22 @@ export async function generateTestResults(
     if (players.length !== 2) {
       continue;
     }
-    const result = simulatedMatchResult(
-      random,
-      phase.phaseType !== "single_elimination",
-    );
-    if (
-      match.matchStatus === "completed" ||
-      match.matchStatus === "confirmed"
-    ) {
-      continue;
-    }
-    requireDecisiveEliminationResult(
+    // Always drawn, even for matches the writer then skips as already
+    // completed, so a given seed produces the same result sequence
+    // regardless of how many rounds were simulated before.
+    const result = simulatedMatchResult(random, {
+      bestOf: phase.bestOf,
+      allowDraws: phase.phaseType !== "single_elimination",
+    });
+    await applyMatchResult(ctx, {
+      match,
       phase,
-      result.playerOneGameWins,
-      result.playerTwoGameWins,
-    );
-
-    const [playerOnePoints, playerTwoPoints] = matchPointsForResult(result);
-    const now = Date.now();
-    await ctx.db.patch(players[0]._id, {
-      matchPointsEarned: playerOnePoints,
-      gameWins: result.playerOneGameWins,
-      gameLosses: result.playerTwoGameWins,
-      updatedAt: now,
-    });
-    await ctx.db.patch(players[1]._id, {
-      matchPointsEarned: playerTwoPoints,
-      gameWins: result.playerTwoGameWins,
-      gameLosses: result.playerOneGameWins,
-      updatedAt: now,
-    });
-    await ctx.db.patch(match._id, {
-      matchStatus: "completed",
-      reportedByRegistrationId: undefined,
-      updatedAt: now,
+      round,
+      players,
+      playerOneGameWins: result.playerOneGameWins,
+      playerTwoGameWins: result.playerTwoGameWins,
+      gameDraws: result.draws,
+      policy: { kind: "simulation", audit: "none" },
     });
   }
 }

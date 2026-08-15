@@ -1,9 +1,14 @@
 import { useState } from 'react'
-import { useReportResult } from '@tournament-os/core'
+import { formatGameScoreline, useReportResult } from '@tournament-os/core'
+import {
+  MAX_GAME_DRAWS,
+  requiredGameWins,
+} from '@tournament-os/shared/match-structure'
 import { Minus, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 
 import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
+import type { BestOf } from '@tournament-os/shared/match-structure'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -18,23 +23,27 @@ import { useBusyAction } from '@/hooks/use-busy-action'
 
 export function ReportResultDialog({
   matchId,
+  bestOf,
   opponentName,
   open,
   onOpenChange,
 }: {
   matchId: Id<'tournamentMatches'>
+  bestOf: BestOf
   opponentName: string
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
+  const maxGameWins = requiredGameWins(bestOf)
   const reportResult = useReportResult()
   const { busy, run } = useBusyAction()
   const [myGameWins, setMyGameWins] = useState(0)
   const [opponentGameWins, setOpponentGameWins] = useState(0)
+  const [gameDraws, setGameDraws] = useState(0)
 
   async function handleSubmit() {
     await run(async () => {
-      await reportResult({ matchId, myGameWins, opponentGameWins })
+      await reportResult({ matchId, myGameWins, opponentGameWins, gameDraws })
       onOpenChange(false)
       toast.success('Result reported.')
     }, 'Could not report the result.')
@@ -53,8 +62,8 @@ export function ReportResultDialog({
         <DialogHeader>
           <DialogTitle>Report match result</DialogTitle>
           <DialogDescription>
-            Enter the games each player won. Your opponent will be asked to
-            confirm.
+            Enter the games each player won. The result counts immediately; your
+            organizer can correct it if something is wrong.
           </DialogDescription>
         </DialogHeader>
 
@@ -62,17 +71,31 @@ export function ReportResultDialog({
           <GameWinsStepper
             label="You"
             value={myGameWins}
+            max={maxGameWins}
             onChange={setMyGameWins}
             disabled={busy}
           />
           <GameWinsStepper
             label={opponentName}
             value={opponentGameWins}
+            max={maxGameWins}
             onChange={setOpponentGameWins}
             disabled={busy}
           />
+          <GameWinsStepper
+            label="Drawn games"
+            value={gameDraws}
+            max={MAX_GAME_DRAWS}
+            onChange={setGameDraws}
+            disabled={busy}
+          />
           <p className="text-center text-sm font-medium text-muted-foreground">
-            {resultPreview(myGameWins, opponentGameWins, opponentName)}
+            {resultPreview(
+              myGameWins,
+              opponentGameWins,
+              gameDraws,
+              opponentName,
+            )}
           </p>
         </div>
 
@@ -95,11 +118,13 @@ export function ReportResultDialog({
 function GameWinsStepper({
   label,
   value,
+  max,
   onChange,
   disabled,
 }: {
   label: string
   value: number
+  max: number
   onChange: (value: number) => void
   disabled: boolean
 }) {
@@ -125,7 +150,7 @@ function GameWinsStepper({
           variant="outline"
           size="icon"
           aria-label={`More game wins for ${label}`}
-          disabled={disabled || value >= 2}
+          disabled={disabled || value >= max}
           onClick={() => onChange(value + 1)}
         >
           <Plus />
@@ -138,13 +163,14 @@ function GameWinsStepper({
 function resultPreview(
   myGameWins: number,
   opponentGameWins: number,
+  gameDraws: number,
   opponentName: string,
 ) {
   if (myGameWins > opponentGameWins) {
-    return `You win ${myGameWins}–${opponentGameWins}`
+    return `You win ${formatGameScoreline(myGameWins, opponentGameWins, gameDraws)}`
   }
   if (myGameWins < opponentGameWins) {
-    return `${opponentName} wins ${opponentGameWins}–${myGameWins}`
+    return `${opponentName} wins ${formatGameScoreline(opponentGameWins, myGameWins, gameDraws)}`
   }
-  return `Draw ${myGameWins}–${opponentGameWins}`
+  return `Draw ${formatGameScoreline(myGameWins, opponentGameWins, gameDraws)}`
 }

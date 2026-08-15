@@ -1,14 +1,9 @@
 import { useState } from 'react'
-import {
-  
-  
-  useConfirmResult
-} from '@tournament-os/core'
-import { CheckCheck, Hourglass, Swords } from 'lucide-react'
-import { toast } from 'sonner'
+import { formatGameScoreline } from '@tournament-os/core'
+import { Hourglass, Swords } from 'lucide-react'
 
 import { ReportResultDialog } from './report-result-dialog'
-import type {MyActiveMatch, MyCurrentMatch} from '@tournament-os/core';
+import type { MyActiveMatch, MyCurrentMatch } from '@tournament-os/core'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -26,8 +21,6 @@ import {
   EmptyTitle,
 } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Spinner } from '@/components/ui/spinner'
-
 
 export function CurrentMatchCard({
   currentMatch,
@@ -79,8 +72,8 @@ export function CurrentMatchCard({
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">
-            Take your seat and check in with the organizer. Pairings will
-            appear here once the meeting wraps up.
+            Take your seat and check in with the organizer. Pairings will appear
+            here once the meeting wraps up.
           </p>
         </CardContent>
       </Card>
@@ -160,10 +153,8 @@ function ActiveMatch({ currentMatch }: { currentMatch: MyActiveMatch }) {
 }
 
 function MatchStatusSection({ currentMatch }: { currentMatch: MyActiveMatch }) {
-  const { match, me, opponent } = currentMatch
-  const confirmResult = useConfirmResult()
+  const { match, me } = currentMatch
   const [reporting, setReporting] = useState(false)
-  const [confirming, setConfirming] = useState(false)
 
   if (me.isBye) {
     return (
@@ -187,6 +178,7 @@ function MatchStatusSection({ currentMatch }: { currentMatch: MyActiveMatch }) {
         {reporting ? (
           <ReportResultDialog
             matchId={match._id}
+            bestOf={match.bestOf}
             opponentName={opponentName(currentMatch)}
             open={reporting}
             onOpenChange={setReporting}
@@ -196,64 +188,41 @@ function MatchStatusSection({ currentMatch }: { currentMatch: MyActiveMatch }) {
     )
   }
 
-  const scoreline = formatScoreline(me.gameWins, me.gameLosses)
+  const scoreline = formatScoreline(me.gameWins, me.gameLosses, me.gameDraws)
   const reportedByMe = match.reportedByRegistrationId === me.registrationId
 
-  if (match.matchStatus === 'confirmed') {
+  // A drop's concession (see CONTEXT.md "Concession") completes the match
+  // with no reporting player, so it must be distinguished before the
+  // organizer-entered fallback. The conceding player is the awarded loser.
+  if (match.currentResultKind === 'concession') {
     return (
       <ResultSummary
         scoreline={scoreline}
         badge={
-          <Badge>
-            <CheckCheck data-icon="inline-start" />
-            Confirmed
+          <Badge variant="secondary">
+            {(me.gameWins ?? 0) < (me.gameLosses ?? 0)
+              ? 'You conceded'
+              : 'Opponent conceded'}
           </Badge>
         }
+        note="A drop during an unfinished match concedes it. Played to a result first? Find a judge or the tournament organizer."
       />
     )
   }
 
-  if (match.matchStatus === 'completed' && match.reportedByRegistrationId) {
-    if (reportedByMe) {
-      return (
-        <ResultSummary
-          scoreline={scoreline}
-          badge={<Badge variant="outline">Waiting for confirmation</Badge>}
-          note={`Waiting for ${opponent?.name ?? 'your opponent'} to confirm. The round can continue without it.`}
-        />
-      )
-    }
-
+  // A reported result counts immediately — there is no confirmation step.
+  // Disputes go to the organizer, whose override supersedes the report.
+  if (match.reportedByRegistrationId) {
     return (
       <ResultSummary
         scoreline={scoreline}
-        badge={<Badge variant="outline">Reported by opponent</Badge>}
+        badge={
+          <Badge variant="outline">
+            {reportedByMe ? 'Reported by you' : 'Reported by opponent'}
+          </Badge>
+        }
         note="Result wrong? Find a judge or the tournament organizer."
-      >
-        <Button
-          type="button"
-          size="lg"
-          disabled={confirming}
-          onClick={async () => {
-            setConfirming(true)
-            try {
-              await confirmResult({ matchId: match._id })
-              toast.success('Result confirmed.')
-            } catch (error) {
-              toast.error(
-                error instanceof Error
-                  ? error.message
-                  : 'Could not confirm the result.',
-              )
-            } finally {
-              setConfirming(false)
-            }
-          }}
-        >
-          {confirming ? <Spinner data-icon="inline-start" /> : null}
-          Confirm result
-        </Button>
-      </ResultSummary>
+      />
     )
   }
 
@@ -315,14 +284,19 @@ function opponentName(currentMatch: MyActiveMatch) {
   return currentMatch.opponent?.name ?? 'Opponent'
 }
 
-function formatScoreline(gameWins: number | null, gameLosses: number | null) {
+function formatScoreline(
+  gameWins: number | null,
+  gameLosses: number | null,
+  gameDraws: number | null,
+) {
   const wins = gameWins ?? 0
   const losses = gameLosses ?? 0
+  const scoreline = formatGameScoreline(wins, losses, gameDraws ?? 0)
   if (wins > losses) {
-    return `You win ${wins}–${losses}`
+    return `You win ${scoreline}`
   }
   if (wins < losses) {
-    return `You lose ${wins}–${losses}`
+    return `You lose ${scoreline}`
   }
-  return `Draw ${wins}–${losses}`
+  return `Draw ${scoreline}`
 }

@@ -12,6 +12,7 @@ import {
   requireProfilePermission,
 } from "./model/access";
 import { ensureCurrentUser } from "./model/users";
+import { enforceRateLimit } from "./rateLimits";
 import {
   normalizeEmail,
   organizerInviteRoleValidator,
@@ -109,6 +110,7 @@ export const listInvitations = query({
 export const createOrganizerOrganization = mutation({
   args: { name: v.string() },
   handler: async (ctx, args) => {
+    await enforceRateLimit(ctx, "createOrganization");
     const name = args.name.trim();
     if (name.length < 2) {
       throw new Error("Organization name must be at least 2 characters");
@@ -145,6 +147,7 @@ export const inviteMember = mutation({
     role: organizerInviteRoleValidator,
   },
   handler: async (ctx, args) => {
+    await enforceRateLimit(ctx, "inviteMember");
     const { organization, user } = await requireInvitePermission(
       ctx,
       args.organizationId,
@@ -195,6 +198,7 @@ export const inviteMember = mutation({
 export const revokeInvitation = mutation({
   args: { invitationId: v.id("organizationInvitations") },
   handler: async (ctx, args) => {
+    await enforceRateLimit(ctx, "inviteMember");
     const invitation = await ctx.db.get(args.invitationId);
     if (!invitation) {
       throw new Error("Invitation not found");
@@ -218,6 +222,7 @@ export const revokeInvitation = mutation({
 export const generateProfileImageUploadUrl = mutation({
   args: { organizationId: v.id("organizations") },
   handler: async (ctx, args) => {
+    await enforceRateLimit(ctx, "profileImageUpload");
     await requireProfilePermission(ctx, args.organizationId);
     return await ctx.storage.generateUploadUrl();
   },
@@ -229,9 +234,13 @@ export const updateProfileImage = mutation({
     profileImageStorageId: v.id("_storage"),
   },
   handler: async (ctx, args) => {
+    await enforceRateLimit(ctx, "profileImageUpload");
     await requireProfilePermission(ctx, args.organizationId);
 
-    const metadata = await ctx.db.system.get("_storage", args.profileImageStorageId);
+    const metadata = await ctx.db.system.get(
+      "_storage",
+      args.profileImageStorageId,
+    );
     if (!metadata) {
       throw new Error("Uploaded image was not found");
     }

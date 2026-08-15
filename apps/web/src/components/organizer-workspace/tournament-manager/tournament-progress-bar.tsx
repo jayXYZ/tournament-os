@@ -17,6 +17,7 @@ import {
 import { toast } from 'sonner'
 
 import { api } from '@tournament-os/backend/convex/_generated/api'
+import { mutationErrorMessage } from '@tournament-os/core'
 import { RoundTimerChip } from './round-timer-chip'
 import type { FunctionReturnType } from 'convex/server'
 import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
@@ -73,7 +74,7 @@ type RoundSlot =
 
 // Round numbers are global across the tournament (a later phase continues the
 // numbering), so planned nodes count on from the phase's start number.
-function phaseSlots(
+export function phaseSlots(
   phaseBoard: PhaseBoard,
   startNumber: number | null,
 ): Array<RoundSlot> {
@@ -105,7 +106,9 @@ function phaseSlots(
 // dynamic phase contributes an unknown number of rounds, so phases after it
 // have no start number (null) until it resolves — numbering them would show
 // values that silently change later.
-function phaseStartNumbers(phases: Array<PhaseBoard>): Array<number | null> {
+export function phaseStartNumbers(
+  phases: Array<PhaseBoard>,
+): Array<number | null> {
   const startNumbers: Array<number | null> = []
   let nextRoundNumber: number | null = 1
   for (const phaseBoard of phases) {
@@ -129,7 +132,9 @@ function phaseStartNumbers(phases: Array<PhaseBoard>): Array<number | null> {
 // round's lifecycle. Keep that meaning on the node itself: the action button
 // can then move around the dashboard without separating the state from the
 // round it describes.
-function activeRoundProgress(board: PairingsBoard): ActiveRoundProgress | null {
+export function activeRoundProgress(
+  board: PairingsBoard,
+): ActiveRoundProgress | null {
   const { nextStep } = board
   if (nextStep.kind === 'publishPairings') {
     return { roundId: nextStep.roundId, step: 'pairingsReady' }
@@ -153,7 +158,7 @@ function activeRoundProgress(board: PairingsBoard): ActiveRoundProgress | null {
 // Once a completed round is waiting for the next one to be generated, the
 // next planned slot becomes the bar's current step. This works within a phase
 // and across phase boundaries, including dynamic phases whose node is "?".
-function betweenRoundTarget(
+export function betweenRoundTarget(
   board: PairingsBoard,
   startNumbers: Array<number | null>,
 ): BetweenRoundTarget | null {
@@ -392,9 +397,7 @@ function AdvanceStepButton({
       }
     } catch (error) {
       toast.error(
-        error instanceof Error
-          ? error.message
-          : 'Could not advance the tournament.',
+        mutationErrorMessage(error, 'Could not advance the tournament.'),
       )
       throw error
     }
@@ -420,7 +423,7 @@ function AdvanceStepButton({
   )
 }
 
-function advanceAction(
+export function advanceAction(
   step: AdvanceStep,
   tournamentId: Id<'tournaments'>,
   mutations: {

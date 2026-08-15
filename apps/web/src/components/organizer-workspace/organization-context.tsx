@@ -1,15 +1,14 @@
 import {
-  
   createContext,
   useCallback,
   useContext,
   useMemo,
-  useState
+  useState,
 } from 'react'
 import { useQuery } from 'convex/react'
 
 import { api } from '@tournament-os/backend/convex/_generated/api'
-import type {ReactNode} from 'react';
+import type { ReactNode } from 'react'
 import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
 import type { OrganizationRow } from './types'
 

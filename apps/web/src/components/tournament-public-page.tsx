@@ -1,6 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
-import { useConvexAuth, useMutation, useQuery } from 'convex/react'
+import { mutationErrorMessage, useMyRegistration } from '@tournament-os/core'
+import { useMutation, useQuery } from 'convex/react'
 import {
   Building2,
   CalendarDays,
@@ -215,17 +216,9 @@ function RegistrationPanel({
   spotsLeft: number
 }) {
   const { user, loading, refreshAuth } = useAppAuth()
-  const { isAuthenticated: convexAuthed } = useConvexAuth()
-  // Gated on Convex auth, not just the Clerk user: the server resolves the
-  // registration from its own identity, so running this while Convex is
-  // still exchanging tokens returns null — which would flash the register
-  // button at an already-registered player. Skipping keeps it undefined,
-  // holding the "Checking your registration" state until an answer can be
-  // trusted.
-  const registration = useQuery(
-    api.tournaments.registrations.getMyRegistration,
-    user && convexAuthed ? { tournamentId: tournament._id } : 'skip',
-  )
+  // Held at `undefined` until Convex auth settles (see useMyRegistration), so
+  // an already-registered player never sees a flash of the register button.
+  const registration = useMyRegistration(tournament._id)
   const registerSelf = useMutation(api.tournaments.registrations.registerSelf)
   const cancelRegistration = useMutation(
     api.tournaments.registrations.cancelMyRegistration,
@@ -241,9 +234,7 @@ function RegistrationPanel({
       await action()
       toast.success(successMessage)
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Something went wrong',
-      )
+      toast.error(mutationErrorMessage(error, 'Something went wrong'))
     } finally {
       setPending(false)
     }
@@ -332,7 +323,7 @@ function RegistrationPanel({
     )
   }
 
-  // A withdrawn player still holds their confirmed seat (a mid-play drop, or
+  // A dropped player still holds their confirmed seat (a mid-play drop, or
   // one preserved by a round-one rewind back into registration), and the
   // server masks a disqualification as a drop, so this branch covers both.
   // Before play the only self-service action the server accepts is cancelling
@@ -345,7 +336,7 @@ function RegistrationPanel({
   ) {
     return (
       <div className="flex flex-wrap items-center gap-3">
-        <Badge variant="secondary">You withdrew from this event</Badge>
+        <Badge variant="secondary">You dropped from this event</Badge>
         {tournament.lifecycle === 'registration' ? (
           <Button
             type="button"

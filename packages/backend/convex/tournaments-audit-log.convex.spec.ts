@@ -1,18 +1,18 @@
 /// <reference types="vite/client" />
 
-import { convexTest, type TestConvex } from "convex-test";
+import type { TestConvex } from "convex-test";
 import { expect, test } from "vitest";
 
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import schema from "./schema";
 import {
+  insertLinkedParticipant,
   organizerIdentity,
   playOutCurrentRound,
   seedOrganizer,
 } from "./specHelpers";
-
-const modules = import.meta.glob("./**/*.ts");
+import { createConvexTest } from "./specHelpers.runtime";
 
 function playerIdentity(playerNumber: number) {
   return {
@@ -24,8 +24,8 @@ function playerIdentity(playerNumber: number) {
   };
 }
 
-test("result reports, confirmations, and organizer overrides are audited", async () => {
-  const t = convexTest(schema, modules);
+test("result reports and organizer overrides are audited", async () => {
+  const t = createConvexTest();
   const { tournamentId, registrationIds } = await seedStartedTournament(t, 4);
   const match = await matchForPlayer(t, tournamentId, registrationIds[0]);
   const opponent = await opponentNumber(
@@ -43,11 +43,6 @@ test("result reports, confirmations, and organizer overrides are audited", async
       opponentGameWins: 1,
     });
   await t
-    .withIdentity(playerIdentity(opponent))
-    .mutation(api.tournaments.player.confirmMatchResult, {
-      matchId: match._id,
-    });
-  await t
     .withIdentity(organizerIdentity)
     .mutation(api.tournaments.rounds.recordMatchResult, {
       matchId: match._id,
@@ -57,17 +52,16 @@ test("result reports, confirmations, and organizer overrides are audited", async
       playerTwoGameWins: 2,
     });
 
-  // Newest first: override, confirmation, report, tournament start, publish.
+  // Newest first: override, report, tournament start, publish.
   const events = await auditEvents(t, tournamentId);
   expect(events.map((row) => row.event.type)).toEqual([
     "match_result_recorded",
-    "match_result_confirmed",
     "match_result_reported",
     "tournament_started",
     "tournament_published",
   ]);
 
-  const reported = events[2];
+  const reported = events[1];
   expect(reported.actorRole).toBe("player");
   expect(reported.actorName).toBe("Player 1");
   if (reported.event.type !== "match_result_reported") {
@@ -78,10 +72,6 @@ test("result reports, confirmations, and organizer overrides are audited", async
     (line) => line.registrationId === registrationIds[0],
   );
   expect(myReportedLine).toMatchObject({ gameWins: 2, gameLosses: 1 });
-
-  const confirmed = events[1];
-  expect(confirmed.actorRole).toBe("player");
-  expect(confirmed.actorName).toBe(`Player ${opponent}`);
 
   // The override preserves the result it replaced — the dispute-resolution case.
   const recorded = events[0];
@@ -129,7 +119,7 @@ test("result reports, confirmations, and organizer overrides are audited", async
 });
 
 test("registration changes and drops are audited with the acting side", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId, registrationIds } = await seedTournament(t, 4);
   const organizer = t.withIdentity(organizerIdentity);
 
@@ -168,6 +158,9 @@ test("registration changes and drops are audited with the acting side", async ()
   expect(
     events.map((row) => [row.event.type, row.actorRole, row.actorName]),
   ).toEqual([
+    // The mid-round drop concedes player 2's unfinished match alongside the
+    // drop itself.
+    ["match_conceded", "player", "Player 2"],
     ["player_dropped", "player", "Player 2"],
     ["tournament_started", "organizer", "Organizer"],
     ["player_reinstated", "organizer", "Organizer"],
@@ -179,7 +172,7 @@ test("registration changes and drops are audited with the acting side", async ()
 
   // Organizer-initiated pre-play cancellations name the affected player, not
   // the actor.
-  const organizerDrop = events[3];
+  const organizerDrop = events[4];
   if (organizerDrop.event.type !== "registration_cancelled") {
     throw new Error("Expected a registration cancellation event");
   }
@@ -187,7 +180,7 @@ test("registration changes and drops are audited with the acting side", async ()
 });
 
 test("round and tournament lifecycle actions are audited", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId } = await seedTournament(t, 4, [
     { phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 2 },
   ]);
@@ -225,7 +218,7 @@ test("round and tournament lifecycle actions are audited", async () => {
 });
 
 test("cancelTournament is audited", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId } = await seedTournament(t, 4);
   await t
     .withIdentity(organizerIdentity)
@@ -237,7 +230,7 @@ test("cancelTournament is audited", async () => {
 });
 
 test("listAuditEvents is organizer-only and paginates newest first", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId } = await seedStartedTournament(t, 4);
 
   await expect(
@@ -273,7 +266,7 @@ test("listAuditEvents is organizer-only and paginates newest first", async () =>
 });
 
 test("listAuditEvents clamps an oversized page size instead of reading the whole trail", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId, userId: organizerId } = await seedOrganizer(t);
   const tournamentId: Id<"tournaments"> = await t
     .withIdentity(organizerIdentity)
@@ -283,9 +276,7 @@ test("listAuditEvents clamps an oversized page size instead of reading the whole
       startDate: Date.now(),
       playerCapacity: 16,
       format: "standard",
-      phases: [
-        { phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 3 },
-      ],
+      phases: [{ phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 3 }],
     });
 
   const ROW_COUNT = 150;
@@ -327,7 +318,7 @@ test("listAuditEvents clamps an oversized page size instead of reading the whole
 });
 
 test("deleting a tournament removes its audit trail", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { tournamentId } = await seedStartedTournament(t, 4);
   expect((await auditEvents(t, tournamentId)).length).toBeGreaterThan(0);
 
@@ -400,15 +391,17 @@ async function seedTournament(
         name: identity.name,
         updatedAt: now,
       });
+      const participant0Id = await insertLinkedParticipant(ctx, userId);
       ids.push(
         await ctx.db.insert("tournamentRegistrations", {
           tournamentId,
-          userId,
+          participantId: participant0Id,
           tournamentStartDate: tournament.startDate,
           entryStatus: "confirmed",
           participationStatus: "active",
           playerName: identity.name,
           createdAt: now + playerNumber,
+          tiebreakRandom: playerNumber,
           updatedAt: now,
         }),
       );

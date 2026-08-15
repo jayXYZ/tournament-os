@@ -1,12 +1,10 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
-import { previousTournamentRound } from "./phases";
+import { MAX_MATCHES_PER_PLAYER, previousTournamentRound } from "./phases";
 import {
   MAX_TOURNAMENT_PLAYERS,
   nonActiveParticipationStatuses,
   participantRegistrations,
-  type StandingsSync,
-  standingsSyncFromRows,
 } from "./registrations";
 import { roundMatchesWithPlayers } from "./tournaments";
 
@@ -29,7 +27,11 @@ export type StandingComparable = {
   opponentMatchWinPct: number;
   gameWinPct: number;
   opponentGameWinPct: number;
-  createdAt: number;
+  // Seed-derived per-player random (see model/random.ts) breaking residual
+  // perfect ties; the registration id is the absolute final order so two
+  // colliding hashes still compare deterministically.
+  tiebreakRandom: number;
+  tiebreakId: string;
 };
 
 export type PlayerStats = {
@@ -40,9 +42,14 @@ export type PlayerStats = {
   matchDraws: number;
   gameWins: number;
   gameLosses: number;
+  gameDraws: number;
   opponentIds: Id<"tournamentRegistrations">[];
-  hasHadBye: boolean;
-  createdAt: number;
+  // Bye totals kept separately so the percentages this player feeds into
+  // opponents' tiebreakers can exclude their byes (MTR Appendix C), while
+  // their own game-win percentage keeps them.
+  byeCount: number;
+  byeGameWins: number;
+  tiebreakRandom: number;
 };
 
 type PlayoffStandingStatus = "not_started" | "active" | "eliminated" | "cut";
@@ -62,7 +69,8 @@ export function compareStandingRows(
     right.opponentMatchWinPct - left.opponentMatchWinPct ||
     right.gameWinPct - left.gameWinPct ||
     right.opponentGameWinPct - left.opponentGameWinPct ||
-    left.createdAt - right.createdAt
+    right.tiebreakRandom - left.tiebreakRandom ||
+    left.tiebreakId.localeCompare(right.tiebreakId)
   );
 }
 
@@ -82,8 +90,10 @@ export function hasCumulativeTotals(standing: Doc<"roundStandings">) {
   return (
     standing.gameWins !== undefined &&
     standing.gameLosses !== undefined &&
+    standing.gameDraws !== undefined &&
     standing.opponentIds !== undefined &&
-    standing.hasHadBye !== undefined
+    standing.byeCount !== undefined &&
+    standing.byeGameWins !== undefined
   );
 }
 
@@ -110,9 +120,12 @@ async function deleteStandingsForRound(
 // Deletes the standings of a round a rewind is reopening, then repairs the
 // participation status denormalized onto the rows this promotes to "latest
 // completed round" — the rows every player's standings query will now read.
+// Called only by restoreEliminationsForRewind (model/participation.ts), which
+// restores the rewound rounds' eliminations first so the repair below reads
+// registrations the rewind has already corrected.
 //
 // Only the latest completed round's rows are kept current (see
-// syncStandingParticipationStatus), so the promoted rows still hold whatever
+// model/participation.ts), so the promoted rows still hold whatever
 // status they carried when their round stopped being the latest: a player
 // dropped while the deleted round was on screen would silently read as active
 // again. Reading them back from the live registrations closes that window.
@@ -147,25 +160,24 @@ export async function deleteStandingsForReopenedRound(
   }
 }
 
-// Returns the freshly written rows keyed as a StandingsSync: the round just
-// became the tournament's latest completed round, so a caller that changes
-// registrations later in the same transaction (completeRound's
-// single-elimination batch) can sync against the rows it just paid to write
-// instead of reading the whole range back.
+// Rewrites the round's standings from cumulative stats through it, making it
+// the tournament's latest completed round — the round whose rows the
+// participation module keeps in step with every later status change (see
+// model/participation.ts).
 export async function replaceStandingsForRound(
   ctx: MutationCtx,
   tournament: Doc<"tournaments">,
   phase: Doc<"tournamentPhases">,
   round: Doc<"tournamentRounds">,
   prefetchedMatches?: RoundMatchWithPlayers[],
-): Promise<StandingsSync> {
+): Promise<void> {
   await deleteStandingsForRound(ctx, round._id);
 
   const matchesWithPlayers =
     prefetchedMatches ?? (await roundMatchesWithPlayers(ctx, round._id));
   const stats = await cumulativeStatsThroughRound(
     ctx,
-    tournament._id,
+    tournament,
     round,
     matchesWithPlayers,
   );
@@ -178,16 +190,11 @@ export async function replaceStandingsForRound(
   );
   const now = Date.now();
 
-  const insertedRows: Array<{
-    _id: Id<"roundStandings">;
-    playerId: Id<"tournamentRegistrations">;
-    participationStatus: Doc<"roundStandings">["participationStatus"];
-  }> = [];
   for (let index = 0; index < ranked.length; index += 1) {
     const { playerStats, playoffStatus, eliminatedInRoundNumber } =
       ranked[index];
     const comparable = comparableFromStats(playerStats, stats);
-    const standingId = await ctx.db.insert("roundStandings", {
+    await ctx.db.insert("roundStandings", {
       tournamentId: tournament._id,
       tournamentPhaseId: phase._id,
       tournamentRoundId: round._id,
@@ -200,8 +207,10 @@ export async function replaceStandingsForRound(
       matchDraws: playerStats.matchDraws,
       gameWins: playerStats.gameWins,
       gameLosses: playerStats.gameLosses,
+      gameDraws: playerStats.gameDraws,
       opponentIds: playerStats.opponentIds,
-      hasHadBye: playerStats.hasHadBye,
+      byeCount: playerStats.byeCount,
+      byeGameWins: playerStats.byeGameWins,
       opponentMatchWinPct: comparable.opponentMatchWinPct,
       gameWinPct: comparable.gameWinPct,
       opponentGameWinPct: comparable.opponentGameWinPct,
@@ -209,19 +218,14 @@ export async function replaceStandingsForRound(
       eliminatedInRoundNumber,
       // Free here — the registration document is already in hand — and it
       // saves the player standings query a per-tournament scan of every
-      // non-active registration. setRegistrationState keeps it current for
-      // status changes that land after this round's standings are written.
+      // non-active registration. The participation module keeps it current
+      // for status changes that land after this round's standings are
+      // written.
       participationStatus: playerStats.registration.participationStatus,
       sortKey: index + 1,
       updatedAt: now,
     });
-    insertedRows.push({
-      _id: standingId,
-      playerId: playerStats.registration._id,
-      participationStatus: playerStats.registration.participationStatus,
-    });
   }
-  return standingsSyncFromRows(insertedRows);
 }
 
 async function rankedStatsForRound(
@@ -238,8 +242,8 @@ async function rankedStatsForRound(
   // alone decide order, so non-active players sink naturally as the field
   // keeps scoring. The stats map contains only confirmed entries; cancelled,
   // rejected, pending, and waitlisted registrations never reach standings.
-  // Cutoffs and top-8 seeding live-join participation status and skip players
-  // who are no longer active.
+  // Cutoffs and bracket seeding live-join participation status and skip
+  // players who are no longer active.
   if (phase.phaseType !== "single_elimination") {
     return [...stats.values()]
       .sort((left, right) => comparePlayerStats(left, right, stats))
@@ -265,6 +269,13 @@ async function rankedStatsForRound(
   const currentParticipants = new Set<Id<"tournamentRegistrations">>();
   const currentAdvancers = new Set<Id<"tournamentRegistrations">>();
   for (const { players } of matchesWithPlayers) {
+    // A walkover: the departed seat-holder's scheduled opponent received the
+    // match as a Bye (see CONTEXT.md "Walkover").
+    if (players.length === 1 && players[0].isBye) {
+      currentParticipants.add(players[0].playerId);
+      currentAdvancers.add(players[0].playerId);
+      continue;
+    }
     if (players.length !== 2) {
       throw new Error("Single-elimination matches require exactly two players");
     }
@@ -276,18 +287,12 @@ async function rankedStatsForRound(
     if (firstWins === secondWins) {
       throw new Error("Single-elimination matches must have a winner");
     }
-    const winner = firstWins > secondWins ? first : second;
-    const loser = winner === first ? second : first;
-    const winnerRegistration = stats.get(winner.playerId)?.registration;
-    if (winnerRegistration?.participationStatus === "active") {
-      currentAdvancers.add(winner.playerId);
-    } else if (
-      stats.get(loser.playerId)?.registration.participationStatus === "active"
-    ) {
-      // A winner who withdrew after reporting gives the opponent the bracket
-      // slot, matching singleEliminationAdvancers in model/singleElimination.ts.
-      currentAdvancers.add(loser.playerId);
-    }
+    // The game winner advances whether or not they are still in the
+    // tournament: a drop never revives the defeated opponent — the
+    // seat advances and the next pairing walks it over (ADR 0001).
+    currentAdvancers.add(
+      firstWins > secondWins ? first.playerId : second.playerId,
+    );
   }
 
   const ranked = [...stats.values()].map((playerStats): RankedPlayerStats => {
@@ -304,6 +309,16 @@ async function rankedStatsForRound(
     }
 
     const previous = previousByPlayer.get(playerId);
+    if (previous?.playoffStatus === "active") {
+      // A seat-holder absent from the round was walked over at pairing (or
+      // their seat pair emptied entirely): they keep the placement of the
+      // seat they reached — this round.
+      return {
+        playerStats,
+        playoffStatus: "eliminated",
+        eliminatedInRoundNumber: round.roundNumber,
+      };
+    }
     if (previous?.playoffStatus === "eliminated") {
       return {
         playerStats,
@@ -354,15 +369,15 @@ function comparePlayerStats(
 // documents instead of every match in the tournament's history.
 async function cumulativeStatsThroughRound(
   ctx: QueryCtx,
-  tournamentId: Id<"tournaments">,
+  tournament: Doc<"tournaments">,
   round: Doc<"tournamentRounds">,
   matchesWithPlayers: RoundMatchWithPlayers[],
 ) {
   // Dropped players stay in the map so their records keep feeding their
-  // former opponents' OMW%/OGW% (MTR Appendix C: withdrawal does not erase
+  // former opponents' OMW%/OGW% (MTR Appendix C: a drop does not erase
   // a record); they also stay ranked, with their record frozen at the point
   // they stopped playing.
-  const registrations = await participantRegistrations(ctx, tournamentId);
+  const registrations = await participantRegistrations(ctx, tournament._id);
   const stats = new Map<Id<"tournamentRegistrations">, PlayerStats>(
     registrations.map((registration) => [
       registration._id,
@@ -399,14 +414,16 @@ async function cumulativeStatsThroughRound(
         playerStats.matchDraws = standing.matchDraws;
         playerStats.gameWins = standing.gameWins ?? 0;
         playerStats.gameLosses = standing.gameLosses ?? 0;
+        playerStats.gameDraws = standing.gameDraws ?? 0;
         playerStats.opponentIds = [...(standing.opponentIds ?? [])];
-        playerStats.hasHadBye = standing.hasHadBye ?? false;
+        playerStats.byeCount = standing.byeCount ?? 0;
+        playerStats.byeGameWins = standing.byeGameWins ?? 0;
       } else {
         // Legacy standings row or a player without one (e.g. reinstated
         // after a drop): rebuild this player's totals from match history.
         await accumulatePlayerHistory(
           ctx,
-          tournamentId,
+          tournament._id,
           playerStats,
           round.roundNumber - 1,
         );
@@ -415,10 +432,7 @@ async function cumulativeStatsThroughRound(
   }
 
   for (const { match, players } of matchesWithPlayers) {
-    if (
-      match.matchStatus !== "completed" &&
-      match.matchStatus !== "confirmed"
-    ) {
+    if (match.matchStatus !== "completed") {
       continue;
     }
     for (const playerRow of players) {
@@ -447,17 +461,14 @@ export async function accumulatePlayerHistory(
     .withIndex("by_playerId", (q) =>
       q.eq("playerId", playerStats.registration._id),
     )
-    .take(256);
+    .take(MAX_MATCHES_PER_PLAYER);
 
   for (const playerRow of playerRows) {
     const match = await ctx.db.get(playerRow.tournamentMatchId);
     if (!match || match.tournamentId !== tournamentId) {
       continue;
     }
-    if (
-      match.matchStatus !== "completed" &&
-      match.matchStatus !== "confirmed"
-    ) {
+    if (match.matchStatus !== "completed") {
       continue;
     }
     const round = await ctx.db.get(match.tournamentRoundId);
@@ -506,9 +517,11 @@ function emptyStats(registration: Doc<"tournamentRegistrations">): PlayerStats {
     matchDraws: 0,
     gameWins: 0,
     gameLosses: 0,
+    gameDraws: 0,
     opponentIds: [],
-    hasHadBye: false,
-    createdAt: registration.createdAt,
+    byeCount: 0,
+    byeGameWins: 0,
+    tiebreakRandom: registration.tiebreakRandom,
   };
 }
 
@@ -520,11 +533,13 @@ function applyMatchPlayerRow(
   playerStats.matchPoints += points;
   playerStats.gameWins += playerRow.gameWins ?? 0;
   playerStats.gameLosses += playerRow.gameLosses ?? 0;
+  playerStats.gameDraws += playerRow.gameDraws ?? 0;
   if (playerRow.opponentPlayerId) {
     playerStats.opponentIds.push(playerRow.opponentPlayerId);
   }
   if (playerRow.isBye) {
-    playerStats.hasHadBye = true;
+    playerStats.byeCount += 1;
+    playerStats.byeGameWins += playerRow.gameWins ?? 0;
   }
   if (points === MATCH_WIN_POINTS || playerRow.isBye) {
     playerStats.matchWins += 1;
@@ -541,12 +556,12 @@ export function comparableFromStats(
 ): StandingComparable {
   const opponentMatchWinPct = averageOrFloor(
     playerStats.opponentIds.map((opponentId) =>
-      Math.max(0.33, matchWinPct(allStats.get(opponentId))),
+      Math.max(0.33, feedMatchWinPct(allStats.get(opponentId))),
     ),
   );
   const opponentGameWinPct = averageOrFloor(
     playerStats.opponentIds.map((opponentId) =>
-      Math.max(0.33, gameWinPct(allStats.get(opponentId))),
+      Math.max(0.33, feedGameWinPct(allStats.get(opponentId))),
     ),
   );
 
@@ -555,32 +570,58 @@ export function comparableFromStats(
     opponentMatchWinPct,
     // MTR Appendix C floors game-win percentage at 0.33 in its definition,
     // so the floor applies to a player's own tiebreaker, not just opponents'.
-    gameWinPct: Math.max(0.33, gameWinPct(playerStats)),
+    gameWinPct: Math.max(0.33, ownGameWinPct(playerStats)),
     opponentGameWinPct,
-    createdAt: playerStats.createdAt,
+    tiebreakRandom: playerStats.tiebreakRandom,
+    tiebreakId: playerStats.registration._id,
   };
 }
 
-function matchWinPct(stats: PlayerStats | undefined) {
+// Percentages are match/game points over points possible (MTR Appendix C),
+// so drawn matches and drawn games count toward both sides of the division.
+// Each comes in two variants: the player's own tiebreaker keeps their byes
+// (a bye is an awarded win with awarded game points), while the value fed
+// into an opponent's OMW%/OGW% excludes them — an opponent-less round says
+// nothing about the strength anyone actually faced. Own match-win percentage
+// has no own variant because it never ranks the player directly.
+
+function feedMatchWinPct(stats: PlayerStats | undefined) {
   if (!stats) {
     return 0;
   }
-  const matches = stats.matchWins + stats.matchLosses + stats.matchDraws;
-  if (matches === 0) {
+  const matches =
+    stats.matchWins + stats.matchLosses + stats.matchDraws - stats.byeCount;
+  if (matches <= 0) {
     return 0;
   }
-  return (stats.matchWins + stats.matchDraws / 3) / matches;
+  // Every bye awarded exactly a match win's points, so subtracting them
+  // leaves the points earned in played rounds.
+  const matchPoints = stats.matchPoints - MATCH_WIN_POINTS * stats.byeCount;
+  return matchPoints / (3 * matches);
 }
 
-function gameWinPct(stats: PlayerStats | undefined) {
+function ownGameWinPct(stats: PlayerStats | undefined) {
   if (!stats) {
     return 0;
   }
-  const games = stats.gameWins + stats.gameLosses;
+  const games = stats.gameWins + stats.gameLosses + stats.gameDraws;
   if (games === 0) {
     return 0;
   }
-  return stats.gameWins / games;
+  return (3 * stats.gameWins + stats.gameDraws) / (3 * games);
+}
+
+function feedGameWinPct(stats: PlayerStats | undefined) {
+  if (!stats) {
+    return 0;
+  }
+  const games =
+    stats.gameWins + stats.gameLosses + stats.gameDraws - stats.byeGameWins;
+  if (games <= 0) {
+    return 0;
+  }
+  const gamePoints = 3 * (stats.gameWins - stats.byeGameWins) + stats.gameDraws;
+  return gamePoints / (3 * games);
 }
 
 // A player with only byes has no opponents to average; MTR's per-opponent

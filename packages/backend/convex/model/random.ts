@@ -21,12 +21,26 @@ export function pairingSeed(
   points: number,
 ): number {
   return (
-    ((Math.trunc(seed) ^
+    (Math.trunc(seed) ^
       Math.imul(roundNumber, 2654435761) ^
       Math.imul(points, 40503)) >>>
-      0) ||
-    1
+      0 || 1
   );
+}
+
+// The per-player random tiebreaker that settles otherwise-perfect standings
+// ties (see CONTEXT.md "Tiebreakers"): a 32-bit hash of the tournament seed
+// and the registration id, so it is fixed for the whole tournament by
+// construction — recomputation can never reorder it — and needs no storage.
+export function tiebreakRandom(seed: number, registrationId: string): number {
+  let hash = Math.trunc(seed) ^ 0x9e3779b9;
+  for (let index = 0; index < registrationId.length; index += 1) {
+    hash = Math.imul(hash ^ registrationId.charCodeAt(index), 2654435761);
+    hash = (hash << 13) | (hash >>> 19);
+  }
+  hash = Math.imul(hash ^ (hash >>> 16), 2246822507);
+  hash = Math.imul(hash ^ (hash >>> 13), 3266489909);
+  return (hash ^ (hash >>> 16)) >>> 0;
 }
 
 // In-place Fisher-Yates shuffle driven by a seeded PRNG.

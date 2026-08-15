@@ -157,7 +157,11 @@ export function DataTable<TData, TValue>({
               value={String(currentPageSize)}
               onValueChange={(value) => table.setPageSize(Number(value))}
             >
-              <SelectTrigger size="sm" className="w-16" aria-label="Rows per page">
+              <SelectTrigger
+                size="sm"
+                className="w-16"
+                aria-label="Rows per page"
+              >
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

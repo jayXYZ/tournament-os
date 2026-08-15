@@ -1,10 +1,7 @@
 import type { Id } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
 import { requireIdentity } from "../auth";
-import {
-  canInviteMembers,
-  canManageOrganizationProfile,
-} from "../validators";
+import { canInviteMembers, canManageOrganizationProfile } from "../validators";
 import { userByTokenIdentifier } from "./users";
 
 export async function currentUserOrNull(ctx: QueryCtx) {

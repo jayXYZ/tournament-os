@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ClipboardPen, MoreHorizontal } from 'lucide-react'
 
 import { EnterResultDialog } from './enter-result-dialog'
+import type { BestOf } from '@tournament-os/shared/match-structure'
 import type { PairingRow } from './pairing-row'
 import { Button } from '@/components/ui/button'
 import {
@@ -12,7 +13,13 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 
-export function ManageMatchMenu({ row }: { row: PairingRow }) {
+export function ManageMatchMenu({
+  row,
+  bestOf,
+}: {
+  row: PairingRow
+  bestOf: BestOf
+}) {
   const isBye = row.players.some((player) => player.isBye)
   const [enteringResult, setEnteringResult] = useState(false)
 
@@ -49,6 +56,7 @@ export function ManageMatchMenu({ row }: { row: PairingRow }) {
       {enteringResult ? (
         <EnterResultDialog
           row={row}
+          bestOf={bestOf}
           open={enteringResult}
           onOpenChange={setEnteringResult}
         />

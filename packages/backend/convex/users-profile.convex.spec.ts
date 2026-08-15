@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 
-import { convexTest, type TestConvex } from "convex-test";
+import type { TestConvex } from "convex-test";
 import { expect, test, vi } from "vitest";
 
 import { api } from "./_generated/api";
@@ -12,12 +12,12 @@ import {
 import { START_DATE_SYNC_BATCH_SIZE } from "./model/registrations";
 import schema from "./schema";
 import {
+  insertLinkedParticipant,
   organizerIdentity,
   playOutCurrentRound,
   seedOrganizer,
 } from "./specHelpers";
-
-const modules = import.meta.glob("./**/*.ts");
+import { createConvexTest } from "./specHelpers.runtime";
 
 // Manually seeded users get codes far above the allocation counter (which
 // starts at 1) so mutations that upsert a fresh user never collide with them.
@@ -54,7 +54,7 @@ async function playerResultsPage(
 }
 
 test("updateMyProfileSettings persists visibility fields independently", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const player = t.withIdentity(playerIdentity(1));
 
   await expect(
@@ -90,7 +90,7 @@ test("updateMyProfileSettings persists visibility fields independently", async (
 });
 
 test("getPublicPlayer hides private profiles from everyone but their owner", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   await seedUsers(t, 1);
   const publicCode = playerPublicCode(1);
   const owner = t.withIdentity(playerIdentity(1));
@@ -133,7 +133,7 @@ test("getPublicPlayer hides private profiles from everyone but their owner", asy
 });
 
 test("getPublicPlayerResults returns completed results matching final standings", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   // Five players so the lowest seed takes a bye alongside real pairings.
   const seeded = await seedCompletedTournament(t, 5);
   const publicCode = playerPublicCode(1);
@@ -210,7 +210,7 @@ test("getPublicPlayerResults returns completed results matching final standings"
 });
 
 test("getPublicPlayerResults paginates completed tournaments newest first", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId, userId: organizerId } = await seedOrganizer(
     t,
     ORGANIZER_PUBLIC_CODE,
@@ -241,13 +241,15 @@ test("getPublicPlayerResults paginates completed tournaments newest first", asyn
         confirmedRegistrationCount: 1,
         updatedAt: now,
       });
+      const participant0Id = await insertLinkedParticipant(ctx, userId);
       await ctx.db.insert("tournamentRegistrations", {
         tournamentId,
-        userId,
+        participantId: participant0Id,
         tournamentStartDate: event.startDate,
         entryStatus: "confirmed",
         participationStatus: "active",
         createdAt: now + index,
+        tiebreakRandom: 100_000 - index,
         updatedAt: now,
       });
     }
@@ -274,7 +276,7 @@ test("getPublicPlayerResults paginates completed tournaments newest first", asyn
 });
 
 test("getPublicPlayerResults bounds hostile and non-finite page sizes", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId, userId: organizerId } = await seedOrganizer(
     t,
     ORGANIZER_PUBLIC_CODE,
@@ -302,13 +304,15 @@ test("getPublicPlayerResults bounds hostile and non-finite page sizes", async ()
         confirmedRegistrationCount: 1,
         updatedAt: now,
       });
+      const participant1Id = await insertLinkedParticipant(ctx, userId);
       await ctx.db.insert("tournamentRegistrations", {
         tournamentId,
-        userId,
+        participantId: participant1Id,
         tournamentStartDate: startDate,
         entryStatus: "confirmed",
         participationStatus: "active",
         createdAt: now + index,
+        tiebreakRandom: 100_000 - index,
         updatedAt: now,
       });
     }
@@ -342,7 +346,7 @@ test("getPublicPlayerResults bounds hostile and non-finite page sizes", async ()
 // page boundary inside the same-day group relies on the paginate cursor's
 // _creationTime tie-break — entries must neither skip nor repeat across it.
 test("getPublicPlayerResults pages through tournaments sharing a start date", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId, userId: organizerId } = await seedOrganizer(
     t,
     ORGANIZER_PUBLIC_CODE,
@@ -376,13 +380,15 @@ test("getPublicPlayerResults pages through tournaments sharing a start date", as
         confirmedRegistrationCount: 1,
         updatedAt: now,
       });
+      const participant2Id = await insertLinkedParticipant(ctx, userId);
       await ctx.db.insert("tournamentRegistrations", {
         tournamentId,
-        userId,
+        participantId: participant2Id,
         tournamentStartDate: event.startDate,
         entryStatus: "confirmed",
         participationStatus: "active",
         createdAt: now + index,
+        tiebreakRandom: 100_000 - index,
         updatedAt: now,
       });
     }
@@ -415,7 +421,7 @@ test("getPublicPlayerResults pages through tournaments sharing a start date", as
 // because it can encode a hidden row's index position (see the opacity
 // assertions in the read-budget test below).
 test("getPublicPlayerResults filters hidden registrations out of every page", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId, userId: organizerId } = await seedOrganizer(
     t,
     ORGANIZER_PUBLIC_CODE,
@@ -467,13 +473,15 @@ test("getPublicPlayerResults filters hidden registrations out of every page", as
         confirmedRegistrationCount: 1,
         updatedAt: now,
       });
+      const participant3Id = await insertLinkedParticipant(ctx, userId);
       await ctx.db.insert("tournamentRegistrations", {
         tournamentId,
-        userId,
+        participantId: participant3Id,
         tournamentStartDate: event.startDate,
         entryStatus: "confirmed",
         participationStatus: "active",
         createdAt: now + index,
+        tiebreakRandom: 100_000 - index,
         updatedAt: now,
       });
     }
@@ -496,7 +504,7 @@ test("getPublicPlayerResults filters hidden registrations out of every page", as
 });
 
 test("getPublicPlayerResults exhausts an entirely hidden history in one page", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId, userId: organizerId } = await seedOrganizer(
     t,
     ORGANIZER_PUBLIC_CODE,
@@ -520,13 +528,15 @@ test("getPublicPlayerResults exhausts an entirely hidden history in one page", a
       confirmedRegistrationCount: 1,
       updatedAt: now,
     });
+    const participant4Id = await insertLinkedParticipant(ctx, userId);
     await ctx.db.insert("tournamentRegistrations", {
       tournamentId,
-      userId,
+      participantId: participant4Id,
       tournamentStartDate: now,
       entryStatus: "confirmed",
       participationStatus: "active",
       createdAt: now,
+      tiebreakRandom: 1,
       updatedAt: now,
     });
   });
@@ -543,7 +553,7 @@ test("getPublicPlayerResults exhausts an entirely hidden history in one page", a
 // the same request reports exhaustion — a consumer that renders an empty page
 // as "no history" is never wrong while the budget holds.
 test("getPublicPlayerResults surfaces sparse visible rows in a single request", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId, userId: organizerId } = await seedOrganizer(
     t,
     ORGANIZER_PUBLIC_CODE,
@@ -571,13 +581,15 @@ test("getPublicPlayerResults surfaces sparse visible rows in a single request", 
     });
     // Newest 25 index rows are all hidden from anonymous viewers.
     for (let index = 0; index < hiddenRows; index += 1) {
+      const participant5Id = await insertLinkedParticipant(ctx, userId);
       await ctx.db.insert("tournamentRegistrations", {
         tournamentId: hiddenTournamentId,
-        userId,
+        participantId: participant5Id,
         tournamentStartDate: now - index * 1_000,
         entryStatus: "confirmed",
         participationStatus: "active",
         createdAt: now + index,
+        tiebreakRandom: 100_000 - index,
         updatedAt: now,
       });
     }
@@ -602,13 +614,15 @@ test("getPublicPlayerResults surfaces sparse visible rows in a single request", 
         confirmedRegistrationCount: 1,
         updatedAt: now,
       });
+      const participant6Id = await insertLinkedParticipant(ctx, userId);
       await ctx.db.insert("tournamentRegistrations", {
         tournamentId,
-        userId,
+        participantId: participant6Id,
         tournamentStartDate: startDate,
         entryStatus: "confirmed",
         participationStatus: "active",
         createdAt: now + hiddenRows + index,
+        tiebreakRandom: 100_000 - (hiddenRows + index),
         updatedAt: now,
       });
     }
@@ -635,7 +649,7 @@ test("getPublicPlayerResults surfaces sparse visible rows in a single request", 
 // encrypt identically (Convex queries must be deterministic), and that a
 // tampered cursor fails the AEAD check into the InvalidCursor reset.
 test("getPublicPlayerResults caps an all-hidden scan at the read budget but keeps advancing", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId, userId: organizerId } = await seedOrganizer(
     t,
     ORGANIZER_PUBLIC_CODE,
@@ -662,13 +676,15 @@ test("getPublicPlayerResults caps an all-hidden scan at the read budget but keep
       updatedAt: now,
     });
     for (let index = 0; index < hiddenRows; index += 1) {
+      const participant7Id = await insertLinkedParticipant(ctx, userId);
       await ctx.db.insert("tournamentRegistrations", {
         tournamentId: hiddenTournamentId,
-        userId,
+        participantId: participant7Id,
         tournamentStartDate: now - index * 1_000,
         entryStatus: "confirmed",
         participationStatus: "active",
         createdAt: now + index,
+        tiebreakRandom: 100_000 - index,
         updatedAt: now,
       });
     }
@@ -689,13 +705,15 @@ test("getPublicPlayerResults caps an all-hidden scan at the read budget but keep
       confirmedRegistrationCount: 1,
       updatedAt: now,
     });
+    const participant8Id = await insertLinkedParticipant(ctx, userId);
     await ctx.db.insert("tournamentRegistrations", {
       tournamentId: visibleTournamentId,
-      userId,
+      participantId: participant8Id,
       tournamentStartDate: visibleStartDate,
       entryStatus: "confirmed",
       participationStatus: "active",
       createdAt: now + hiddenRows,
+      tiebreakRandom: 100_000 - hiddenRows,
       updatedAt: now,
     });
   });
@@ -712,9 +730,7 @@ test("getPublicPlayerResults caps an all-hidden scan at the read budget but keep
   // ciphertext blob — no plaintext JSON, and in particular not the hidden
   // position row's tournamentStartDate (budget = 300 rows examined, so the
   // cursor sits on the hidden row seeded with startDate now - 299 * 1_000).
-  expect(first.continueCursor).toMatch(
-    /^profileResults\.v2\.[A-Za-z0-9_-]+$/,
-  );
+  expect(first.continueCursor).toMatch(/^profileResults\.v2\.[A-Za-z0-9_-]+$/);
   expect(first.continueCursor).not.toContain(
     String(now - (PROFILE_RESULTS_RAW_READ_BUDGET - 1) * 1_000),
   );
@@ -762,7 +778,7 @@ test("getPublicPlayerResults caps an all-hidden scan at the read budget but keep
 // retired v1 plaintext format and well-prefixed junk that is not a
 // ciphertext this deployment minted.
 test("getPublicPlayerResults rejects malformed cursors with InvalidCursor", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   await seedUsers(t, 1);
   for (const cursor of [
     "garbage",
@@ -786,7 +802,7 @@ test("getPublicPlayerResults rejects malformed cursors with InvalidCursor", asyn
 // This pins the env sourcing itself; a typo'd variable name would silently
 // fall back to the baked-in dev secret and fail the rotation assertion.
 test("getPublicPlayerResults cursor keys come from the deployment environment", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId, userId: organizerId } = await seedOrganizer(
     t,
     ORGANIZER_PUBLIC_CODE,
@@ -817,13 +833,15 @@ test("getPublicPlayerResults cursor keys come from the deployment environment", 
         confirmedRegistrationCount: 1,
         updatedAt: now,
       });
+      const participant9Id = await insertLinkedParticipant(ctx, userId);
       await ctx.db.insert("tournamentRegistrations", {
         tournamentId,
-        userId,
+        participantId: participant9Id,
         tournamentStartDate: event.startDate,
         entryStatus: "confirmed",
         participationStatus: "active",
         createdAt: now + index,
+        tiebreakRandom: 100_000 - index,
         updatedAt: now,
       });
     }
@@ -863,7 +881,7 @@ test("getPublicPlayerResults cursor keys come from the deployment environment", 
 });
 
 test("tournament date edits keep registration history ordering synchronized", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t, ORGANIZER_PUBLIC_CODE);
   const organizer = t.withIdentity(organizerIdentity);
   const originalStartDate = Date.now() + 60_000;
@@ -907,7 +925,7 @@ test("tournament date edits keep registration history ordering synchronized", as
 // covers every entryStatus.
 test("start date edits drain oversized registration sets via scheduled batches", async () => {
   vi.useFakeTimers();
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t, ORGANIZER_PUBLIC_CODE);
   const organizer = t.withIdentity(organizerIdentity);
   const originalStartDate = Date.now() + 60_000;
@@ -936,9 +954,10 @@ test("start date edits drain oversized registration sets via scheduled batches",
         name: `Churn ${index}`,
         updatedAt: now,
       });
+      const participant10Id = await insertLinkedParticipant(ctx, userId);
       await ctx.db.insert("tournamentRegistrations", {
         tournamentId,
-        userId,
+        participantId: participant10Id,
         tournamentStartDate: originalStartDate,
         ...(index % 2 === 0
           ? {
@@ -947,6 +966,7 @@ test("start date edits drain oversized registration sets via scheduled batches",
             }
           : { entryStatus: "cancelled" as const }),
         createdAt: now + index,
+        tiebreakRandom: 100_000 - index,
         updatedAt: now,
       });
     }
@@ -1001,7 +1021,7 @@ test("start date edits drain oversized registration sets via scheduled batches",
 // converge on the latest value.
 test("a reschedule during an in-flight sync converges on the latest date", async () => {
   vi.useFakeTimers();
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t, ORGANIZER_PUBLIC_CODE);
   const organizer = t.withIdentity(organizerIdentity);
   const originalStartDate = Date.now() + 60_000;
@@ -1030,13 +1050,15 @@ test("a reschedule during an in-flight sync converges on the latest date", async
         name: `Retarget ${index}`,
         updatedAt: now,
       });
+      const participant11Id = await insertLinkedParticipant(ctx, userId);
       await ctx.db.insert("tournamentRegistrations", {
         tournamentId,
-        userId,
+        participantId: participant11Id,
         tournamentStartDate: originalStartDate,
         entryStatus: "confirmed" as const,
         participationStatus: "active" as const,
         createdAt: now + index,
+        tiebreakRandom: 100_000 - index,
         updatedAt: now,
       });
     }
@@ -1079,7 +1101,7 @@ test("a reschedule during an in-flight sync converges on the latest date", async
 // rounds, but the final standings must still carry their frozen record —
 // their profile shows the real result, not an unranked 0-0-0.
 test("a mid-tournament drop keeps the player's final record and rank", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t, ORGANIZER_PUBLIC_CODE);
   const userIds = await seedUsers(t, 4);
   const { tournamentId, registrationIds } = await createStartedTournament(
@@ -1139,7 +1161,7 @@ test("a mid-tournament drop keeps the player's final record and rank", async () 
 });
 
 test("getPublicPlayerResults hides history per settings but never from the owner", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   await seedCompletedTournament(t, 4);
   const publicCode = playerPublicCode(1);
   const owner = t.withIdentity(playerIdentity(1));
@@ -1159,7 +1181,7 @@ test("getPublicPlayerResults hides history per settings but never from the owner
 });
 
 test("private tournaments appear only for viewers with their own access", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const seeded = await seedCompletedTournament(t, 4);
   const publicCode = playerPublicCode(1);
   await t.run(async (ctx) => {
@@ -1196,7 +1218,7 @@ test("private tournaments appear only for viewers with their own access", async 
 // Unlisted events are link-only; a profile listing naming them would hand out
 // the link they hide behind, so they gate exactly like private ones here.
 test("unlisted tournaments appear only for viewers with their own access", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const seeded = await seedCompletedTournament(t, 4);
   const publicCode = playerPublicCode(1);
   await t.run(async (ctx) => {
@@ -1237,7 +1259,7 @@ test("unlisted tournaments appear only for viewers with their own access", async
 });
 
 test("getPublicPlayerTournamentLog returns the round log and re-runs the privacy gate", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const seeded = await seedCompletedTournament(t, 5);
   const publicCode = playerPublicCode(1);
 
@@ -1335,14 +1357,16 @@ async function registerUsers(
     }
     const ids: Id<"tournamentRegistrations">[] = [];
     for (const [index, userId] of userIds.entries()) {
+      const participant12Id = await insertLinkedParticipant(ctx, userId);
       ids.push(
         await ctx.db.insert("tournamentRegistrations", {
           tournamentId,
-          userId,
+          participantId: participant12Id,
           tournamentStartDate: tournament.startDate,
           entryStatus: "confirmed",
           participationStatus: "active",
           createdAt: now + index + 1,
+          tiebreakRandom: 100_000 - index,
           updatedAt: now,
         }),
       );

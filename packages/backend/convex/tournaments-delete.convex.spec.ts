@@ -1,17 +1,14 @@
 /// <reference types="vite/client" />
 
-import { convexTest } from "convex-test";
 import { expect, test, vi } from "vitest";
 
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import schema from "./schema";
 import { organizerIdentity, seedOrganizer } from "./specHelpers";
-
-const modules = import.meta.glob("./**/*.ts");
+import { createConvexTest } from "./specHelpers.runtime";
 
 async function countTournamentRows(
-  t: ReturnType<typeof convexTest>,
+  t: ReturnType<typeof createConvexTest>,
   tournamentId: Id<"tournaments">,
 ) {
   return await t.run(async (ctx) => {
@@ -41,7 +38,7 @@ async function countTournamentRows(
 }
 
 test("deleteTournament removes a small event and all child rows in one transaction", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const authed = t.withIdentity(organizerIdentity);
 
@@ -74,7 +71,7 @@ test("deleteTournament removes a small event and all child rows in one transacti
 
 test("deleteTournament drains a large in-progress event via scheduled batches", async () => {
   vi.useFakeTimers();
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const authed = t.withIdentity(organizerIdentity);
 
@@ -123,7 +120,7 @@ test("deleteTournament drains a large in-progress event via scheduled batches", 
 });
 
 test("deleteTournament rejects callers without organizer access", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const authed = t.withIdentity(organizerIdentity);
 
@@ -159,7 +156,7 @@ test("deleteTournament rejects callers without organizer access", async () => {
 });
 
 test("cancelTournament cancels live events but rejects completed and cancelled ones", async () => {
-  const t = convexTest(schema, modules);
+  const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const authed = t.withIdentity(organizerIdentity);
 

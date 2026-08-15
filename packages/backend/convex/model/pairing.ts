@@ -1,6 +1,12 @@
+import { requiredGameWins } from "@tournament-os/shared/match-structure";
+
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
-import { requireResolvedPhaseTotalRounds, roundNumberInPhase } from "./phases";
+import {
+  MAX_MATCHES_PER_PLAYER,
+  requireResolvedPhaseTotalRounds,
+  roundNumberInPhase,
+} from "./phases";
 import { createSeededRandom, pairingSeed, seededShuffle } from "./random";
 import { MAX_TOURNAMENT_PLAYERS } from "./registrations";
 import {
@@ -26,9 +32,10 @@ export type RankedRegistration = {
   opponentMatchWinPct: number;
   gameWinPct: number;
   opponentGameWinPct: number;
-  createdAt: number;
+  tiebreakRandom: number;
+  tiebreakId: string;
   opponentIds: Set<Id<"tournamentRegistrations">>;
-  hasHadBye: boolean;
+  byeCount: number;
 };
 
 export type Pairing = {
@@ -37,46 +44,79 @@ export type Pairing = {
   isBye: boolean;
 };
 
-const TOP_EIGHT_BRACKET_ORDER = [0, 7, 3, 4, 1, 6, 2, 5] as const;
+// The standard bracket order for a power-of-two field (1v8, 4v5, 2v7, 3v6
+// for eight, generalized): grown by repeatedly expanding each seed s in a
+// round of n seats to the pair (s, n+1-s), so seed 1 meets the lowest seed
+// and the top seeds stay in opposite halves through the final.
+function standardBracketOrder(size: number): number[] {
+  let seeds = [1];
+  while (seeds.length < size) {
+    const roundSize = seeds.length * 2;
+    seeds = seeds.flatMap((seed) => [seed, roundSize + 1 - seed]);
+  }
+  return seeds.map((seed) => seed - 1);
+}
 
-// Seeds occupy a fixed bracket: 1v8, 4v5, 2v7, 3v6. Keeping matches in this
-// table order makes later rounds a simple adjacent-winner pairing without a
-// reseed, preserving the two halves of the bracket through the final.
-export function buildTopEightSingleEliminationPairings(
+// The seeding order for a bracket no standings precede — a single-elimination
+// first phase (CONTEXT.md "Bracket"): the tournament's random seed decides it,
+// through the same per-player random that breaks perfect standings ties
+// (model/random.ts). The order matches what compareStandingRows produces for
+// an all-zero field, and is fixed for the whole tournament by construction —
+// a rewound first round re-pairs the identical bracket.
+export function firstPhaseBracketSeedOrder(
+  registrations: Doc<"tournamentRegistrations">[],
+): Doc<"tournamentRegistrations">[] {
+  return [...registrations].sort(
+    (left, right) =>
+      right.tiebreakRandom - left.tiebreakRandom ||
+      (left._id as string).localeCompare(right._id as string),
+  );
+}
+
+// Seeds occupy a fixed standard bracket: the smallest power of two that fits
+// the field (CONTEXT.md "Bracket"). A field that doesn't fill it exactly
+// leaves its lowest seats empty, and each empty seat's scheduled opponent —
+// by construction the highest seeds — takes a first-round bye. Keeping
+// matches in this table order makes later rounds a simple adjacent-winner
+// pairing without a reseed, preserving the halves of the bracket through the
+// final.
+export function buildSingleEliminationPairings(
   registrationsBySeed: Doc<"tournamentRegistrations">[],
 ): Pairing[] {
-  if (registrationsBySeed.length !== 8) {
-    throw new Error("Single elimination requires exactly eight seeded players");
+  const fieldSize = registrationsBySeed.length;
+  if (fieldSize < 2) {
+    throw new Error("Single elimination requires at least two seeded players");
   }
-  const bracket = TOP_EIGHT_BRACKET_ORDER.map(
-    (seedIndex) => registrationsBySeed[seedIndex],
+  const bracketSize = 2 ** Math.ceil(Math.log2(fieldSize));
+  const bracket = standardBracketOrder(bracketSize).map((seedIndex) =>
+    registrationsBySeed.at(seedIndex),
   );
-  return pairAdjacentRegistrations(bracket);
-}
-
-export function buildSingleEliminationAdvancementPairings(
-  winnersInTableOrder: Doc<"tournamentRegistrations">[],
-): Pairing[] {
-  if (winnersInTableOrder.length < 2 || winnersInTableOrder.length % 2 !== 0) {
-    throw new Error("Single-elimination advancement requires an even field");
-  }
-  return pairAdjacentRegistrations(winnersInTableOrder);
-}
-
-function pairAdjacentRegistrations(
-  registrations: Doc<"tournamentRegistrations">[],
-): Pairing[] {
   const pairings: Pairing[] = [];
-  for (let index = 0; index < registrations.length; index += 2) {
-    pairings.push({
-      playerOne: registrations[index],
-      playerTwo: registrations[index + 1],
-      isBye: false,
-    });
+  for (let index = 0; index < bracket.length; index += 2) {
+    const one = bracket[index];
+    const two = bracket[index + 1];
+    if (!one) {
+      // standardBracketOrder puts each pair's higher seed first, and the
+      // smallest fitting bracket fills more than half its seats, so a pair's
+      // first seat always holds a player.
+      throw new Error("Bracket pair is missing its higher seed");
+    }
+    pairings.push(
+      two
+        ? { playerOne: one, playerTwo: two, isBye: false }
+        : { playerOne: one, isBye: true },
+    );
   }
   return pairings;
 }
 
+// Materializes a bracket round from an already-built pairing plan: the seeded
+// first-round bracket, or the walkover-aware advancement plan from
+// planSingleEliminationPairings (model/singleElimination.ts). A bye pairing
+// is a walkover — the same awarded Bye a Swiss bye records. The plan's order
+// is the bracket's seat order, stamped onto every match (byes included) as
+// bracketSeat so the next round's pairing can read the seats back in bracket
+// order — the table index can't supply it, since byes have no table.
 export async function createSingleEliminationRoundWithPairings(
   ctx: MutationCtx,
   args: {
@@ -84,13 +124,12 @@ export async function createSingleEliminationRoundWithPairings(
     phase: Doc<"tournamentPhases">;
     roundNumber: number;
     roundName: string;
-    registrations: Doc<"tournamentRegistrations">[];
-    seededFirstRound: boolean;
+    pairings: Pairing[];
   },
 ) {
-  const pairings = args.seededFirstRound
-    ? buildTopEightSingleEliminationPairings(args.registrations)
-    : buildSingleEliminationAdvancementPairings(args.registrations);
+  if (args.pairings.length === 0) {
+    throw new Error("Single-elimination round requires at least one match");
+  }
   const now = Date.now();
   const roundId = await ctx.db.insert("tournamentRounds", {
     tournamentId: args.tournament._id,
@@ -102,18 +141,29 @@ export async function createSingleEliminationRoundWithPairings(
     updatedAt: now,
   });
 
-  for (const [index, pairing] of pairings.entries()) {
+  let tableNumber = 1;
+  for (const [seatIndex, pairing] of args.pairings.entries()) {
+    if (pairing.isBye || !pairing.playerTwo) {
+      await insertAwardedByeMatch(ctx, {
+        tournament: args.tournament,
+        phase: args.phase,
+        roundId,
+        registration: pairing.playerOne,
+        bracketSeat: seatIndex + 1,
+        now,
+      });
+      continue;
+    }
     const matchId = await ctx.db.insert("tournamentMatches", {
       tournamentId: args.tournament._id,
       tournamentPhaseId: args.phase._id,
       tournamentRoundId: roundId,
-      tableNumber: index + 1,
+      tableNumber,
+      bracketSeat: seatIndex + 1,
       matchStatus: "upcoming",
       updatedAt: now,
     });
-    if (!pairing.playerTwo) {
-      throw new Error("Single-elimination match is missing an opponent");
-    }
+    tableNumber += 1;
     await ctx.db.insert("tournamentMatchPlayers", {
       tournamentMatchId: matchId,
       playerId: pairing.playerOne._id,
@@ -132,6 +182,64 @@ export async function createSingleEliminationRoundWithPairings(
     });
   }
   return roundId;
+}
+
+// A Bye is an Awarded Result: the phase's required game wins to zero (2–0 in
+// best-of-3), completed at pairing time with a system-awarded revision (no
+// actor). One writer for both the Swiss bye and the bracket walkover.
+async function insertAwardedByeMatch(
+  ctx: MutationCtx,
+  args: {
+    tournament: Doc<"tournaments">;
+    phase: Doc<"tournamentPhases">;
+    roundId: Id<"tournamentRounds">;
+    registration: Doc<"tournamentRegistrations">;
+    // The bye's seat-pair position in a bracket round; absent for Swiss byes.
+    bracketSeat?: number;
+    now: number;
+  },
+) {
+  const matchId = await ctx.db.insert("tournamentMatches", {
+    tournamentId: args.tournament._id,
+    tournamentPhaseId: args.phase._id,
+    tournamentRoundId: args.roundId,
+    tableNumber: undefined,
+    bracketSeat: args.bracketSeat,
+    matchStatus: "completed",
+    updatedAt: args.now,
+  });
+  const byeGameWins = requiredGameWins(args.phase.bestOf);
+  await ctx.db.insert("tournamentMatchPlayers", {
+    tournamentMatchId: matchId,
+    playerId: args.registration._id,
+    playerName: args.registration.playerName,
+    matchPointsEarned: BYE_MATCH_POINTS,
+    gameWins: byeGameWins,
+    gameLosses: 0,
+    gameDraws: 0,
+    isBye: true,
+    updatedAt: args.now,
+  });
+  const revisionId = await ctx.db.insert("matchResultRevisions", {
+    tournamentId: args.tournament._id,
+    tournamentMatchId: matchId,
+    kind: "bye",
+    lines: [
+      {
+        registrationId: args.registration._id,
+        outcome: "win",
+        matchPointsEarned: BYE_MATCH_POINTS,
+        gameWins: byeGameWins,
+        gameLosses: 0,
+        gameDraws: 0,
+      },
+    ],
+  });
+  await ctx.db.patch(matchId, {
+    currentResultRevisionId: revisionId,
+    currentResultKind: "bye",
+  });
+  return matchId;
 }
 
 export async function createRoundWithPairings(
@@ -181,48 +289,44 @@ export async function createRoundWithPairings(
 
   let tableNumber = 1;
   for (const pairing of pairings) {
+    if (pairing.isBye) {
+      await insertAwardedByeMatch(ctx, {
+        tournament: args.tournament,
+        phase: args.phase,
+        roundId,
+        registration: pairing.playerOne,
+        now,
+      });
+      continue;
+    }
+    if (!pairing.playerTwo) {
+      continue;
+    }
     const matchId = await ctx.db.insert("tournamentMatches", {
       tournamentId: args.tournament._id,
       tournamentPhaseId: args.phase._id,
       tournamentRoundId: roundId,
-      tableNumber: pairing.isBye ? undefined : tableNumber,
-      matchStatus: pairing.isBye ? "completed" : "upcoming",
+      tableNumber,
+      matchStatus: "upcoming",
       updatedAt: now,
     });
-
-    if (pairing.isBye) {
-      await ctx.db.insert("tournamentMatchPlayers", {
-        tournamentMatchId: matchId,
-        playerId: pairing.playerOne._id,
-        playerName: pairing.playerOne.playerName,
-        matchPointsEarned: BYE_MATCH_POINTS,
-        gameWins: 2,
-        gameLosses: 0,
-        isBye: true,
-        updatedAt: now,
-      });
-    } else if (pairing.playerTwo) {
-      await ctx.db.insert("tournamentMatchPlayers", {
-        tournamentMatchId: matchId,
-        playerId: pairing.playerOne._id,
-        playerName: pairing.playerOne.playerName,
-        opponentPlayerId: pairing.playerTwo._id,
-        isBye: false,
-        updatedAt: now,
-      });
-      await ctx.db.insert("tournamentMatchPlayers", {
-        tournamentMatchId: matchId,
-        playerId: pairing.playerTwo._id,
-        playerName: pairing.playerTwo.playerName,
-        opponentPlayerId: pairing.playerOne._id,
-        isBye: false,
-        updatedAt: now,
-      });
-    }
-
-    if (!pairing.isBye) {
-      tableNumber += 1;
-    }
+    tableNumber += 1;
+    await ctx.db.insert("tournamentMatchPlayers", {
+      tournamentMatchId: matchId,
+      playerId: pairing.playerOne._id,
+      playerName: pairing.playerOne.playerName,
+      opponentPlayerId: pairing.playerTwo._id,
+      isBye: false,
+      updatedAt: now,
+    });
+    await ctx.db.insert("tournamentMatchPlayers", {
+      tournamentMatchId: matchId,
+      playerId: pairing.playerTwo._id,
+      playerName: pairing.playerTwo.playerName,
+      opponentPlayerId: pairing.playerOne._id,
+      isBye: false,
+      updatedAt: now,
+    });
   }
 
   return roundId;
@@ -237,17 +341,18 @@ export async function rankedRegistrationsForPairing(
 ): Promise<RankedRegistration[]> {
   if (!args.previousRoundId) {
     return [...args.registrations]
-      .sort((left, right) => left.createdAt - right.createdAt)
       .map((registration) => ({
         registration,
         matchPoints: 0,
         opponentMatchWinPct: 0,
         gameWinPct: 0,
         opponentGameWinPct: 0,
-        createdAt: registration.createdAt,
+        tiebreakRandom: registration.tiebreakRandom,
+        tiebreakId: registration._id as string,
         opponentIds: new Set<Id<"tournamentRegistrations">>(),
-        hasHadBye: false,
-      }));
+        byeCount: 0,
+      }))
+      .sort(compareStandingRows);
   }
 
   const previousRoundId = args.previousRoundId;
@@ -268,7 +373,7 @@ export async function rankedRegistrationsForPairing(
       standing && hasCumulativeTotals(standing)
         ? {
             opponentIds: new Set(standing.opponentIds ?? []),
-            hasHadBye: standing.hasHadBye ?? false,
+            byeCount: standing.byeCount ?? 0,
           }
         : await playerPairingHistory(ctx, registration._id);
 
@@ -278,7 +383,8 @@ export async function rankedRegistrationsForPairing(
       opponentMatchWinPct: standing?.opponentMatchWinPct ?? 0,
       gameWinPct: standing?.gameWinPct ?? 0,
       opponentGameWinPct: standing?.opponentGameWinPct ?? 0,
-      createdAt: registration.createdAt,
+      tiebreakRandom: registration.tiebreakRandom,
+      tiebreakId: registration._id as string,
       ...history,
     });
   }
@@ -298,7 +404,7 @@ export function buildSwissPairings(
   if (standingsSorted.length % 2 === 1) {
     let byeIndex = standingsSorted.length - 1;
     for (let index = standingsSorted.length - 1; index >= 0; index -= 1) {
-      if (!standingsSorted[index].hasHadBye) {
+      if (standingsSorted[index].byeCount === 0) {
         byeIndex = index;
         break;
       }
@@ -483,8 +589,8 @@ function withoutIndex<T>(items: T[], index: number): T[] {
 // Fallback for registrations whose previous-round standings row predates the
 // denormalized history fields (or who have no row, e.g. after reinstatement).
 // Reads the player's whole tournament history: records and rematch avoidance
-// carry across Swiss phases, and rows are bounded by the round cap (16) times
-// the phase cap (16).
+// carry across Swiss phases, and rows are bounded by the round cap times the
+// phase cap (MAX_MATCHES_PER_PLAYER).
 async function playerPairingHistory(
   ctx: QueryCtx,
   playerId: Id<"tournamentRegistrations">,
@@ -492,7 +598,7 @@ async function playerPairingHistory(
   const rows = await ctx.db
     .query("tournamentMatchPlayers")
     .withIndex("by_playerId", (q) => q.eq("playerId", playerId))
-    .take(256);
+    .take(MAX_MATCHES_PER_PLAYER);
 
   const opponentIds = new Set<Id<"tournamentRegistrations">>();
   for (const row of rows) {
@@ -503,6 +609,6 @@ async function playerPairingHistory(
 
   return {
     opponentIds,
-    hasHadBye: rows.some((row) => row.isBye),
+    byeCount: rows.filter((row) => row.isBye).length,
   };
 }

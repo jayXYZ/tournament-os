@@ -5,8 +5,6 @@ import {
   activeRegistrations,
   droppedRegistrations,
   MAX_TOURNAMENT_PLAYERS,
-  type StandingsSync,
-  standingsSyncFromRows,
 } from "./registrations";
 
 export type TournamentPhaseCutoff = NonNullable<
@@ -26,21 +24,21 @@ export type TournamentPhaseCutoff = NonNullable<
 //   STAMPING INVARIANT. Every confirmed participant who neither qualifies nor
 //   holds a place in the entering field ends up carrying eliminatedByRoundId:
 //   the active ones because eliminateNonQualifiers stamps everyone outside
-//   `qualifiers`, the withdrawn ones because they come back in
+//   `qualifiers`, the dropped ones because they come back in
 //   `droppedNonQualifiers`. reinstateRegistration reads that stamp, so no
 //   reinstate can grow the field past the cut it was drawn to.
 //
 // The invariant is what the older "the two sets are exact complements" wording
 // was reaching for, but complements they are not: exactly one kind of player is
-// deliberately in neither the qualifying nor the stamped set — a withdrawn
+// deliberately in neither the qualifying nor the stamped set — a dropped
 // player who holds a place they cannot play. Nothing is backfilled into that
 // place, and with no stamp a reinstate returns them to play; the partition
 // names them in `heldPlaces` so a caller staring at a short field can say who
-// to reinstate. Which withdrawals hold a place is the one rule the three
+// to reinstate. Which drops hold a place is the one rule the three
 // partitions differ on:
 //
 //   * no meeting snapshot  none of them. The field freezes at pairing time, so
-//                          a withdrawal always frees its place and the next
+//                          a drop always frees its place and the next
 //                          player below moves up.
 //   * live meeting         every seated player. The seats ARE the frozen
 //                          field, and a seat is an earned entry.
@@ -59,39 +57,39 @@ export type TournamentPhaseCutoff = NonNullable<
 
 // Both sides of a cut, drawn from one boundary computation so they can never
 // disagree: the qualifiers who enter the next phase, and the players who had
-// already withdrawn when the cut ran and hold no place in the entering field.
+// already dropped when the cut ran and hold no place in the entering field.
 // The latter keep an elimination record (preserveDroppedEliminations), so
 // reinstating them restores "eliminated" instead of reviving them past a cut
 // they missed. See the stamping invariant above for how the two sets, plus
 // eliminateNonQualifiers, cover every confirmed participant.
 //
 // `heldPlaces` names the third kind of player the stamping invariant describes:
-// withdrawn players who still hold a place in the entering field. They enter
+// dropped players who still hold a place in the entering field. They enter
 // nothing and are stamped with nothing — reinstating one returns them to play,
 // filling the place they held. Each held place shrinks `qualifiers` below the
 // cut size without freeing a seat, so this is the set a caller reaches for when
 // the qualifiers alone are too few to pair: reinstating a held-place player is
 // the one move that grows the field, and completing the tournament is the only
 // alternative. Always empty when no meeting granted entries (the standard cut
-// frees every withdrawn place instead).
+// frees every dropped place instead).
 export type CutoffPartition = {
   qualifiers: Doc<"tournamentRegistrations">[];
   droppedNonQualifiers: Doc<"tournamentRegistrations">[];
   heldPlaces: Doc<"tournamentRegistrations">[];
-  // What eliminateNonQualifiers stamps and the rows it stamps through, carried
-  // out of a partition whose boundary walk already read both so applying the
-  // cut re-reads nothing in the same transaction: `activeNonQualifiers` is the
-  // whole active roster minus `qualifiers` (including any active player the
-  // standings never ranked), and `standingsSync` keys the walked phase-final
-  // rows for the setRegistrationState batches — valid for syncing exactly when
-  // the cut's round is the tournament's latest completed round, the only state
-  // eliminateNonQualifiers runs in. null when the seats decided the cut:
-  // meetingCutoffPartition reads neither the standings nor the active roster,
-  // and fetching them just to fill this field would charge every read-only
-  // caller for data only the applying mutation needs.
+  // What eliminateNonQualifiers (model/participation.ts) stamps and the rows
+  // it repairs statuses through, carried out of a partition whose boundary
+  // walk already read both so applying the cut re-reads nothing in the same
+  // transaction: `activeNonQualifiers` is the whole active roster minus
+  // `qualifiers` (including any active player the standings never ranked),
+  // and `standings` is the walked phase-final rows — the tournament's latest
+  // completed round's, the only state eliminateNonQualifiers runs in. null
+  // when the seats decided the cut: meetingCutoffPartition reads neither the
+  // standings nor the active roster, and fetching them just to fill this
+  // field would charge every read-only caller for data only the applying
+  // mutation needs.
   elimination: {
     activeNonQualifiers: Doc<"tournamentRegistrations">[];
-    standingsSync: StandingsSync;
+    standings: Doc<"roundStandings">[];
   } | null;
 };
 
@@ -99,19 +97,19 @@ export type CutoffPartition = {
 // phase-final standings in rank order handing out the cutoff's places: a top-X
 // cut has X of them, a points bar has one for every record that clears it.
 // Only a player who takes a place counts against a top-X cut, so a place a
-// withdrawal frees goes to the next player below.
+// drop frees goes to the next player below.
 //
 // `grantedEntryIds` names the players a player meeting has already let into the
-// next phase. A withdrawn player is passed over and stamped — the cut is not
+// next phase. A dropped player is passed over and stamped — the cut is not
 // theirs to fail — UNLESS their entry was granted AND they still clear the
 // boundary; then they hold their place, nothing is backfilled into it, and they
 // stay unstamped so a reinstate returns them to play. Pass an empty set when no
-// meeting has frozen anything and every withdrawal frees its place.
+// meeting has frozen anything and every drop frees its place.
 //
 // Can return fewer than two qualifiers (a points bar nobody cleared, or a field
-// thinned by withdrawals); callers decide whether that ends the tournament or
+// thinned by drops); callers decide whether that ends the tournament or
 // is an error. When held places are what shrank the field, `heldPlaces` names
-// the withdrawn players whose reinstatement would fill it back up.
+// the dropped players whose reinstatement would fill it back up.
 async function standingsCutoffPartition(
   ctx: QueryCtx,
   tournamentId: Id<"tournaments">,
@@ -178,7 +176,7 @@ async function standingsCutoffPartition(
       activeNonQualifiers: active.filter(
         (registration) => !qualifierIds.has(registration._id),
       ),
-      standingsSync: standingsSyncFromRows(standings),
+      standings,
     },
   };
 }
@@ -188,12 +186,12 @@ const NO_GRANTED_ENTRIES: ReadonlySet<Id<"tournamentRegistrations">> =
 
 // Applies a phase's configured cutoff to the phase-final round's standings with
 // no entry field frozen yet: the field freezes at pairing time, so nothing
-// holds a place for a player who has already withdrawn. A drop after the round
+// holds a place for a player who has already dropped. A drop after the round
 // completed therefore hands their place to the next player below them even when
 // the standings still rank them above the boundary, and they keep an
 // elimination record. (Once the next phase's player meeting has frozen the
 // field, cutoffPartitionForNextPhase routes elsewhere and a granted entry can
-// survive a withdrawal.)
+// survive a drop.)
 export async function cutoffPartition(
   ctx: QueryCtx,
   tournamentId: Id<"tournaments">,
@@ -217,8 +215,7 @@ export async function cutoffQualifiers(
   roundId: Id<"tournamentRounds">,
   cutoff: TournamentPhaseCutoff,
 ) {
-  return (await cutoffPartition(ctx, tournamentId, roundId, cutoff))
-    .qualifiers;
+  return (await cutoffPartition(ctx, tournamentId, roundId, cutoff)).qualifiers;
 }
 
 // While a cutoff phase's player meeting is live its seats are the authoritative
@@ -226,20 +223,20 @@ export async function cutoffQualifiers(
 // sides of the partition — no standings boundary is computed at all. Seated
 // players qualify (live registration status still removes a dropped qualifier
 // from the entering field), while an unseated player cannot be backfilled after
-// the meeting is underway — so a withdrawn player misses the cut exactly when
+// the meeting is underway — so a dropped player misses the cut exactly when
 // they hold no seat, even if the live standings would now place them above the
 // boundary. That keeps a reinstate after pairing consistent with one made
 // during the meeting: unseated players end up eliminated either way, seated
 // ones return to play.
 //
-// Every seated withdrawal keeps its place here, which is the widest form of the
+// Every seated drop keeps its place here, which is the widest form of the
 // exception described in the model note above: the standings the seats were
 // drawn from still stand, so a seat still proves the player belongs in the
 // field. Once a rewind throws those standings away that stops being true and
 // supersededMeetingCutoffPartition re-draws the boundary instead.
 //
 // Because the seats alone decide both sides, this partition never reads the
-// phase-final standings: rank is irrelevant to it, so the withdrawn side comes
+// phase-final standings: rank is irrelevant to it, so the dropped side comes
 // straight from the tournament's confirmed+dropped index range instead of a
 // registration get per standings row.
 async function meetingCutoffPartition(
@@ -257,7 +254,7 @@ async function meetingCutoffPartition(
       registration?.entryStatus === "confirmed" &&
       registration.participationStatus === "active",
   );
-  // A seated withdrawal holds its place (see the model note): dropped, so a
+  // A seated drop holds its place (see the model note): dropped, so a
   // reinstate would return them to the seat they still own.
   const heldPlaces = seated.filter(
     (registration): registration is Doc<"tournamentRegistrations"> =>
@@ -284,10 +281,10 @@ async function meetingCutoffPartition(
 // an entry the meeting already granted.
 //
 // A granted entry is therefore a tie-breaker, not a guarantee. It protects a
-// seated player who withdrew and whose corrected rank still clears the boundary
+// seated player who dropped and whose corrected rank still clears the boundary
 // — their place is held rather than backfilled and no elimination is recorded.
 // It does not protect a seat holder the correction pushed below the boundary,
-// withdrawn or not: their seat was drawn from standings now known to be wrong,
+// dropped or not: their seat was drawn from standings now known to be wrong,
 // so the corrected cut decides, they are stamped like any other non-qualifier,
 // and a player the correction promotes enters even though the meeting never
 // seated them. See the model note at the top of the file.
@@ -366,6 +363,35 @@ export async function cutoffQualifiersForNextPhase(
 ) {
   return (await cutoffPartitionForNextPhase(ctx, roundId, cutoff, nextPhase))
     .qualifiers;
+}
+
+// The entering field when a phase boundary has no cut: every confirmed active
+// player advances (CONTEXT.md "Cut"), ordered by the finished phase's final
+// standings. A bracket seeds straight from this order, which is why it isn't
+// just activeRegistrations: that index range comes back in creation order. An
+// active player the standings never ranked still advances — no cut means no
+// one is left behind — seeded below every ranked player.
+export async function activeRegistrationsInRankOrder(
+  ctx: QueryCtx,
+  tournamentId: Id<"tournaments">,
+  roundId: Id<"tournamentRounds">,
+): Promise<Doc<"tournamentRegistrations">[]> {
+  const standings = await standingsInRankOrder(ctx, roundId);
+  const activeById = new Map(
+    (await activeRegistrations(ctx, tournamentId)).map((registration) => [
+      registration._id,
+      registration,
+    ]),
+  );
+  const ranked: Doc<"tournamentRegistrations">[] = [];
+  for (const standing of standings) {
+    const registration = activeById.get(standing.playerId);
+    if (registration) {
+      ranked.push(registration);
+      activeById.delete(standing.playerId);
+    }
+  }
+  return [...ranked, ...activeById.values()];
 }
 
 async function meetingSeatRows(ctx: QueryCtx, phaseId: Id<"tournamentPhases">) {

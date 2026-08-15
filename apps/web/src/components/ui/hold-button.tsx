@@ -152,10 +152,7 @@ function HoldButton({
         () => {
           if (!mountedRef.current) return
           setPhase('success')
-          resetTimerRef.current = window.setTimeout(
-            retract,
-            SUCCESS_DISPLAY_MS,
-          )
+          resetTimerRef.current = window.setTimeout(retract, SUCCESS_DISPLAY_MS)
         },
         () => {
           if (mountedRef.current) retract()
