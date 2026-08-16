@@ -57,7 +57,9 @@ function ResultWithProvenance({
   return (
     <div className="flex flex-wrap items-center gap-2">
       <span className="font-medium">{children}</span>
-      {kindLabel !== null ? <Badge variant="secondary">{kindLabel}</Badge> : null}
+      {kindLabel !== null ? (
+        <Badge variant="secondary">{kindLabel}</Badge>
+      ) : null}
       {row.match.reportedByRegistrationId !== undefined ? (
         <Badge variant="outline">Player-reported</Badge>
       ) : null}
