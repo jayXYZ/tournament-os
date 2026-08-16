@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 
 import {
   describeCurrentMatch,
+  describeDropConfirmation,
   describeHeaderBadge,
   reportAction,
 } from "./player-view.ts";
@@ -297,4 +298,45 @@ test("the header badge ladder: dropped beats completed beats round state", () =>
       }),
     ),
   ).toBeNull();
+});
+
+test("the drop confirmation warns from the server's concession fact", () => {
+  const conceding = describeDropConfirmation(
+    currentMatch({ kind: "match", dropWouldConcede: true, round }),
+  );
+  expect(conceding).toContain("concedes it");
+  expect(conceding).toContain("report the real result first");
+});
+
+test("a pre-publish concession warns without the report nudge", () => {
+  // Pairings are not visible yet, so the match cannot have been played and
+  // there is nothing to report — but the drop still concedes it.
+  const pending = describeDropConfirmation(
+    currentMatch({ kind: "pairings_pending", dropWouldConcede: true, round }),
+  );
+  expect(pending).toContain("concedes it");
+  expect(pending).not.toContain("report the real result first");
+});
+
+test("a drop with nothing to concede gets the plain confirmation", () => {
+  const plain =
+    "You will not be paired in any future rounds. Dropping cannot be undone from here; the organizer can reinstate you.";
+  expect(
+    describeDropConfirmation(
+      currentMatch({ kind: "match", dropWouldConcede: false, round }),
+    ),
+  ).toBe(plain);
+  expect(
+    describeDropConfirmation(
+      currentMatch({
+        kind: "pairings_pending",
+        dropWouldConcede: false,
+        round,
+      }),
+    ),
+  ).toBe(plain);
+  expect(
+    describeDropConfirmation(currentMatch({ kind: "between_rounds", round })),
+  ).toBe(plain);
+  expect(describeDropConfirmation(undefined)).toBe(plain);
 });

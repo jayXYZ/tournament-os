@@ -1,17 +1,18 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
 import {
-  MAX_MATCHES_PER_PLAYER,
   phaseByOrder,
   phasesInOrder,
   roundNumberInPhase,
   selectCurrentPhase,
 } from "./phases";
+import { dropConcedesMatch } from "./matchResults";
 import { participantPublicIdentity } from "./participants";
 import { playerVisibleRegistration } from "./registrations";
 import {
   isPairingsVisibleToPlayers,
   matchPlayers,
+  playerMatchInRound,
   requireRound,
 } from "./tournaments";
 
@@ -137,16 +138,25 @@ export async function currentMatchForPlayer(
     // drops after pairings are generated. Preserve the pending state for
     // those players, but do not promise a future pairing to dropped or
     // eliminated players who were excluded before this round was paired.
-    if (
-      registration.participationStatus !== "active" &&
-      !(await playerMatchInRound(ctx, registration._id, round._id))
-    ) {
+    const pending = await playerMatchInRound(ctx, registration._id, round._id);
+    if (registration.participationStatus !== "active" && !pending) {
       return { kind: "no_match" as const, ...base, round: roundSummary };
     }
     return {
       kind: "pairings_pending" as const,
       ...base,
       round: roundSummary,
+      // The engine concedes an unfinished current-round match on a drop even
+      // while its pairings are unpublished — a state where this view shows
+      // no match at all — so the fact must cross the seam explicitly for the
+      // drop dialog to warn.
+      dropWouldConcede: pending
+        ? dropConcedesMatch(
+            round,
+            pending.match,
+            (await matchPlayers(ctx, pending.match._id)).length,
+          )
+        : false,
     };
   }
   if (round.roundStatus === "completed") {
@@ -192,6 +202,9 @@ export async function currentMatchForPlayer(
     kind: "match" as const,
     ...base,
     round: roundSummary,
+    // Server truth for the drop dialog: same predicate the drop mutations
+    // apply, so the warning cannot drift from what a drop will do.
+    dropWouldConcede: dropConcedesMatch(round, match, players.length),
     match: {
       _id: match._id,
       tableNumber: match.tableNumber ?? null,
@@ -215,22 +228,4 @@ export async function currentMatchForPlayer(
     },
     opponent,
   };
-}
-
-async function playerMatchInRound(
-  ctx: QueryCtx,
-  registrationId: Id<"tournamentRegistrations">,
-  roundId: Id<"tournamentRounds">,
-) {
-  const playerRows = await ctx.db
-    .query("tournamentMatchPlayers")
-    .withIndex("by_playerId", (q) => q.eq("playerId", registrationId))
-    .take(MAX_MATCHES_PER_PLAYER);
-  for (const myRow of playerRows) {
-    const match = await ctx.db.get(myRow.tournamentMatchId);
-    if (match && match.tournamentRoundId === roundId) {
-      return { match, myRow };
-    }
-  }
-  return null;
 }

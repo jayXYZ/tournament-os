@@ -28,6 +28,7 @@ export type {
 } from "./player-access";
 export {
   describeCurrentMatch,
+  describeDropConfirmation,
   describeHeaderBadge,
   reportAction,
 } from "./player-view";

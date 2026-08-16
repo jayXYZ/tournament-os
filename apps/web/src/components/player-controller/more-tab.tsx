@@ -1,8 +1,8 @@
 import { Link } from '@tanstack/react-router'
 import {
+  describeDropConfirmation,
   displayPlayerName,
   formatGameScoreline,
-  reportAction,
   useDropSelf,
   useMyMatchHistory,
 } from '@tournament-os/core'
@@ -225,10 +225,6 @@ function DropCard({
     return null
   }
 
-  // The presenter's availability rule for reporting doubles as "this match
-  // has no result yet": a drop now would concede it.
-  const hasUnreportedMatch = reportAction(currentMatch) !== null
-
   return (
     <Card>
       <CardHeader>
@@ -247,11 +243,7 @@ function DropCard({
           }
           destructive
           title="Drop from this tournament?"
-          description={
-            hasUnreportedMatch
-              ? 'Your current match has no result yet — dropping now concedes it, and your opponent takes the win. If you actually finished the match, report the real result first. Dropping cannot be undone from here; the organizer can reinstate you.'
-              : 'You will not be paired in any future rounds. Dropping cannot be undone from here; the organizer can reinstate you.'
-          }
+          description={describeDropConfirmation(currentMatch)}
           cancelLabel="Stay in"
           actionLabel="Drop"
           failureMessage="Could not drop from the tournament."

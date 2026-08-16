@@ -52,6 +52,9 @@ type RegistrationRow = {
   // Server-computed effect of dropRegistration on this row, null when the
   // action is unavailable; the client never re-derives the lifecycle rules.
   dropEffect: 'cancel' | 'drop' | null
+  // Whether that drop would concede the row's unfinished match in the open
+  // round — the same predicate the drop applies, never re-derived here.
+  dropWouldConcede: boolean
 }
 
 type RegistrationStatus =
@@ -453,7 +456,9 @@ function ManagePlayerMenu({
         description={
           cancelsEntry
             ? 'Their entry will be cancelled and their seat freed, so it does not count as tournament participation.'
-            : 'This player will be removed from future pairings. An unfinished match in the current round is conceded to their opponent; an elimination already on record is kept.'
+            : row.dropWouldConcede
+              ? 'This player will be removed from future pairings, and their unfinished match this round will be conceded to their opponent.'
+              : 'This player will be removed from future pairings. An elimination already on record is kept.'
         }
         actionLabel="Drop player"
         failureMessage="Could not drop player."

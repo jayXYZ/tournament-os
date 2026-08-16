@@ -138,6 +138,30 @@ export function reportAction(
   };
 }
 
+// The drop confirmation dialog's description. The concession half reads the
+// server's dropWouldConcede fact rather than deriving from the visible
+// match: the engine concedes an unfinished current-round match even while
+// its pairings are still unpublished — a state with no match card to derive
+// from — so only the server can answer.
+export function describeDropConfirmation(
+  currentMatch: MyCurrentMatch | undefined,
+): string {
+  const wouldConcede =
+    currentMatch !== undefined &&
+    (currentMatch.kind === "match" ||
+      currentMatch.kind === "pairings_pending") &&
+    currentMatch.dropWouldConcede;
+  if (!wouldConcede) {
+    return "You will not be paired in any future rounds. Dropping cannot be undone from here; the organizer can reinstate you.";
+  }
+  // Before pairings are published the match cannot have been played, so the
+  // "report the real result first" nudge would ask the impossible.
+  if (currentMatch.kind === "pairings_pending") {
+    return "This round already includes a match for you — dropping now concedes it, and your opponent takes the win. Dropping cannot be undone from here; the organizer can reinstate you.";
+  }
+  return "Your current match has no result yet — dropping now concedes it, and your opponent takes the win. If you actually finished the match, report the real result first. Dropping cannot be undone from here; the organizer can reinstate you.";
+}
+
 // The compact status badge for a header or app bar. A drop outranks
 // everything; a completed tournament outranks round state.
 export function describeHeaderBadge(
