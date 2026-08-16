@@ -15,6 +15,7 @@ export {
   formatGameScoreline,
   formatPercent,
   formatRecord,
+  matchResultKindLabel,
   standingStatusLabel,
 } from "./format";
 export { mutationErrorMessage } from "./mutation-error";
