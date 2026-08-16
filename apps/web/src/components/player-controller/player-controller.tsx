@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import {
+  describeHeaderBadge,
   useMyCurrentMatch,
   useMyDecklist,
   useRoundTimer,
@@ -18,7 +19,7 @@ import { PlayerAccessShell, playerShellWidth } from './player-access-shell'
 import { StandingsList } from './standings-list'
 import { usePlayerTournamentAccess } from './use-player-tournament-access'
 import type { ReactNode } from 'react'
-import type { RoundTimer } from '@tournament-os/core'
+import type { MyCurrentMatch, RoundTimer } from '@tournament-os/core'
 import type { PlayerTournamentEvent } from './use-player-tournament-access'
 import { RoundTimerPill } from '@/components/shared/round-timer-indicator'
 import { SiteShell, SiteShellBackLink } from '@/components/shared/site-shell'
@@ -349,28 +350,9 @@ function DecklistCallout({
   )
 }
 
-function HeaderBadge({
-  currentMatch,
-}: {
-  currentMatch: NonNullable<ReturnType<typeof useMyCurrentMatch>>
-}) {
-  if (currentMatch.myRegistrationStatus === 'dropped') {
-    return <Badge variant="destructive">Dropped</Badge>
-  }
-  if (currentMatch.tournament.lifecycle === 'completed') {
-    return <Badge variant="secondary">Completed</Badge>
-  }
-  if (currentMatch.kind === 'not_started') {
-    return <Badge variant="outline">Not started</Badge>
-  }
-  if (
-    currentMatch.kind === 'match' ||
-    currentMatch.kind === 'between_rounds' ||
-    currentMatch.kind === 'pairings_pending'
-  ) {
-    return <Badge>Round {currentMatch.round.roundNumber}</Badge>
-  }
-  return null
+function HeaderBadge({ currentMatch }: { currentMatch: MyCurrentMatch }) {
+  const badge = describeHeaderBadge(currentMatch)
+  return badge ? <Badge variant={badge.tone}>{badge.label}</Badge> : null
 }
 
 function TabButton({

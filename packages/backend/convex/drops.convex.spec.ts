@@ -106,6 +106,10 @@ test("a mid-round self-drop concedes the unfinished match to the opponent", asyn
     }
     expect(view.match.currentResultKind).toBe("concession");
     expect(view.match.reportedByRegistrationId).toBeNull();
+    // The stored outcome distinguishes the conceding side even though the
+    // concession's awarded game counts alone could (0–0 double loss aside)
+    // also be compared — clients read this, never the counts.
+    expect(view.me.outcome).toBe(viewer === 1 ? "loss" : "win");
   }
 
   // The awarded result stands against player re-reports...

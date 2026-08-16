@@ -449,6 +449,9 @@ test("getMyCurrentMatch walks the tournament lifecycle", async () => {
   expect(current.match.matchStatus).toBe("completed");
   expect(current.match.reportedByRegistrationId).toBe(registrationIds[0]);
   expect(current.match.currentResultKind).toBe("played");
+  // The player's side of the result comes from the stored revision line, so
+  // clients render it without re-deriving win/loss from game counts.
+  expect(current.me.outcome).toBe("win");
 
   const round = await currentRound(t, tournamentId);
   const otherNumber = await outsiderNumber(

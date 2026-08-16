@@ -2,6 +2,7 @@ import { Link } from '@tanstack/react-router'
 import {
   displayPlayerName,
   formatGameScoreline,
+  reportAction,
   useDropSelf,
   useMyMatchHistory,
 } from '@tournament-os/core'
@@ -224,10 +225,9 @@ function DropCard({
     return null
   }
 
-  const hasUnreportedMatch =
-    currentMatch.kind === 'match' &&
-    currentMatch.match.matchStatus === 'upcoming' &&
-    !currentMatch.me.isBye
+  // The presenter's availability rule for reporting doubles as "this match
+  // has no result yet": a drop now would concede it.
+  const hasUnreportedMatch = reportAction(currentMatch) !== null
 
   return (
     <Card>
