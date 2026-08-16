@@ -198,3 +198,10 @@ The player's completed matches remain on record, visible and feeding former
 opponents' tiebreakers; the tournament stays on their profile without a
 placement.
 _Avoid_: ban
+
+**Player View**:
+What a player faces in a tournament right now, always exactly one state: the
+tournament not yet started, their meeting seat, a wait for pairings or the
+next round, no match this round, or their live match. It is the player's
+masked perspective on the tournament — a Disqualification reads as a Drop.
+_Avoid_: current match (as a concept name), play surface

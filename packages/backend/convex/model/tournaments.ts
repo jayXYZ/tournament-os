@@ -3,7 +3,11 @@ import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { requireActiveMembership, requireCurrentUser } from "./access";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "./batching";
-import { createPhases, type validPhaseInputs } from "./phases";
+import {
+  MAX_MATCHES_PER_PLAYER,
+  createPhases,
+  type validPhaseInputs,
+} from "./phases";
 import { nextPublicCode } from "./publicCodes";
 import { MAX_TOURNAMENT_PLAYERS, registrationForUser } from "./registrations";
 
@@ -104,6 +108,27 @@ export async function matchPlayers(
       q.eq("tournamentMatchId", matchId),
     )
     .take(2);
+}
+
+// The player's pairing in the given round, if any — a registration plays at
+// most one match per round. Shared by the Player View and the drop-concession
+// rule so both find the same match.
+export async function playerMatchInRound(
+  ctx: QueryCtx,
+  registrationId: Id<"tournamentRegistrations">,
+  roundId: Id<"tournamentRounds">,
+) {
+  const playerRows = await ctx.db
+    .query("tournamentMatchPlayers")
+    .withIndex("by_playerId", (q) => q.eq("playerId", registrationId))
+    .take(MAX_MATCHES_PER_PLAYER);
+  for (const myRow of playerRows) {
+    const match = await ctx.db.get(myRow.tournamentMatchId);
+    if (match && match.tournamentRoundId === roundId) {
+      return { match, myRow };
+    }
+  }
+  return null;
 }
 
 export async function roundMatchesWithPlayers(

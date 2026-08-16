@@ -373,7 +373,7 @@ test("advance step offers the timer first, then round completion once results ar
   });
 });
 
-test("timer state rides along on public and player queries", async () => {
+test("timer state rides on the public tournament query alone", async () => {
   const t = createConvexTest();
   const { tournamentId } = await seedStartedTournament(t, 4);
   const organizer = t.withIdentity(organizerIdentity);
@@ -391,10 +391,13 @@ test("timer state rides along on public and player queries", async () => {
   );
   expect(publicView?.tournament.roundTimer?.kind).toBe("running");
 
+  // The Player View deliberately omits the timer: it is a tournament-level
+  // fact visible to spectators too, so every client reads the one source
+  // above instead of a per-viewer copy.
   const playerView = await t
     .withIdentity(playerIdentity(1))
     .query(api.tournaments.player.getMyCurrentMatch, { tournamentId });
-  expect(playerView.tournament.roundTimer?.kind).toBe("running");
+  expect("roundTimer" in playerView.tournament).toBe(false);
 });
 
 async function storedTimer(

@@ -1,4 +1,8 @@
-import { displayPlayerName, formatGameScoreline } from '@tournament-os/core'
+import {
+  displayPlayerName,
+  formatGameScoreline,
+  matchResultKindLabel,
+} from '@tournament-os/core'
 import type { PairingRow } from './pairing-row'
 import { Badge } from '@/components/ui/badge'
 
@@ -37,8 +41,11 @@ export function MatchResultCell({ row }: { row: PairingRow }) {
   )
 }
 
-// Distinguishes player self-reported results from organizer-entered ones, so
-// the organizer knows which results players entered themselves.
+// Distinguishes awarded results from played ones and player self-reported
+// results from organizer-entered ones. The scoreline alone cannot carry
+// either fact: an awarded result is recorded with the scoreline the
+// structure dictates, so without the kind a Concession reads as a played
+// win here while the player's own card names it.
 function ResultWithProvenance({
   row,
   children,
@@ -46,9 +53,13 @@ function ResultWithProvenance({
   row: PairingRow
   children: React.ReactNode
 }) {
+  const kindLabel = matchResultKindLabel(row.match.currentResultKind)
   return (
     <div className="flex flex-wrap items-center gap-2">
       <span className="font-medium">{children}</span>
+      {kindLabel !== null ? (
+        <Badge variant="secondary">{kindLabel}</Badge>
+      ) : null}
       {row.match.reportedByRegistrationId !== undefined ? (
         <Badge variant="outline">Player-reported</Badge>
       ) : null}

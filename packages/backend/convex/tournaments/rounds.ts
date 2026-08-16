@@ -5,7 +5,11 @@ import { mutation, query } from "../_generated/server";
 import type { MutationCtx } from "../_generated/server";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
 import { applyMatchResult } from "../model/matchResults";
-import { requireCurrentPhase, requirePhase } from "../model/phases";
+import {
+  phaseTimelines,
+  requireCurrentPhase,
+  requirePhase,
+} from "../model/phases";
 import {
   analyzeProgression,
   completeRound as completeRoundTransition,
@@ -203,9 +207,15 @@ export const getPairingsBoard = query({
       phaseBoards,
     });
 
+    // Derived from the same boards progression analyzes, so the timeline the
+    // clients render can never disagree with nextStep.
+    const timelines = phaseTimelines(phaseBoards);
     return {
       tournament,
-      phases: phaseBoards,
+      phases: phaseBoards.map((phaseBoard, index) => ({
+        ...phaseBoard,
+        timeline: timelines[index],
+      })),
       nextStep,
       rewind: actions.rewind,
     };

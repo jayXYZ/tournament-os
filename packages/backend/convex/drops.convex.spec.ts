@@ -106,6 +106,10 @@ test("a mid-round self-drop concedes the unfinished match to the opponent", asyn
     }
     expect(view.match.currentResultKind).toBe("concession");
     expect(view.match.reportedByRegistrationId).toBeNull();
+    // The stored outcome distinguishes the conceding side even though the
+    // concession's awarded game counts alone could (0–0 double loss aside)
+    // also be compared — clients read this, never the counts.
+    expect(view.me.outcome).toBe(viewer === 1 ? "loss" : "win");
   }
 
   // The awarded result stands against player re-reports...
@@ -309,6 +313,112 @@ test("best-of-1 concessions award one game and a second drop concedes nothing", 
   ).toHaveLength(1);
 });
 
+test("dropWouldConcede tracks the concession rule on the player view and roster", async () => {
+  const t = createConvexTest();
+  // Five players: the lowest seed (player 5) takes the round-one bye.
+  const { tournamentId, registrationIds } = await seedStartedTournament(t, 5);
+
+  // A paired player with an unfinished match would concede it.
+  const paired = await t
+    .withIdentity(playerIdentity(1))
+    .query(api.tournaments.player.getMyCurrentMatch, { tournamentId });
+  if (paired.kind !== "match") {
+    throw new Error("Expected a visible match");
+  }
+  expect(paired.dropWouldConcede).toBe(true);
+
+  // The bye holder's result is already awarded — nothing to concede.
+  const byeView = await t
+    .withIdentity(playerIdentity(5))
+    .query(api.tournaments.player.getMyCurrentMatch, { tournamentId });
+  if (byeView.kind !== "match") {
+    throw new Error("Expected the bye to be visible");
+  }
+  expect(byeView.me.isBye).toBe(true);
+  expect(byeView.dropWouldConcede).toBe(false);
+
+  // Reporting the match clears the fact for both seats.
+  const match = await matchForPlayer(t, tournamentId, 1, registrationIds[0]);
+  await t
+    .withIdentity(playerIdentity(1))
+    .mutation(api.tournaments.player.reportMyMatchResult, {
+      matchId: match._id,
+      myGameWins: 2,
+      opponentGameWins: 0,
+    });
+  const reported = await t
+    .withIdentity(playerIdentity(1))
+    .query(api.tournaments.player.getMyCurrentMatch, { tournamentId });
+  if (reported.kind !== "match") {
+    throw new Error("Expected the reported match to stay visible");
+  }
+  expect(reported.dropWouldConcede).toBe(false);
+
+  // The organizer roster carries the same per-row facts.
+  const roster = await t
+    .withIdentity(organizerIdentity)
+    .query(api.tournaments.registrations.listRegistrationPage, {
+      tournamentId,
+      paginationOpts: { numItems: 10, cursor: null },
+    });
+  const rowFor = (registrationId: Id<"tournamentRegistrations">) =>
+    roster.page.find((row) => row.registration._id === registrationId);
+  expect(rowFor(registrationIds[0])?.dropWouldConcede).toBe(false);
+  expect(rowFor(registrationIds[4])?.dropWouldConcede).toBe(false);
+  const stillPlaying = registrationIds.filter(
+    (registrationId) =>
+      rowFor(registrationId)?.dropWouldConcede === true &&
+      rowFor(registrationId)?.dropEffect === "drop",
+  );
+  // The one unreported two-player match still has both seats at risk.
+  expect(stillPlaying).toHaveLength(2);
+});
+
+test("a drop concedes the unpublished pairing, and the view warns first", async () => {
+  const t = createConvexTest();
+  const { tournamentId, registrationIds } = await seedStartedTournament(
+    t,
+    4,
+    undefined,
+    { autoPublishPairings: false },
+  );
+
+  // Pairings exist but are not visible: the player sees no match, yet the
+  // fact still crosses the seam so the drop dialog can warn.
+  const pending = await t
+    .withIdentity(playerIdentity(1))
+    .query(api.tournaments.player.getMyCurrentMatch, { tournamentId });
+  if (pending.kind !== "pairings_pending") {
+    throw new Error("Expected pairings to be pending");
+  }
+  expect(pending.dropWouldConcede).toBe(true);
+
+  // The warning is honest: the drop does concede the unseen match.
+  const match = await matchForPlayer(t, tournamentId, 1, registrationIds[0]);
+  await t
+    .withIdentity(playerIdentity(1))
+    .mutation(api.tournaments.player.dropSelf, { tournamentId });
+  const stored = await matchState(t, match._id);
+  expect(stored.match?.matchStatus).toBe("completed");
+  expect(stored.match?.currentResultKind).toBe("concession");
+
+  // The conceded match is settled: the opponent's own drop now has nothing
+  // to concede, and their pending view says so.
+  const opponent = await opponentNumber(
+    t,
+    match._id,
+    registrationIds[0],
+    registrationIds,
+  );
+  const opponentView = await t
+    .withIdentity(playerIdentity(opponent))
+    .query(api.tournaments.player.getMyCurrentMatch, { tournamentId });
+  if (opponentView.kind !== "pairings_pending") {
+    throw new Error("Expected the opponent's pairings to be pending");
+  }
+  expect(opponentView.dropWouldConcede).toBe(false);
+});
+
 function playerIdentity(playerNumber: number) {
   return {
     issuer: "https://convex.test",
@@ -328,6 +438,7 @@ async function seedStartedTournament(
     phaseTotalRounds?: number;
     bestOf?: 1 | 3 | 5;
   }[] = [{ phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 3 }],
+  options: { autoPublishPairings?: boolean } = {},
 ) {
   const { organizationId } = await seedOrganizer(t);
   const organizer = t.withIdentity(organizerIdentity);
@@ -346,7 +457,7 @@ async function seedStartedTournament(
     api.tournaments.lifecycle.updatePairingsAutoPublish,
     {
       tournamentId,
-      autoPublishPairings: true,
+      autoPublishPairings: options.autoPublishPairings ?? true,
     },
   );
 

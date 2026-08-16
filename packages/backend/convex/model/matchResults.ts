@@ -1,7 +1,7 @@
 import { requiredGameWins } from "@tournament-os/shared/match-structure";
 
 import type { Doc, Id } from "../_generated/dataModel";
-import type { MutationCtx } from "../_generated/server";
+import type { MutationCtx, QueryCtx } from "../_generated/server";
 import type { AuditActorRole } from "./auditLog";
 import {
   auditPlayerRef,
@@ -9,13 +9,13 @@ import {
   existingResultLines,
   logAuditEvent,
 } from "./auditLog";
-import {
-  MAX_MATCHES_PER_PLAYER,
-  currentPhaseOrNull,
-  requireValidMatchResult,
-} from "./phases";
+import { currentPhaseOrNull, requireValidMatchResult } from "./phases";
 import { matchPointsForResult } from "./standings";
-import { matchPlayers } from "./tournaments";
+import {
+  matchPlayers,
+  playerMatchInRound,
+  roundMatchesWithPlayers,
+} from "./tournaments";
 
 // Revisions live and die with their match: deleting a match (a rewind
 // un-pairing its round, or tournament deletion) deletes its revisions too.
@@ -239,6 +239,27 @@ export async function applyMatchResult(
 }
 
 // A drop's match consequence (see CONTEXT.md "Drop" and "Concession"): a
+// Whether a drop by one of the match's players concedes it. The one
+// statement of the Concession precondition: the drop mutations apply it and
+// the Player View and organizer roster warn from it, so the warnings can
+// never drift from what a drop will do. "upcoming" is the only concedeable
+// state: byes complete at pairing time (the two-player check is their
+// backstop), and a match with a result stands — including the concession an
+// opponent's earlier drop already awarded. Pairings visibility is
+// deliberately absent: a drop concedes the open round's match even before
+// its pairings are published.
+export function dropConcedesMatch(
+  round: Pick<Doc<"tournamentRounds">, "roundStatus">,
+  match: Pick<Doc<"tournamentMatches">, "matchStatus">,
+  playerCount: number,
+) {
+  return (
+    round.roundStatus === "in_progress" &&
+    match.matchStatus === "upcoming" &&
+    playerCount === 2
+  );
+}
+
 // player dropping during their own unfinished match concedes it, so the
 // opponent immediately wins an Awarded Result — the structure's required
 // game wins to zero, with no per-tournament configuration. A match that
@@ -259,37 +280,21 @@ export async function concedeUnfinishedMatchOnDrop(
     return;
   }
   const round = await ctx.db.get(phase.phaseCurrentRound);
-  if (!round || round.roundStatus !== "in_progress") {
+  if (!round) {
     return;
   }
-  // The player's pairing in the open round, if any — a registration plays at
-  // most one match per round.
-  const playerRows = await ctx.db
-    .query("tournamentMatchPlayers")
-    .withIndex("by_playerId", (q) => q.eq("playerId", args.registration._id))
-    .take(MAX_MATCHES_PER_PLAYER);
-  let match: Doc<"tournamentMatches"> | null = null;
-  for (const row of playerRows) {
-    const candidate = await ctx.db.get(row.tournamentMatchId);
-    if (candidate && candidate.tournamentRoundId === round._id) {
-      match = candidate;
-      break;
-    }
-  }
-  // "upcoming" is the only concedeable state: byes complete at pairing time,
-  // and a match with a result stands — including the concession an
-  // opponent's earlier drop already awarded.
-  if (!match || match.matchStatus !== "upcoming") {
+  const found = await playerMatchInRound(ctx, args.registration._id, round._id);
+  if (!found) {
     return;
   }
-  const players = await matchPlayers(ctx, match._id);
-  if (players.length !== 2) {
+  const players = await matchPlayers(ctx, found.match._id);
+  if (!dropConcedesMatch(round, found.match, players.length)) {
     return;
   }
   const required = requiredGameWins(phase.bestOf);
   const concedesFirst = players[0].playerId === args.registration._id;
   await applyMatchResult(ctx, {
-    match,
+    match: found.match,
     phase,
     round,
     players,
@@ -303,4 +308,36 @@ export async function concedeUnfinishedMatchOnDrop(
       concededBy: args.registration,
     },
   });
+}
+
+// The registrations whose drop would concede a match right now: every seat
+// in a concedeable match of the open round. Computed once per roster read so
+// each row's drop action can carry the fact instead of the client hedging.
+export async function registrationsConcededByDrop(
+  ctx: QueryCtx,
+  tournament: Doc<"tournaments">,
+): Promise<Set<Id<"tournamentRegistrations">>> {
+  const concedeable = new Set<Id<"tournamentRegistrations">>();
+  if (tournament.lifecycle !== "in_progress") {
+    return concedeable;
+  }
+  const phase = await currentPhaseOrNull(ctx, tournament._id);
+  if (!phase?.phaseCurrentRound) {
+    return concedeable;
+  }
+  const round = await ctx.db.get(phase.phaseCurrentRound);
+  if (!round || round.roundStatus !== "in_progress") {
+    return concedeable;
+  }
+  for (const { match, players } of await roundMatchesWithPlayers(
+    ctx,
+    round._id,
+  )) {
+    if (dropConcedesMatch(round, match, players.length)) {
+      for (const player of players) {
+        concedeable.add(player.playerId);
+      }
+    }
+  }
+  return concedeable;
 }

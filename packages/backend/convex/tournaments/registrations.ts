@@ -6,7 +6,10 @@ import { mutation, query, type QueryCtx } from "../_generated/server";
 import { currentUserOrNull } from "../model/access";
 import { auditPlayerRef, logAuditEvent } from "../model/auditLog";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
-import { concedeUnfinishedMatchOnDrop } from "../model/matchResults";
+import {
+  concedeUnfinishedMatchOnDrop,
+  registrationsConcededByDrop,
+} from "../model/matchResults";
 import { clampPageSize } from "../model/pagination";
 import {
   ensureParticipantForUser,
@@ -38,6 +41,8 @@ async function registrationRows(
   tournament: Doc<"tournaments">,
   registrations: Array<Doc<"tournamentRegistrations">>,
 ) {
+  // One open-round scan serves every row's concession fact below.
+  const concededByDrop = await registrationsConcededByDrop(ctx, tournament);
   // Names come from the denormalized copy on the registration; only rows
   // missing it fall back to a live identity lookup, so the common path does
   // zero per-row joins.
@@ -53,6 +58,10 @@ async function registrationRows(
       // is unavailable), so the client renders the drop action from server
       // truth instead of mirroring the lifecycle rules.
       dropEffect: registrationDropEffect(tournament.lifecycle, registration),
+      // Whether that drop would also concede the row's unfinished match in
+      // the open round — same predicate the drop applies, so the dialog's
+      // wording always matches what confirming it will do.
+      dropWouldConcede: concededByDrop.has(registration._id),
     }),
   );
 }

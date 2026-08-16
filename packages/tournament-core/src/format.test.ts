@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 
-import { standingStatusLabel } from "./format.ts";
+import { matchResultKindLabel, standingStatusLabel } from "./format.ts";
 
 const DQ = { disqualifiedLabel: "DQ" };
 
@@ -110,4 +110,18 @@ test("active and unknown players get no marker", () => {
     standingStatusLabel({ registrationStatus: null, playoffStatus: null }, DQ),
   ).toBeNull();
   expect(standingStatusLabel({ registrationStatus: undefined }, DQ)).toBeNull();
+});
+
+test("every awarded result kind gets a marker", () => {
+  expect(matchResultKindLabel("concession")).toBe("Conceded");
+  expect(matchResultKindLabel("bye")).toBe("Bye");
+  expect(matchResultKindLabel("forfeit")).toBe("Forfeit");
+  expect(matchResultKindLabel("no_show")).toBe("No show");
+  expect(matchResultKindLabel("dq")).toBe("DQ");
+});
+
+test("a played result and a missing result get no marker", () => {
+  expect(matchResultKindLabel("played")).toBeNull();
+  expect(matchResultKindLabel(null)).toBeNull();
+  expect(matchResultKindLabel(undefined)).toBeNull();
 });

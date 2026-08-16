@@ -1,14 +1,20 @@
+import { useUser } from "@clerk/expo";
 import { AuthView } from "@clerk/expo/native";
-import type { Id } from "@tournament-os/backend/convex/_generated/dataModel";
 import {
+  describeCurrentMatch,
+  describeHeaderBadge,
   displayPlayerName,
   formatRecord,
   standingStatusLabel,
-  useConvexAuthReadiness,
   useLatestStandings,
   useMyCurrentMatch,
-  useMyRegistration,
+  usePlayerTournamentAccess,
   useRoundTimer,
+} from "@tournament-os/core";
+import type {
+  CurrentMatchDescription,
+  PlayerTournamentEvent,
+  RoundTimer,
 } from "@tournament-os/core";
 import { useLocalSearchParams, useNavigation } from "expo-router";
 import { useEffect, useState } from "react";
@@ -24,45 +30,33 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function TournamentScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
-  const tournamentId = (id ?? null) as Id<"tournaments"> | null;
-
-  const auth = useConvexAuthReadiness();
+  const { code } = useLocalSearchParams<{ code: string }>();
+  // The shared access ladder needs the app's own auth signal; Convex
+  // readiness alone cannot distinguish "signed out" from "token still
+  // propagating" (see @tournament-os/core player-access.ts).
+  const { user, isLoaded } = useUser();
+  const access = usePlayerTournamentAccess(code ?? "", {
+    user: user ?? null,
+    loading: !isLoaded,
+  });
   const [authOpen, setAuthOpen] = useState(false);
 
-  // The player queries reject entries that are not confirmed (e.g. a
-  // registration cancelled while this screen is open), so gate them on
-  // entryStatus to match the server's requireRegisteredPlayer.
-  const registration = useMyRegistration(tournamentId);
-  const confirmedTournamentId =
-    registration?.entryStatus === "confirmed" ? tournamentId : null;
-  const current = useMyCurrentMatch(confirmedTournamentId);
-  const standings = useLatestStandings(confirmedTournamentId);
-
-  // Update the header title once the tournament name loads. Done via
-  // setOptions (not a <Stack.Screen> rendered inside the route) — rendering a
-  // navigator child mid-stack corrupts react-native-screens, causing duplicate
-  // screens, broken back navigation, and white seams during transitions.
+  // Update the header title once the event resolves. Done via setOptions
+  // (not a <Stack.Screen> rendered inside the route) — rendering a navigator
+  // child mid-stack corrupts react-native-screens, causing duplicate screens,
+  // broken back navigation, and white seams during transitions.
   const navigation = useNavigation();
-  const tournamentName = current?.tournament.name;
+  const tournamentName =
+    access.state === "loading" || access.state === "notFound"
+      ? undefined
+      : access.event.tournament.name;
   useEffect(() => {
     if (tournamentName) {
       navigation.setOptions({ title: tournamentName });
     }
   }, [navigation, tournamentName]);
 
-  if (!tournamentId) {
-    return (
-      <SafeAreaView style={styles.container} edges={["bottom"]}>
-        <View style={styles.content}>
-          <Text style={styles.muted}>Tournament not found.</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  // Auth still resolving, or the registration query in flight.
-  if (auth === "pending" || (auth === "ready" && registration === undefined)) {
+  if (access.state === "loading") {
     return (
       <SafeAreaView style={styles.container} edges={["bottom"]}>
         <View style={styles.centered}>
@@ -72,10 +66,20 @@ export default function TournamentScreen() {
     );
   }
 
+  if (access.state === "notFound") {
+    return (
+      <SafeAreaView style={styles.container} edges={["bottom"]}>
+        <View style={styles.content}>
+          <Text style={styles.muted}>Tournament not found.</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   // Signed out (a deep link can land here without a session). Note Convex
   // also treats Clerk sessions with pending tasks (e.g. MFA) as signed out;
   // AuthView completes those tasks too.
-  if (auth !== "ready") {
+  if (access.state === "signedOut") {
     return (
       <SafeAreaView style={styles.container} edges={["bottom"]}>
         <View style={styles.signedOut}>
@@ -100,9 +104,7 @@ export default function TournamentScreen() {
     );
   }
 
-  // Signed in and the query resolved: null (no registration row) or a row
-  // whose entry isn't confirmed both mean no seat at this event.
-  if (registration?.entryStatus !== "confirmed") {
+  if (access.state === "notRegistered") {
     return (
       <SafeAreaView style={styles.container} edges={["bottom"]}>
         <View style={styles.content}>
@@ -114,11 +116,25 @@ export default function TournamentScreen() {
     );
   }
 
+  return <TournamentContent event={access.event} />;
+}
+
+// Mounted only in the `ready` access state, so the player subscriptions
+// exist only while the viewer holds a confirmed registration — the player
+// queries reject anything less (the server's requireRegisteredPlayer).
+function TournamentContent({ event }: { event: PlayerTournamentEvent }) {
+  const current = useMyCurrentMatch(event.tournament._id);
+  const standings = useLatestStandings(event.tournament._id);
+  const badge = describeHeaderBadge(current);
+
   return (
     <SafeAreaView style={styles.container} edges={["bottom"]}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.sectionTitle}>Current round</Text>
-        <RoundCountdown current={current} />
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Current round</Text>
+          {badge ? <Text style={styles.headerBadge}>{badge.label}</Text> : null}
+        </View>
+        <RoundCountdown timer={event.tournament.roundTimer} />
         <CurrentMatch current={current} />
 
         <Text style={[styles.sectionTitle, styles.sectionGap]}>Standings</Text>
@@ -129,15 +145,10 @@ export default function TournamentScreen() {
 }
 
 // Live round timer, ticked locally against the Convex-synced anchors carried
-// on getMyCurrentMatch. Hidden while no timer is set; overtime counts up in red.
-function RoundCountdown({
-  current,
-}: {
-  current: ReturnType<typeof useMyCurrentMatch>;
-}) {
-  const { phase, remainingMs, formatted } = useRoundTimer(
-    current?.tournament.roundTimer,
-  );
+// on the public event query — the same source web reads. Hidden while no
+// timer is set; overtime counts up in red.
+function RoundCountdown({ timer }: { timer: RoundTimer | null | undefined }) {
+  const { phase, remainingMs, formatted } = useRoundTimer(timer);
   if (phase === "idle") {
     return null;
   }
@@ -151,83 +162,61 @@ function RoundCountdown({
   );
 }
 
+// Renders the shared Player View description (see @tournament-os/core
+// player-view.ts) — state branching and copy live in the presenter, this
+// component owns only the native styling. The report action is not yet
+// wired on native, so a reportable match reads as informational for now.
 function CurrentMatch({
   current,
 }: {
   current: ReturnType<typeof useMyCurrentMatch>;
 }) {
-  if (current === undefined) {
+  const description = describeCurrentMatch(current);
+
+  if (description.kind === "loading") {
     return <Text style={styles.muted}>Loading…</Text>;
   }
 
-  switch (current.kind) {
-    case "not_started":
-      return (
-        <Text style={styles.muted}>The tournament hasn’t started yet.</Text>
-      );
-    case "player_meeting":
-      if (current.myRegistrationStatus === "dropped") {
-        return (
-          <Text style={styles.muted}>
-            You have dropped from this tournament, so you are no longer seated.
-          </Text>
-        );
-      }
-      return (
-        <View style={styles.card}>
-          <Text style={styles.cardLabel}>Player meeting</Text>
-          <Text style={styles.cardTitle}>
-            {current.meeting.tableNumber === null
-              ? "See the organizer for your seat"
-              : `Table ${current.meeting.tableNumber}`}
-          </Text>
-          <Text style={styles.muted}>
-            {current.meeting.seatmateName
-              ? `Seated with ${current.meeting.seatmateName}. `
-              : ""}
-            Take your seat and check in with the organizer. Pairings will appear
-            here once the meeting wraps up.
-          </Text>
-        </View>
-      );
-    case "between_rounds":
-      return (
-        <Text style={styles.muted}>
-          Round {current.round.roundNumber} is complete. Awaiting next round
-          pairings.
-        </Text>
-      );
-    case "pairings_pending":
-      return (
-        <Text style={styles.muted}>
-          Round {current.round.roundNumber} pairings pending. The organizer is
-          reviewing this round’s pairings. They will appear here once published.
-        </Text>
-      );
-    case "no_match":
-      return (
-        <Text style={styles.muted}>
-          No pairing yet for round {current.round.roundNumber}.
-        </Text>
-      );
-    case "match":
-      return (
-        <View style={styles.card}>
-          <Text style={styles.cardLabel}>
-            Round {current.round.roundNumber}
-            {current.match.tableNumber != null
-              ? ` · Table ${current.match.tableNumber}`
-              : ""}
-          </Text>
-          <Text style={styles.cardTitle}>
-            {current.me.isBye
-              ? "You have a bye"
-              : `vs ${current.opponent?.name ?? "TBD"}`}
-          </Text>
-          <Text style={styles.muted}>Status: {current.match.matchStatus}</Text>
-        </View>
-      );
+  if (description.kind === "status") {
+    return (
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>{description.title}</Text>
+        <Text style={styles.muted}>{description.body}</Text>
+      </View>
+    );
   }
+
+  return <DescriptionCard description={description} />;
+}
+
+function DescriptionCard({
+  description,
+}: {
+  description: Extract<CurrentMatchDescription, { kind: "card" }>;
+}) {
+  return (
+    <View style={styles.card}>
+      <Text style={styles.cardLabel}>{description.label}</Text>
+      <Text style={styles.cardTitle}>{description.title}</Text>
+      {description.subtitle ? (
+        <Text style={styles.cardSubtitle}>{description.subtitle}</Text>
+      ) : null}
+      {description.body ? (
+        <Text style={styles.muted}>{description.body}</Text>
+      ) : null}
+      {description.scoreline ? (
+        <View style={styles.resultRow}>
+          <Text style={styles.scoreline}>{description.scoreline}</Text>
+          {description.badge ? (
+            <Text style={styles.resultBadge}>{description.badge.label}</Text>
+          ) : null}
+        </View>
+      ) : null}
+      {description.note ? (
+        <Text style={styles.muted}>{description.note}</Text>
+      ) : null}
+    </View>
+  );
 }
 
 function Standings({
@@ -291,6 +280,11 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   buttonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
   sectionTitle: {
     color: "#8b8b96",
     fontSize: 13,
@@ -299,10 +293,20 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   sectionGap: { marginTop: 12 },
+  headerBadge: { color: "#7c8cff", fontSize: 13, fontWeight: "600" },
   muted: { color: "#8b8b96", fontSize: 15 },
   card: { backgroundColor: "#16161d", borderRadius: 14, padding: 16, gap: 6 },
   cardLabel: { color: "#7c8cff", fontSize: 13, fontWeight: "600" },
   cardTitle: { color: "#fff", fontSize: 20, fontWeight: "700" },
+  cardSubtitle: { color: "#8b8b96", fontSize: 16 },
+  resultRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  scoreline: { color: "#fff", fontSize: 17, fontWeight: "600" },
+  resultBadge: { color: "#8b8b96", fontSize: 13, fontWeight: "600" },
   row: {
     flexDirection: "row",
     alignItems: "center",

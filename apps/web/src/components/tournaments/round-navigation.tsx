@@ -49,6 +49,12 @@ export type TournamentRoundNavigationPhase = {
   rounds: Array<
     Pick<Doc<'tournamentRounds'>, '_id' | 'roundNumber' | 'roundStatus'>
   >
+  // The server's round-layout projection (model/phases.ts phaseTimelines);
+  // round tabs render it instead of re-deriving the numbering math.
+  timeline: {
+    startRoundNumber: number | null
+    plannedRoundCount: number | null
+  }
 }
 
 // Selection state is owned by the caller (in practice, the route's search
@@ -96,13 +102,12 @@ export function useTournamentRoundNavigation(
     ? undefined
     : (availableRounds.find((round) => round.roundNumber === selection.round) ??
       availableRounds.at(-1))
-  const roundTabCount = Math.max(
-    activePhase?.phase.phaseTotalRounds ?? 0,
-    allRounds.length,
-  )
-  // Round numbers are global across phases (a later phase continues the
-  // numbering), so tabs start at the phase's first actual round number.
-  const firstRoundNumber = allRounds.at(0)?.roundNumber ?? 1
+  // An unresolved dynamic phase plans no count, so only its real rounds get
+  // tabs; a start the server can't number yet falls back to 1 for the same
+  // phases the tab gate already keeps unreachable.
+  const roundTabCount =
+    activePhase?.timeline.plannedRoundCount ?? allRounds.length
+  const firstRoundNumber = activePhase?.timeline.startRoundNumber ?? 1
 
   return {
     activePhase,

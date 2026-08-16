@@ -1,9 +1,12 @@
 import { useState } from 'react'
-import { formatGameScoreline } from '@tournament-os/core'
+import { describeCurrentMatch } from '@tournament-os/core'
 import { Hourglass, Swords } from 'lucide-react'
 
 import { ReportResultDialog } from './report-result-dialog'
-import type { MyActiveMatch, MyCurrentMatch } from '@tournament-os/core'
+import type {
+  CurrentMatchDescription,
+  MyCurrentMatch,
+} from '@tournament-os/core'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -22,239 +25,89 @@ import {
 } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
 
+// Renders the shared Player View description (see @tournament-os/core
+// player-view.ts) — state branching and copy live in the presenter, this
+// file owns only the web styling and the report dialog wiring.
 export function CurrentMatchCard({
   currentMatch,
 }: {
   currentMatch: MyCurrentMatch | undefined
 }) {
-  if (currentMatch === undefined) {
+  const description = describeCurrentMatch(currentMatch)
+
+  if (description.kind === 'loading') {
     return <Skeleton className="h-56" />
   }
 
-  if (currentMatch.kind === 'not_started') {
+  if (description.kind === 'status') {
     return (
       <StatusEmpty
-        icon={Hourglass}
-        title="Waiting for round one"
-        description="Pairings will appear here as soon as the organizer starts the tournament."
+        icon={description.icon === 'hourglass' ? Hourglass : Swords}
+        title={description.title}
+        description={description.body}
       />
     )
   }
 
-  if (currentMatch.kind === 'player_meeting') {
-    if (currentMatch.myRegistrationStatus === 'dropped') {
-      return (
-        <StatusEmpty
-          icon={Swords}
-          title="No seat for the player meeting"
-          description="You have dropped from this tournament, so you are no longer seated."
-        />
-      )
-    }
-    return (
-      <Card>
-        <CardHeader>
-          <CardDescription>Player meeting</CardDescription>
-          <CardTitle className="text-2xl">
-            {currentMatch.meeting.tableNumber === null ? (
-              'See the organizer for your seat'
-            ) : (
-              <>
-                Table {currentMatch.meeting.tableNumber}
-                {currentMatch.meeting.seatmateName ? (
-                  <span className="block text-base font-normal text-muted-foreground">
-                    with {currentMatch.meeting.seatmateName}
-                  </span>
-                ) : null}
-              </>
-            )}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">
-            Take your seat and check in with the organizer. Pairings will appear
-            here once the meeting wraps up.
-          </p>
-        </CardContent>
-      </Card>
-    )
-  }
-
-  if (currentMatch.kind === 'between_rounds') {
-    return (
-      <StatusEmpty
-        icon={Hourglass}
-        title={`Round ${currentMatch.round.roundNumber} complete`}
-        description={
-          currentMatch.round.isFinalRound
-            ? 'That was the final round. Check the standings tab for the final results.'
-            : "Hang tight — the organizer is preparing the next round's pairings."
-        }
-      />
-    )
-  }
-
-  if (currentMatch.kind === 'pairings_pending') {
-    return (
-      <StatusEmpty
-        icon={Hourglass}
-        title={`Round ${currentMatch.round.roundNumber} pairings pending`}
-        description="The organizer is reviewing this round's pairings. They will appear here once published."
-      />
-    )
-  }
-
-  if (currentMatch.kind === 'no_match') {
-    return (
-      <StatusEmpty
-        icon={Swords}
-        title="No match this round"
-        description={
-          currentMatch.myRegistrationStatus === 'dropped'
-            ? 'You have dropped from this tournament, so you are no longer paired.'
-            : 'You are not paired this round.'
-        }
-      />
-    )
-  }
-
-  return <ActiveMatch currentMatch={currentMatch} />
+  return <DescriptionCard description={description} />
 }
 
-function ActiveMatch({ currentMatch }: { currentMatch: MyActiveMatch }) {
-  const { match, me, opponent, round } = currentMatch
-  const opponentDisplayName = opponent?.name ?? 'your opponent'
+function DescriptionCard({
+  description,
+}: {
+  description: Extract<CurrentMatchDescription, { kind: 'card' }>
+}) {
+  const [reporting, setReporting] = useState(false)
+  const { action } = description
 
   return (
     <Card>
       <CardHeader>
-        <CardDescription>
-          {round.roundName}
-          {round.isFinalRound ? ' · Final round' : ''}
-        </CardDescription>
+        <CardDescription>{description.label}</CardDescription>
         <CardTitle className="text-2xl">
-          {me.isBye ? (
-            'You have a bye'
-          ) : (
-            <>
-              Table {match.tableNumber ?? '—'}
-              <span className="block text-base font-normal text-muted-foreground">
-                vs {opponentDisplayName}
-              </span>
-            </>
-          )}
+          {description.title}
+          {description.subtitle ? (
+            <span className="block text-base font-normal text-muted-foreground">
+              {description.subtitle}
+            </span>
+          ) : null}
         </CardTitle>
       </CardHeader>
       <CardContent className="grid gap-4">
-        <MatchStatusSection currentMatch={currentMatch} />
+        {description.body ? (
+          <p className="text-sm text-muted-foreground">{description.body}</p>
+        ) : null}
+        {description.scoreline ? (
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xl font-semibold">{description.scoreline}</p>
+            {description.badge ? (
+              <Badge variant={description.badge.tone}>
+                {description.badge.label}
+              </Badge>
+            ) : null}
+          </div>
+        ) : null}
+        {description.note ? (
+          <p className="text-sm text-muted-foreground">{description.note}</p>
+        ) : null}
+        {action ? (
+          <>
+            <Button type="button" size="lg" onClick={() => setReporting(true)}>
+              Report result
+            </Button>
+            {reporting ? (
+              <ReportResultDialog
+                matchId={action.matchId}
+                bestOf={action.bestOf}
+                opponentName={action.opponentName}
+                open={reporting}
+                onOpenChange={setReporting}
+              />
+            ) : null}
+          </>
+        ) : null}
       </CardContent>
     </Card>
-  )
-}
-
-function MatchStatusSection({ currentMatch }: { currentMatch: MyActiveMatch }) {
-  const { match, me } = currentMatch
-  const [reporting, setReporting] = useState(false)
-
-  if (me.isBye) {
-    return (
-      <p className="text-sm text-muted-foreground">
-        You receive an automatic match win this round. Sit back and enjoy the
-        break.
-      </p>
-    )
-  }
-
-  if (match.matchStatus === 'upcoming') {
-    return (
-      <>
-        <p className="text-sm text-muted-foreground">
-          Play your match, then report the result here. Either player can
-          report.
-        </p>
-        <Button type="button" size="lg" onClick={() => setReporting(true)}>
-          Report result
-        </Button>
-        {reporting ? (
-          <ReportResultDialog
-            matchId={match._id}
-            bestOf={match.bestOf}
-            opponentName={opponentName(currentMatch)}
-            open={reporting}
-            onOpenChange={setReporting}
-          />
-        ) : null}
-      </>
-    )
-  }
-
-  const scoreline = formatScoreline(me.gameWins, me.gameLosses, me.gameDraws)
-  const reportedByMe = match.reportedByRegistrationId === me.registrationId
-
-  // A drop's concession (see CONTEXT.md "Concession") completes the match
-  // with no reporting player, so it must be distinguished before the
-  // organizer-entered fallback. The conceding player is the awarded loser.
-  if (match.currentResultKind === 'concession') {
-    return (
-      <ResultSummary
-        scoreline={scoreline}
-        badge={
-          <Badge variant="secondary">
-            {(me.gameWins ?? 0) < (me.gameLosses ?? 0)
-              ? 'You conceded'
-              : 'Opponent conceded'}
-          </Badge>
-        }
-        note="A drop during an unfinished match concedes it. Played to a result first? Find a judge or the tournament organizer."
-      />
-    )
-  }
-
-  // A reported result counts immediately — there is no confirmation step.
-  // Disputes go to the organizer, whose override supersedes the report.
-  if (match.reportedByRegistrationId) {
-    return (
-      <ResultSummary
-        scoreline={scoreline}
-        badge={
-          <Badge variant="outline">
-            {reportedByMe ? 'Reported by you' : 'Reported by opponent'}
-          </Badge>
-        }
-        note="Result wrong? Find a judge or the tournament organizer."
-      />
-    )
-  }
-
-  // Completed without a reporting player: the organizer entered it.
-  return (
-    <ResultSummary
-      scoreline={scoreline}
-      badge={<Badge variant="secondary">Recorded by organizer</Badge>}
-    />
-  )
-}
-
-function ResultSummary({
-  scoreline,
-  badge,
-  note,
-  children,
-}: {
-  scoreline: string
-  badge: React.ReactNode
-  note?: string
-  children?: React.ReactNode
-}) {
-  return (
-    <>
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-xl font-semibold">{scoreline}</p>
-        {badge}
-      </div>
-      {note ? <p className="text-sm text-muted-foreground">{note}</p> : null}
-      {children}
-    </>
   )
 }
 
@@ -278,25 +131,4 @@ function StatusEmpty({
       </EmptyHeader>
     </Empty>
   )
-}
-
-function opponentName(currentMatch: MyActiveMatch) {
-  return currentMatch.opponent?.name ?? 'Opponent'
-}
-
-function formatScoreline(
-  gameWins: number | null,
-  gameLosses: number | null,
-  gameDraws: number | null,
-) {
-  const wins = gameWins ?? 0
-  const losses = gameLosses ?? 0
-  const scoreline = formatGameScoreline(wins, losses, gameDraws ?? 0)
-  if (wins > losses) {
-    return `You win ${scoreline}`
-  }
-  if (wins < losses) {
-    return `You lose ${scoreline}`
-  }
-  return `Draw ${scoreline}`
 }
