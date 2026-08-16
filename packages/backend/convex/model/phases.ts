@@ -175,6 +175,53 @@ export async function roundNumberInPhase(
   return round.roundNumber - (firstRound?.roundNumber ?? round.roundNumber) + 1;
 }
 
+export type PhaseTimeline = {
+  // The phase's first global round number: taken from its real rounds when
+  // any exist, otherwise projected from the rounds expected before it. Null
+  // when an earlier dynamic phase hasn't resolved its round count — numbering
+  // would show values that silently change later.
+  startRoundNumber: number | null;
+  // How many rounds the phase is expected to hold: its configured total (or
+  // its real rounds if they exceed it), a finished phase's actual count, and
+  // null for a dynamic phase still running — more rounds may follow.
+  plannedRoundCount: number | null;
+};
+
+// The tournament's expected round layout, one entry per phase in phase
+// order. Round numbers are global across the tournament (a later phase
+// continues the numbering), so each phase's start is folded forward through
+// the planned counts before it. This is the engine's one statement of that
+// math: timeline clients render these numbers instead of re-deriving them.
+export function phaseTimelines(
+  phaseBoards: Array<{
+    phase: Pick<Doc<"tournamentPhases">, "phaseStatus" | "phaseTotalRounds">;
+    rounds: Array<Pick<Doc<"tournamentRounds">, "roundNumber">>;
+  }>,
+): PhaseTimeline[] {
+  const timelines: PhaseTimeline[] = [];
+  let nextRoundNumber: number | null = 1;
+  for (const { phase, rounds } of phaseBoards) {
+    const startRoundNumber: number | null =
+      rounds.at(0)?.roundNumber ?? nextRoundNumber;
+    // A finished phase's round count is final even if its planned total was
+    // never resolved.
+    const finished =
+      phase.phaseStatus === "completed" || phase.phaseStatus === "cancelled";
+    const plannedRoundCount =
+      phase.phaseTotalRounds !== null
+        ? Math.max(phase.phaseTotalRounds, rounds.length)
+        : finished
+          ? rounds.length
+          : null;
+    timelines.push({ startRoundNumber, plannedRoundCount });
+    nextRoundNumber =
+      startRoundNumber === null || plannedRoundCount === null
+        ? null
+        : startRoundNumber + plannedRoundCount;
+  }
+  return timelines;
+}
+
 // Round numbers are global across a tournament. Within a phase, the previous
 // round is the preceding number; across a phase boundary it is the prior
 // phase's final round.

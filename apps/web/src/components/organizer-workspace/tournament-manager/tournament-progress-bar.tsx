@@ -72,60 +72,37 @@ type RoundSlot =
   | { kind: 'planned'; roundNumber: number | null }
   | { kind: 'unknown' }
 
-// Round numbers are global across the tournament (a later phase continues the
-// numbering), so planned nodes count on from the phase's start number.
-export function phaseSlots(
-  phaseBoard: PhaseBoard,
-  startNumber: number | null,
-): Array<RoundSlot> {
-  const { phase, rounds } = phaseBoard
+// Slots come from the server's timeline projection (model/phases.ts
+// phaseTimelines): the engine owns the round-numbering math, this only
+// shapes it into nodes. A null plannedRoundCount is an unresolved dynamic
+// phase — by definition still upcoming or in progress — so it shows the
+// single "?" node.
+export function phaseSlots(phaseBoard: PhaseBoard): Array<RoundSlot> {
+  const { rounds, timeline } = phaseBoard
   const slots: Array<RoundSlot> = rounds.map((round) => ({
     kind: 'round',
     round,
   }))
 
-  if (phase.phaseTotalRounds !== null) {
-    for (let index = rounds.length; index < phase.phaseTotalRounds; index++) {
+  if (timeline.plannedRoundCount !== null) {
+    for (
+      let index = rounds.length;
+      index < timeline.plannedRoundCount;
+      index++
+    ) {
       slots.push({
         kind: 'planned',
-        roundNumber: startNumber === null ? null : startNumber + index,
+        roundNumber:
+          timeline.startRoundNumber === null
+            ? null
+            : timeline.startRoundNumber + index,
       })
     }
-  } else if (
-    phase.phaseStatus === 'upcoming' ||
-    phase.phaseStatus === 'in_progress'
-  ) {
+  } else {
     slots.push({ kind: 'unknown' })
   }
 
   return slots
-}
-
-// Each phase's first global round number: taken from its real rounds when any
-// exist, otherwise projected from the rounds expected before it. An unresolved
-// dynamic phase contributes an unknown number of rounds, so phases after it
-// have no start number (null) until it resolves — numbering them would show
-// values that silently change later.
-export function phaseStartNumbers(
-  phases: Array<PhaseBoard>,
-): Array<number | null> {
-  const startNumbers: Array<number | null> = []
-  let nextRoundNumber: number | null = 1
-  for (const phaseBoard of phases) {
-    const { phase, rounds } = phaseBoard
-    const startNumber: number | null =
-      rounds.at(0)?.roundNumber ?? nextRoundNumber
-    startNumbers.push(startNumber)
-    // A finished phase's round count is final even if its planned total was
-    // never resolved.
-    const finished =
-      phase.phaseStatus === 'completed' || phase.phaseStatus === 'cancelled'
-    nextRoundNumber =
-      startNumber === null || (phase.phaseTotalRounds === null && !finished)
-        ? null
-        : startNumber + Math.max(phase.phaseTotalRounds ?? 0, rounds.length)
-  }
-  return startNumbers
 }
 
 // The backend's next action is also the most precise description of an active
@@ -160,7 +137,6 @@ export function activeRoundProgress(
 // and across phase boundaries, including dynamic phases whose node is "?".
 export function betweenRoundTarget(
   board: PairingsBoard,
-  startNumbers: Array<number | null>,
 ): BetweenRoundTarget | null {
   const betweenRounds =
     board.tournament.lifecycle === 'in_progress' &&
@@ -182,7 +158,7 @@ export function betweenRoundTarget(
     phaseIndex++
   ) {
     const phaseBoard = board.phases[phaseIndex]
-    const slots = phaseSlots(phaseBoard, startNumbers[phaseIndex])
+    const slots = phaseSlots(phaseBoard)
     const slotIndex = slots.findIndex((slot) => slot.kind !== 'round')
     if (slotIndex !== -1) {
       return { phaseId: phaseBoard.phase._id, slotIndex }
@@ -287,9 +263,8 @@ export function TournamentProgressBar({
     )
   }
 
-  const startNumbers = phaseStartNumbers(board.phases)
   const activeProgress = activeRoundProgress(board)
-  const betweenTarget = betweenRoundTarget(board, startNumbers)
+  const betweenTarget = betweenRoundTarget(board)
 
   return (
     <TooltipProvider>
@@ -299,11 +274,10 @@ export function TournamentProgressBar({
       >
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-6 px-4 py-2.5 sm:px-6 lg:px-8">
           <div className="-m-1 flex min-w-0 items-end gap-6 overflow-x-auto p-1">
-            {board.phases.map((phaseBoard, index) => (
+            {board.phases.map((phaseBoard) => (
               <PhaseSection
                 key={phaseBoard.phase._id}
                 phaseBoard={phaseBoard}
-                startNumber={startNumbers[index]}
                 publicCode={publicCode}
                 showLabel={board.phases.length > 1}
                 currentSelection={currentSelection}
@@ -515,7 +489,6 @@ export function advanceAction(
 
 function PhaseSection({
   phaseBoard,
-  startNumber,
   publicCode,
   showLabel,
   currentSelection,
@@ -524,7 +497,6 @@ function PhaseSection({
   betweenRoundSlotIndex,
 }: {
   phaseBoard: PhaseBoard
-  startNumber: number | null
   publicCode: string
   showLabel: boolean
   currentSelection: CurrentTimelineSelection | null
@@ -533,7 +505,7 @@ function PhaseSection({
   betweenRoundSlotIndex: number | null
 }) {
   const { phase } = phaseBoard
-  const slots = phaseSlots(phaseBoard, startNumber)
+  const slots = phaseSlots(phaseBoard)
   const hasPlayerMeeting = phase.playerMeeting === true
   if (slots.length === 0 && !hasPlayerMeeting) {
     return null
