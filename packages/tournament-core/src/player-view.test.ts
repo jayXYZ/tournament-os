@@ -10,7 +10,7 @@ import type { MyActiveMatch, MyCurrentMatch } from "./types.ts";
 // The union carries branded Id types from the generated api, so fixtures are
 // built as plain shapes and cast — the presenter only reads fields.
 const base = {
-  tournament: { name: "Test Open", lifecycle: "in_progress", roundTimer: null },
+  tournament: { name: "Test Open", lifecycle: "in_progress" },
   myRegistrationStatus: "active",
   myRegistrationId: "reg-me",
 };

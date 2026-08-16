@@ -73,7 +73,7 @@ function RootLayout() {
           >
             <Stack.Screen name="index" />
             <Stack.Screen
-              name="tournament/[id]"
+              name="tournament/[code]"
               options={{
                 headerShown: true,
                 title: "Tournament",

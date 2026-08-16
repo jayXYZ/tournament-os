@@ -18,6 +18,13 @@ export {
   standingStatusLabel,
 } from "./format";
 export { mutationErrorMessage } from "./mutation-error";
+export { usePlayerTournamentAccess } from "./player-access";
+export type {
+  AppAuthSnapshot,
+  PlayerRegistration,
+  PlayerTournamentAccess,
+  PlayerTournamentEvent,
+} from "./player-access";
 export {
   describeCurrentMatch,
   describeHeaderBadge,

@@ -92,9 +92,11 @@ export default function HomeScreen() {
             <Pressable
               style={styles.card}
               onPress={() =>
+                // Routes carry the public code, not the Convex id, so links
+                // are interchangeable with the web app's player pages.
                 router.push({
-                  pathname: "/tournament/[id]",
-                  params: { id: item.tournament._id },
+                  pathname: "/tournament/[code]",
+                  params: { code: String(item.tournament.publicCode) },
                 })
               }
             >

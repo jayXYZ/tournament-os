@@ -35,11 +35,12 @@ export async function currentMatchForPlayer(
   // reported status: a disqualified player reads as dropped, and the
   // clients' existing dropped branches render the removed-from-event state.
   const registration = playerVisibleRegistration(storedRegistration);
+  // The Round Timer is deliberately absent: it is a tournament-level fact
+  // visible to spectators too, so clients read it from getPublicTournament.
   const base = {
     tournament: {
       name: tournament.name,
       lifecycle: tournament.lifecycle,
-      roundTimer: tournament.roundTimer ?? null,
     },
     myRegistrationStatus: registration.participationStatus,
     myRegistrationId: registration._id,
