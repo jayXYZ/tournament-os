@@ -8,7 +8,10 @@ import { expect, test } from "vitest";
 
 import { api } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
+import { matchLogForRegistration } from "./model/playerResults";
+import { currentMatchForPlayer } from "./model/playerView";
 import { tiebreakRandom } from "./model/random";
+import { matchPlayers } from "./model/tournaments";
 import { organizerIdentity, seedOrganizer } from "./specHelpers";
 import { createConvexTest } from "./specHelpers.runtime";
 
@@ -283,4 +286,90 @@ test("standings compute point-based percentages with draws and bye-excluded feed
   // Y and B tie on match points and opponents' match-win percentage; Y's
   // higher game-win percentage breaks the tie.
   expect(standings.map((row) => row.playerId)).toEqual([xId, yId, byeId]);
+});
+
+test("the match log and player view read the stored outcome, not game counts", async () => {
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const organizer = t.withIdentity(organizerIdentity);
+  const tournamentId = await organizer.mutation(
+    api.tournaments.testing.createTestTournament,
+    {
+      organizationId,
+      name: "Double Loss Event",
+      dummyPlayerCount: 4,
+      roundsToGenerate: 3,
+      seed: 47,
+      autoStart: true,
+    },
+  );
+  const round = await organizer.query(api.tournaments.rounds.getCurrentRound, {
+    tournamentId,
+  });
+  const pairings = await organizer.query(
+    api.tournaments.rounds.listRoundPairings,
+    { roundId: round!._id },
+  );
+  const table = pairings.find(({ players }) => players.length === 2)!;
+
+  // Record a no_show double match loss the way the judge writer will (the
+  // kind is reserved in matchResultKindValidator): both lines stored as
+  // losses at 0–0 — game counts that, compared, would read as a draw.
+  const registrationId = await t.run(async (ctx) => {
+    const players = await matchPlayers(ctx, table.match._id);
+    const now = Date.now();
+    const revisionId = await ctx.db.insert("matchResultRevisions", {
+      tournamentId,
+      tournamentMatchId: table.match._id,
+      kind: "no_show",
+      lines: players.map((player) => ({
+        registrationId: player.playerId,
+        outcome: "loss" as const,
+        matchPointsEarned: 0,
+        gameWins: 0,
+        gameLosses: 0,
+        gameDraws: 0,
+      })),
+    });
+    for (const player of players) {
+      await ctx.db.patch(player._id, {
+        matchPointsEarned: 0,
+        gameWins: 0,
+        gameLosses: 0,
+        gameDraws: 0,
+        updatedAt: now,
+      });
+    }
+    await ctx.db.patch(table.match._id, {
+      matchStatus: "completed",
+      currentResultRevisionId: revisionId,
+      currentResultKind: "no_show",
+      updatedAt: now,
+    });
+    // The player-facing surfaces below only list rounds whose pairings are
+    // visible; the dummy-player harness does not need them published.
+    await ctx.db.patch(round!._id, { pairingsPublishedAt: now });
+    return players[0].playerId;
+  });
+
+  // Both surfaces label the result from the stored line — "loss", never the
+  // "draw" that comparing 0 = 0 game counts would derive.
+  const history = await t.run(
+    async (ctx) =>
+      await matchLogForRegistration(ctx, tournamentId, registrationId),
+  );
+  const historyRow = history.find(
+    (entry) => entry.roundNumber === round!.roundNumber,
+  );
+  expect(historyRow?.result).toBe("loss");
+
+  const view = await t.run(async (ctx) => {
+    const tournament = await ctx.db.get(tournamentId);
+    const registration = await ctx.db.get(registrationId);
+    return await currentMatchForPlayer(ctx, tournament!, registration!);
+  });
+  if (view.kind !== "match") {
+    throw new Error("Expected the completed match to be visible");
+  }
+  expect(view.me.outcome).toBe("loss");
 });

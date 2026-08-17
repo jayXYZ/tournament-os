@@ -1,7 +1,6 @@
-import { requiredGameWins } from "@tournament-os/shared/match-structure";
-
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
+import { materializeAwardedByeMatch } from "./matchResults";
 import {
   MAX_MATCHES_PER_PLAYER,
   requireResolvedPhaseTotalRounds,
@@ -9,11 +8,7 @@ import {
 } from "./phases";
 import { createSeededRandom, pairingSeed, seededShuffle } from "./random";
 import { MAX_TOURNAMENT_PLAYERS } from "./registrations";
-import {
-  BYE_MATCH_POINTS,
-  compareStandingRows,
-  hasCumulativeTotals,
-} from "./standings";
+import { compareStandingRows, hasCumulativeTotals } from "./standings";
 
 export type PairingOptions = {
   // Stored tournament seed driving the within-bracket shuffle.
@@ -144,7 +139,7 @@ export async function createSingleEliminationRoundWithPairings(
   let tableNumber = 1;
   for (const [seatIndex, pairing] of args.pairings.entries()) {
     if (pairing.isBye || !pairing.playerTwo) {
-      await insertAwardedByeMatch(ctx, {
+      await materializeAwardedByeMatch(ctx, {
         tournament: args.tournament,
         phase: args.phase,
         roundId,
@@ -182,64 +177,6 @@ export async function createSingleEliminationRoundWithPairings(
     });
   }
   return roundId;
-}
-
-// A Bye is an Awarded Result: the phase's required game wins to zero (2–0 in
-// best-of-3), completed at pairing time with a system-awarded revision (no
-// actor). One writer for both the Swiss bye and the bracket walkover.
-async function insertAwardedByeMatch(
-  ctx: MutationCtx,
-  args: {
-    tournament: Doc<"tournaments">;
-    phase: Doc<"tournamentPhases">;
-    roundId: Id<"tournamentRounds">;
-    registration: Doc<"tournamentRegistrations">;
-    // The bye's seat-pair position in a bracket round; absent for Swiss byes.
-    bracketSeat?: number;
-    now: number;
-  },
-) {
-  const matchId = await ctx.db.insert("tournamentMatches", {
-    tournamentId: args.tournament._id,
-    tournamentPhaseId: args.phase._id,
-    tournamentRoundId: args.roundId,
-    tableNumber: undefined,
-    bracketSeat: args.bracketSeat,
-    matchStatus: "completed",
-    updatedAt: args.now,
-  });
-  const byeGameWins = requiredGameWins(args.phase.bestOf);
-  await ctx.db.insert("tournamentMatchPlayers", {
-    tournamentMatchId: matchId,
-    playerId: args.registration._id,
-    playerName: args.registration.playerName,
-    matchPointsEarned: BYE_MATCH_POINTS,
-    gameWins: byeGameWins,
-    gameLosses: 0,
-    gameDraws: 0,
-    isBye: true,
-    updatedAt: args.now,
-  });
-  const revisionId = await ctx.db.insert("matchResultRevisions", {
-    tournamentId: args.tournament._id,
-    tournamentMatchId: matchId,
-    kind: "bye",
-    lines: [
-      {
-        registrationId: args.registration._id,
-        outcome: "win",
-        matchPointsEarned: BYE_MATCH_POINTS,
-        gameWins: byeGameWins,
-        gameLosses: 0,
-        gameDraws: 0,
-      },
-    ],
-  });
-  await ctx.db.patch(matchId, {
-    currentResultRevisionId: revisionId,
-    currentResultKind: "bye",
-  });
-  return matchId;
 }
 
 export async function createRoundWithPairings(
@@ -290,7 +227,7 @@ export async function createRoundWithPairings(
   let tableNumber = 1;
   for (const pairing of pairings) {
     if (pairing.isBye) {
-      await insertAwardedByeMatch(ctx, {
+      await materializeAwardedByeMatch(ctx, {
         tournament: args.tournament,
         phase: args.phase,
         roundId,

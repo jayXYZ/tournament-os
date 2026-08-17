@@ -4,6 +4,7 @@ import type { Doc, Id } from "../_generated/dataModel";
 import { env, type QueryCtx } from "../_generated/server";
 import { currentUserOrNull, getActiveMembership } from "./access";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "./batching";
+import { storedOutcomeForPlayer } from "./matchResults";
 import { participantPublicIdentity } from "./participants";
 import { MAX_MATCHES_PER_PLAYER, latestCompletedRound } from "./phases";
 import { parsePublicCode } from "./publicCodes";
@@ -468,7 +469,7 @@ export async function matchLogForRegistration(
         myGameWins: playerRow.gameWins ?? null,
         myGameLosses: playerRow.gameLosses ?? null,
         myGameDraws: playerRow.gameDraws ?? null,
-        result: matchResultForRow(match, playerRow),
+        result: await matchResultForRow(ctx, match, playerRow.playerId),
       };
     },
   );
@@ -482,17 +483,24 @@ export async function matchLogForRegistration(
   return history;
 }
 
-export function matchResultForRow(
+// A history row's result label: pending until the match completes, then the
+// player's stored outcome — the same revision line the Player View's match
+// card reads, so the two surfaces cannot disagree about an awarded result or
+// a double loss. One revision read per completed row, bounded by
+// MAX_MATCHES_PER_PLAYER like the loop's other per-row lookups. A completed
+// match without a revision is structurally unreachable (the result writer
+// completes the match and sets the pointer in one operation), so the
+// fallback is only honest typing.
+async function matchResultForRow(
+  ctx: QueryCtx,
   match: Doc<"tournamentMatches">,
-  playerRow: Doc<"tournamentMatchPlayers">,
+  registrationId: Id<"tournamentRegistrations">,
 ) {
   if (match.matchStatus !== "completed") {
     return "pending" as const;
   }
-  const gameWins = playerRow.gameWins ?? 0;
-  const gameLosses = playerRow.gameLosses ?? 0;
-  if (playerRow.isBye || gameWins > gameLosses) {
-    return "win" as const;
-  }
-  return gameWins < gameLosses ? ("loss" as const) : ("draw" as const);
+  return (
+    (await storedOutcomeForPlayer(ctx, match, registrationId)) ??
+    ("pending" as const)
+  );
 }
