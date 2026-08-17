@@ -2,7 +2,6 @@ import { v } from "convex/values";
 
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
-import type { MutationCtx } from "../_generated/server";
 import { internalMutation, mutation, query } from "../_generated/server";
 import {
   currentUserOrNull,
@@ -12,15 +11,12 @@ import {
 import { logAuditEvent } from "../model/auditLog";
 import { deleteTournamentOperationalDataBatch } from "../model/deletion";
 import {
-  SINGLE_ELIMINATION_FORMAT,
-  SWISS_FORMAT,
   phasesInOrder,
   requireCurrentPhase,
-  validPhaseInputs,
+  writePhases,
 } from "../model/phases";
 import { parsePublicCode } from "../model/publicCodes";
 import {
-  MAX_TOURNAMENT_PLAYERS,
   registrationForUser,
   syncRegistrationStartDatesBatch,
 } from "../model/registrations";
@@ -232,7 +228,7 @@ export const createTournament = mutation({
       playerCapacity: args.playerCapacity,
       format: args.format,
       decklistRequired: args.decklistRequired ?? false,
-      phases: validPhaseInputs([{ phaseOrder: 1, phaseRoundMode: "dynamic" }]),
+      phases: [{ phaseOrder: 1, phaseRoundMode: "dynamic" }],
     });
   },
 });
@@ -268,7 +264,7 @@ export const createTournamentWithPhases = mutation({
       format: args.format,
       isTestEvent: args.isTestEvent ?? false,
       decklistRequired: args.decklistRequired ?? false,
-      phases: validPhaseInputs(args.phases),
+      phases: args.phases,
     });
   },
 });
@@ -416,21 +412,6 @@ export const updateTournamentDetails = mutation({
   },
 });
 
-async function clearPlayerMeetingSnapshot(
-  ctx: MutationCtx,
-  phaseId: Id<"tournamentPhases">,
-) {
-  const seats = await ctx.db
-    .query("playerMeetingSeats")
-    .withIndex("by_tournamentPhaseId_and_tableNumber", (q) =>
-      q.eq("tournamentPhaseId", phaseId),
-    )
-    .take(MAX_TOURNAMENT_PLAYERS);
-  for (const seat of seats) {
-    await ctx.db.delete(seat._id);
-  }
-}
-
 export const updateTournamentPhases = mutation({
   args: {
     tournamentId: v.id("tournaments"),
@@ -451,86 +432,13 @@ export const updateTournamentPhases = mutation({
     const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
     requirePreStartEditable(tournament);
 
-    const validatedPhases = validPhaseInputs(
-      args.phases.map(({ phaseId: _phaseId, ...phase }) => phase),
-    );
-    const existingPhases = await phasesInOrder(ctx, args.tournamentId);
-    const existingById = new Map(
-      existingPhases.map((phase) => [phase._id, phase]),
-    );
-    const requestedExistingIds = new Set<Id<"tournamentPhases">>();
-
-    for (const requested of args.phases) {
-      if (requested.phaseId === undefined) {
-        continue;
-      }
-      if (requestedExistingIds.has(requested.phaseId)) {
-        throw new Error("Tournament phase IDs must be unique");
-      }
-      if (!existingById.has(requested.phaseId)) {
-        throw new Error("Tournament phase does not belong to this tournament");
-      }
-      requestedExistingIds.add(requested.phaseId);
-    }
-
     const now = Date.now();
-    for (const existing of existingPhases) {
-      if (requestedExistingIds.has(existing._id)) {
-        continue;
-      }
-      if (existing.playerMeetingStatus !== undefined) {
-        await clearPlayerMeetingSnapshot(ctx, existing._id);
-      }
-      await ctx.db.delete(existing._id);
-    }
-
-    const orderedPhaseIds: Id<"tournamentPhases">[] = [];
-    for (const [index, phase] of validatedPhases.entries()) {
-      const requested = args.phases[index];
-      const existing =
-        requested.phaseId === undefined
-          ? undefined
-          : existingById.get(requested.phaseId);
-      const resetMeeting =
-        existing?.playerMeetingStatus !== undefined &&
-        (phase.phaseOrder !== 1 ||
-          phase.phaseType === SINGLE_ELIMINATION_FORMAT ||
-          phase.playerMeeting !== true);
-
-      if (existing && resetMeeting) {
-        await clearPlayerMeetingSnapshot(ctx, existing._id);
-      }
-
-      const phaseFields = {
-        phaseName: `Phase ${phase.phaseOrder}`,
-        phaseType: phase.phaseType,
-        phaseOrder: phase.phaseOrder,
-        phaseStatus: "upcoming" as const,
-        phaseRoundMode: phase.phaseRoundMode,
-        phaseTotalRounds: phase.phaseTotalRounds,
-        bestOf: phase.bestOf,
-        phaseCurrentRound: undefined,
-        phaseCutoff: phase.phaseCutoff,
-        powerPairFinalRound:
-          phase.phaseType === SWISS_FORMAT ? true : undefined,
-        playerMeeting: phase.playerMeeting,
-        ...(resetMeeting ? { playerMeetingStatus: undefined } : {}),
-        updatedAt: now,
-      };
-
-      if (existing) {
-        await ctx.db.patch(existing._id, phaseFields);
-        orderedPhaseIds.push(existing._id);
-      } else {
-        orderedPhaseIds.push(
-          await ctx.db.insert("tournamentPhases", {
-            tournamentId: args.tournamentId,
-            ...phaseFields,
-          }),
-        );
-      }
-    }
-
+    const orderedPhaseIds = await writePhases(
+      ctx,
+      args.tournamentId,
+      args.phases,
+      now,
+    );
     await ctx.db.patch(args.tournamentId, { updatedAt: now });
     return orderedPhaseIds;
   },

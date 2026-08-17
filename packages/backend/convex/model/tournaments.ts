@@ -5,8 +5,8 @@ import { requireActiveMembership, requireCurrentUser } from "./access";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "./batching";
 import {
   MAX_MATCHES_PER_PLAYER,
-  createPhases,
-  type validPhaseInputs,
+  type TournamentPhaseInput,
+  writePhases,
 } from "./phases";
 import { nextPublicCode } from "./publicCodes";
 import { MAX_TOURNAMENT_PLAYERS, registrationForUser } from "./registrations";
@@ -178,7 +178,7 @@ export async function createTournament(
     format: TournamentFormat;
     isTestEvent: boolean;
     decklistRequired: boolean;
-    phases: ReturnType<typeof validPhaseInputs>;
+    phases: TournamentPhaseInput[];
   },
 ) {
   const { user } = await requireActiveMembership(ctx, args.organizationId);
@@ -202,7 +202,7 @@ export async function createTournament(
     updatedAt: now,
   });
 
-  await createPhases(ctx, tournamentId, args.phases, now);
+  await writePhases(ctx, tournamentId, args.phases, now);
   return tournamentId;
 }
 
