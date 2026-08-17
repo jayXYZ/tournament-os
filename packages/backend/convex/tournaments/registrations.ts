@@ -4,12 +4,9 @@ import { v } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import { mutation, query, type QueryCtx } from "../_generated/server";
 import { currentUserOrNull } from "../model/access";
-import { auditPlayerRef, logAuditEvent } from "../model/auditLog";
+import { logAuditEvent } from "../model/auditLog";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
-import {
-  concedeUnfinishedMatchOnDrop,
-  registrationsConcededByDrop,
-} from "../model/matchResults";
+import { registrationsConcededByDrop } from "../model/matchResults";
 import { clampPageSize } from "../model/pagination";
 import {
   ensureParticipantForUser,
@@ -24,9 +21,16 @@ import {
   registrationDisplayName,
   registrationDropEffect,
   registrationForUser,
+  registrationReinstateEffect,
   requireCapacityAvailable,
   requireRegistration,
 } from "../model/registrations";
+import {
+  cancelEntry,
+  dropPlayer,
+  reinstatePlayer,
+  restoreEntry,
+} from "../model/roster";
 import { ensureCurrentUser } from "../model/users";
 import {
   requireOrganizerAccess,
@@ -183,40 +187,19 @@ export const cancelMyRegistration = mutation({
     await enforceRateLimit(ctx, "cancelRegistration");
     const user = await ensureCurrentUser(ctx);
     const tournament = await requireTournament(ctx, args.tournamentId);
-    if (tournament.lifecycle !== "registration") {
-      throw new Error("Tournament is not open for registration");
-    }
     const registration = await registrationForUser(
       ctx,
       args.tournamentId,
       user._id,
     );
-    if (
-      !registration ||
-      registration.entryStatus !== "confirmed" ||
-      // Dropped rows are also accepted: a drop preserved by a round-one
-      // rewind still holds the player's seat, and cancelling releases it so
-      // they can later re-register if they change their mind.
-      (registration.participationStatus !== "active" &&
-        registration.participationStatus !== "dropped")
-    ) {
+    if (!registration) {
       throw new Error("Active registration not found");
     }
-
-    const now = Date.now();
-    await setRegistrationState(ctx, registration._id, {
-      entryStatus: "cancelled",
-      updatedAt: now,
-    });
-    await adjustConfirmedRegistrationCount(ctx, tournament, -1, now);
-    await logAuditEvent(ctx, {
-      tournamentId: tournament._id,
+    await cancelEntry(ctx, {
+      tournament,
+      registration,
       actor: user,
       actorRole: "player",
-      event: {
-        type: "registration_cancelled",
-        player: auditPlayerRef(registration),
-      },
     });
     return registration._id;
   },
@@ -378,7 +361,6 @@ export const dropRegistration = mutation({
     ) {
       throw new Error("Tournament is no longer accepting roster changes");
     }
-    const now = Date.now();
     const dropEffect = registrationDropEffect(
       tournament.lifecycle,
       registration,
@@ -386,36 +368,17 @@ export const dropRegistration = mutation({
     if (dropEffect === null) {
       throw new Error("Registration cannot be dropped in its current state");
     }
-    const beforePlay = dropEffect === "cancel";
-    await setRegistrationState(
-      ctx,
-      args.registrationId,
-      beforePlay
-        ? { entryStatus: "cancelled", updatedAt: now }
-        : {
-            entryStatus: "confirmed",
-            participationStatus: "dropped",
-            // setRegistrationState keeps an eliminated player's elimination
-            // record, so reinstating them cannot return them to active play.
-            updatedAt: now,
-          },
-    );
-    if (beforePlay) {
-      await adjustConfirmedRegistrationCount(ctx, tournament, -1, now);
-    }
-    await logAuditEvent(ctx, {
-      tournamentId: tournament._id,
-      actor: user,
-      actorRole: "organizer",
-      event: {
-        type: beforePlay ? "registration_cancelled" : "player_dropped",
-        player: auditPlayerRef(registration),
-      },
-    });
-    if (!beforePlay) {
-      // A mid-play drop during the player's own unfinished match concedes it
-      // (see CONTEXT.md "Concession"), recorded with the organizer as actor.
-      await concedeUnfinishedMatchOnDrop(ctx, {
+    // Before play the roster's drop action releases the seat; in play it
+    // drops the player (see registrationDropEffect) — one button, two verbs.
+    if (dropEffect === "cancel") {
+      await cancelEntry(ctx, {
+        tournament,
+        registration,
+        actor: user,
+        actorRole: "organizer",
+      });
+    } else {
+      await dropPlayer(ctx, {
         tournament,
         registration,
         actor: user,
@@ -434,63 +397,28 @@ export const reinstateRegistration = mutation({
       ctx,
       registration.tournamentId,
     );
-    const restoringCancelledEntry =
-      tournament.lifecycle === "registration" &&
-      registration.entryStatus === "cancelled";
-    // Dropped participants normally exist mid-play, but a round-one rewind
-    // preserves drops into the reopened registration lifecycle, so both
-    // lifecycles must offer the way back to active play.
-    const restoringDroppedParticipant =
-      (tournament.lifecycle === "registration" ||
-        tournament.lifecycle === "in_progress") &&
-      registration.entryStatus === "confirmed" &&
-      registration.participationStatus === "dropped";
-    if (!restoringCancelledEntry && !restoringDroppedParticipant) {
+    const reinstateEffect = registrationReinstateEffect(
+      tournament.lifecycle,
+      registration,
+    );
+    if (reinstateEffect === null) {
       throw new Error("Registration cannot be reinstated in its current state");
     }
-    if (restoringCancelledEntry) {
-      requireCapacityAvailable(tournament);
+    if (reinstateEffect === "restore") {
+      await restoreEntry(ctx, {
+        tournament,
+        registration,
+        actor: user,
+        actorRole: "organizer",
+      });
+    } else {
+      await reinstatePlayer(ctx, {
+        tournament,
+        registration,
+        actor: user,
+        actorRole: "organizer",
+      });
     }
-    const now = Date.now();
-    // Reinstating undoes only the drop: a player who was already
-    // eliminated when they were dropped returns to eliminated, never to
-    // active play mid-bracket. Before play there is no bracket — a rewind
-    // back to registration deletes every round and clears the eliminations it
-    // preserved — so the restoration is always to active.
-    const eliminatedByRoundId =
-      restoringDroppedParticipant && tournament.lifecycle === "in_progress"
-        ? registration.eliminatedByRoundId
-        : undefined;
-    await setRegistrationState(
-      ctx,
-      args.registrationId,
-      eliminatedByRoundId !== undefined
-        ? {
-            entryStatus: "confirmed",
-            participationStatus: "eliminated",
-            eliminatedByRoundId,
-            tournamentStartDate: tournament.startDate,
-            updatedAt: now,
-          }
-        : {
-            entryStatus: "confirmed",
-            participationStatus: "active",
-            tournamentStartDate: tournament.startDate,
-            updatedAt: now,
-          },
-    );
-    if (restoringCancelledEntry) {
-      await adjustConfirmedRegistrationCount(ctx, tournament, 1, now);
-    }
-    await logAuditEvent(ctx, {
-      tournamentId: tournament._id,
-      actor: user,
-      actorRole: "organizer",
-      event: {
-        type: "player_reinstated",
-        player: auditPlayerRef(registration),
-      },
-    });
     return args.registrationId;
   },
 });

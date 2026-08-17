@@ -11,6 +11,7 @@ import { expect, test } from "vitest";
 
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import { setRegistrationState } from "./model/participation";
 import schema from "./schema";
 import {
   insertLinkedParticipant,
@@ -417,6 +418,56 @@ test("a drop concedes the unpublished pairing, and the view warns first", async 
     throw new Error("Expected the opponent's pairings to be pending");
   }
   expect(opponentView.dropWouldConcede).toBe(false);
+});
+
+test("an eliminated player cannot self-drop, but the organizer can drop them", async () => {
+  const t = createConvexTest();
+  const { tournamentId, registrationIds } = await seedStartedTournament(t, 4);
+  // Stamp the elimination directly; producing one through a cut or bracket
+  // loss is covered in tournaments.convex.spec.ts, and this test is about
+  // who may drop the player afterwards.
+  const match = await matchForPlayer(t, tournamentId, 1, registrationIds[0]);
+  await t.run(async (ctx) => {
+    await setRegistrationState(ctx, registrationIds[0], {
+      entryStatus: "confirmed",
+      participationStatus: "eliminated",
+      eliminatedByRoundId: match.tournamentRoundId,
+    });
+  });
+
+  // Self-drop is active-only: an eliminated player's record is frozen and
+  // there is nothing left for them to leave.
+  await expect(
+    t
+      .withIdentity(playerIdentity(1))
+      .mutation(api.tournaments.player.dropSelf, { tournamentId }),
+  ).rejects.toThrow("Active registration not found");
+
+  // The organizer can still record the departure, and the elimination stamp
+  // survives the drop, so reinstating returns the player to eliminated —
+  // never to active play.
+  const organizer = t.withIdentity(organizerIdentity);
+  await organizer.mutation(api.tournaments.registrations.dropRegistration, {
+    registrationId: registrationIds[0],
+  });
+  expect(
+    await t.run(async (ctx) => ctx.db.get(registrationIds[0])),
+  ).toMatchObject({
+    participationStatus: "dropped",
+    eliminatedByRoundId: match.tournamentRoundId,
+  });
+  await organizer.mutation(
+    api.tournaments.registrations.reinstateRegistration,
+    {
+      registrationId: registrationIds[0],
+    },
+  );
+  expect(
+    await t.run(async (ctx) => ctx.db.get(registrationIds[0])),
+  ).toMatchObject({
+    participationStatus: "eliminated",
+    eliminatedByRoundId: match.tournamentRoundId,
+  });
 });
 
 function playerIdentity(playerNumber: number) {
