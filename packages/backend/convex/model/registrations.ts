@@ -209,6 +209,34 @@ export function registrationDropEffect(
     : "drop";
 }
 
+// What the organizer "reinstate" action would do to a registration right
+// now, or null when the action is unavailable — registrationDropEffect's
+// counterpart. Before play a cancelled entry is restored to a confirmed seat
+// (retaking one, so capacity applies — see restoreEntry in model/roster.ts);
+// a dropped participant is reinstated to play in either live lifecycle,
+// because a round-one rewind preserves drops into the reopened registration
+// lifecycle and both need the way back. The roster verbs enforce this rule
+// and reinstateRegistration routes on it.
+export function registrationReinstateEffect(
+  lifecycle: Doc<"tournaments">["lifecycle"],
+  registration: Doc<"tournamentRegistrations">,
+): "restore" | "reinstate" | null {
+  if (
+    lifecycle === "registration" &&
+    registration.entryStatus === "cancelled"
+  ) {
+    return "restore";
+  }
+  if (
+    (lifecycle === "registration" || lifecycle === "in_progress") &&
+    registration.entryStatus === "confirmed" &&
+    registration.participationStatus === "dropped"
+  ) {
+    return "reinstate";
+  }
+  return null;
+}
+
 // The tournament's historical field: every confirmed entrant, including
 // players who later dropped, were eliminated, or were disqualified. Cancelled,
 // rejected, pending, and waitlisted rows are excluded at the index boundary,

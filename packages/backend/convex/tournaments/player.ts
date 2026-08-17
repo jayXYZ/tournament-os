@@ -3,14 +3,10 @@ import { v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import { mutation, query } from "../_generated/server";
 import type { MutationCtx } from "../_generated/server";
-import { auditPlayerRef, logAuditEvent } from "../model/auditLog";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
-import {
-  applyMatchResult,
-  concedeUnfinishedMatchOnDrop,
-} from "../model/matchResults";
+import { applyMatchResult } from "../model/matchResults";
 import { latestCompletedRound, requirePhase } from "../model/phases";
-import { setRegistrationState } from "../model/participation";
+import { dropPlayer } from "../model/roster";
 import {
   MAX_TOURNAMENT_PLAYERS,
   playerVisibleParticipationStatus,
@@ -150,37 +146,15 @@ export const dropSelf = mutation({
     await enforceRateLimit(ctx, "dropSelf");
     const user = await ensureCurrentUser(ctx);
     const tournament = await requireTournament(ctx, args.tournamentId);
-    if (tournament.lifecycle !== "in_progress") {
-      throw new Error("Tournament is not in progress");
-    }
     const registration = await registrationForUser(
       ctx,
       args.tournamentId,
       user._id,
     );
-    if (
-      !registration ||
-      registration.entryStatus !== "confirmed" ||
-      registration.participationStatus !== "active"
-    ) {
+    if (!registration) {
       throw new Error("Active registration not found");
     }
-
-    const now = Date.now();
-    await setRegistrationState(ctx, registration._id, {
-      entryStatus: "confirmed",
-      participationStatus: "dropped",
-      updatedAt: now,
-    });
-    await logAuditEvent(ctx, {
-      tournamentId: tournament._id,
-      actor: user,
-      actorRole: "player",
-      event: { type: "player_dropped", player: auditPlayerRef(registration) },
-    });
-    // A drop during the player's own unfinished match concedes it (see
-    // CONTEXT.md "Concession").
-    await concedeUnfinishedMatchOnDrop(ctx, {
+    await dropPlayer(ctx, {
       tournament,
       registration,
       actor: user,
