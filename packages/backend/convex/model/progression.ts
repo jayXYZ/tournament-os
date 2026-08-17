@@ -19,15 +19,22 @@ import {
 import {
   SINGLE_ELIMINATION_FORMAT,
   SWISS_FORMAT,
+  advancePhaseCurrentRound,
+  cancelPhase,
+  completePhase,
+  openPlayerMeeting,
   phasesInOrder,
   playerMeetingPending,
   previousTournamentRound,
+  reopenPhaseAtRound,
   requirePhase,
   requireResolvedPhaseTotalRounds,
   resolvePhaseTotalRounds,
   roundNumberInPhase,
   selectCurrentPhase,
+  startPhase,
   swissPhaseByOrder,
+  unwindPhaseStart,
 } from "./phases";
 import {
   eliminateNonQualifiers,
@@ -607,23 +614,11 @@ export async function pairFirstRoundOfTournament(
           roundNumber: 1,
           registrations,
         });
-  const now = Date.now();
   await ctx.db.patch(tournament._id, {
     lifecycle: "in_progress",
-    updatedAt: now,
+    updatedAt: Date.now(),
   });
-  await ctx.db.patch(playablePhase._id, {
-    phaseStatus: "in_progress",
-    phaseCurrentRound: roundId,
-    // Pairing round 1 ends any live player meeting, and re-completes a
-    // snapshot a round-1 rewind had stamped "superseded". Keyed on the
-    // status, not the setting, so a meeting started before the flag was
-    // frozen still closes cleanly.
-    ...(phase.playerMeetingStatus !== undefined
-      ? { playerMeetingStatus: "completed" as const }
-      : {}),
-    updatedAt: now,
-  });
+  await startPhase(ctx, phase, roundId);
   return roundId;
 }
 
@@ -711,10 +706,7 @@ async function executeCompleteRound(
     });
   }
   if (roundInPhase >= requireResolvedPhaseTotalRounds(phase)) {
-    await ctx.db.patch(phase._id, {
-      phaseStatus: "completed",
-      updatedAt: now,
-    });
+    await completePhase(ctx, phase._id);
   }
   await logAuditEvent(ctx, {
     tournamentId: tournament._id,
@@ -823,10 +815,7 @@ async function continuePhaseWithNextRound(
     });
     playerCount = registrations.length;
   }
-  await ctx.db.patch(phase._id, {
-    phaseCurrentRound: roundId,
-    updatedAt: Date.now(),
-  });
+  await advancePhaseCurrentRound(ctx, phase._id, roundId);
   return { roundId, playerCount };
 }
 
@@ -912,17 +901,7 @@ async function startNextPhaseFirstRound(
     // bracket losers.
     await eliminateNonQualifiers(ctx, tournament, appliedCut, currentRound._id);
   }
-  await ctx.db.patch(nextPhase._id, {
-    phaseStatus: "in_progress",
-    phaseCurrentRound: roundId,
-    // Pairing the phase's first round ends any live player meeting, and a
-    // "superseded" snapshot the cut above just consumed goes back to
-    // "completed" so a later rewind can supersede it again.
-    ...(nextPhase.playerMeetingStatus !== undefined
-      ? { playerMeetingStatus: "completed" as const }
-      : {}),
-    updatedAt: Date.now(),
-  });
+  await startPhase(ctx, nextPhase, roundId);
   return { roundId, playerCount: registrations.length };
 }
 
@@ -950,19 +929,12 @@ async function executeCompleteTournament(
   },
 ): Promise<void> {
   for (const upcomingPhase of step.skippedPhases) {
-    await ctx.db.patch(upcomingPhase._id, {
-      phaseStatus: "cancelled",
-      updatedAt: Date.now(),
-    });
+    await cancelPhase(ctx, upcomingPhase._id);
   }
-  const now = Date.now();
-  await ctx.db.patch(step.phase._id, {
-    phaseStatus: "completed",
-    updatedAt: now,
-  });
+  await completePhase(ctx, step.phase._id);
   await ctx.db.patch(tournament._id, {
     lifecycle: "completed",
-    updatedAt: now,
+    updatedAt: Date.now(),
   });
   await logAuditEvent(ctx, {
     tournamentId: tournament._id,
@@ -1095,46 +1067,20 @@ export async function rewindLatestRound(
       roundStatus: "in_progress",
       updatedAt: now,
     });
-    await ctx.db.patch(previousPhase._id, {
-      phaseStatus: "in_progress",
-      phaseCurrentRound: previousRound._id,
-      updatedAt: now,
-    });
+    await reopenPhaseAtRound(ctx, previousPhase._id, previousRound._id);
     if (previousPhase._id !== phase._id) {
-      // Unwinding the phase's start. The meeting really happened and its
-      // seats stay on disk, but the standings they were drawn from are
-      // being deleted a few lines up, so the snapshot no longer proves who
-      // belongs in the field. Stamp it "superseded" — the explicit marker
-      // cutoffPartitionForNextPhase reads to re-draw the cut boundary from
-      // the corrected standings instead of taking the seats verbatim.
-      // Re-pairing the phase's first round stamps it back to "completed".
-      await ctx.db.patch(phase._id, {
-        phaseStatus: "upcoming",
-        phaseCurrentRound: undefined,
-        ...(phase.playerMeetingStatus === "completed"
-          ? { playerMeetingStatus: "superseded" as const }
-          : {}),
-        updatedAt: now,
-      });
+      // The reopened round belongs to the previous phase, so the rewind
+      // crossed a phase boundary and the current phase's start unwinds too.
+      await unwindPhaseStart(ctx, phase);
     }
     await ctx.db.patch(tournament._id, {
       roundTimer: undefined,
       updatedAt: now,
     });
   } else {
-    await ctx.db.patch(phase._id, {
-      phaseStatus: "upcoming",
-      phaseCurrentRound: undefined,
-      // Same supersede stamp as the cross-phase unwind above. No cut ever
-      // reads an order-1 phase, but the stamp keeps the state machine
-      // uniform: "completed" always means the phase's first round is
-      // paired, and startTournament re-completes the snapshot when round 1
-      // is paired again.
-      ...(phase.playerMeetingStatus === "completed"
-        ? { playerMeetingStatus: "superseded" as const }
-        : {}),
-      updatedAt: now,
-    });
+    // Round one rewound: no round remains, so the phase's start unwinds and
+    // the tournament reopens registration.
+    await unwindPhaseStart(ctx, phase);
     await ctx.db.patch(tournament._id, {
       lifecycle: "registration",
       roundTimer: undefined,
@@ -1260,10 +1206,7 @@ export async function startPlayerMeeting(
       updatedAt: now,
     });
   }
-  await ctx.db.patch(phase._id, {
-    playerMeetingStatus: "in_progress",
-    updatedAt: now,
-  });
+  await openPlayerMeeting(ctx, phase._id);
   await logAuditEvent(ctx, {
     tournamentId: tournament._id,
     actor: user,

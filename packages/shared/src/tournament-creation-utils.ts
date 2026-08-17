@@ -54,6 +54,12 @@ export type TournamentCreationPhasePayload = {
 // structures. The backend validates against this same constant.
 export const MAX_TOURNAMENT_PHASES = 8;
 
+// The cut a phase feeding a playoff falls back to when none is configured
+// (CONTEXT.md "Cut": into single elimination the default is a top-N cut).
+// One constant for both sides: the creation form pre-fills it and the
+// backend applies it to an omitted cut (model/phases.ts).
+export const DEFAULT_PLAYOFF_CUT_PLAYER_COUNT = 8;
+
 export function createDefaultTournamentCreationPhase(
   id: string,
 ): TournamentCreationPhaseForm {
@@ -64,7 +70,7 @@ export function createDefaultTournamentCreationPhase(
     phaseTotalRounds: "3",
     bestOf: String(DEFAULT_BEST_OF),
     phaseCutoffKind: "none",
-    phaseCutoffValue: "8",
+    phaseCutoffValue: String(DEFAULT_PLAYOFF_CUT_PLAYER_COUNT),
     playerMeeting: false,
   };
 }
@@ -117,7 +123,7 @@ function withPlayoffCutDefaults(
       ? {
           ...phase,
           phaseCutoffKind: "top_X_players" as const,
-          phaseCutoffValue: "8",
+          phaseCutoffValue: String(DEFAULT_PLAYOFF_CUT_PLAYER_COUNT),
         }
       : phase,
   );

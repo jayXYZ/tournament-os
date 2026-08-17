@@ -4,7 +4,10 @@ import {
   isBestOf,
   type BestOf,
 } from "@tournament-os/shared/match-structure";
-import { MAX_TOURNAMENT_PHASES } from "@tournament-os/shared/tournament-creation-utils";
+import {
+  DEFAULT_PLAYOFF_CUT_PLAYER_COUNT,
+  MAX_TOURNAMENT_PHASES,
+} from "@tournament-os/shared/tournament-creation-utils";
 
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
@@ -15,7 +18,8 @@ export const SINGLE_ELIMINATION_FORMAT = "single_elimination";
 
 // The cut a phase feeding a playoff falls back to when none is configured
 // (CONTEXT.md "Cut": into single elimination the default is a top-N cut).
-export const DEFAULT_PLAYOFF_CUT_PLAYER_COUNT = 8;
+// Shared with the creation form, which pre-fills the same default.
+export { DEFAULT_PLAYOFF_CUT_PLAYER_COUNT };
 
 export const BRACKET_REQUIRES_TWO_PLAYERS =
   "A playoff needs at least two entering players";
@@ -296,28 +300,250 @@ export async function meetingSeats(
     .take(MAX_TOURNAMENT_PLAYERS);
 }
 
-export async function createPhases(
+export type TournamentPhaseWriteInput = TournamentPhaseInput & {
+  // An existing phase to reconcile into this slot; omitted for a new phase.
+  phaseId?: Id<"tournamentPhases">;
+};
+
+// Deletes a phase's player-meeting seating snapshot. Only reshaping a phase
+// through writePhases erases a meeting; the status transitions below merely
+// re-stamp one.
+async function clearPlayerMeetingSnapshot(
+  ctx: MutationCtx,
+  phaseId: Id<"tournamentPhases">,
+) {
+  for (const seat of await meetingSeats(ctx, phaseId)) {
+    await ctx.db.delete(seat._id);
+  }
+}
+
+// The one writer of the tournamentPhases document shape. Reconciles the
+// requested phase list against what exists for the tournament: validates the
+// inputs (validPhaseInputs), deletes existing phases the request no longer
+// names, patches the ones it keeps, and inserts the new ones — every path
+// writing the same full shape, stated once below. Creation is simply the
+// empty reconciliation (no existing phases, no phaseIds), so the tournament
+// creators, the pre-start phase editor, and test seeding can never drift
+// apart on what a phase document looks like. Returns the phase ids in play
+// order.
+export async function writePhases(
   ctx: MutationCtx,
   tournamentId: Id<"tournaments">,
-  phases: ReturnType<typeof validPhaseInputs>,
+  inputs: TournamentPhaseWriteInput[],
   now: number,
-) {
-  for (const phase of phases) {
-    await ctx.db.insert("tournamentPhases", {
-      tournamentId,
+): Promise<Id<"tournamentPhases">[]> {
+  const validated = validPhaseInputs(
+    inputs.map(({ phaseId: _phaseId, ...phase }) => phase),
+  );
+  const existingPhases = await phasesInOrder(ctx, tournamentId);
+  const existingById = new Map(
+    existingPhases.map((phase) => [phase._id, phase]),
+  );
+  const requestedExistingIds = new Set<Id<"tournamentPhases">>();
+  for (const input of inputs) {
+    if (input.phaseId === undefined) {
+      continue;
+    }
+    if (requestedExistingIds.has(input.phaseId)) {
+      throw new Error("Tournament phase IDs must be unique");
+    }
+    if (!existingById.has(input.phaseId)) {
+      throw new Error("Tournament phase does not belong to this tournament");
+    }
+    requestedExistingIds.add(input.phaseId);
+  }
+
+  for (const existing of existingPhases) {
+    if (requestedExistingIds.has(existing._id)) {
+      continue;
+    }
+    if (existing.playerMeetingStatus !== undefined) {
+      await clearPlayerMeetingSnapshot(ctx, existing._id);
+    }
+    await ctx.db.delete(existing._id);
+  }
+
+  const orderedPhaseIds: Id<"tournamentPhases">[] = [];
+  for (const [index, phase] of validated.entries()) {
+    const existing =
+      inputs[index].phaseId === undefined
+        ? undefined
+        : existingById.get(inputs[index].phaseId);
+    // The meeting-snapshot reset rule, stated once: reshaping a phase erases
+    // its meeting unless the new shape still holds the same one — only a
+    // phase-1 Swiss phase with the meeting enabled can keep a snapshot.
+    const resetMeeting =
+      existing?.playerMeetingStatus !== undefined &&
+      (phase.phaseOrder !== 1 ||
+        phase.phaseType === SINGLE_ELIMINATION_FORMAT ||
+        phase.playerMeeting !== true);
+    if (existing && resetMeeting) {
+      await clearPlayerMeetingSnapshot(ctx, existing._id);
+    }
+
+    const phaseFields = {
       phaseName: `Phase ${phase.phaseOrder}`,
       phaseType: phase.phaseType,
       phaseOrder: phase.phaseOrder,
-      phaseStatus: "upcoming",
+      phaseStatus: "upcoming" as const,
       phaseRoundMode: phase.phaseRoundMode,
       phaseTotalRounds: phase.phaseTotalRounds,
       bestOf: phase.bestOf,
+      phaseCurrentRound: undefined,
       phaseCutoff: phase.phaseCutoff,
       powerPairFinalRound: phase.phaseType === SWISS_FORMAT ? true : undefined,
       playerMeeting: phase.playerMeeting,
+      ...(resetMeeting ? { playerMeetingStatus: undefined } : {}),
       updatedAt: now,
-    });
+    };
+    if (existing) {
+      await ctx.db.patch(existing._id, phaseFields);
+      orderedPhaseIds.push(existing._id);
+    } else {
+      orderedPhaseIds.push(
+        await ctx.db.insert("tournamentPhases", {
+          tournamentId,
+          ...phaseFields,
+        }),
+      );
+    }
   }
+  return orderedPhaseIds;
+}
+
+// ── Phase status transitions ─────────────────────────────────────────────
+//
+// The phase state machine, in one place (the validators document the same
+// shape from the schema side; cutoffs.ts consumes it):
+//
+//   phaseStatus       upcoming ─startPhase→ in_progress ─completePhase→
+//                     completed; upcoming ─cancelPhase→ cancelled (skipped
+//                     by early tournament completion). Rewinds run it
+//                     backward: unwindPhaseStart returns a started phase to
+//                     upcoming, reopenPhaseAtRound returns the phase owning
+//                     a reopened round to in_progress.
+//
+//   playerMeetingStatus  undefined ─openPlayerMeeting→ "in_progress";
+//                     any defined status ─startPhase→ "completed" (pairing
+//                     the phase's first round is what completes a meeting);
+//                     "completed" ─unwindPhaseStart→ "superseded" (the
+//                     standings the seats were drawn from are gone, so the
+//                     cut boundary must be re-drawn); any ─writePhases
+//                     reshape→ undefined, seats deleted.
+//
+// Every phase status stamp in the app is one of these transitions;
+// progression orchestrates around them but never patches a phase document
+// directly.
+
+// Puts a phase into play, anchored to its freshly paired first round.
+// Pairing round 1 also ends any live player meeting, and re-completes a
+// snapshot a rewind had stamped "superseded" (a cut may just have consumed
+// it) — keyed on the status, not the setting, so a meeting started before
+// the flag was frozen still closes cleanly, and a later rewind can
+// supersede the snapshot again.
+export async function startPhase(
+  ctx: MutationCtx,
+  phase: Doc<"tournamentPhases">,
+  roundId: Id<"tournamentRounds">,
+) {
+  await ctx.db.patch(phase._id, {
+    phaseStatus: "in_progress",
+    phaseCurrentRound: roundId,
+    ...(phase.playerMeetingStatus !== undefined
+      ? { playerMeetingStatus: "completed" as const }
+      : {}),
+    updatedAt: Date.now(),
+  });
+}
+
+// Advances the phase's current-round pointer to a newly paired round.
+export async function advancePhaseCurrentRound(
+  ctx: MutationCtx,
+  phaseId: Id<"tournamentPhases">,
+  roundId: Id<"tournamentRounds">,
+) {
+  await ctx.db.patch(phaseId, {
+    phaseCurrentRound: roundId,
+    updatedAt: Date.now(),
+  });
+}
+
+// Marks a phase's play finished. phaseCurrentRound keeps pointing at its
+// final round — that is how previousTournamentRound crosses phase
+// boundaries.
+export async function completePhase(
+  ctx: MutationCtx,
+  phaseId: Id<"tournamentPhases">,
+) {
+  await ctx.db.patch(phaseId, {
+    phaseStatus: "completed",
+    updatedAt: Date.now(),
+  });
+}
+
+// Cancels a phase that will never be played: early tournament completion
+// skips every remaining upcoming phase, since nobody advances through a
+// skipped one.
+export async function cancelPhase(
+  ctx: MutationCtx,
+  phaseId: Id<"tournamentPhases">,
+) {
+  await ctx.db.patch(phaseId, {
+    phaseStatus: "cancelled",
+    updatedAt: Date.now(),
+  });
+}
+
+// A rewind reopened one of the phase's rounds: play anchors back to it, and
+// a phase that had been stamped completed is in progress again.
+export async function reopenPhaseAtRound(
+  ctx: MutationCtx,
+  phaseId: Id<"tournamentPhases">,
+  roundId: Id<"tournamentRounds">,
+) {
+  await ctx.db.patch(phaseId, {
+    phaseStatus: "in_progress",
+    phaseCurrentRound: roundId,
+    updatedAt: Date.now(),
+  });
+}
+
+// Unwinds a phase's start: a rewind deleted the phase's only round, so it is
+// upcoming again with no current round. A "completed" meeting snapshot goes
+// to "superseded" — the meeting really happened and its seats stay on disk,
+// but the standings they were drawn from are deleted in the same
+// transaction, so the snapshot no longer proves who belongs in the field.
+// The stamp is the explicit marker cutoffPartitionForNextPhase reads to
+// re-draw the cut boundary from the corrected standings instead of taking
+// the seats verbatim; re-pairing the phase's first round (startPhase) stamps
+// it back to "completed". Uniform for a first phase too: no cut ever reads
+// an order-1 phase, but "completed" must always mean the phase's first
+// round is paired.
+export async function unwindPhaseStart(
+  ctx: MutationCtx,
+  phase: Doc<"tournamentPhases">,
+) {
+  await ctx.db.patch(phase._id, {
+    phaseStatus: "upcoming",
+    phaseCurrentRound: undefined,
+    ...(phase.playerMeetingStatus === "completed"
+      ? { playerMeetingStatus: "superseded" as const }
+      : {}),
+    updatedAt: Date.now(),
+  });
+}
+
+// Opens the phase's player meeting once its seats are on disk (see
+// startPlayerMeeting in model/progression.ts): the live meeting takes over
+// the play surface until the phase's first round is paired.
+export async function openPlayerMeeting(
+  ctx: MutationCtx,
+  phaseId: Id<"tournamentPhases">,
+) {
+  await ctx.db.patch(phaseId, {
+    playerMeetingStatus: "in_progress",
+    updatedAt: Date.now(),
+  });
 }
 
 export async function resolvePhaseTotalRounds(

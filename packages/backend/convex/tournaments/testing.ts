@@ -1,7 +1,5 @@
 import { v } from "convex/values";
 
-import { DEFAULT_BEST_OF } from "@tournament-os/shared/match-structure";
-
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
@@ -16,6 +14,7 @@ import {
   requireResolvedPhaseTotalRounds,
   requireSwissPhase,
   validRoundCount,
+  writePhases,
 } from "../model/phases";
 import { advance, pairFirstRoundOfTournament } from "../model/progression";
 import { activeRegistrations } from "../model/registrations";
@@ -89,19 +88,18 @@ export const createTestTournament = mutation({
       updatedAt: now,
     });
 
-    const phaseId = await ctx.db.insert("tournamentPhases", {
+    const [phaseId] = await writePhases(
+      ctx,
       tournamentId,
-      phaseName: "Phase 1",
-      phaseType: SWISS_FORMAT,
-      phaseOrder: 1,
-      phaseStatus: "upcoming",
-      phaseRoundMode: "fixed",
-      phaseTotalRounds: roundsToGenerate,
-      bestOf: DEFAULT_BEST_OF,
-      phaseCutoff: null,
-      powerPairFinalRound: true,
-      updatedAt: now,
-    });
+      [
+        {
+          phaseOrder: 1,
+          phaseRoundMode: "fixed",
+          phaseTotalRounds: roundsToGenerate,
+        },
+      ],
+      now,
+    );
     await ctx.db.insert("tournamentTestConfigs", {
       tournamentId,
       dummyPlayerCount,
@@ -222,19 +220,18 @@ async function finishTestTournamentReset(
   args: TestTournamentResetArgs,
 ) {
   const now = Date.now();
-  await ctx.db.insert("tournamentPhases", {
-    tournamentId: args.tournamentId,
-    phaseName: "Phase 1",
-    phaseType: SWISS_FORMAT,
-    phaseOrder: 1,
-    phaseStatus: "upcoming",
-    phaseRoundMode: "fixed",
-    phaseTotalRounds: args.roundsToGenerate,
-    bestOf: DEFAULT_BEST_OF,
-    phaseCutoff: null,
-    powerPairFinalRound: true,
-    updatedAt: now,
-  });
+  await writePhases(
+    ctx,
+    args.tournamentId,
+    [
+      {
+        phaseOrder: 1,
+        phaseRoundMode: "fixed",
+        phaseTotalRounds: args.roundsToGenerate,
+      },
+    ],
+    now,
+  );
   await ctx.db.insert("tournamentTestConfigs", {
     tournamentId: args.tournamentId,
     dummyPlayerCount: args.dummyPlayerCount,
