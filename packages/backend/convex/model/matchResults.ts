@@ -10,7 +10,7 @@ import {
   logAuditEvent,
 } from "./auditLog";
 import { currentPhaseOrNull, requireValidMatchResult } from "./phases";
-import { matchPointsForResult } from "./standings";
+import { BYE_MATCH_POINTS, matchPointsForResult } from "./standings";
 import {
   matchPlayers,
   playerMatchInRound,
@@ -127,8 +127,6 @@ export async function applyMatchResult(
     policy.kind === "organizer" ? existingResultLines(match, players) : null;
   const now = Date.now();
 
-  // The immutable adjudication record; the row patches below are the
-  // denormalized copy standings and pairings read.
   const outcomeOf = (points: number) =>
     points === 3
       ? ("win" as const)
@@ -139,63 +137,50 @@ export async function applyMatchResult(
     policy.kind === "concession"
       ? ("concession" as const)
       : ("played" as const);
-  const revisionId = await ctx.db.insert("matchResultRevisions", {
-    tournamentId: match.tournamentId,
-    tournamentMatchId: match._id,
+  await recordCurrentResult(ctx, {
+    match,
     kind,
-    lines: [
+    seats: [
       {
-        registrationId: playerOne.playerId,
-        outcome: outcomeOf(playerOnePoints),
-        matchPointsEarned: playerOnePoints,
-        gameWins: args.playerOneGameWins,
-        gameLosses: args.playerTwoGameWins,
-        gameDraws: args.gameDraws,
+        rowId: playerOne._id,
+        line: {
+          registrationId: playerOne.playerId,
+          outcome: outcomeOf(playerOnePoints),
+          matchPointsEarned: playerOnePoints,
+          gameWins: args.playerOneGameWins,
+          gameLosses: args.playerTwoGameWins,
+          gameDraws: args.gameDraws,
+        },
       },
       {
-        registrationId: playerTwo.playerId,
-        outcome: outcomeOf(playerTwoPoints),
-        matchPointsEarned: playerTwoPoints,
-        gameWins: args.playerTwoGameWins,
-        gameLosses: args.playerOneGameWins,
-        gameDraws: args.gameDraws,
+        rowId: playerTwo._id,
+        line: {
+          registrationId: playerTwo.playerId,
+          outcome: outcomeOf(playerTwoPoints),
+          matchPointsEarned: playerTwoPoints,
+          gameWins: args.playerTwoGameWins,
+          gameLosses: args.playerOneGameWins,
+          gameDraws: args.gameDraws,
+        },
       },
     ],
     ...(policy.kind === "simulation"
       ? {}
       : {
-          actorUserId: policy.actor._id,
-          actorRole:
-            policy.kind === "concession" ? policy.actorRole : policy.kind,
+          actor: {
+            actorUserId: policy.actor._id,
+            actorRole:
+              policy.kind === "concession" ? policy.actorRole : policy.kind,
+          },
         }),
     ...(policy.kind === "organizer" && policy.note !== undefined
       ? { note: policy.note }
       : {}),
-  });
-
-  await ctx.db.patch(playerOne._id, {
-    matchPointsEarned: playerOnePoints,
-    gameWins: args.playerOneGameWins,
-    gameLosses: args.playerTwoGameWins,
-    gameDraws: args.gameDraws,
-    updatedAt: now,
-  });
-  await ctx.db.patch(playerTwo._id, {
-    matchPointsEarned: playerTwoPoints,
-    gameWins: args.playerTwoGameWins,
-    gameLosses: args.playerOneGameWins,
-    gameDraws: args.gameDraws,
-    updatedAt: now,
-  });
-  await ctx.db.patch(match._id, {
-    matchStatus: "completed",
-    currentResultRevisionId: revisionId,
-    currentResultKind: kind,
     // Only a player self-report carries a reporter; an organizer result
     // clears it, superseding any report awaiting confirmation.
     reportedByRegistrationId:
       policy.kind === "player" ? policy.reporterRegistrationId : undefined,
-    updatedAt: now,
+    now,
   });
 
   if (policy.kind === "simulation") {
@@ -236,6 +221,138 @@ export async function applyMatchResult(
           : { type: "match_result_reported", ...eventBase },
   });
   return "applied";
+}
+
+// One line of a result revision: a player's stored side of the outcome.
+type ResultLine = Doc<"matchResultRevisions">["lines"][number];
+
+// The one writer of a match's current result: the immutable revision plus
+// every denormalized copy — the per-seat stats on the player rows (the hot
+// read model for standings and pairings) and the match's completion with its
+// currentResultRevisionId/currentResultKind pointer pair, which the schema
+// requires written together. Both result writers (applyMatchResult and the
+// pairing-time materializeAwardedByeMatch) funnel through here, so the
+// pointer-pair invariant is structural rather than a convention upheld in
+// two files.
+async function recordCurrentResult(
+  ctx: MutationCtx,
+  args: {
+    match: Pick<Doc<"tournamentMatches">, "_id" | "tournamentId">;
+    kind: Doc<"matchResultRevisions">["kind"];
+    // One entry per seat, pairing each player row with its revision line;
+    // the revision stores the lines in this order.
+    seats: Array<{ rowId: Id<"tournamentMatchPlayers">; line: ResultLine }>;
+    // Absent for system-written revisions: byes at pairing time and seeded
+    // test simulation.
+    actor?: { actorUserId: Id<"users">; actorRole: AuditActorRole };
+    note?: string;
+    reportedByRegistrationId?: Id<"tournamentRegistrations">;
+    now: number;
+  },
+) {
+  const revisionId = await ctx.db.insert("matchResultRevisions", {
+    tournamentId: args.match.tournamentId,
+    tournamentMatchId: args.match._id,
+    kind: args.kind,
+    lines: args.seats.map((seat) => seat.line),
+    ...(args.actor ?? {}),
+    ...(args.note !== undefined ? { note: args.note } : {}),
+  });
+  for (const { rowId, line } of args.seats) {
+    await ctx.db.patch(rowId, {
+      matchPointsEarned: line.matchPointsEarned,
+      gameWins: line.gameWins,
+      gameLosses: line.gameLosses,
+      gameDraws: line.gameDraws,
+      updatedAt: args.now,
+    });
+  }
+  await ctx.db.patch(args.match._id, {
+    matchStatus: "completed",
+    currentResultRevisionId: revisionId,
+    currentResultKind: args.kind,
+    reportedByRegistrationId: args.reportedByRegistrationId,
+    updatedAt: args.now,
+  });
+  return revisionId;
+}
+
+// A Bye is an Awarded Result: the phase's required game wins to zero (2–0 in
+// best-of-3), materialized whole at pairing time — the match, its single
+// seat, and a system-awarded "bye" revision with no actor and deliberately
+// no audit event (nobody took an action). One writer for both the Swiss bye
+// and the bracket walkover, which ADR 0001 records as a Bye.
+export async function materializeAwardedByeMatch(
+  ctx: MutationCtx,
+  args: {
+    tournament: Doc<"tournaments">;
+    phase: Doc<"tournamentPhases">;
+    roundId: Id<"tournamentRounds">;
+    registration: Doc<"tournamentRegistrations">;
+    // The bye's seat-pair position in a bracket round; absent for Swiss byes.
+    bracketSeat?: number;
+    now: number;
+  },
+) {
+  const matchId = await ctx.db.insert("tournamentMatches", {
+    tournamentId: args.tournament._id,
+    tournamentPhaseId: args.phase._id,
+    tournamentRoundId: args.roundId,
+    tableNumber: undefined,
+    bracketSeat: args.bracketSeat,
+    matchStatus: "upcoming",
+    updatedAt: args.now,
+  });
+  const rowId = await ctx.db.insert("tournamentMatchPlayers", {
+    tournamentMatchId: matchId,
+    playerId: args.registration._id,
+    playerName: args.registration.playerName,
+    isBye: true,
+    updatedAt: args.now,
+  });
+  // Inserted bare and completed by the shared tail, so the bye's result
+  // facts have the same single writer as every reported result.
+  await recordCurrentResult(ctx, {
+    match: { _id: matchId, tournamentId: args.tournament._id },
+    kind: "bye",
+    seats: [
+      {
+        rowId,
+        line: {
+          registrationId: args.registration._id,
+          outcome: "win",
+          matchPointsEarned: BYE_MATCH_POINTS,
+          gameWins: requiredGameWins(args.phase.bestOf),
+          gameLosses: 0,
+          gameDraws: 0,
+        },
+      },
+    ],
+    now: args.now,
+  });
+  return matchId;
+}
+
+// A player's side of a match's recorded result, read from the stored
+// revision line — outcomes are stored rather than re-derived from game
+// counts (see matchResultLineValidator) so awarded results and double
+// losses stay faithful. Null while the match carries no result. Every
+// surface that labels a result for a player (the Player View's match card,
+// the match log) reads through here, so no two of them can disagree about
+// what a revision says.
+export async function storedOutcomeForPlayer(
+  ctx: QueryCtx,
+  match: Doc<"tournamentMatches">,
+  registrationId: Id<"tournamentRegistrations">,
+): Promise<ResultLine["outcome"] | null> {
+  if (!match.currentResultRevisionId) {
+    return null;
+  }
+  const revision = await ctx.db.get(match.currentResultRevisionId);
+  return (
+    revision?.lines.find((line) => line.registrationId === registrationId)
+      ?.outcome ?? null
+  );
 }
 
 // A drop's match consequence (see CONTEXT.md "Drop" and "Concession"): a

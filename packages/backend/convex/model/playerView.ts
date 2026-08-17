@@ -6,7 +6,7 @@ import {
   roundNumberInPhase,
   selectCurrentPhase,
 } from "./phases";
-import { dropConcedesMatch } from "./matchResults";
+import { dropConcedesMatch, storedOutcomeForPlayer } from "./matchResults";
 import { participantPublicIdentity } from "./participants";
 import { playerVisibleRegistration } from "./registrations";
 import {
@@ -187,16 +187,10 @@ export async function currentMatchForPlayer(
     };
   }
 
-  // The player's side of the recorded result, read from the stored revision
-  // line rather than re-derived from game counts (see matchResultLineValidator:
-  // outcomes are stored so awarded results and double losses stay faithful).
-  let outcome: "win" | "loss" | "draw" | null = null;
-  if (match.currentResultRevisionId) {
-    const revision = await ctx.db.get(match.currentResultRevisionId);
-    outcome =
-      revision?.lines.find((line) => line.registrationId === registration._id)
-        ?.outcome ?? null;
-  }
+  // The player's side of the recorded result — the shared stored-outcome
+  // reader, never a re-derivation from game counts (see
+  // storedOutcomeForPlayer in model/matchResults.ts).
+  const outcome = await storedOutcomeForPlayer(ctx, match, registration._id);
 
   return {
     kind: "match" as const,
