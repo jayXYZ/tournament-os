@@ -45,6 +45,7 @@ async function seedPublicTournament(
       isTestEvent: false,
       autoPublishPairings: false,
       decklistRequired: false,
+      registrationRequiresApproval: false,
       confirmedRegistrationCount: 0,
       updatedAt: Date.now(),
     });

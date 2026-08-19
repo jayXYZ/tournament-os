@@ -30,6 +30,7 @@ test("listUpcomingPublic returns future public tournaments in start date order",
       isTestEvent: false,
       autoPublishPairings: false,
       decklistRequired: false,
+      registrationRequiresApproval: false,
       confirmedRegistrationCount: 0,
       updatedAt: now,
     };
@@ -119,6 +120,7 @@ test("getPublicTournament hides private and unpublished events and reports regis
       isTestEvent: false,
       autoPublishPairings: false,
       decklistRequired: false,
+      registrationRequiresApproval: false,
       confirmedRegistrationCount: 0,
       updatedAt: now,
     };
@@ -273,6 +275,7 @@ test("getPublicTournament keeps private events resolvable for registered players
       isTestEvent: false,
       autoPublishPairings: false,
       decklistRequired: false,
+      registrationRequiresApproval: false,
       confirmedRegistrationCount: 1,
       updatedAt: now,
       name: "Private Live Event",
@@ -398,6 +401,7 @@ test("registerSelf lets a cancelled player rejoin a private event but admits no 
       isTestEvent: false,
       autoPublishPairings: false,
       decklistRequired: false,
+      registrationRequiresApproval: false,
       confirmedRegistrationCount: 0,
       updatedAt: now,
       name: "Private Invitational",
@@ -498,6 +502,7 @@ test("listMyTournaments returns every confirmed seat for ongoing and upcoming ev
       isTestEvent: false,
       autoPublishPairings: false,
       decklistRequired: false,
+      registrationRequiresApproval: false,
       confirmedRegistrationCount: 0,
       updatedAt: now,
     };
@@ -648,6 +653,7 @@ test("listUpcomingForOrganization returns active future tournaments for one orga
       isTestEvent: false,
       autoPublishPairings: false,
       decklistRequired: false,
+      registrationRequiresApproval: false,
       confirmedRegistrationCount: 0,
       updatedAt: now,
     };

@@ -25,11 +25,11 @@ import {
 // write side: confirmed and cancelled flow through register/cancel/restore,
 // and the review states route through the organizer verbs (approve confirms
 // pending/waitlisted/rejected rows, reject declines applications or removes
-// and bars players, waitlist holds a pending application) — nothing creates
-// pending or waitlisted rows yet (registerSelf admits directly until the
-// admission-mode work lands), but the transitions out of every state exist
-// and are spec-covered. The remaining participation state, "disqualified",
-// deliberately has no writer until the judge-operations DQ action.
+// and bars players, waitlist holds a pending application). Pending rows are
+// filed by registerSelf when the tournament requires registration approval;
+// every transition out of every state lives here and is spec-covered. The
+// remaining participation state, "disqualified", deliberately has no writer
+// until the judge-operations DQ action.
 //
 // Each verb owns its eligibility per actor, the registration write (through
 // setRegistrationState, which keeps the standings copy in step — see

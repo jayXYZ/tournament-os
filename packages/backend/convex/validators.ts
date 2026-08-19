@@ -90,10 +90,9 @@ export const tournamentLifecycleValidator = v.union(
 // organizer review verbs (approveEntry confirms pending/waitlisted/rejected
 // rows, rejectEntry declines applications or removes-and-bars players,
 // waitlistEntry holds a pending application) and the player's own withdrawal
-// through cancelEntry. Nothing creates "pending" or "waitlisted" rows yet —
-// registerSelf admits directly until the admission-mode work (approval
-// queues, waitlists) lands — but read-side handling and the transitions out
-// of every state are in place.
+// through cancelEntry. "pending" rows are created by registerSelf when the
+// tournament's registrationRequiresApproval setting is on; "waitlisted" rows
+// only ever come from an organizer parking a pending application.
 export const tournamentEntryStatusValidator = v.union(
   v.literal("pending"),
   v.literal("waitlisted"),
@@ -301,6 +300,13 @@ export const tournamentAuditEventValidator = v.union(
   }),
   v.object({
     type: v.literal("player_registered"),
+    player: auditPlayerRefValidator,
+  }),
+  v.object({
+    // registerSelf under organizer approval: the player filed a "pending"
+    // application instead of taking a seat; the review decision that follows
+    // gets its own event (registration_approved/rejected/waitlisted).
+    type: v.literal("registration_requested"),
     player: auditPlayerRefValidator,
   }),
   v.object({

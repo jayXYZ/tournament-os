@@ -23,10 +23,13 @@ import {
   adjustConfirmedRegistrationCount,
   playerDisplayName,
   playerVisibleRegistration,
+  registrationApproveEffect,
   registrationDisplayName,
   registrationDropEffect,
   registrationForUser,
   registrationReinstateEffect,
+  registrationRejectEffect,
+  registrationWaitlistEffect,
   requireCapacityAvailable,
   requireRegistration,
 } from "../model/registrations";
@@ -75,6 +78,22 @@ async function registrationRows(
       // the open round — same predicate the drop applies, so the dialog's
       // wording always matches what confirming it will do.
       dropWouldConcede: concededByDrop.has(registration._id),
+      // The entry-review actions available on this row (null when
+      // unavailable), from the same projections the verbs enforce, so the
+      // approve/reject/waitlist menu items and their wording always match
+      // what confirming them will do.
+      approveEffect: registrationApproveEffect(
+        tournament.lifecycle,
+        registration,
+      ),
+      rejectEffect: registrationRejectEffect(
+        tournament.lifecycle,
+        registration,
+      ),
+      waitlistEffect: registrationWaitlistEffect(
+        tournament.lifecycle,
+        registration,
+      ),
     }),
   );
 }
@@ -88,9 +107,7 @@ async function registrationRows(
 // duplicate, and a rejected row records an organizer decision that silently
 // re-registering would overturn with one click — the way back from a
 // rejection is approveEntry (the organizer reversal in model/roster.ts),
-// never this mutation quietly stamping the entry confirmed. Nothing creates
-// pending or waitlisted rows yet; the transitions out of them exist so the
-// admission-mode work only has to add the way in.
+// never this mutation quietly stamping the entry confirmed.
 function existingEntryBlocksRegistration(
   entryStatus: Doc<"tournamentRegistrations">["entryStatus"],
 ): string | null {
@@ -148,7 +165,16 @@ export const registerSelf = mutation({
       }
     }
 
+    // Applications are capacity-gated like direct registrations: a full
+    // event takes no more entries in either mode. (Accepting applications
+    // past capacity — or auto-waitlisting them — is the waitlist-promotion
+    // work, not a side effect of the approval toggle.)
     requireCapacityAvailable(tournament);
+    // Under organizer approval the row enters as a "pending" application —
+    // no seat taken, no participation status — and the entry-review verbs
+    // decide it. Re-registering a cancelled row files a fresh application
+    // the same way: a released seat is no shortcut past review.
+    const requiresApproval = tournament.registrationRequiresApproval;
     const now = Date.now();
     const playerName = playerDisplayName(user);
     const participant = await ensureParticipantForUser(ctx, user._id);
@@ -158,8 +184,8 @@ export const registerSelf = mutation({
         tournamentId: args.tournamentId,
         participantId: participant._id,
         tournamentStartDate: tournament.startDate,
-        entryStatus: "confirmed",
-        participationStatus: "active",
+        entryStatus: requiresApproval ? "pending" : "confirmed",
+        ...(requiresApproval ? {} : { participationStatus: "active" as const }),
         playerName,
         createdAt: now,
         tiebreakRandom: tiebreakRandom(
@@ -169,21 +195,34 @@ export const registerSelf = mutation({
         updatedAt: now,
       }));
     if (existing) {
-      await setRegistrationState(ctx, existing._id, {
-        entryStatus: "confirmed",
-        participationStatus: "active",
-        playerName,
-        tournamentStartDate: tournament.startDate,
-        updatedAt: now,
-      });
+      await setRegistrationState(
+        ctx,
+        existing._id,
+        requiresApproval
+          ? {
+              entryStatus: "pending",
+              playerName,
+              tournamentStartDate: tournament.startDate,
+              updatedAt: now,
+            }
+          : {
+              entryStatus: "confirmed",
+              participationStatus: "active",
+              playerName,
+              tournamentStartDate: tournament.startDate,
+              updatedAt: now,
+            },
+      );
     }
-    await adjustConfirmedRegistrationCount(ctx, tournament, 1, now);
+    if (!requiresApproval) {
+      await adjustConfirmedRegistrationCount(ctx, tournament, 1, now);
+    }
     await logAuditEvent(ctx, {
       tournamentId: tournament._id,
       actor: user,
       actorRole: "player",
       event: {
-        type: "player_registered",
+        type: requiresApproval ? "registration_requested" : "player_registered",
         player: { registrationId, playerName: playerName ?? null },
       },
     });
@@ -249,6 +288,12 @@ export const listMyTournaments = query({
     // discoverable while it runs. Filtering to active here would leave a cut
     // player with no route back to their standings and match history.
     //
+    // Pending and waitlisted applications are included too: an open
+    // application is the only pointer the player holds to an event that has
+    // not admitted them yet, so it must stay findable while it awaits
+    // review. Rejected and cancelled rows stay out — neither is a live
+    // entry.
+    //
     // Ordered by start date descending rather than by participation status:
     // the status index groups every "active" row (which completed events keep
     // forever) ahead of the "eliminated"/"dropped" ones, so a player with a
@@ -259,15 +304,22 @@ export const listMyTournaments = query({
     if (!participant) {
       return [];
     }
-    const registrations = await ctx.db
-      .query("tournamentRegistrations")
-      .withIndex(
-        "by_participantId_and_entryStatus_and_tournamentStartDate",
-        (q) =>
-          q.eq("participantId", participant._id).eq("entryStatus", "confirmed"),
-      )
-      .order("desc")
-      .take(100);
+    const registrations: Array<Doc<"tournamentRegistrations">> = [];
+    for (const entryStatus of ["confirmed", "pending", "waitlisted"] as const) {
+      registrations.push(
+        ...(await ctx.db
+          .query("tournamentRegistrations")
+          .withIndex(
+            "by_participantId_and_entryStatus_and_tournamentStartDate",
+            (q) =>
+              q
+                .eq("participantId", participant._id)
+                .eq("entryStatus", entryStatus),
+          )
+          .order("desc")
+          .take(100)),
+      );
+    }
 
     const rows = [];
     for (const registration of registrations) {

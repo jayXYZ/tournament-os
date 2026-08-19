@@ -197,6 +197,7 @@ export async function createTournament(
     isTestEvent: args.isTestEvent,
     autoPublishPairings: false,
     decklistRequired: args.decklistRequired,
+    registrationRequiresApproval: false,
     confirmedRegistrationCount: 0,
     seed: Math.floor(Math.random() * 0x7fffffff),
     updatedAt: now,

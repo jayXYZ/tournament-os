@@ -149,6 +149,8 @@ function describeEvent(row: AuditEventRow): string {
       return `${displayPlayerName(event.player.playerName)} conceded by dropping: ${formatScoreline(event.result)} ${matchLocation(event)}`
     case 'player_registered':
       return `${displayPlayerName(event.player.playerName)} registered for the event`
+    case 'registration_requested':
+      return `${displayPlayerName(event.player.playerName)} requested to register for the event`
     case 'decklist_submitted':
       return `${displayPlayerName(event.player.playerName)} ${event.isUpdate ? 'updated' : 'submitted'} their decklist (${event.maindeckCardCount} main / ${event.sideboardCardCount} sideboard)`
     case 'registration_cancelled':

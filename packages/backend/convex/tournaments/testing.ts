@@ -82,6 +82,7 @@ export const createTestTournament = mutation({
       autoPublishPairings: false,
       // Test events exercise pairing and results flows, not deck collection.
       decklistRequired: false,
+      registrationRequiresApproval: false,
       confirmedRegistrationCount: 0,
       // Mirror the test-config seed so pairings are reproducible across runs.
       seed,

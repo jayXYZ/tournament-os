@@ -64,6 +64,8 @@ export function TournamentSettingsCard({
   const [decklistRequired, setDecklistRequired] = useState(
     tournament.decklistRequired,
   )
+  const [registrationRequiresApproval, setRegistrationRequiresApproval] =
+    useState(tournament.registrationRequiresApproval)
   const { busy, run } = useBusyAction()
 
   const locked = isPreStartLocked(tournament)
@@ -94,6 +96,7 @@ export function TournamentSettingsCard({
         playerCapacity: Number.parseInt(basics.playerCapacity, 10),
         format,
         decklistRequired,
+        registrationRequiresApproval,
       })
       toast.success('Tournament settings saved.')
     }, 'Could not save tournament settings.')
@@ -171,6 +174,27 @@ export function TournamentSettingsCard({
                 disabled={disabled}
                 onCheckedChange={setDecklistRequired}
                 aria-label="Require decklists"
+              />
+            </Field>
+
+            <Field orientation="horizontal" data-disabled={disabled}>
+              <FieldContent>
+                <FieldLabel htmlFor="settings-registration-approval">
+                  Require registration approval
+                </FieldLabel>
+                <FieldDescription>
+                  New registrations arrive as pending applications you approve,
+                  waitlist, or reject from the Registrations tab. Turning this
+                  off admits new registrations directly but leaves already-filed
+                  applications awaiting your review.
+                </FieldDescription>
+              </FieldContent>
+              <Switch
+                id="settings-registration-approval"
+                checked={registrationRequiresApproval}
+                disabled={disabled}
+                onCheckedChange={setRegistrationRequiresApproval}
+                aria-label="Require registration approval"
               />
             </Field>
 
