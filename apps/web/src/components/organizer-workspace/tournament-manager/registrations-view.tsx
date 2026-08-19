@@ -60,8 +60,10 @@ type RegistrationRow = {
   dropWouldConcede: boolean
   // The entry-review actions available on this row (null when unavailable),
   // from the same projections the verbs enforce, so the menu offers exactly
-  // what the server would accept.
-  approveEffect: 'confirm' | null
+  // what the server would accept. approveEffect is named by the state the
+  // approval would lift the row out of — the same fact the server's
+  // previousEntryStatus audit field records.
+  approveEffect: 'pending' | 'waitlisted' | 'rejected' | null
   rejectEffect: 'decline' | 'remove' | 'bar' | null
   waitlistEffect: 'waitlist' | null
 }
@@ -453,12 +455,12 @@ function ManagePlayerMenu({
   const cancelsEntry = row.dropEffect === 'cancel'
   const name = displayPlayerName(row.playerName)
 
-  // What approving this row means, for the toast: the row's entry status is
-  // the same fact the server's previousEntryStatus audit field records.
+  // What approving this row means, for the toast — read straight off the
+  // effect the menu renders from.
   const approvedMessage =
-    row.registration.entryStatus === 'waitlisted'
+    row.approveEffect === 'waitlisted'
       ? `${name} has been promoted from the waitlist.`
-      : row.registration.entryStatus === 'rejected'
+      : row.approveEffect === 'rejected'
         ? `${name}'s rejection has been reversed.`
         : `${name}'s registration has been approved.`
 
