@@ -237,6 +237,106 @@ export function registrationReinstateEffect(
   return null;
 }
 
+// What cancelling would do to a registration right now, or null when the
+// action is unavailable: release a confirmed seat (the entry is cancelled,
+// the seat count drops, and — because a cancelled row is the standing
+// invitation back into a private event, see registerSelf — the player can
+// later re-register), or withdraw a pending/waitlisted application, which
+// never held a seat. cancelEntry routes on this; the organizer roster's drop
+// button keeps offering only registrationDropEffect's confirmed-row
+// "cancel", so the withdraw arm is the player's own way out of the review
+// flow.
+export function registrationCancelEffect(
+  lifecycle: Doc<"tournaments">["lifecycle"],
+  registration: Doc<"tournamentRegistrations">,
+): "release" | "withdraw" | null {
+  if (lifecycle !== "registration") {
+    return null;
+  }
+  if (
+    registration.entryStatus === "pending" ||
+    registration.entryStatus === "waitlisted"
+  ) {
+    return "withdraw";
+  }
+  return registrationDropEffect(lifecycle, registration) === "cancel"
+    ? "release"
+    : null;
+}
+
+// What the organizer "approve" action would do to a registration right now,
+// or null when the action is unavailable: confirm a pending application,
+// promote a waitlisted one (approval doubles as manual waitlist promotion),
+// or reverse a rejection — the deliberate way back that registerSelf refuses
+// to be. Admission decisions exist only while registration is open: once
+// play starts the way in is the future late-entry override and the way out
+// is a drop. approveEntry enforces this rule; approval takes a seat, so
+// capacity applies there.
+export function registrationApproveEffect(
+  lifecycle: Doc<"tournaments">["lifecycle"],
+  registration: Doc<"tournamentRegistrations">,
+): "confirm" | null {
+  if (lifecycle !== "registration") {
+    return null;
+  }
+  return registration.entryStatus === "pending" ||
+    registration.entryStatus === "waitlisted" ||
+    registration.entryStatus === "rejected"
+    ? "confirm"
+    : null;
+}
+
+// What the organizer "reject" action would do to a registration right now,
+// or null when the action is unavailable. Three arms, because what a
+// rejection takes away differs by where the entry stands: "decline" turns
+// down a pending or waitlisted application; "remove" ejects a confirmed
+// player and releases their seat; "bar" closes the door on a cancelled row,
+// which would otherwise act as a standing invitation back into a private
+// event (see registerSelf). Every arm ends in the same place — entryStatus
+// "rejected", which registerSelf refuses to re-enter — so rejection is the
+// one entry decision that sticks until an organizer approves the row again.
+// rejectEntry enforces this rule.
+export function registrationRejectEffect(
+  lifecycle: Doc<"tournaments">["lifecycle"],
+  registration: Doc<"tournamentRegistrations">,
+): "decline" | "remove" | "bar" | null {
+  if (lifecycle !== "registration") {
+    return null;
+  }
+  switch (registration.entryStatus) {
+    case "pending":
+    case "waitlisted":
+      return "decline";
+    case "confirmed":
+      // Mirrors the drop button's acceptance set (active or dropped): an
+      // eliminated participation cannot occur while registration is open,
+      // and rejecting it would silently discard a competitive record if it
+      // somehow did.
+      return registrationDropEffect(lifecycle, registration) === "cancel"
+        ? "remove"
+        : null;
+    case "cancelled":
+      return "bar";
+    case "rejected":
+      return null;
+  }
+}
+
+// What the organizer "waitlist" action would do to a registration right now,
+// or null when the action is unavailable: hold a pending application on the
+// waitlist instead of deciding it. Only pending rows — a confirmed seat is
+// never bumped back to the waitlist, and the ways off it are approval,
+// rejection, or the player's own withdrawal. waitlistEntry enforces this
+// rule.
+export function registrationWaitlistEffect(
+  lifecycle: Doc<"tournaments">["lifecycle"],
+  registration: Doc<"tournamentRegistrations">,
+): "waitlist" | null {
+  return lifecycle === "registration" && registration.entryStatus === "pending"
+    ? "waitlist"
+    : null;
+}
+
 // The tournament's historical field: every confirmed entrant, including
 // players who later dropped, were eliminated, or were disqualified. Cancelled,
 // rejected, pending, and waitlisted rows are excluded at the index boundary,

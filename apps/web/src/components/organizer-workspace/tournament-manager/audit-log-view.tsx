@@ -155,6 +155,22 @@ function describeEvent(row: AuditEventRow): string {
       return row.actorRole === 'organizer'
         ? `Cancelled ${displayPlayerName(event.player.playerName)}'s registration`
         : `${displayPlayerName(event.player.playerName)} cancelled their registration`
+    case 'registration_approved':
+      // previousEntryStatus says which decision the approval was — see the
+      // audit event validator.
+      return event.previousEntryStatus === 'waitlisted'
+        ? `Promoted ${displayPlayerName(event.player.playerName)} from the waitlist`
+        : event.previousEntryStatus === 'rejected'
+          ? `Reversed ${displayPlayerName(event.player.playerName)}'s rejection and confirmed their registration`
+          : `Approved ${displayPlayerName(event.player.playerName)}'s registration`
+    case 'registration_rejected':
+      return event.previousEntryStatus === 'confirmed'
+        ? `Removed ${displayPlayerName(event.player.playerName)} from the event and barred re-entry`
+        : event.previousEntryStatus === 'cancelled'
+          ? `Barred ${displayPlayerName(event.player.playerName)} from re-entering the event`
+          : `Declined ${displayPlayerName(event.player.playerName)}'s registration`
+    case 'registration_waitlisted':
+      return `Moved ${displayPlayerName(event.player.playerName)}'s registration to the waitlist`
     case 'player_dropped':
       return row.actorRole === 'organizer'
         ? `Dropped ${displayPlayerName(event.player.playerName)} from the event`
