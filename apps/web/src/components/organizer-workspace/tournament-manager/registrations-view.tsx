@@ -464,6 +464,18 @@ function ManagePlayerMenu({
         ? `${name}'s rejection has been reversed.`
         : `${name}'s registration has been approved.`
 
+  // Approve and waitlist share their run-then-toast shape; reject differs,
+  // routing through a confirm dialog instead.
+  const runReview = (
+    mutate: () => Promise<unknown>,
+    successMessage: string,
+    failureMessage: string,
+  ) =>
+    void run(async () => {
+      await mutate()
+      toast.success(successMessage)
+    }, failureMessage)
+
   return (
     <>
       <DropdownMenu>
@@ -485,12 +497,14 @@ function ManagePlayerMenu({
               <DropdownMenuItem
                 disabled={disabled || busy}
                 onSelect={() =>
-                  void run(async () => {
-                    await approveRegistration({
-                      registrationId: row.registration._id,
-                    })
-                    toast.success(approvedMessage)
-                  }, 'Could not approve registration.')
+                  runReview(
+                    () =>
+                      approveRegistration({
+                        registrationId: row.registration._id,
+                      }),
+                    approvedMessage,
+                    'Could not approve registration.',
+                  )
                 }
               >
                 <UserCheck />
@@ -501,12 +515,14 @@ function ManagePlayerMenu({
               <DropdownMenuItem
                 disabled={disabled || busy}
                 onSelect={() =>
-                  void run(async () => {
-                    await waitlistRegistration({
-                      registrationId: row.registration._id,
-                    })
-                    toast.success(`${name} has been moved to the waitlist.`)
-                  }, 'Could not move registration to the waitlist.')
+                  runReview(
+                    () =>
+                      waitlistRegistration({
+                        registrationId: row.registration._id,
+                      }),
+                    `${name} has been moved to the waitlist.`,
+                    'Could not move registration to the waitlist.',
+                  )
                 }
               >
                 <Hourglass />

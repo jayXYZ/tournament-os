@@ -21,15 +21,13 @@ import { setRegistrationState } from "../model/participation";
 import { tiebreakRandom } from "../model/random";
 import {
   adjustConfirmedRegistrationCount,
+  entryReviewActions,
   playerDisplayName,
   playerVisibleRegistration,
-  registrationApproveEffect,
   registrationDisplayName,
   registrationDropEffect,
   registrationForUser,
   registrationReinstateEffect,
-  registrationRejectEffect,
-  registrationWaitlistEffect,
   requireCapacityAvailable,
   requireRegistration,
 } from "../model/registrations";
@@ -79,21 +77,10 @@ async function registrationRows(
       // wording always matches what confirming it will do.
       dropWouldConcede: concededByDrop.has(registration._id),
       // The entry-review actions available on this row (null when
-      // unavailable), from the same projections the verbs enforce, so the
-      // approve/reject/waitlist menu items and their wording always match
-      // what confirming them will do.
-      approveEffect: registrationApproveEffect(
-        tournament.lifecycle,
-        registration,
-      ),
-      rejectEffect: registrationRejectEffect(
-        tournament.lifecycle,
-        registration,
-      ),
-      waitlistEffect: registrationWaitlistEffect(
-        tournament.lifecycle,
-        registration,
-      ),
+      // unavailable), from the same projections and capacity rule the verbs
+      // enforce, so the approve/reject/waitlist menu items and their wording
+      // always match what confirming them will do.
+      ...entryReviewActions(tournament, registration),
     }),
   );
 }
@@ -173,8 +160,15 @@ export const registerSelf = mutation({
     // Under organizer approval the row enters as a "pending" application —
     // no seat taken, no participation status — and the entry-review verbs
     // decide it. Re-registering a cancelled row files a fresh application
-    // the same way: a released seat is no shortcut past review.
+    // the same way: a released seat is no shortcut past review. One
+    // admission shape serves the fresh insert and the reused row alike.
     const requiresApproval = tournament.registrationRequiresApproval;
+    const admission = requiresApproval
+      ? { entryStatus: "pending" as const }
+      : {
+          entryStatus: "confirmed" as const,
+          participationStatus: "active" as const,
+        };
     const now = Date.now();
     const playerName = playerDisplayName(user);
     const participant = await ensureParticipantForUser(ctx, user._id);
@@ -184,8 +178,7 @@ export const registerSelf = mutation({
         tournamentId: args.tournamentId,
         participantId: participant._id,
         tournamentStartDate: tournament.startDate,
-        entryStatus: requiresApproval ? "pending" : "confirmed",
-        ...(requiresApproval ? {} : { participationStatus: "active" as const }),
+        ...admission,
         playerName,
         createdAt: now,
         tiebreakRandom: tiebreakRandom(
@@ -195,24 +188,12 @@ export const registerSelf = mutation({
         updatedAt: now,
       }));
     if (existing) {
-      await setRegistrationState(
-        ctx,
-        existing._id,
-        requiresApproval
-          ? {
-              entryStatus: "pending",
-              playerName,
-              tournamentStartDate: tournament.startDate,
-              updatedAt: now,
-            }
-          : {
-              entryStatus: "confirmed",
-              participationStatus: "active",
-              playerName,
-              tournamentStartDate: tournament.startDate,
-              updatedAt: now,
-            },
-      );
+      await setRegistrationState(ctx, existing._id, {
+        ...admission,
+        playerName,
+        tournamentStartDate: tournament.startDate,
+        updatedAt: now,
+      });
     }
     if (!requiresApproval) {
       await adjustConfirmedRegistrationCount(ctx, tournament, 1, now);

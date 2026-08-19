@@ -458,6 +458,11 @@ claimed by one.
         approval mode, and their open applications in the home listing with
         a status badge (listMyTournaments now includes pending/waitlisted
         rows)
+  - [ ] Surface pending applications for organizer review: the
+        approve/waitlist/reject actions live on the chronologically
+        paginated, searchable Registrations table, so on a busy event
+        finding what awaits review means scanning pages — add a
+        pending-applications filter or queue view to the tab
   - [x] Bar re-entry to a private event after organizer removal
         (launch-blocking, completed 2026-08-19): rejecting is the bar — the
         roster menu's "Reject registration" acts on a cancelled row (closing

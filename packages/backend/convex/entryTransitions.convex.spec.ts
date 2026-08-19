@@ -79,6 +79,30 @@ test("approving an application takes a seat, so capacity applies", async () => {
     entryStatus: "pending",
   });
   expect(await confirmedCount(t, tournamentId)).toBe(2);
+
+  // The roster row composes the same capacity rule, so the menu never
+  // offers the approval the verb just refused; parking or declining the
+  // application takes no seat and stays available.
+  const fullRows = await organizerRegistrationRows(t, tournamentId);
+  expect(
+    fullRows.find((row) => row.registration._id === applicationId),
+  ).toMatchObject({
+    approveEffect: null,
+    waitlistEffect: "waitlist",
+    rejectEffect: "decline",
+  });
+
+  // A freed seat reopens the approve action — the row and the verb move
+  // together.
+  await t
+    .withIdentity(playerIdentity(2))
+    .mutation(api.tournaments.registrations.cancelMyRegistration, {
+      tournamentId,
+    });
+  const rows = await organizerRegistrationRows(t, tournamentId);
+  expect(
+    rows.find((row) => row.registration._id === applicationId),
+  ).toMatchObject({ approveEffect: "pending" });
 });
 
 test("an organizer parks a pending application on the waitlist and later promotes it", async () => {
@@ -471,6 +495,32 @@ test("a full event refuses new applications like new registrations", async () =>
   ).rejects.toThrow("Tournament is at capacity");
 });
 
+test("applications gate on confirmed seats, not on other applications", async () => {
+  const t = createConvexTest();
+  const { tournamentId } = await seedOpenTournament(t, { playerCapacity: 2 });
+  await registerPlayer(t, tournamentId, 1);
+  const organizer = t.withIdentity(organizerIdentity);
+  await organizer.mutation(api.tournaments.lifecycle.updateTournamentSetup, {
+    tournamentId,
+    registrationRequiresApproval: true,
+  });
+
+  // One seat left, two applications: both are accepted, because an
+  // application holds no seat and pending rows never gate each other. The
+  // seat binds where it is taken — approval — and ordered promotion of the
+  // overflow is the waitlist-promotion item.
+  for (const playerNumber of [2, 3] as const) {
+    await insertPlayerUser(t, playerNumber);
+    const filedId = await t
+      .withIdentity(playerIdentity(playerNumber))
+      .mutation(api.tournaments.registrations.registerSelf, { tournamentId });
+    expect(await getRegistration(t, filedId)).toMatchObject({
+      entryStatus: "pending",
+    });
+  }
+  expect(await confirmedCount(t, tournamentId)).toBe(1);
+});
+
 function playerIdentity(playerNumber: number) {
   return {
     issuer: "https://convex.test",
@@ -570,6 +620,21 @@ async function getRegistration(
   registrationId: Id<"tournamentRegistrations">,
 ): Promise<Doc<"tournamentRegistrations"> | null> {
   return await t.run(async (ctx) => await ctx.db.get(registrationId));
+}
+
+// The roster rows exactly as the organizer's Registrations tab receives
+// them, review-action projections included.
+async function organizerRegistrationRows(
+  t: TestConvex<typeof schema>,
+  tournamentId: Id<"tournaments">,
+) {
+  const page = await t
+    .withIdentity(organizerIdentity)
+    .query(api.tournaments.registrations.listRegistrationPage, {
+      tournamentId,
+      paginationOpts: { numItems: 100, cursor: null },
+    });
+  return page.page;
 }
 
 async function confirmedCount(
