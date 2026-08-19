@@ -42,7 +42,7 @@ import {
 // its buttons from, so what an action offers and what its verb does can
 // never diverge.
 
-type RosterTransitionArgs = {
+export type RosterTransitionArgs = {
   tournament: Doc<"tournaments">;
   registration: Doc<"tournamentRegistrations">;
   actor: Doc<"users">;
@@ -230,9 +230,11 @@ export async function approveEntry(
   if (actorRole !== "organizer") {
     throw new Error("Only an organizer can approve a registration");
   }
-  if (
-    registrationApproveEffect(tournament.lifecycle, registration) !== "confirm"
-  ) {
+  const approveEffect = registrationApproveEffect(
+    tournament.lifecycle,
+    registration,
+  );
+  if (approveEffect === null) {
     throw new Error("Registration cannot be approved in its current state");
   }
   requireCapacityAvailable(tournament);
@@ -251,7 +253,7 @@ export async function approveEntry(
     event: {
       type: "registration_approved",
       player: auditPlayerRef(registration),
-      previousEntryStatus: registration.entryStatus,
+      previousEntryStatus: approveEffect,
     },
   });
 }
@@ -273,7 +275,11 @@ export async function rejectEntry(
     tournament.lifecycle,
     registration,
   );
-  if (rejectEffect === null) {
+  // The entryStatus clause restates a refusal the effect already makes (a
+  // rejected row has no reject arm) so previousEntryStatus carries the
+  // narrow type the audit event admits.
+  const { entryStatus: previousEntryStatus } = registration;
+  if (rejectEffect === null || previousEntryStatus === "rejected") {
     throw new Error("Registration cannot be rejected in its current state");
   }
   const now = Date.now();
@@ -291,7 +297,7 @@ export async function rejectEntry(
     event: {
       type: "registration_rejected",
       player: auditPlayerRef(registration),
-      previousEntryStatus: registration.entryStatus,
+      previousEntryStatus,
     },
   });
 }

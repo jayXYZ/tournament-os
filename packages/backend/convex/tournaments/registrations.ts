@@ -2,7 +2,12 @@ import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 
 import type { Doc, Id } from "../_generated/dataModel";
-import { mutation, query, type QueryCtx } from "../_generated/server";
+import {
+  mutation,
+  query,
+  type MutationCtx,
+  type QueryCtx,
+} from "../_generated/server";
 import { currentUserOrNull } from "../model/access";
 import { logAuditEvent } from "../model/auditLog";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
@@ -33,6 +38,7 @@ import {
   rejectEntry,
   restoreEntry,
   waitlistEntry,
+  type RosterTransitionArgs,
 } from "../model/roster";
 import { ensureCurrentUser } from "../model/users";
 import {
@@ -396,62 +402,34 @@ export const dropRegistration = mutation({
 // The organizer entry-review actions. Like dropRegistration and
 // reinstateRegistration these are thin adapters over the roster verbs, which
 // own eligibility (via the effect projections in model/registrations.ts),
-// the state write, the seat counter, and the audit event. Roster management
-// deliberately carries no rate limit — see rateLimits.ts.
+// the state write, the seat counter, and the audit event; the three
+// endpoints differ only in the verb, so one adapter serves them all. Roster
+// management deliberately carries no rate limit — see rateLimits.ts.
 
-export const approveRegistration = mutation({
-  args: { registrationId: v.id("tournamentRegistrations") },
-  handler: async (ctx, args) => {
-    const registration = await requireRegistration(ctx, args.registrationId);
-    const { tournament, user } = await requireOrganizerAccess(
-      ctx,
-      registration.tournamentId,
-    );
-    await approveEntry(ctx, {
-      tournament,
-      registration,
-      actor: user,
-      actorRole: "organizer",
-    });
-    return args.registrationId;
-  },
-});
+const entryReviewMutation = (
+  verb: (ctx: MutationCtx, args: RosterTransitionArgs) => Promise<void>,
+) =>
+  mutation({
+    args: { registrationId: v.id("tournamentRegistrations") },
+    handler: async (ctx, args) => {
+      const registration = await requireRegistration(ctx, args.registrationId);
+      const { tournament, user } = await requireOrganizerAccess(
+        ctx,
+        registration.tournamentId,
+      );
+      await verb(ctx, {
+        tournament,
+        registration,
+        actor: user,
+        actorRole: "organizer",
+      });
+      return args.registrationId;
+    },
+  });
 
-export const rejectRegistration = mutation({
-  args: { registrationId: v.id("tournamentRegistrations") },
-  handler: async (ctx, args) => {
-    const registration = await requireRegistration(ctx, args.registrationId);
-    const { tournament, user } = await requireOrganizerAccess(
-      ctx,
-      registration.tournamentId,
-    );
-    await rejectEntry(ctx, {
-      tournament,
-      registration,
-      actor: user,
-      actorRole: "organizer",
-    });
-    return args.registrationId;
-  },
-});
-
-export const waitlistRegistration = mutation({
-  args: { registrationId: v.id("tournamentRegistrations") },
-  handler: async (ctx, args) => {
-    const registration = await requireRegistration(ctx, args.registrationId);
-    const { tournament, user } = await requireOrganizerAccess(
-      ctx,
-      registration.tournamentId,
-    );
-    await waitlistEntry(ctx, {
-      tournament,
-      registration,
-      actor: user,
-      actorRole: "organizer",
-    });
-    return args.registrationId;
-  },
-});
+export const approveRegistration = entryReviewMutation(approveEntry);
+export const rejectRegistration = entryReviewMutation(rejectEntry);
+export const waitlistRegistration = entryReviewMutation(waitlistEntry);
 
 export const reinstateRegistration = mutation({
   args: { registrationId: v.id("tournamentRegistrations") },

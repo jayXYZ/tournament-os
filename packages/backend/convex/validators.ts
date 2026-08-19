@@ -326,8 +326,14 @@ export const tournamentAuditEventValidator = v.union(
     // The admission state the approval lifted the entry out of — an approved
     // application ("pending"), a waitlist promotion ("waitlisted"), or a
     // reversed rejection ("rejected") — so the log tells which decision was
-    // made without joining back to the row.
-    previousEntryStatus: tournamentEntryStatusValidator,
+    // made without joining back to the row. Exactly
+    // registrationApproveEffect's arms: a confirmed or cancelled row has
+    // nothing to approve.
+    previousEntryStatus: v.union(
+      v.literal("pending"),
+      v.literal("waitlisted"),
+      v.literal("rejected"),
+    ),
   }),
   v.object({
     type: v.literal("registration_rejected"),
@@ -335,8 +341,14 @@ export const tournamentAuditEventValidator = v.union(
     // What the rejection did: declined an application ("pending"/
     // "waitlisted"), removed a confirmed player and released their seat
     // ("confirmed"), or barred a cancelled row from re-entering
-    // ("cancelled").
-    previousEntryStatus: tournamentEntryStatusValidator,
+    // ("cancelled"). Never "rejected": rejecting twice is a refused no-op,
+    // not a second decision.
+    previousEntryStatus: v.union(
+      v.literal("pending"),
+      v.literal("waitlisted"),
+      v.literal("confirmed"),
+      v.literal("cancelled"),
+    ),
   }),
   v.object({
     type: v.literal("registration_waitlisted"),

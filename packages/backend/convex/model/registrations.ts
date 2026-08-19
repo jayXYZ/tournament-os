@@ -265,24 +265,26 @@ export function registrationCancelEffect(
 }
 
 // What the organizer "approve" action would do to a registration right now,
-// or null when the action is unavailable: confirm a pending application,
-// promote a waitlisted one (approval doubles as manual waitlist promotion),
-// or reverse a rejection — the deliberate way back that registerSelf refuses
-// to be. Admission decisions exist only while registration is open: once
-// play starts the way in is the future late-entry override and the way out
-// is a drop. approveEntry enforces this rule; approval takes a seat, so
-// capacity applies there.
+// named by the state it would lift the entry out of, or null when the action
+// is unavailable: confirm a pending application, promote a waitlisted one
+// (approval doubles as manual waitlist promotion), or reverse a rejection —
+// the deliberate way back that registerSelf refuses to be. Every arm lands
+// in the same confirmed seat, so the previous state is the whole decision —
+// it is what the approval's audit event records. Admission decisions exist
+// only while registration is open: once play starts the way in is the future
+// late-entry override and the way out is a drop. approveEntry enforces this
+// rule; approval takes a seat, so capacity applies there.
 export function registrationApproveEffect(
   lifecycle: Doc<"tournaments">["lifecycle"],
   registration: Doc<"tournamentRegistrations">,
-): "confirm" | null {
+): "pending" | "waitlisted" | "rejected" | null {
   if (lifecycle !== "registration") {
     return null;
   }
   return registration.entryStatus === "pending" ||
     registration.entryStatus === "waitlisted" ||
     registration.entryStatus === "rejected"
-    ? "confirm"
+    ? registration.entryStatus
     : null;
 }
 
@@ -308,13 +310,15 @@ export function registrationRejectEffect(
     case "waitlisted":
       return "decline";
     case "confirmed":
-      // Mirrors the drop button's acceptance set (active or dropped): an
-      // eliminated participation cannot occur while registration is open,
-      // and rejecting it would silently discard a competitive record if it
-      // somehow did.
-      return registrationDropEffect(lifecycle, registration) === "cancel"
-        ? "remove"
-        : null;
+      // Only an active player can be removed by rejection. A rejection's
+      // sanctioned reversal (approveEntry) re-admits to active play, so a
+      // row carrying a competitive record — a drop preserved by a round-one
+      // rewind — would have that record silently flattened by a
+      // reject-then-approve round trip. The arm refuses instead: the ways to
+      // act on a dropped row stay reinstate (undo the drop) and cancel
+      // (release the held seat), and rejecting the row once cancelled still
+      // bars re-entry.
+      return registration.participationStatus === "active" ? "remove" : null;
     case "cancelled":
       return "bar";
     case "rejected":

@@ -13,6 +13,7 @@ import { expect, test } from "vitest";
 
 import { api } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
+import type { TournamentAuditEvent } from "./model/auditLog";
 import schema from "./schema";
 import {
   insertLinkedParticipant,
@@ -42,9 +43,6 @@ test("an organizer approves a pending application into a confirmed seat", async 
     "registration_approved",
   );
   expect(approved).toHaveLength(1);
-  if (approved[0].event.type !== "registration_approved") {
-    throw new Error("Expected a registration_approved event");
-  }
   expect(approved[0].actorRole).toBe("organizer");
   expect(approved[0].event.previousEntryStatus).toBe("pending");
 
@@ -121,9 +119,6 @@ test("an organizer parks a pending application on the waitlist and later promote
     "registration_approved",
   );
   expect(approved).toHaveLength(1);
-  if (approved[0].event.type !== "registration_approved") {
-    throw new Error("Expected a registration_approved event");
-  }
   expect(approved[0].event.previousEntryStatus).toBe("waitlisted");
 });
 
@@ -146,9 +141,6 @@ test("a declined application blocks re-registration until an organizer approves 
     "registration_rejected",
   );
   expect(rejected).toHaveLength(1);
-  if (rejected[0].event.type !== "registration_rejected") {
-    throw new Error("Expected a registration_rejected event");
-  }
   expect(rejected[0].event.previousEntryStatus).toBe("pending");
 
   // The rejection stands against the player's own re-registration...
@@ -197,9 +189,6 @@ test("rejecting a confirmed player releases the seat and bars re-entry", async (
     "registration_rejected",
   );
   expect(rejected).toHaveLength(1);
-  if (rejected[0].event.type !== "registration_rejected") {
-    throw new Error("Expected a registration_rejected event");
-  }
   expect(rejected[0].event.previousEntryStatus).toBe("confirmed");
 
   await expect(
@@ -207,6 +196,46 @@ test("rejecting a confirmed player releases the seat and bars re-entry", async (
       .withIdentity(playerIdentity(1))
       .mutation(api.tournaments.registrations.registerSelf, { tournamentId }),
   ).rejects.toThrow("Your registration was declined");
+});
+
+test("rejecting a confirmed row with a preserved drop is refused, keeping the record", async () => {
+  const t = createConvexTest();
+  const { tournamentId } = await seedOpenTournament(t);
+  const organizer = t.withIdentity(organizerIdentity);
+  const registrationId = await registerPlayer(t, tournamentId, 1);
+  // A round-one rewind preserves a drop into the reopened registration
+  // lifecycle (see registrationDropEffect); stamp the row the way one leaves
+  // it.
+  await t.run(async (ctx) => {
+    await ctx.db.patch(registrationId, { participationStatus: "dropped" });
+  });
+
+  // A rejection's reversal (approveEntry) re-admits to active play, so
+  // rejecting this row would flatten the preserved drop on a round trip —
+  // the arm is closed for non-active players.
+  await expect(
+    organizer.mutation(api.tournaments.registrations.rejectRegistration, {
+      registrationId,
+    }),
+  ).rejects.toThrow("Registration cannot be rejected in its current state");
+  expect(await getRegistration(t, registrationId)).toMatchObject({
+    entryStatus: "confirmed",
+    participationStatus: "dropped",
+  });
+  expect(await confirmedCount(t, tournamentId)).toBe(1);
+
+  // The sanctioned removal instead: cancelling releases the held seat, and
+  // rejecting the cancelled row still bars re-entry.
+  await organizer.mutation(api.tournaments.registrations.dropRegistration, {
+    registrationId,
+  });
+  await organizer.mutation(api.tournaments.registrations.rejectRegistration, {
+    registrationId,
+  });
+  expect(await getRegistration(t, registrationId)).toMatchObject({
+    entryStatus: "rejected",
+  });
+  expect(await confirmedCount(t, tournamentId)).toBe(0);
 });
 
 test("rejecting a cancelled row closes the standing invitation into a private event", async () => {
@@ -243,9 +272,6 @@ test("rejecting a cancelled row closes the standing invitation into a private ev
     "registration_rejected",
   );
   expect(rejected).toHaveLength(1);
-  if (rejected[0].event.type !== "registration_rejected") {
-    throw new Error("Expected a registration_rejected event");
-  }
   expect(rejected[0].event.previousEntryStatus).toBe("cancelled");
   await expect(
     player.mutation(api.tournaments.registrations.registerSelf, {
@@ -443,10 +469,12 @@ async function confirmedCount(
   return tournament.confirmedRegistrationCount;
 }
 
-async function auditEventsOfType(
+// Typed over the event union so callers read event-specific fields (e.g.
+// previousEntryStatus) straight off the narrowed result.
+async function auditEventsOfType<T extends TournamentAuditEvent["type"]>(
   t: TestConvex<typeof schema>,
   tournamentId: Id<"tournaments">,
-  type: string,
+  type: T,
 ) {
   const page = await t
     .withIdentity(organizerIdentity)
@@ -454,5 +482,11 @@ async function auditEventsOfType(
       tournamentId,
       paginationOpts: { numItems: 100, cursor: null },
     });
-  return page.page.filter((row) => row.event.type === type);
+  return page.page.filter(
+    (
+      row,
+    ): row is (typeof page.page)[number] & {
+      event: Extract<TournamentAuditEvent, { type: T }>;
+    } => row.event.type === type,
+  );
 }
