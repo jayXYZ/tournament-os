@@ -430,9 +430,10 @@ claimed by one.
         (model/registrations.ts), with typed audit events
         (registration_approved/rejected record previousEntryStatus) and thin
         organizer endpoints; covered by entryTransitions.convex.spec.ts.
-        Nothing creates pending/waitlisted rows yet — the admission-mode work
-        below adds the way in — and the "disqualified" participation state
-        stays writer-less until section 5's judge DQ action by design
+        The way in landed with the approval admission mode below
+        (registerSelf files pending applications when
+        registrationRequiresApproval is on); the "disqualified" participation
+        state stays writer-less until section 5's judge DQ action by design
   - [ ] Define capacity, decklist, payment, cancellation, and refund guards
         for each transition (capacity guards landed with the transitions —
         every seat-taking path routes through requireCapacityAvailable — and
@@ -442,21 +443,39 @@ claimed by one.
 - [ ] Add invite-only admission modes
   - [x] Support public, unlisted, and private tournament visibility
   - [ ] Add join-by-link/code invitations
-  - [ ] Add organizer approval and rejection of pending registrations (the
-        write side — approve/reject/waitlist verbs, endpoints, and audit
-        events — landed with the transition work above; what remains is the
-        admission mode that creates pending registrations and the organizer
-        review UI)
-  - [ ] Bar re-entry to a private event after organizer removal
-        (launch-blocking): a cancelled registration must stop acting as a
-        standing invitation once the player is rejected — unblocked:
-        rejectRegistration now bars a cancelled or confirmed row and
-        registerSelf refuses rejected rows (spec-covered); remaining is the
-        organizer-facing reject action in the roster UI, landing with the
-        review UI above
-  - [ ] Add waitlist promotion (manual promotion exists —
-        approveRegistration confirms a waitlisted row, capacity-guarded;
-        this item is the automatic/ordered promotion when a seat frees)
+  - [x] Add organizer approval and rejection of pending registrations
+        (2026-08-19): a pre-start `registrationRequiresApproval` toggle in
+        tournament settings (reset the dev DB — required field on
+        tournaments) makes registerSelf file a "pending" application — no
+        seat taken, no participation status, `registration_requested` audit
+        event, capacity still gating, and a cancelled row re-registering
+        re-enters as pending rather than retaking its seat. Organizers
+        review from the Registrations tab: approve / move to waitlist /
+        reject actions on the row menu, rendered from server-computed effect
+        projections with per-arm reject confirmation wording. Players see
+        pending/waitlisted/rejected states on the event page (with
+        application withdrawal), a "Request to register" button under
+        approval mode, and their open applications in the home listing with
+        a status badge (listMyTournaments now includes pending/waitlisted
+        rows)
+  - [ ] Surface pending applications for organizer review: the
+        approve/waitlist/reject actions live on the chronologically
+        paginated, searchable Registrations table, so on a busy event
+        finding what awaits review means scanning pages — add a
+        pending-applications filter or queue view to the tab
+  - [x] Bar re-entry to a private event after organizer removal
+        (launch-blocking, completed 2026-08-19): rejecting is the bar — the
+        roster menu's "Reject registration" acts on a cancelled row (closing
+        the standing invitation registerSelf honors), and on pending/
+        waitlisted/confirmed rows, every arm landing in "rejected", which
+        registerSelf refuses until an organizer approves the row again;
+        write side and re-entry refusal spec-covered in
+        entryTransitions.convex.spec.ts
+  - [ ] Add waitlist promotion (manual promotion exists — the organizer's
+        approve action confirms a waitlisted row, capacity-guarded; this
+        item is the automatic/ordered promotion when a seat frees, and
+        should also revisit registerSelf's full-event behavior, which today
+        refuses applications at capacity instead of auto-waitlisting them)
 - [ ] Enroll players as guests or by email without requiring an account
 - [ ] Persist organizer favorite players across tournaments
   - [ ] Decide whether favorites are scoped to an organizer or the organization

@@ -277,6 +277,7 @@ export const updateTournamentSetup = mutation({
     playerCapacity: v.optional(v.number()),
     format: v.optional(tournamentFormatValidator),
     decklistRequired: v.optional(v.boolean()),
+    registrationRequiresApproval: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
@@ -331,6 +332,12 @@ export const updateTournamentSetup = mutation({
     }
     if (args.decklistRequired !== undefined) {
       patch.decklistRequired = args.decklistRequired;
+    }
+    if (args.registrationRequiresApproval !== undefined) {
+      // Turning approval off never auto-confirms already-filed applications:
+      // each pending/waitlisted row still awaits an organizer decision, so
+      // review stays a deliberate act with its own audit line.
+      patch.registrationRequiresApproval = args.registrationRequiresApproval;
     }
 
     await ctx.db.patch(args.tournamentId, patch);

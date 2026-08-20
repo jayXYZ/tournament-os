@@ -3,9 +3,12 @@ import { useMutation, usePaginatedQuery, useQuery } from 'convex/react'
 import {
   ClipboardList,
   FlaskConical,
+  Hourglass,
   MoreHorizontal,
   Settings2,
+  UserCheck,
   UserMinus,
+  UserX,
 } from 'lucide-react'
 
 import { api } from '@tournament-os/backend/convex/_generated/api'
@@ -55,6 +58,14 @@ type RegistrationRow = {
   // Whether that drop would concede the row's unfinished match in the open
   // round — the same predicate the drop applies, never re-derived here.
   dropWouldConcede: boolean
+  // The entry-review actions available on this row (null when unavailable),
+  // from the same projections the verbs enforce, so the menu offers exactly
+  // what the server would accept. approveEffect is named by the state the
+  // approval would lift the row out of — the same fact the server's
+  // previousEntryStatus audit field records.
+  approveEffect: 'pending' | 'waitlisted' | 'rejected' | null
+  rejectEffect: 'decline' | 'remove' | 'bar' | null
+  waitlistEffect: 'waitlist' | null
 }
 
 type RegistrationStatus =
@@ -396,6 +407,19 @@ function RegistrationsTable({
   )
 }
 
+// The wording shown before an organizer confirms a rejection, per what the
+// server says the rejection would do (see registrationRejectEffect): decline
+// an application, remove a confirmed player and free their seat, or bar a
+// cancelled row from re-entering. Every arm ends the same way, so every
+// description ends with the same way back.
+const rejectDescription: Record<'decline' | 'remove' | 'bar', string> = {
+  decline:
+    'Their application will be declined, and they will not be able to register again unless you approve them later.',
+  remove:
+    'They will be removed from the event and their seat freed, and they will not be able to register again unless you approve them later.',
+  bar: 'Their cancelled registration still lets them re-register. Rejecting it bars them from re-entering unless you approve them later.',
+}
+
 function ManagePlayerMenu({
   row,
   disabled,
@@ -411,14 +435,46 @@ function ManagePlayerMenu({
   const dropRegistration = useMutation(
     api.tournaments.registrations.dropRegistration,
   )
+  const approveRegistration = useMutation(
+    api.tournaments.registrations.approveRegistration,
+  )
+  const rejectRegistration = useMutation(
+    api.tournaments.registrations.rejectRegistration,
+  )
+  const waitlistRegistration = useMutation(
+    api.tournaments.registrations.waitlistRegistration,
+  )
+  const { busy, run } = useBusyAction()
 
   const [confirmingDrop, setConfirmingDrop] = useState(false)
+  const [confirmingReject, setConfirmingReject] = useState(false)
 
   // Whether the row can be dropped — and whether that cancels the entry
   // (freeing the seat) or records a competitive drop — is server-computed on
   // the row, so the wording always matches what the server would do.
   const cancelsEntry = row.dropEffect === 'cancel'
   const name = displayPlayerName(row.playerName)
+
+  // What approving this row means, for the toast — read straight off the
+  // effect the menu renders from.
+  const approvedMessage =
+    row.approveEffect === 'waitlisted'
+      ? `${name} has been promoted from the waitlist.`
+      : row.approveEffect === 'rejected'
+        ? `${name}'s rejection has been reversed.`
+        : `${name}'s registration has been approved.`
+
+  // Approve and waitlist share their run-then-toast shape; reject differs,
+  // routing through a confirm dialog instead.
+  const runReview = (
+    mutate: () => Promise<unknown>,
+    successMessage: string,
+    failureMessage: string,
+  ) =>
+    void run(async () => {
+      await mutate()
+      toast.success(successMessage)
+    }, failureMessage)
 
   return (
     <>
@@ -430,19 +486,67 @@ function ManagePlayerMenu({
             size="icon"
             aria-label={`Manage ${name}`}
           >
-            <MoreHorizontal />
+            {busy ? <Spinner /> : <MoreHorizontal />}
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuGroup>
+            {/* Review actions appear only when the server offers them, so
+                the everyday confirmed-roster menu stays a drop menu. */}
+            {row.approveEffect !== null ? (
+              <DropdownMenuItem
+                disabled={disabled || busy}
+                onSelect={() =>
+                  runReview(
+                    () =>
+                      approveRegistration({
+                        registrationId: row.registration._id,
+                      }),
+                    approvedMessage,
+                    'Could not approve registration.',
+                  )
+                }
+              >
+                <UserCheck />
+                Approve registration
+              </DropdownMenuItem>
+            ) : null}
+            {row.waitlistEffect !== null ? (
+              <DropdownMenuItem
+                disabled={disabled || busy}
+                onSelect={() =>
+                  runReview(
+                    () =>
+                      waitlistRegistration({
+                        registrationId: row.registration._id,
+                      }),
+                    `${name} has been moved to the waitlist.`,
+                    'Could not move registration to the waitlist.',
+                  )
+                }
+              >
+                <Hourglass />
+                Move to waitlist
+              </DropdownMenuItem>
+            ) : null}
             <DropdownMenuItem
               variant="destructive"
-              disabled={row.dropEffect === null || disabled}
+              disabled={row.dropEffect === null || disabled || busy}
               onSelect={() => setConfirmingDrop(true)}
             >
               <UserMinus />
               Drop player
             </DropdownMenuItem>
+            {row.rejectEffect !== null ? (
+              <DropdownMenuItem
+                variant="destructive"
+                disabled={disabled || busy}
+                onSelect={() => setConfirmingReject(true)}
+              >
+                <UserX />
+                Reject registration
+              </DropdownMenuItem>
+            ) : null}
           </DropdownMenuGroup>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -471,6 +575,23 @@ function ManagePlayerMenu({
           )
         }}
       />
+
+      {row.rejectEffect !== null ? (
+        <ConfirmActionDialog
+          open={confirmingReject}
+          onOpenChange={setConfirmingReject}
+          icon={<UserX />}
+          destructive
+          title={`Reject ${name}?`}
+          description={rejectDescription[row.rejectEffect]}
+          actionLabel="Reject registration"
+          failureMessage="Could not reject registration."
+          onConfirm={async () => {
+            await rejectRegistration({ registrationId: row.registration._id })
+            toast.success(`${name}'s registration has been rejected.`)
+          }}
+        />
+      ) : null}
     </>
   )
 }

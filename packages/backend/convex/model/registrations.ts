@@ -341,6 +341,34 @@ export function registrationWaitlistEffect(
     : null;
 }
 
+// The entry-review actions available on a registration row right now, as the
+// organizer roster ships them to the client: the same projections the verbs
+// enforce, with the approve arm additionally composed with the capacity rule
+// approveEntry applies — approval takes a seat, so a full event offers no
+// approve action (rejecting and waitlisting take no seat and stay
+// available). One bundle, so a roster row can never offer an action its verb
+// would refuse.
+export function entryReviewActions(
+  tournament: Doc<"tournaments">,
+  registration: Doc<"tournamentRegistrations">,
+) {
+  const approveEffect = registrationApproveEffect(
+    tournament.lifecycle,
+    registration,
+  );
+  return {
+    approveEffect:
+      approveEffect !== null && hasCapacityAvailable(tournament)
+        ? approveEffect
+        : null,
+    rejectEffect: registrationRejectEffect(tournament.lifecycle, registration),
+    waitlistEffect: registrationWaitlistEffect(
+      tournament.lifecycle,
+      registration,
+    ),
+  };
+}
+
 // The tournament's historical field: every confirmed entrant, including
 // players who later dropped, were eliminated, or were disqualified. Cancelled,
 // rejected, pending, and waitlisted rows are excluded at the index boundary,
@@ -429,8 +457,12 @@ export async function nonActiveParticipationStatuses(
   return byRegistrationId;
 }
 
+export function hasCapacityAvailable(tournament: Doc<"tournaments">) {
+  return tournament.confirmedRegistrationCount < tournament.playerCapacity;
+}
+
 export function requireCapacityAvailable(tournament: Doc<"tournaments">) {
-  if (tournament.confirmedRegistrationCount >= tournament.playerCapacity) {
+  if (!hasCapacityAvailable(tournament)) {
     throw new Error("Tournament is at capacity");
   }
 }

@@ -412,6 +412,52 @@ function RegistrationPanel({
     )
   }
 
+  // An application under organizer review holds no seat yet, so the only
+  // self-service action is withdrawing it. These rows must never fall
+  // through to the register button below — a second submission would
+  // duplicate the live application (registerSelf refuses it server-side
+  // too).
+  if (
+    registration?.entryStatus === 'pending' ||
+    registration?.entryStatus === 'waitlisted'
+  ) {
+    return (
+      <div className="flex flex-wrap items-center gap-3">
+        <Badge variant="outline">
+          {registration.entryStatus === 'pending'
+            ? 'Registration pending organizer approval'
+            : "You're on the waitlist"}
+        </Badge>
+        {tournament.lifecycle === 'registration' ? (
+          <Button
+            type="button"
+            variant="outline"
+            disabled={pending}
+            onClick={() =>
+              void runAction(
+                () => cancelRegistration({ tournamentId: tournament._id }),
+                'Your registration has been withdrawn.',
+              )
+            }
+          >
+            {pending ? <Spinner /> : null}
+            Withdraw registration
+          </Button>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            Registration is closed for this event.
+          </p>
+        )}
+      </div>
+    )
+  }
+
+  // A rejection is an organizer decision; the way back is organizer
+  // approval, never self-service, so no action is offered.
+  if (registration?.entryStatus === 'rejected') {
+    return <Badge variant="destructive">Your registration was declined</Badge>
+  }
+
   if (tournament.lifecycle !== 'registration') {
     return (
       <p className="text-sm text-muted-foreground">
@@ -436,12 +482,16 @@ function RegistrationPanel({
         onClick={() =>
           void runAction(
             () => registerSelf({ tournamentId: tournament._id }),
-            "You're registered. See you at the event!",
+            tournament.registrationRequiresApproval
+              ? 'Registration submitted for organizer approval.'
+              : "You're registered. See you at the event!",
           )
         }
       >
         {pending ? <Spinner /> : null}
-        Register for this event
+        {tournament.registrationRequiresApproval
+          ? 'Request to register'
+          : 'Register for this event'}
       </Button>
       <p className="text-sm text-muted-foreground">
         {spotsLeft === 1 ? '1 spot left' : `${spotsLeft} spots left`}

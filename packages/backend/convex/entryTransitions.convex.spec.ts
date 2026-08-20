@@ -3,11 +3,13 @@
 // Write-side transitions for the entry-status state machine (see CONTEXT.md
 // "Entry Status" and model/roster.ts): the organizer review verbs — approve,
 // reject, waitlist — and the player's own withdrawal through cancelEntry,
-// alongside the register/cancel/restore paths that already exist. Nothing
-// creates pending or waitlisted rows yet (registerSelf admits directly until
-// the admission-mode work lands), so applications are seeded directly via
-// ctx.db the way that future flow will write them: an entry status and no
-// participation status.
+// alongside the register/cancel/restore paths that already exist. The
+// admission-mode tests at the bottom cover the production way in
+// (registerSelf filing a pending application when the tournament requires
+// approval); the verb-focused tests above seed applications directly via
+// ctx.db — the same shape registerSelf writes: an entry status and no
+// participation status — so each transition is pinned independently of the
+// filing path.
 import type { TestConvex } from "convex-test";
 import { expect, test } from "vitest";
 
@@ -77,6 +79,30 @@ test("approving an application takes a seat, so capacity applies", async () => {
     entryStatus: "pending",
   });
   expect(await confirmedCount(t, tournamentId)).toBe(2);
+
+  // The roster row composes the same capacity rule, so the menu never
+  // offers the approval the verb just refused; parking or declining the
+  // application takes no seat and stays available.
+  const fullRows = await organizerRegistrationRows(t, tournamentId);
+  expect(
+    fullRows.find((row) => row.registration._id === applicationId),
+  ).toMatchObject({
+    approveEffect: null,
+    waitlistEffect: "waitlist",
+    rejectEffect: "decline",
+  });
+
+  // A freed seat reopens the approve action — the row and the verb move
+  // together.
+  await t
+    .withIdentity(playerIdentity(2))
+    .mutation(api.tournaments.registrations.cancelMyRegistration, {
+      tournamentId,
+    });
+  const rows = await organizerRegistrationRows(t, tournamentId);
+  expect(
+    rows.find((row) => row.registration._id === applicationId),
+  ).toMatchObject({ approveEffect: "pending" });
 });
 
 test("an organizer parks a pending application on the waitlist and later promotes it", async () => {
@@ -357,6 +383,144 @@ test("entry review is organizer-only and closed outside the registration lifecyc
   });
 });
 
+test("registerSelf files a pending application when the tournament requires approval", async () => {
+  const t = createConvexTest();
+  const { tournamentId } = await seedOpenTournament(t);
+  const organizer = t.withIdentity(organizerIdentity);
+  await organizer.mutation(api.tournaments.lifecycle.updateTournamentSetup, {
+    tournamentId,
+    registrationRequiresApproval: true,
+  });
+
+  await insertPlayerUser(t, 1);
+  const player = t.withIdentity(playerIdentity(1));
+  const registrationId = await player.mutation(
+    api.tournaments.registrations.registerSelf,
+    { tournamentId },
+  );
+
+  // An application, not a seat: pending, no competitive state, no count.
+  const row = await getRegistration(t, registrationId);
+  expect(row).toMatchObject({ entryStatus: "pending" });
+  expect(row?.participationStatus).toBeUndefined();
+  expect(await confirmedCount(t, tournamentId)).toBe(0);
+  const requested = await auditEventsOfType(
+    t,
+    tournamentId,
+    "registration_requested",
+  );
+  expect(requested).toHaveLength(1);
+  expect(requested[0].actorRole).toBe("player");
+  expect(
+    await auditEventsOfType(t, tournamentId, "player_registered"),
+  ).toHaveLength(0);
+
+  // The player sees where they stand: their own registration query returns
+  // the pending row, their home listing keeps the event findable, and a
+  // second submission is refused as the live application it would duplicate.
+  const myRegistration = await player.query(
+    api.tournaments.registrations.getMyRegistration,
+    { tournamentId },
+  );
+  expect(myRegistration).toMatchObject({ entryStatus: "pending" });
+  const listed = await player.query(
+    api.tournaments.registrations.listMyTournaments,
+    {},
+  );
+  expect(listed).toHaveLength(1);
+  expect(listed[0].registration._id).toBe(registrationId);
+  await expect(
+    player.mutation(api.tournaments.registrations.registerSelf, {
+      tournamentId,
+    }),
+  ).rejects.toThrow("Your registration is pending review");
+
+  // Approval turns the application into the seat registerSelf would have
+  // taken directly in open admission.
+  await organizer.mutation(api.tournaments.registrations.approveRegistration, {
+    registrationId,
+  });
+  expect(await getRegistration(t, registrationId)).toMatchObject({
+    entryStatus: "confirmed",
+    participationStatus: "active",
+  });
+  expect(await confirmedCount(t, tournamentId)).toBe(1);
+});
+
+test("re-registering a cancelled row under approval files a fresh application, not a seat", async () => {
+  const t = createConvexTest();
+  const { tournamentId } = await seedOpenTournament(t);
+  const organizer = t.withIdentity(organizerIdentity);
+  const registrationId = await registerPlayer(t, tournamentId, 1);
+  const player = t.withIdentity(playerIdentity(1));
+  await player.mutation(api.tournaments.registrations.cancelMyRegistration, {
+    tournamentId,
+  });
+  expect(await confirmedCount(t, tournamentId)).toBe(0);
+
+  await organizer.mutation(api.tournaments.lifecycle.updateTournamentSetup, {
+    tournamentId,
+    registrationRequiresApproval: true,
+  });
+
+  // The cancelled row is reused, but a released seat is no shortcut past
+  // review: the entry re-enters as pending and takes no seat until approved.
+  const reusedId = await player.mutation(
+    api.tournaments.registrations.registerSelf,
+    { tournamentId },
+  );
+  expect(reusedId).toBe(registrationId);
+  const row = await getRegistration(t, registrationId);
+  expect(row).toMatchObject({ entryStatus: "pending" });
+  expect(row?.participationStatus).toBeUndefined();
+  expect(await confirmedCount(t, tournamentId)).toBe(0);
+});
+
+test("a full event refuses new applications like new registrations", async () => {
+  const t = createConvexTest();
+  const { tournamentId } = await seedOpenTournament(t, { playerCapacity: 2 });
+  await registerPlayer(t, tournamentId, 1);
+  await registerPlayer(t, tournamentId, 2);
+  const organizer = t.withIdentity(organizerIdentity);
+  await organizer.mutation(api.tournaments.lifecycle.updateTournamentSetup, {
+    tournamentId,
+    registrationRequiresApproval: true,
+  });
+
+  await insertPlayerUser(t, 3);
+  await expect(
+    t
+      .withIdentity(playerIdentity(3))
+      .mutation(api.tournaments.registrations.registerSelf, { tournamentId }),
+  ).rejects.toThrow("Tournament is at capacity");
+});
+
+test("applications gate on confirmed seats, not on other applications", async () => {
+  const t = createConvexTest();
+  const { tournamentId } = await seedOpenTournament(t, { playerCapacity: 2 });
+  await registerPlayer(t, tournamentId, 1);
+  const organizer = t.withIdentity(organizerIdentity);
+  await organizer.mutation(api.tournaments.lifecycle.updateTournamentSetup, {
+    tournamentId,
+    registrationRequiresApproval: true,
+  });
+
+  // One seat left, two applications: both are accepted, because an
+  // application holds no seat and pending rows never gate each other. The
+  // seat binds where it is taken — approval — and ordered promotion of the
+  // overflow is the waitlist-promotion item.
+  for (const playerNumber of [2, 3] as const) {
+    await insertPlayerUser(t, playerNumber);
+    const filedId = await t
+      .withIdentity(playerIdentity(playerNumber))
+      .mutation(api.tournaments.registrations.registerSelf, { tournamentId });
+    expect(await getRegistration(t, filedId)).toMatchObject({
+      entryStatus: "pending",
+    });
+  }
+  expect(await confirmedCount(t, tournamentId)).toBe(1);
+});
+
 function playerIdentity(playerNumber: number) {
   return {
     issuer: "https://convex.test",
@@ -456,6 +620,21 @@ async function getRegistration(
   registrationId: Id<"tournamentRegistrations">,
 ): Promise<Doc<"tournamentRegistrations"> | null> {
   return await t.run(async (ctx) => await ctx.db.get(registrationId));
+}
+
+// The roster rows exactly as the organizer's Registrations tab receives
+// them, review-action projections included.
+async function organizerRegistrationRows(
+  t: TestConvex<typeof schema>,
+  tournamentId: Id<"tournaments">,
+) {
+  const page = await t
+    .withIdentity(organizerIdentity)
+    .query(api.tournaments.registrations.listRegistrationPage, {
+      tournamentId,
+      paginationOpts: { numItems: 100, cursor: null },
+    });
+  return page.page;
 }
 
 async function confirmedCount(

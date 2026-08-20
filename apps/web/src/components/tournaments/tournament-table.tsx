@@ -201,12 +201,20 @@ function buildTournamentColumns(
       // Greedy column absorbs name-length variance so later columns stay put.
       meta: { className: 'w-full' },
       cell: ({ row }) => {
-        const { tournament } = row.original
+        const { registration, tournament } = row.original
         return (
           <div className="flex min-w-0 items-center gap-2">
             <p className="font-medium text-foreground">{tournament.name}</p>
             {tournament.isTestEvent ? (
               <Badge variant="outline">Test</Badge>
+            ) : null}
+            {/* Only the registered variant carries a registration; an entry
+                still under organizer review is flagged so the listing never
+                reads as a held seat. */}
+            {registration?.entryStatus === 'pending' ? (
+              <Badge variant="outline">Pending approval</Badge>
+            ) : registration?.entryStatus === 'waitlisted' ? (
+              <Badge variant="outline">Waitlisted</Badge>
             ) : null}
           </div>
         )

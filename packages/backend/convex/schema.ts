@@ -111,6 +111,13 @@ export default defineSchema({
     // updateTournamentSetup — turning it off keeps already-submitted lists
     // stored but freezes them.
     decklistRequired: v.boolean(),
+    // When enabled, registerSelf files a "pending" application instead of a
+    // confirmed seat, and an organizer decides it through the entry-review
+    // verbs (approve/reject/waitlist — see model/roster.ts). Toggleable
+    // pre-start via updateTournamentSetup; turning it off admits new
+    // registrations directly but leaves already-filed applications awaiting
+    // review.
+    registrationRequiresApproval: v.boolean(),
     // Organizer-authored event details (description, prizes, logistics) as
     // markdown, rendered on the public tournament page. Absent means the
     // organizer has not written any.
