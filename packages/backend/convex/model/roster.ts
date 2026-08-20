@@ -6,27 +6,43 @@ import { concedeUnfinishedMatchOnDrop } from "./matchResults";
 import { setRegistrationState } from "./participation";
 import {
   adjustConfirmedRegistrationCount,
+  registrationApproveEffect,
+  registrationCancelEffect,
   registrationDropEffect,
   registrationReinstateEffect,
+  registrationRejectEffect,
+  registrationWaitlistEffect,
   requireCapacityAvailable,
 } from "./registrations";
 
-// The roster workflow module: the four named verbs that change who is in the
+// The roster workflow module: the named verbs that change who is in the
 // event. Entry Status and Participation Status are independent (see
-// CONTEXT.md), so the verbs come in two pairs — cancelEntry/restoreEntry
-// move the admission state (and the seat counter with it), while
-// dropPlayer/reinstatePlayer move a confirmed player's competitive state.
+// CONTEXT.md), so the verbs come in two groups — the admission verbs
+// (cancelEntry/restoreEntry plus the organizer review verbs approveEntry,
+// rejectEntry, and waitlistEntry) move the entry state and the seat counter
+// with it, while dropPlayer/reinstatePlayer move a confirmed player's
+// competitive state. Together they give every supported entry state its
+// write side: confirmed and cancelled flow through register/cancel/restore,
+// and the review states route through the organizer verbs (approve confirms
+// pending/waitlisted/rejected rows, reject declines applications or removes
+// and bars players, waitlist holds a pending application) — nothing creates
+// pending or waitlisted rows yet (registerSelf admits directly until the
+// admission-mode work lands), but the transitions out of every state exist
+// and are spec-covered. The remaining participation state, "disqualified",
+// deliberately has no writer until the judge-operations DQ action.
+//
 // Each verb owns its eligibility per actor, the registration write (through
 // setRegistrationState, which keeps the standings copy in step — see
 // model/participation.ts), the audit event, and — for a drop — the
 // Concession, in one enforced order. Endpoints stay thin adapters: they
 // resolve auth, rate limits, and endpoint-specific error messages, then pass
-// the actor. The organizer roster actions route here on the same
-// registrationDropEffect / registrationReinstateEffect projections the
-// client renders its buttons from, so what an action offers and what its
-// verb does can never diverge.
+// the actor. The organizer roster actions route here on the same effect
+// projections (registrationDropEffect, registrationReinstateEffect, and the
+// review-action counterparts in model/registrations.ts) the client renders
+// its buttons from, so what an action offers and what its verb does can
+// never diverge.
 
-type RosterTransitionArgs = {
+export type RosterTransitionArgs = {
   tournament: Doc<"tournaments">;
   registration: Doc<"tournamentRegistrations">;
   actor: Doc<"users">;
@@ -130,12 +146,15 @@ export async function reinstatePlayer(
   });
 }
 
-// Releases a confirmed seat before play: the entry is cancelled and the seat
-// count drops, and — because a cancelled row is the standing invitation back
-// into a private event (see registerSelf) — the player can later re-register
-// into it. The rule is the same for both actors, and dropped rows are
-// accepted too: a drop preserved by a round-one rewind still holds the
-// player's seat, and cancelling releases it.
+// Cancels an entry before play. For a confirmed seat the entry is cancelled
+// and the seat count drops, and — because a cancelled row is the standing
+// invitation back into a private event (see registerSelf) — the player can
+// later re-register into it; dropped rows are accepted too, since a drop
+// preserved by a round-one rewind still holds the player's seat. A pending
+// or waitlisted application withdraws the same way but never held a seat, so
+// the counter stays put. The rule is the same for both actors (the organizer
+// roster's drop button simply never routes non-confirmed rows here — its
+// review actions decline them instead).
 export async function cancelEntry(
   ctx: MutationCtx,
   { tournament, registration, actor, actorRole }: RosterTransitionArgs,
@@ -143,7 +162,11 @@ export async function cancelEntry(
   if (tournament.lifecycle !== "registration") {
     throw new Error("Tournament is not open for registration");
   }
-  if (registrationDropEffect(tournament.lifecycle, registration) !== "cancel") {
+  const cancelEffect = registrationCancelEffect(
+    tournament.lifecycle,
+    registration,
+  );
+  if (cancelEffect === null) {
     throw new Error("Active registration not found");
   }
   const now = Date.now();
@@ -151,7 +174,9 @@ export async function cancelEntry(
     entryStatus: "cancelled",
     updatedAt: now,
   });
-  await adjustConfirmedRegistrationCount(ctx, tournament, -1, now);
+  if (cancelEffect === "release") {
+    await adjustConfirmedRegistrationCount(ctx, tournament, -1, now);
+  }
   await logAuditEvent(ctx, {
     tournamentId: tournament._id,
     actor,
@@ -190,5 +215,121 @@ export async function restoreEntry(
     actor,
     actorRole,
     event: { type: "player_reinstated", player: auditPlayerRef(registration) },
+  });
+}
+
+// The organizer admits an entry: a pending application is confirmed, a
+// waitlisted one is promoted, a rejected one has its rejection reversed —
+// the sanctioned way back registerSelf's guard defers to. The approval takes
+// a seat, so capacity applies exactly as it does to registerSelf and
+// restoreEntry.
+export async function approveEntry(
+  ctx: MutationCtx,
+  { tournament, registration, actor, actorRole }: RosterTransitionArgs,
+) {
+  if (actorRole !== "organizer") {
+    throw new Error("Only an organizer can approve a registration");
+  }
+  const approveEffect = registrationApproveEffect(
+    tournament.lifecycle,
+    registration,
+  );
+  if (approveEffect === null) {
+    throw new Error("Registration cannot be approved in its current state");
+  }
+  requireCapacityAvailable(tournament);
+  const now = Date.now();
+  await setRegistrationState(ctx, registration._id, {
+    entryStatus: "confirmed",
+    participationStatus: "active",
+    tournamentStartDate: tournament.startDate,
+    updatedAt: now,
+  });
+  await adjustConfirmedRegistrationCount(ctx, tournament, 1, now);
+  await logAuditEvent(ctx, {
+    tournamentId: tournament._id,
+    actor,
+    actorRole,
+    event: {
+      type: "registration_approved",
+      player: auditPlayerRef(registration),
+      previousEntryStatus: approveEffect,
+    },
+  });
+}
+
+// The organizer rejects an entry: an application is declined, a confirmed
+// player is removed (their seat released), or a cancelled row is barred from
+// acting as a standing invitation back into the event (see
+// registrationRejectEffect for the three arms). Whatever the arm, the row
+// lands in "rejected" — which registerSelf refuses to re-enter — so the
+// decision holds until approveEntry reverses it.
+export async function rejectEntry(
+  ctx: MutationCtx,
+  { tournament, registration, actor, actorRole }: RosterTransitionArgs,
+) {
+  if (actorRole !== "organizer") {
+    throw new Error("Only an organizer can reject a registration");
+  }
+  const rejectEffect = registrationRejectEffect(
+    tournament.lifecycle,
+    registration,
+  );
+  // The entryStatus clause restates a refusal the effect already makes (a
+  // rejected row has no reject arm) so previousEntryStatus carries the
+  // narrow type the audit event admits.
+  const { entryStatus: previousEntryStatus } = registration;
+  if (rejectEffect === null || previousEntryStatus === "rejected") {
+    throw new Error("Registration cannot be rejected in its current state");
+  }
+  const now = Date.now();
+  await setRegistrationState(ctx, registration._id, {
+    entryStatus: "rejected",
+    updatedAt: now,
+  });
+  if (rejectEffect === "remove") {
+    await adjustConfirmedRegistrationCount(ctx, tournament, -1, now);
+  }
+  await logAuditEvent(ctx, {
+    tournamentId: tournament._id,
+    actor,
+    actorRole,
+    event: {
+      type: "registration_rejected",
+      player: auditPlayerRef(registration),
+      previousEntryStatus,
+    },
+  });
+}
+
+// The organizer holds a pending application on the waitlist instead of
+// deciding it. No seat is taken or released; the ways off the waitlist are
+// approveEntry, rejectEntry, or the player's own withdrawal through
+// cancelEntry.
+export async function waitlistEntry(
+  ctx: MutationCtx,
+  { tournament, registration, actor, actorRole }: RosterTransitionArgs,
+) {
+  if (actorRole !== "organizer") {
+    throw new Error("Only an organizer can waitlist a registration");
+  }
+  if (
+    registrationWaitlistEffect(tournament.lifecycle, registration) !==
+    "waitlist"
+  ) {
+    throw new Error("Registration cannot be waitlisted in its current state");
+  }
+  await setRegistrationState(ctx, registration._id, {
+    entryStatus: "waitlisted",
+    updatedAt: Date.now(),
+  });
+  await logAuditEvent(ctx, {
+    tournamentId: tournament._id,
+    actor,
+    actorRole,
+    event: {
+      type: "registration_waitlisted",
+      player: auditPlayerRef(registration),
+    },
   });
 }

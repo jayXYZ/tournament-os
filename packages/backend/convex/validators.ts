@@ -86,9 +86,14 @@ export const tournamentLifecycleValidator = v.union(
 // occupy capacity and become tournament participants; the remaining states
 // never contribute to standings or public history.
 //
-// "pending", "waitlisted", and "rejected" are reserved for a planned
-// registration-review flow (approval queue, waitlist promotion) and
-// currently have no writer — read-side handling already accounts for them.
+// Every state has its write-side transitions in model/roster.ts: the
+// organizer review verbs (approveEntry confirms pending/waitlisted/rejected
+// rows, rejectEntry declines applications or removes-and-bars players,
+// waitlistEntry holds a pending application) and the player's own withdrawal
+// through cancelEntry. Nothing creates "pending" or "waitlisted" rows yet —
+// registerSelf admits directly until the admission-mode work (approval
+// queues, waitlists) lands — but read-side handling and the transitions out
+// of every state are in place.
 export const tournamentEntryStatusValidator = v.union(
   v.literal("pending"),
   v.literal("waitlisted"),
@@ -313,6 +318,40 @@ export const tournamentAuditEventValidator = v.union(
   }),
   v.object({
     type: v.literal("registration_cancelled"),
+    player: auditPlayerRefValidator,
+  }),
+  v.object({
+    type: v.literal("registration_approved"),
+    player: auditPlayerRefValidator,
+    // The admission state the approval lifted the entry out of — an approved
+    // application ("pending"), a waitlist promotion ("waitlisted"), or a
+    // reversed rejection ("rejected") — so the log tells which decision was
+    // made without joining back to the row. Exactly
+    // registrationApproveEffect's arms: a confirmed or cancelled row has
+    // nothing to approve.
+    previousEntryStatus: v.union(
+      v.literal("pending"),
+      v.literal("waitlisted"),
+      v.literal("rejected"),
+    ),
+  }),
+  v.object({
+    type: v.literal("registration_rejected"),
+    player: auditPlayerRefValidator,
+    // What the rejection did: declined an application ("pending"/
+    // "waitlisted"), removed a confirmed player and released their seat
+    // ("confirmed"), or barred a cancelled row from re-entering
+    // ("cancelled"). Never "rejected": rejecting twice is a refused no-op,
+    // not a second decision.
+    previousEntryStatus: v.union(
+      v.literal("pending"),
+      v.literal("waitlisted"),
+      v.literal("confirmed"),
+      v.literal("cancelled"),
+    ),
+  }),
+  v.object({
+    type: v.literal("registration_waitlisted"),
     player: auditPlayerRefValidator,
   }),
   v.object({

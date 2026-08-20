@@ -416,14 +416,47 @@ claimed by one.
   - [x] Keep entry status separate from competitive participation status
   - [x] Reserve pending, waitlisted, confirmed, cancelled, and rejected entry states
   - [x] Reserve active, dropped, eliminated, and disqualified participation states
-  - [ ] Add write-side transitions and authorization for every supported state
-  - [ ] Define capacity, decklist, payment, cancellation, and refund guards for each transition
+  - [x] Add write-side transitions and authorization for every supported
+        state (2026-08-19): the roster verb module now covers the review-flow
+        entry states — organizer-only approveEntry (pending/waitlisted/
+        rejected → confirmed, capacity-guarded, seat counter maintained;
+        waitlisted approval doubles as manual promotion and rejected approval
+        is the sanctioned rejection reversal), rejectEntry (declines an
+        application, removes a confirmed player and releases the seat, or
+        bars a cancelled row from re-entering — every arm lands in
+        "rejected", which registerSelf refuses to re-enter), waitlistEntry
+        (pending → waitlisted), and player withdrawal of a pending/waitlisted
+        application through cancelEntry — each routed on effect projections
+        (model/registrations.ts), with typed audit events
+        (registration_approved/rejected record previousEntryStatus) and thin
+        organizer endpoints; covered by entryTransitions.convex.spec.ts.
+        Nothing creates pending/waitlisted rows yet — the admission-mode work
+        below adds the way in — and the "disqualified" participation state
+        stays writer-less until section 5's judge DQ action by design
+  - [ ] Define capacity, decklist, payment, cancellation, and refund guards
+        for each transition (capacity guards landed with the transitions —
+        every seat-taking path routes through requireCapacityAvailable — and
+        cancellation is lifecycle-gated; payment/refund guards are blocked on
+        section 9's order and refund records, decklist guards on section 6's
+        publication/submission policy work)
 - [ ] Add invite-only admission modes
   - [x] Support public, unlisted, and private tournament visibility
   - [ ] Add join-by-link/code invitations
-  - [ ] Add organizer approval and rejection of pending registrations
-  - [ ] Bar re-entry to a private event after organizer removal (launch-blocking): a cancelled registration must stop acting as a standing invitation once the player is rejected (blocked on the organizer approval/rejection write side above)
-  - [ ] Add waitlist promotion
+  - [ ] Add organizer approval and rejection of pending registrations (the
+        write side — approve/reject/waitlist verbs, endpoints, and audit
+        events — landed with the transition work above; what remains is the
+        admission mode that creates pending registrations and the organizer
+        review UI)
+  - [ ] Bar re-entry to a private event after organizer removal
+        (launch-blocking): a cancelled registration must stop acting as a
+        standing invitation once the player is rejected — unblocked:
+        rejectRegistration now bars a cancelled or confirmed row and
+        registerSelf refuses rejected rows (spec-covered); remaining is the
+        organizer-facing reject action in the roster UI, landing with the
+        review UI above
+  - [ ] Add waitlist promotion (manual promotion exists —
+        approveRegistration confirms a waitlisted row, capacity-guarded;
+        this item is the automatic/ordered promotion when a seat frees)
 - [ ] Enroll players as guests or by email without requiring an account
 - [ ] Persist organizer favorite players across tournaments
   - [ ] Decide whether favorites are scoped to an organizer or the organization

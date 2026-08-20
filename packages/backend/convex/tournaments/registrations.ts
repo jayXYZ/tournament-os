@@ -2,7 +2,12 @@ import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 
 import type { Doc, Id } from "../_generated/dataModel";
-import { mutation, query, type QueryCtx } from "../_generated/server";
+import {
+  mutation,
+  query,
+  type MutationCtx,
+  type QueryCtx,
+} from "../_generated/server";
 import { currentUserOrNull } from "../model/access";
 import { logAuditEvent } from "../model/auditLog";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
@@ -26,10 +31,14 @@ import {
   requireRegistration,
 } from "../model/registrations";
 import {
+  approveEntry,
   cancelEntry,
   dropPlayer,
   reinstatePlayer,
+  rejectEntry,
   restoreEntry,
+  waitlistEntry,
+  type RosterTransitionArgs,
 } from "../model/roster";
 import { ensureCurrentUser } from "../model/users";
 import {
@@ -73,14 +82,15 @@ async function registrationRows(
 // What finding an existing registration row means for a new registerSelf
 // attempt, per entry status: the error that blocks it, or null for
 // "cancelled" — the one state whose released seat the re-registration path
-// reuses. The reserved review-flow states (pending/waitlisted/rejected — see
-// tournamentEntryStatusValidator; no writer exists yet) each get their own
-// honest message rather than a blanket "Already registered": a pending or
-// waitlisted row is a live application a second submission would duplicate,
-// and a rejected row records an organizer decision that silently
+// reuses. The review-flow states (pending/waitlisted/rejected) each get
+// their own honest message rather than a blanket "Already registered": a
+// pending or waitlisted row is a live application a second submission would
+// duplicate, and a rejected row records an organizer decision that silently
 // re-registering would overturn with one click — the way back from a
-// rejection is a deliberate future path (organizer reversal or an explicit
-// reapply), never this mutation quietly stamping the entry confirmed.
+// rejection is approveEntry (the organizer reversal in model/roster.ts),
+// never this mutation quietly stamping the entry confirmed. Nothing creates
+// pending or waitlisted rows yet; the transitions out of them exist so the
+// admission-mode work only has to add the way in.
 function existingEntryBlocksRegistration(
   entryStatus: Doc<"tournamentRegistrations">["entryStatus"],
 ): string | null {
@@ -388,6 +398,38 @@ export const dropRegistration = mutation({
     return args.registrationId;
   },
 });
+
+// The organizer entry-review actions. Like dropRegistration and
+// reinstateRegistration these are thin adapters over the roster verbs, which
+// own eligibility (via the effect projections in model/registrations.ts),
+// the state write, the seat counter, and the audit event; the three
+// endpoints differ only in the verb, so one adapter serves them all. Roster
+// management deliberately carries no rate limit — see rateLimits.ts.
+
+const entryReviewMutation = (
+  verb: (ctx: MutationCtx, args: RosterTransitionArgs) => Promise<void>,
+) =>
+  mutation({
+    args: { registrationId: v.id("tournamentRegistrations") },
+    handler: async (ctx, args) => {
+      const registration = await requireRegistration(ctx, args.registrationId);
+      const { tournament, user } = await requireOrganizerAccess(
+        ctx,
+        registration.tournamentId,
+      );
+      await verb(ctx, {
+        tournament,
+        registration,
+        actor: user,
+        actorRole: "organizer",
+      });
+      return args.registrationId;
+    },
+  });
+
+export const approveRegistration = entryReviewMutation(approveEntry);
+export const rejectRegistration = entryReviewMutation(rejectEntry);
+export const waitlistRegistration = entryReviewMutation(waitlistEntry);
 
 export const reinstateRegistration = mutation({
   args: { registrationId: v.id("tournamentRegistrations") },

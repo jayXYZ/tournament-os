@@ -889,13 +889,14 @@ test("unlisted registration events are direct-link accessible but absent from di
 });
 
 // F8: registerSelf's guard used to lump every non-cancelled row into a
-// blanket "Already registered". The reserved review-flow entry statuses
-// (pending, waitlisted, rejected — deliberate placeholders on
-// tournamentEntryStatusValidator with no writer yet) must each surface their
-// own honest error instead: none of them is a confirmed seat, and for a
-// rejected player the old message described the organizer's decision as the
-// player's own completed registration. The states are seeded directly via
-// ctx.db because no mutation writes them yet.
+// blanket "Already registered". The review-flow entry statuses (pending,
+// waitlisted, rejected) must each surface their own honest error instead:
+// none of them is a confirmed seat, and for a rejected player the old
+// message described the organizer's decision as the player's own completed
+// registration. The states are stamped directly via ctx.db because the test
+// pins the guard against each raw status, independent of which verb put the
+// row there (the transitions themselves are covered in
+// entryTransitions.convex.spec.ts).
 test("registerSelf reports each entry status honestly instead of a blanket 'Already registered'", async () => {
   const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
