@@ -46,27 +46,42 @@ import { cn } from '@/lib/utils'
 
 type Tournament = Doc<'tournaments'>
 
-export function TournamentPublicPage({ publicCode }: { publicCode: string }) {
+export function TournamentPublicPage({
+  publicCode,
+  inviteCode,
+}: {
+  publicCode: string
+  inviteCode?: string
+}) {
   return (
     <SiteShell
       subtitle="Tournament details"
       toaster
       actions={<SiteShellBackLink to="/">All tournaments</SiteShellBackLink>}
     >
-      <TournamentPublicPageContent publicCode={publicCode} />
+      <TournamentPublicPageContent
+        publicCode={publicCode}
+        inviteCode={inviteCode}
+      />
     </SiteShell>
   )
 }
 
 // The public event card without the page chrome, so the admin Overview can
-// embed the same view as an organizer preview of what players see.
+// embed the same view as an organizer preview of what players see. The
+// optional invite code (from a /join link's ?invite param) opens a private
+// event's page and rides along on the register call; it is meaningless on an
+// event the viewer can already see, so nothing here branches on it.
 export function TournamentPublicPageContent({
   publicCode,
+  inviteCode,
 }: {
   publicCode: string
+  inviteCode?: string
 }) {
   const event = useQuery(api.tournaments.lifecycle.getPublicTournament, {
     publicCode,
+    inviteCode,
   })
 
   return event === undefined ? (
@@ -78,6 +93,7 @@ export function TournamentPublicPageContent({
       tournament={event.tournament}
       organizationName={event.organizationName}
       registeredCount={event.registeredCount}
+      inviteCode={inviteCode}
     />
   )
 }
@@ -119,10 +135,12 @@ function TournamentDetails({
   tournament,
   organizationName,
   registeredCount,
+  inviteCode,
 }: {
   tournament: Tournament
   organizationName: string | null
   registeredCount: number
+  inviteCode?: string
 }) {
   const spotsLeft = Math.max(tournament.playerCapacity - registeredCount, 0)
 
@@ -135,7 +153,11 @@ function TournamentDetails({
           <RoundTimerIndicator timer={tournament.roundTimer} />
         </div>
         <CardDescription>
-          {tournament.isTestEvent ? 'Test event' : 'Public event'}
+          {tournament.isTestEvent
+            ? 'Test event'
+            : tournament.visibility === 'private'
+              ? 'Private event'
+              : 'Public event'}
           {organizationName ? ` hosted by ${organizationName}` : ''}
         </CardDescription>
       </CardHeader>
@@ -166,7 +188,11 @@ function TournamentDetails({
           ) : null}
         </div>
         <Separator />
-        <RegistrationPanel tournament={tournament} spotsLeft={spotsLeft} />
+        <RegistrationPanel
+          tournament={tournament}
+          spotsLeft={spotsLeft}
+          inviteCode={inviteCode}
+        />
         {tournament.detailsMarkdown ? (
           <>
             <Separator />
@@ -211,9 +237,11 @@ function DetailLine({
 function RegistrationPanel({
   tournament,
   spotsLeft,
+  inviteCode,
 }: {
   tournament: Tournament
   spotsLeft: number
+  inviteCode?: string
 }) {
   const { user, loading, refreshAuth } = useAppAuth()
   // Held at `undefined` until Convex auth settles (see useMyRegistration), so
@@ -486,7 +514,7 @@ function RegistrationPanel({
         disabled={pending}
         onClick={() =>
           void runAction(
-            () => registerSelf({ tournamentId: tournament._id }),
+            () => registerSelf({ tournamentId: tournament._id, inviteCode }),
             tournament.registrationRequiresApproval
               ? 'Registration submitted for organizer approval.'
               : "You're registered. See you at the event!",

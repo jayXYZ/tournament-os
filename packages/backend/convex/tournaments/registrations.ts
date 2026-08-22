@@ -10,6 +10,7 @@ import {
 } from "../_generated/server";
 import { currentUserOrNull } from "../model/access";
 import { logAuditEvent } from "../model/auditLog";
+import { inviteCodeGrantsAccess } from "../model/invites";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
 import { registrationsConcededByDrop } from "../model/matchResults";
 import { clampPageSize } from "../model/pagination";
@@ -119,7 +120,10 @@ function existingEntryBlocksRegistration(
 }
 
 export const registerSelf = mutation({
-  args: { tournamentId: v.id("tournaments") },
+  args: {
+    tournamentId: v.id("tournaments"),
+    inviteCode: v.optional(v.string()),
+  },
   handler: async (ctx, args): Promise<Id<"tournamentRegistrations">> => {
     await enforceRateLimit(ctx, "registerSelf");
     const user = await ensureCurrentUser(ctx);
@@ -129,15 +133,21 @@ export const registerSelf = mutation({
       args.tournamentId,
       user._id,
     );
-    // A private event takes no registrations off the public page, but a player
-    // who already holds a row for it was admitted once and still resolves its
+    // A private event takes no registrations off the public page. Two grants
+    // get past that: the event's invite code, which is the organizer's way of
+    // letting new players in at all — and an existing row, because a player
+    // who already holds one was admitted once and still resolves the event's
     // code, so cancelling is not a one-way door out of an invite-only event:
     // the cancelled row is the standing invitation that lets them back in.
     // Nothing else slips through — every other entry status is rejected just
-    // below, so a live row can only ever re-enter the event it belongs to.
+    // below (the invite code included: it grants entry, it never overturns an
+    // entry decision such as a rejection), so a live row can only ever
+    // re-enter the event it belongs to.
     if (
       tournament.lifecycle !== "registration" ||
-      (tournament.visibility === "private" && existing === null)
+      (tournament.visibility === "private" &&
+        existing === null &&
+        !(await inviteCodeGrantsAccess(ctx, tournament, args.inviteCode)))
     ) {
       throw new Error("Tournament is not open for registration");
     }

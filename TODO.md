@@ -442,7 +442,19 @@ claimed by one.
         publication/submission policy work)
 - [ ] Add invite-only admission modes
   - [x] Support public, unlisted, and private tournament visibility
-  - [ ] Add join-by-link/code invitations
+  - [x] Add join-by-link/code invitations (2026-08-22, CONTEXT.md "Invite
+        Link"): one shared join code per tournament in its own
+        `tournamentInvites` table — a bearer secret, kept off the tournament
+        document because player queries return that verbatim — granting view
+        (`getPublicTournament`) and registration (`registerSelf`) access
+        whatever the visibility, so it is the way into a private event.
+        Codes are Crockford base32 (lookalike-tolerant normalization, so a
+        code read aloud survives typing) minted/rotated/disabled from a
+        settings-page card; `/join/<code>` resolves and forwards to the
+        event page with `?invite=` riding through sign-in redirects. The
+        grant never overrides entry decisions (a rejected row stays
+        rejected), capacity, lifecycle gates, or setup secrecy; covered by
+        `inviteLinks.convex.spec.ts`
   - [x] Add organizer approval and rejection of pending registrations
         (2026-08-19): a pre-start `registrationRequiresApproval` toggle in
         tournament settings (reset the dev DB — required field on

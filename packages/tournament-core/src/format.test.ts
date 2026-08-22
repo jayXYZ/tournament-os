@@ -88,16 +88,18 @@ test("active and unknown players get no marker", () => {
   expect(standingStatusLabel({ registrationStatus: undefined })).toBeNull();
 });
 
-test("every awarded result kind gets a marker", () => {
+test("awarded result kinds the pairing does not already name get a marker", () => {
   expect(matchResultKindLabel("concession")).toBe("Conceded");
-  expect(matchResultKindLabel("bye")).toBe("Bye");
   expect(matchResultKindLabel("forfeit")).toBe("Forfeit");
   expect(matchResultKindLabel("no_show")).toBe("No show");
   expect(matchResultKindLabel("dq")).toBe("DQ");
 });
 
-test("a played result and a missing result get no marker", () => {
+test("played, bye, and missing results get no marker", () => {
   expect(matchResultKindLabel("played")).toBeNull();
+  // A bye is already named by its opponent-less pairing on every surface,
+  // so a marker beside the scoreline would just repeat it.
+  expect(matchResultKindLabel("bye")).toBeNull();
   expect(matchResultKindLabel(null)).toBeNull();
   expect(matchResultKindLabel(undefined)).toBeNull();
 });
