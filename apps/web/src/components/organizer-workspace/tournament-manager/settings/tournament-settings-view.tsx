@@ -3,6 +3,7 @@ import { useQuery } from 'convex/react'
 import { api } from '@tournament-os/backend/convex/_generated/api'
 import { DangerZoneCard } from './danger-zone-card'
 import { EventDetailsCard } from './event-details-card'
+import { InviteLinkCard } from './invite-link-card'
 import { isPreStartLocked } from './is-pre-start-locked'
 import { PairingsPublicationCard } from './pairings-publication-card'
 import { PhaseSettingsCard } from './phase-settings-card'
@@ -47,6 +48,7 @@ export function TournamentSettingsView({
             key={setup.tournament._id}
             tournament={setup.tournament}
           />
+          <InviteLinkCard tournament={setup.tournament} />
           <PairingsPublicationCard tournament={setup.tournament} />
           <EventDetailsCard
             key={`${setup.tournament._id}-details`}

@@ -40,6 +40,10 @@ legitimate play. Tune them in `rateLimits.ts`; nothing else needs to change.
 - **Organizer event-day operations** (pairing, timers, result entry, round
   completion, roster management): they run in bursts on event day and their
   blast radius is confined to the organizer's own events.
+- **Invite-link management** (`regenerateInviteLink`, `disableInviteLink`):
+  organizer-gated and bounded at one `tournamentInvites` row per tournament
+  (regenerating rewrites the same row), so there is no write amplification
+  to meter.
 - **Queries.** Convex queries cannot write, so they cannot debit a bucket.
   The query surface is protected structurally instead: every public query
   reads through bounded `take()`s, `clampPageSize` on client-supplied page

@@ -62,7 +62,10 @@ export const tournamentVisibilities: Record<
 > = {
   public: { label: 'Public', description: 'Shown in public listings' },
   unlisted: { label: 'Unlisted', description: 'Anyone with the link' },
-  private: { label: 'Private', description: 'Organizers only' },
+  private: {
+    label: 'Private',
+    description: 'Invite links and organizers only',
+  },
 }
 
 export function TournamentVisibilityBadge({
