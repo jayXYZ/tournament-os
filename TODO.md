@@ -537,7 +537,7 @@ match result so judge tooling cannot accidentally change standings.
         single elimination cannot advance a double match loss
 - [ ] Complete the DQ workflow (MTR/IPG-aligned — see `CONTEXT.md`; moved
       from section 1, 2026-08-13, alongside the other judge adjudications)
-  - [ ] Remove DQ'd players from standings entirely so every lower-ranked player advances one place, deleting the mask-as-drop machinery this replaces
+  - [ ] Remove DQ'd players from standings entirely so every lower-ranked player advances one place (the old mask-as-drop machinery is already deleted; player surfaces report a disqualification as-is until this lands)
   - [ ] Keep a DQ'd player's completed matches on record and feeding former opponents' tiebreakers, with the tournament staying on their profile without a placement
   - [ ] Add an authorized DQ action and participation-state transition
   - [ ] Record each DQ as a typed, staff-only audit event with the actor and affected player

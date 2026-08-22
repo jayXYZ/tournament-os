@@ -23,7 +23,6 @@ import {
   adjustConfirmedRegistrationCount,
   entryReviewActions,
   playerDisplayName,
-  playerVisibleRegistration,
   registrationDisplayName,
   registrationDropEffect,
   registrationForUser,
@@ -243,14 +242,7 @@ export const getMyRegistration = query({
       return null;
     }
 
-    const registration = await registrationForUser(
-      ctx,
-      args.tournamentId,
-      user._id,
-    );
-    return registration === null
-      ? null
-      : playerVisibleRegistration(registration);
+    return await registrationForUser(ctx, args.tournamentId, user._id);
   },
 });
 
@@ -314,7 +306,7 @@ export const listMyTournaments = query({
       }
       const organization = await ctx.db.get(tournament.organizationId);
       rows.push({
-        registration: playerVisibleRegistration(registration),
+        registration,
         tournament,
         organizationName: organization?.name ?? null,
         registeredCount: tournament.confirmedRegistrationCount,

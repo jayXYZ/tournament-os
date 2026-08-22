@@ -67,19 +67,15 @@ type StandingStatusInput = {
 };
 
 // Status marker shown next to a player's name in standings. Shared by the
-// organizer and player views so the two stay symmetrical; only the wording for
-// a disqualification differs (players see "Dropped", organizers see "DQ").
-export function standingStatusLabel(
-  row: StandingStatusInput,
-  options: { disqualifiedLabel: string },
-) {
+// organizer and player views so the two stay symmetrical.
+export function standingStatusLabel(row: StandingStatusInput) {
   // Standings keep every participant ranked, so non-active players need a
   // marker; a drop or DQ outranks any playoff state.
   if (row.registrationStatus === "dropped") {
     return "Dropped";
   }
   if (row.registrationStatus === "disqualified") {
-    return options.disqualifiedLabel;
+    return "DQ";
   }
   if (row.playoffStatus === "active") {
     return "Still active";

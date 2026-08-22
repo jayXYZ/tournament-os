@@ -88,15 +88,12 @@ const standingColumns: Array<ColumnDef<StandingRow>> = [
     // Greedy column absorbs name-length variance so the stat columns stay put.
     meta: { className: 'w-full' },
     cell: ({ row }) => {
-      const statusLabel = standingStatusLabel(
-        {
-          registrationStatus: row.original.registrationStatus,
-          playoffStatus: row.original.standing.playoffStatus,
-          eliminatedInRoundNumber:
-            row.original.standing.eliminatedInRoundNumber ?? null,
-        },
-        { disqualifiedLabel: 'DQ' },
-      )
+      const statusLabel = standingStatusLabel({
+        registrationStatus: row.original.registrationStatus,
+        playoffStatus: row.original.standing.playoffStatus,
+        eliminatedInRoundNumber:
+          row.original.standing.eliminatedInRoundNumber ?? null,
+      })
       return (
         <p className="font-medium text-foreground">
           {displayPlayerName(row.original.playerName)}

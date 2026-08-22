@@ -2,114 +2,90 @@ import { expect, test } from "vitest";
 
 import { matchResultKindLabel, standingStatusLabel } from "./format.ts";
 
-const DQ = { disqualifiedLabel: "DQ" };
-
 test("a drop or DQ outranks any playoff state", () => {
   expect(
-    standingStatusLabel(
-      { registrationStatus: "dropped", playoffStatus: "active" },
-      DQ,
-    ),
+    standingStatusLabel({
+      registrationStatus: "dropped",
+      playoffStatus: "active",
+    }),
   ).toBe("Dropped");
   expect(
-    standingStatusLabel(
-      {
-        registrationStatus: "disqualified",
-        playoffStatus: "eliminated",
-        eliminatedInRoundNumber: 2,
-      },
-      DQ,
-    ),
+    standingStatusLabel({
+      registrationStatus: "disqualified",
+      playoffStatus: "eliminated",
+      eliminatedInRoundNumber: 2,
+    }),
   ).toBe("DQ");
-});
-
-test("the disqualified wording comes from the caller", () => {
-  // Players see "Dropped" for a DQ; organizers see "DQ".
-  expect(
-    standingStatusLabel(
-      { registrationStatus: "disqualified" },
-      { disqualifiedLabel: "Dropped" },
-    ),
-  ).toBe("Dropped");
 });
 
 test("playoff states label active players", () => {
   expect(
-    standingStatusLabel(
-      { registrationStatus: "active", playoffStatus: "active" },
-      DQ,
-    ),
+    standingStatusLabel({
+      registrationStatus: "active",
+      playoffStatus: "active",
+    }),
   ).toBe("Still active");
   expect(
-    standingStatusLabel(
-      { registrationStatus: "active", playoffStatus: "cut" },
-      DQ,
-    ),
+    standingStatusLabel({ registrationStatus: "active", playoffStatus: "cut" }),
   ).toBe("Missed cut");
 });
 
 test("a playoff elimination includes the round when known", () => {
   expect(
-    standingStatusLabel(
-      {
-        registrationStatus: "active",
-        playoffStatus: "eliminated",
-        eliminatedInRoundNumber: 5,
-      },
-      DQ,
-    ),
+    standingStatusLabel({
+      registrationStatus: "active",
+      playoffStatus: "eliminated",
+      eliminatedInRoundNumber: 5,
+    }),
   ).toBe("Eliminated R5");
   expect(
-    standingStatusLabel(
-      { registrationStatus: "active", playoffStatus: "eliminated" },
-      DQ,
-    ),
+    standingStatusLabel({
+      registrationStatus: "active",
+      playoffStatus: "eliminated",
+    }),
   ).toBe("Eliminated");
   expect(
-    standingStatusLabel(
-      {
-        registrationStatus: "active",
-        playoffStatus: "eliminated",
-        eliminatedInRoundNumber: null,
-      },
-      DQ,
-    ),
+    standingStatusLabel({
+      registrationStatus: "active",
+      playoffStatus: "eliminated",
+      eliminatedInRoundNumber: null,
+    }),
   ).toBe("Eliminated");
 });
 
 test("a playoff cut outranks an eliminated registration", () => {
   expect(
-    standingStatusLabel(
-      { registrationStatus: "eliminated", playoffStatus: "cut" },
-      DQ,
-    ),
+    standingStatusLabel({
+      registrationStatus: "eliminated",
+      playoffStatus: "cut",
+    }),
   ).toBe("Missed cut");
 });
 
 test("an eliminated registration shows through when there is no playoff state", () => {
-  expect(standingStatusLabel({ registrationStatus: "eliminated" }, DQ)).toBe(
+  expect(standingStatusLabel({ registrationStatus: "eliminated" })).toBe(
     "Eliminated",
   );
   expect(
-    standingStatusLabel(
-      { registrationStatus: "eliminated", playoffStatus: "not_started" },
-      DQ,
-    ),
+    standingStatusLabel({
+      registrationStatus: "eliminated",
+      playoffStatus: "not_started",
+    }),
   ).toBe("Eliminated");
 });
 
 test("active and unknown players get no marker", () => {
-  expect(standingStatusLabel({ registrationStatus: "active" }, DQ)).toBeNull();
+  expect(standingStatusLabel({ registrationStatus: "active" })).toBeNull();
   expect(
-    standingStatusLabel(
-      { registrationStatus: "active", playoffStatus: "not_started" },
-      DQ,
-    ),
+    standingStatusLabel({
+      registrationStatus: "active",
+      playoffStatus: "not_started",
+    }),
   ).toBeNull();
   expect(
-    standingStatusLabel({ registrationStatus: null, playoffStatus: null }, DQ),
+    standingStatusLabel({ registrationStatus: null, playoffStatus: null }),
   ).toBeNull();
-  expect(standingStatusLabel({ registrationStatus: undefined }, DQ)).toBeNull();
+  expect(standingStatusLabel({ registrationStatus: undefined })).toBeNull();
 });
 
 test("every awarded result kind gets a marker", () => {

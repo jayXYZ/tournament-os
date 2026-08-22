@@ -189,8 +189,8 @@ test("getPublicPlayerResults returns completed results matching final standings"
   expect(droppedResults).toHaveLength(1);
   expect(droppedResults?.[0].registrationStatus).toBe("dropped");
 
-  // Public/player-facing history must not reveal an organizer DQ. It is
-  // intentionally indistinguishable from a voluntary drop at this boundary.
+  // A disqualified player's tournament stays on their public record too, and
+  // the status is reported as-is — nothing masks a DQ as a drop.
   await t.run(async (ctx) => {
     await ctx.db.patch(seeded.registrationIds[0], {
       participationStatus: "disqualified",
@@ -198,7 +198,7 @@ test("getPublicPlayerResults returns completed results matching final standings"
   });
   const disqualifiedResults = (await playerResultsPage(t, publicCode)).page;
   expect(disqualifiedResults).toHaveLength(1);
-  expect(disqualifiedResults?.[0].registrationStatus).toBe("dropped");
+  expect(disqualifiedResults?.[0].registrationStatus).toBe("disqualified");
 
   // A player with no qualifying events gets an empty list, not null.
   const stranger = t.withIdentity(playerIdentity(99));

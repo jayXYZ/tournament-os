@@ -9,7 +9,6 @@ import { latestCompletedRound, requirePhase } from "../model/phases";
 import { dropPlayer } from "../model/roster";
 import {
   MAX_TOURNAMENT_PLAYERS,
-  playerVisibleParticipationStatus,
   registrationForUser,
   resolveRegistrationDisplayName,
 } from "../model/registrations";
@@ -99,9 +98,7 @@ export const getLatestStandings = query({
           opponentGameWinPct: standing.opponentGameWinPct,
           playoffStatus: standing.playoffStatus,
           eliminatedInRoundNumber: standing.eliminatedInRoundNumber ?? null,
-          registrationStatus: playerVisibleParticipationStatus(
-            standing.participationStatus ?? "active",
-          ),
+          registrationStatus: standing.participationStatus ?? "active",
           isMe: standing.playerId === registration._id,
         };
       },

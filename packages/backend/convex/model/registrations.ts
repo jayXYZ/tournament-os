@@ -156,30 +156,6 @@ export async function registrationForUser(
   return await registrationForParticipant(ctx, tournamentId, participant._id);
 }
 
-// Public/player-facing surfaces treat a disqualification as a drop; only
-// organizer-authorized APIs expose the distinction. Every query that returns
-// another player's participation status to a non-organizer must pass it
-// through here so the masking never depends on client rendering.
-export function playerVisibleParticipationStatus(
-  status: Doc<"tournamentRegistrations">["participationStatus"] | null,
-) {
-  return status === "disqualified" ? "dropped" : (status ?? null);
-}
-
-// A registration row as player-facing queries return it: identical to the
-// stored document except that a disqualification reads as a drop. Player
-// surfaces branch on participationStatus (public event page, native app), so
-// queries that hand a player their own row must mask it here — the same rule
-// playerVisibleParticipationStatus enforces for other players' statuses — so
-// the masking never depends on client rendering.
-export function playerVisibleRegistration(
-  registration: Doc<"tournamentRegistrations">,
-): Doc<"tournamentRegistrations"> {
-  return registration.participationStatus === "disqualified"
-    ? { ...registration, participationStatus: "dropped" }
-    : registration;
-}
-
 // What the organizer "drop player" action would do to a registration right
 // now, or null when the action is unavailable. Before play the action cancels
 // the entry (freeing the seat), so it also covers dropped rows a round-one

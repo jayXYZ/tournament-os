@@ -824,32 +824,30 @@ test("dropSelf removes the player from future rounds but keeps read access", asy
     matchLosses: 1,
   });
 
-  // An organizer DQ reads as a plain drop in player-facing standings; only
-  // the organizer standings query exposes the real status. Disqualification
-  // has no mutation of its own yet, so this stands in for the planned one by
-  // going through the single transition funnel a writer would use — which is
-  // also what keeps the standings row's denormalized copy current.
+  // A disqualification is reported as-is on every surface — player-facing
+  // queries and the organizer standings query all return the real status.
+  // Disqualification has no mutation of its own yet, so this stands in for
+  // the planned one by going through the single transition funnel a writer
+  // would use — which is also what keeps the standings row's denormalized
+  // copy current.
   await t.run(async (ctx) => {
     await setRegistrationState(ctx, registrationIds[3], {
       entryStatus: "confirmed",
       participationStatus: "disqualified",
     });
   });
-  const maskedStandings = await playerFour.query(
+  const standingsAfterDq = await playerFour.query(
     api.tournaments.player.getLatestStandings,
     { tournamentId },
   );
   expect(
-    maskedStandings?.rows.find((row) => row.isMe)?.registrationStatus,
-  ).toBe("dropped");
-  // The controller query masks the player's own status the same way, so the
-  // clients' existing dropped branches cover a disqualification with no
-  // dedicated handling of their own.
-  const maskedCurrent = await playerFour.query(
+    standingsAfterDq?.rows.find((row) => row.isMe)?.registrationStatus,
+  ).toBe("disqualified");
+  const currentAfterDq = await playerFour.query(
     api.tournaments.player.getMyCurrentMatch,
     { tournamentId },
   );
-  expect(maskedCurrent.myRegistrationStatus).toBe("dropped");
+  expect(currentAfterDq.myRegistrationStatus).toBe("disqualified");
   const organizerStandings = await organizer.query(
     api.tournaments.rounds.listRoundStandings,
     { roundId: round._id },

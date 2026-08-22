@@ -472,7 +472,7 @@ test("registerSelf lets a cancelled player rejoin a private event but admits no 
 // Every confirmed seat is listed, whatever its participation status: the
 // player controller admits any confirmed entry, so a player who was dropped,
 // eliminated, or disqualified mid-event must still find the running event
-// here. Disqualifications are masked as drops on this player-facing surface.
+// here.
 test("listMyTournaments returns every confirmed seat for ongoing and upcoming events", async () => {
   const t = createConvexTest();
   const now = Date.now();
@@ -609,9 +609,9 @@ test("listMyTournaments returns every confirmed seat for ongoing and upcoming ev
     "Later Public Event",
   ]);
   expect(rows[0].organizationName).toBe("Test Org");
-  // Player-facing masking: the disqualification reads as a drop, here and on
-  // the single-registration query the event pages branch on.
-  expect(rows[0].registration.participationStatus).toBe("dropped");
+  // The disqualification is reported as-is, here and on the
+  // single-registration query the event pages branch on.
+  expect(rows[0].registration.participationStatus).toBe("disqualified");
   expect(rows[1].registration.participationStatus).toBe("eliminated");
   const myDisqualifiedRegistration = await player.query(
     api.tournaments.registrations.getMyRegistration,
@@ -619,7 +619,7 @@ test("listMyTournaments returns every confirmed seat for ongoing and upcoming ev
   );
   expect(myDisqualifiedRegistration).toMatchObject({
     entryStatus: "confirmed",
-    participationStatus: "dropped",
+    participationStatus: "disqualified",
   });
 
   const anonymous = await t.query(
