@@ -324,19 +324,24 @@ function RegistrationPanel({
   }
 
   // A dropped player still holds their confirmed seat (a mid-play drop, or
-  // one preserved by a round-one rewind back into registration), and the
-  // server masks a disqualification as a drop, so this branch covers both.
+  // one preserved by a round-one rewind back into registration); a
+  // disqualified player holds theirs too, so this branch covers both.
   // Before play the only self-service action the server accepts is cancelling
   // to release the seat; rejoining is an organizer-side reinstatement. While
   // the event runs, the player controller still admits every confirmed seat,
   // so keep its entry point available for standings and match history.
   if (
     registration?.entryStatus === 'confirmed' &&
-    registration.participationStatus === 'dropped'
+    (registration.participationStatus === 'dropped' ||
+      registration.participationStatus === 'disqualified')
   ) {
     return (
       <div className="flex flex-wrap items-center gap-3">
-        <Badge variant="secondary">You dropped from this event</Badge>
+        <Badge variant="secondary">
+          {registration.participationStatus === 'disqualified'
+            ? 'You were disqualified from this event'
+            : 'You dropped from this event'}
+        </Badge>
         {tournament.lifecycle === 'registration' ? (
           <Button
             type="button"

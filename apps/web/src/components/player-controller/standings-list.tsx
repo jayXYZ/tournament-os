@@ -80,8 +80,7 @@ export function StandingsList({
 
 function StandingsRow({ row }: { row: StandingRow }) {
   const [expanded, setExpanded] = useState(false)
-  // Players see a DQ as a plain drop; the organizer view names it.
-  const statusLabel = standingStatusLabel(row, { disqualifiedLabel: 'Dropped' })
+  const statusLabel = standingStatusLabel(row)
 
   return (
     <button

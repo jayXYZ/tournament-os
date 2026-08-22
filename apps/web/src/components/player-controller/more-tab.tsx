@@ -221,6 +221,21 @@ function DropCard({
     )
   }
 
+  if (currentMatch?.myRegistrationStatus === 'disqualified') {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Disqualified</CardTitle>
+          <CardDescription>
+            You have been disqualified from this tournament. Your finished
+            matches stay on record and still count for opponents&apos;
+            tiebreakers.
+          </CardDescription>
+        </CardHeader>
+      </Card>
+    )
+  }
+
   if (currentMatch?.myRegistrationStatus !== 'active') {
     return null
   }

@@ -19,10 +19,7 @@ import {
   takeConfirmedRegistrationsAfter,
 } from "./model/playerResults";
 import { participantForUser } from "./model/participants";
-import {
-  playerVisibleParticipationStatus,
-  registrationForUser,
-} from "./model/registrations";
+import { registrationForUser } from "./model/registrations";
 import { ensureCurrentUser, userByTokenIdentifier } from "./model/users";
 import { enforceRateLimit } from "./rateLimits";
 import { userProfileVisibilityValidator } from "./validators";
@@ -248,10 +245,7 @@ export const getPublicPlayerResults = query({
               tournamentName: tournament.name,
               startDate: tournament.startDate,
               format: tournament.format,
-              registrationStatus:
-                playerVisibleParticipationStatus(
-                  registration.participationStatus ?? null,
-                ) ?? "active",
+              registrationStatus: registration.participationStatus ?? "active",
               finalRank: standing?.rank ?? null,
               matchPoints: standing?.matchPoints ?? 0,
               matchWins: standing?.matchWins ?? 0,

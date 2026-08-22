@@ -8,7 +8,6 @@ import {
 } from "./phases";
 import { dropConcedesMatch, storedOutcomeForPlayer } from "./matchResults";
 import { participantPublicIdentity } from "./participants";
-import { playerVisibleRegistration } from "./registrations";
 import {
   isPairingsVisibleToPlayers,
   matchPlayers,
@@ -23,19 +22,12 @@ type OpponentSummary = {
 };
 
 // The Player View (see CONTEXT.md): what this player faces in the tournament
-// right now, always exactly one state. Masking is applied inside — callers
-// pass the stored registration and never learn that a disqualified player
-// reads as dropped.
+// right now, always exactly one state.
 export async function currentMatchForPlayer(
   ctx: QueryCtx,
   tournament: Doc<"tournaments">,
-  storedRegistration: Doc<"tournamentRegistrations">,
+  registration: Doc<"tournamentRegistrations">,
 ) {
-  // The rest of the view only distinguishes active from non-active, so
-  // building the whole payload from the masked row changes nothing but the
-  // reported status: a disqualified player reads as dropped, and the
-  // clients' existing dropped branches render the removed-from-event state.
-  const registration = playerVisibleRegistration(storedRegistration);
   // The Round Timer is deliberately absent: it is a tournament-level fact
   // visible to spectators too, so clients read it from getPublicTournament.
   const base = {

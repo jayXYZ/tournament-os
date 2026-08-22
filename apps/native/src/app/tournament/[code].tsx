@@ -235,10 +235,7 @@ function Standings({
     <View style={styles.card}>
       <Text style={styles.cardLabel}>After round {standings.roundNumber}</Text>
       {standings.rows.map((row) => {
-        // Players see a DQ as a plain drop; the organizer view names it.
-        const statusLabel = standingStatusLabel(row, {
-          disqualifiedLabel: "Dropped",
-        });
+        const statusLabel = standingStatusLabel(row);
         return (
           <View
             key={`${row.rank}-${row.name ?? "anon"}`}
