@@ -17,6 +17,7 @@ import { Route as UsersPublicCodeRouteImport } from './routes/users.$publicCode'
 import { Route as SignUpSplatRouteImport } from './routes/sign-up.$'
 import { Route as SignInSplatRouteImport } from './routes/sign-in.$'
 import { Route as JoinInviteCodeRouteImport } from './routes/join.$inviteCode'
+import { Route as AdminStripeReturnRouteImport } from './routes/admin.stripe-return'
 import { Route as AdminStaffRouteImport } from './routes/admin.staff'
 import { Route as AdminOrganizationRouteImport } from './routes/admin.organization'
 import { Route as TournamentsTournamentIdIndexRouteImport } from './routes/tournaments.$tournamentId.index'
@@ -70,6 +71,11 @@ const JoinInviteCodeRoute = JoinInviteCodeRouteImport.update({
   id: '/join/$inviteCode',
   path: '/join/$inviteCode',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AdminStripeReturnRoute = AdminStripeReturnRouteImport.update({
+  id: '/stripe-return',
+  path: '/stripe-return',
+  getParentRoute: () => AdminRoute,
 } as any)
 const AdminStaffRoute = AdminStaffRouteImport.update({
   id: '/staff',
@@ -154,6 +160,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRoute
   '/admin/organization': typeof AdminOrganizationRoute
   '/admin/staff': typeof AdminStaffRoute
+  '/admin/stripe-return': typeof AdminStripeReturnRoute
   '/join/$inviteCode': typeof JoinInviteCodeRoute
   '/sign-in/$': typeof SignInSplatRoute
   '/sign-up/$': typeof SignUpSplatRoute
@@ -176,6 +183,7 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsRoute
   '/admin/organization': typeof AdminOrganizationRoute
   '/admin/staff': typeof AdminStaffRoute
+  '/admin/stripe-return': typeof AdminStripeReturnRoute
   '/join/$inviteCode': typeof JoinInviteCodeRoute
   '/sign-in/$': typeof SignInSplatRoute
   '/sign-up/$': typeof SignUpSplatRoute
@@ -199,6 +207,7 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRoute
   '/admin/organization': typeof AdminOrganizationRoute
   '/admin/staff': typeof AdminStaffRoute
+  '/admin/stripe-return': typeof AdminStripeReturnRoute
   '/join/$inviteCode': typeof JoinInviteCodeRoute
   '/sign-in/$': typeof SignInSplatRoute
   '/sign-up/$': typeof SignUpSplatRoute
@@ -224,6 +233,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/admin/organization'
     | '/admin/staff'
+    | '/admin/stripe-return'
     | '/join/$inviteCode'
     | '/sign-in/$'
     | '/sign-up/$'
@@ -246,6 +256,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/admin/organization'
     | '/admin/staff'
+    | '/admin/stripe-return'
     | '/join/$inviteCode'
     | '/sign-in/$'
     | '/sign-up/$'
@@ -268,6 +279,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/admin/organization'
     | '/admin/staff'
+    | '/admin/stripe-return'
     | '/join/$inviteCode'
     | '/sign-in/$'
     | '/sign-up/$'
@@ -356,6 +368,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/join/$inviteCode'
       preLoaderRoute: typeof JoinInviteCodeRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/admin/stripe-return': {
+      id: '/admin/stripe-return'
+      path: '/stripe-return'
+      fullPath: '/admin/stripe-return'
+      preLoaderRoute: typeof AdminStripeReturnRouteImport
+      parentRoute: typeof AdminRoute
     }
     '/admin/staff': {
       id: '/admin/staff'
@@ -486,6 +505,7 @@ const AdminTournamentsTournamentIdRouteWithChildren =
 interface AdminRouteChildren {
   AdminOrganizationRoute: typeof AdminOrganizationRoute
   AdminStaffRoute: typeof AdminStaffRoute
+  AdminStripeReturnRoute: typeof AdminStripeReturnRoute
   AdminIndexRoute: typeof AdminIndexRoute
   AdminTournamentsTournamentIdRoute: typeof AdminTournamentsTournamentIdRouteWithChildren
 }
@@ -493,6 +513,7 @@ interface AdminRouteChildren {
 const AdminRouteChildren: AdminRouteChildren = {
   AdminOrganizationRoute: AdminOrganizationRoute,
   AdminStaffRoute: AdminStaffRoute,
+  AdminStripeReturnRoute: AdminStripeReturnRoute,
   AdminIndexRoute: AdminIndexRoute,
   AdminTournamentsTournamentIdRoute:
     AdminTournamentsTournamentIdRouteWithChildren,

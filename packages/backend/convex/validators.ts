@@ -11,6 +11,7 @@ import { tournamentFormats } from "@tournament-os/shared/tournament-creation-uti
 
 export {
   canInviteMembers,
+  canManageOrganizationPayments,
   canManageOrganizationProfile,
   normalizeInviteEmail as normalizeEmail,
   slugifyOrganizationName,
@@ -48,6 +49,17 @@ export const invitationStatusValidator = v.union(
 export const organizerInviteRoleValidator = v.union(
   v.literal(organizerInviteRoles[0]),
   v.literal(organizerInviteRoles[1]),
+);
+
+// Snapshot of a connected account's stripe_balance.stripe_transfers
+// capability from the last Stripe retrieve (the Stripe API's own status
+// vocabulary). "active" is the only status that allows transferring an
+// organization its payouts.
+export const stripeTransfersCapabilityStatusValidator = v.union(
+  v.literal("pending"),
+  v.literal("active"),
+  v.literal("restricted"),
+  v.literal("unsupported"),
 );
 
 export const tournamentFormatValidator = v.union(

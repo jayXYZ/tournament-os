@@ -6,6 +6,7 @@ import { api } from '@tournament-os/backend/convex/_generated/api'
 import { validateOrganizationProfileImageDetails } from '@tournament-os/shared/organization-profile-image'
 import { canManageOrganizationProfile } from '@tournament-os/shared/organizer-utils'
 import { useOrganization } from './organization-context'
+import { OrganizationPaymentsCard } from './organization-payments-card'
 import type { FormEvent } from 'react'
 
 import type { OrganizationProfileImageDetails } from '@tournament-os/shared/organization-profile-image'
@@ -140,46 +141,50 @@ export function OrganizationProfileView() {
       />
 
       <div className="grid gap-6 xl:grid-cols-[1fr_360px]">
-        <Card>
-          <CardHeader>
-            <CardTitle>Details</CardTitle>
-            <CardDescription>
-              Update the selected organization workspace profile.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleUpdateProfile}>
-              <FieldGroup>
-                <Field>
-                  <FieldLabel htmlFor="profile-organization-name">
-                    Name
-                  </FieldLabel>
-                  <Input
-                    id="profile-organization-name"
-                    value={profileName}
-                    onChange={(event) => setProfileName(event.target.value)}
+        <div className="flex flex-col gap-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Details</CardTitle>
+              <CardDescription>
+                Update the selected organization workspace profile.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleUpdateProfile}>
+                <FieldGroup>
+                  <Field>
+                    <FieldLabel htmlFor="profile-organization-name">
+                      Name
+                    </FieldLabel>
+                    <Input
+                      id="profile-organization-name"
+                      value={profileName}
+                      onChange={(event) => setProfileName(event.target.value)}
+                      disabled={!mayManageProfile || profileAction.busy}
+                      required
+                    />
+                  </Field>
+                  <Button
+                    type="submit"
                     disabled={!mayManageProfile || profileAction.busy}
-                    required
-                  />
-                </Field>
-                <Button
-                  type="submit"
-                  disabled={!mayManageProfile || profileAction.busy}
-                >
-                  {profileAction.busy ? (
-                    <Spinner data-icon="inline-start" />
-                  ) : null}
-                  Save changes
-                </Button>
-                {!mayManageProfile && (
-                  <FieldDescription>
-                    Only owners and admins can update organization details.
-                  </FieldDescription>
-                )}
-              </FieldGroup>
-            </form>
-          </CardContent>
-        </Card>
+                  >
+                    {profileAction.busy ? (
+                      <Spinner data-icon="inline-start" />
+                    ) : null}
+                    Save changes
+                  </Button>
+                  {!mayManageProfile && (
+                    <FieldDescription>
+                      Only owners and admins can update organization details.
+                    </FieldDescription>
+                  )}
+                </FieldGroup>
+              </form>
+            </CardContent>
+          </Card>
+
+          <OrganizationPaymentsCard />
+        </div>
 
         <aside className="flex flex-col gap-6">
           <Card>

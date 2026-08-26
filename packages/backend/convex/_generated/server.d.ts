@@ -27,6 +27,9 @@ import type { DataModel } from "./dataModel.js";
 type Env = {
   readonly CLERK_JWT_ISSUER_DOMAIN: string;
   readonly PROFILE_RESULTS_CURSOR_KEY: string | undefined;
+  readonly STRIPE_SECRET_KEY: string | undefined;
+  readonly STRIPE_WEBHOOK_SECRET: string | undefined;
+  readonly WEB_APP_ORIGIN: string | undefined;
 };
 
 /**

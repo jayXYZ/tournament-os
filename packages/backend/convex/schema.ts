@@ -10,6 +10,7 @@ import {
   membershipStatusValidator,
   organizationStatusValidator,
   organizerRoleValidator,
+  stripeTransfersCapabilityStatusValidator,
   tournamentFormatValidator,
   tournamentVisibilityValidator,
   tournamentLifecycleValidator,
@@ -88,6 +89,26 @@ export default defineSchema({
     .index("by_organizationId", ["organizationId"])
     .index("by_email_and_status", ["email", "status"])
     .index("by_organizationId_and_email", ["organizationId", "email"]),
+
+  // One row per organization that has started Stripe Connect onboarding: the
+  // connected account identity plus a capability snapshot from the last
+  // retrieve. Kept off the organization document because every organizer
+  // surface subscribes to that doc, while this row changes on sync cadence
+  // and is read only by payment surfaces. Money movement never trusts the
+  // snapshot — the payout action re-checks the live capability first.
+  organizationStripeAccounts: defineTable({
+    organizationId: v.id("organizations"),
+    stripeAccountId: v.string(),
+    transfersCapabilityStatus: stripeTransfersCapabilityStatusValidator,
+    // Denormalized transfersCapabilityStatus === "active" so guards and UI
+    // read one boolean.
+    payoutsReady: v.boolean(),
+    lastSyncedAt: v.number(),
+    createdBy: v.id("users"),
+    updatedAt: v.number(),
+  })
+    .index("by_organizationId", ["organizationId"])
+    .index("by_stripeAccountId", ["stripeAccountId"]),
 
   tournaments: defineTable({
     name: v.string(),
