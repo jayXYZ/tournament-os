@@ -116,6 +116,30 @@ export async function deleteTournamentOperationalDataBatch(
   // Payment rows are only reachable here after the delete guard proved every
   // order terminal and every refund settled (deleteTournament); the rows are
   // pure history by now.
+  const payouts = await ctx.db
+    .query("tournamentPayouts")
+    .withIndex("by_tournamentId", (q) => q.eq("tournamentId", tournamentId))
+    .take(4);
+  for (const payout of payouts) {
+    const transfers = await ctx.db
+      .query("payoutTransfers")
+      .withIndex("by_payoutId_and_status", (q) => q.eq("payoutId", payout._id))
+      .take(512);
+    sawFullPage ||= transfers.length === 512;
+    for (const transfer of transfers) {
+      if (budget < 1) {
+        return false;
+      }
+      await ctx.db.delete(transfer._id);
+      budget -= 1;
+    }
+    if (budget < 1) {
+      return false;
+    }
+    await ctx.db.delete(payout._id);
+    budget -= 1;
+  }
+
   const paymentRefunds = await ctx.db
     .query("paymentRefunds")
     .withIndex("by_tournamentId_and_status", (q) =>

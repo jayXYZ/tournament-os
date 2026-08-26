@@ -12,6 +12,8 @@ import {
   paymentRefundKindValidator,
   paymentRefundReasonValidator,
   paymentRefundStatusValidator,
+  payoutTransferStatusValidator,
+  tournamentPayoutStatusValidator,
   tournamentPhaseBestOfValidator,
   membershipStatusValidator,
   organizationStatusValidator,
@@ -172,6 +174,49 @@ export default defineSchema({
     ])
     .index("by_tournamentId_and_status", ["tournamentId", "status"])
     .index("by_stripeRefundId", ["stripeRefundId"]),
+
+  // One row per completed paid tournament: the payout of its entry fees to
+  // the organization, created by the sweep completeTournament schedules
+  // (payments/payouts.ts). netCents = totalEntryCents − absorbedFeeCents;
+  // remainingDeductionCents is the greedy-deduction carry the batched
+  // enumeration spends across transfer rows.
+  tournamentPayouts: defineTable({
+    tournamentId: v.id("tournaments"),
+    organizationId: v.id("organizations"),
+    // Destination snapshot at sweep start; the send action re-checks the
+    // live capability before transferring.
+    stripeAccountId: v.string(),
+    status: tournamentPayoutStatusValidator,
+    totalEntryCents: v.number(),
+    absorbedFeeCents: v.number(),
+    netCents: v.number(),
+    remainingDeductionCents: v.number(),
+    // Pagination cursor for the batched enumeration over paid orders (they
+    // stay "paid" while transfer rows are written, so a plain take() would
+    // re-read the same page forever).
+    enumerationCursor: v.optional(v.string()),
+    error: v.optional(v.string()),
+    updatedAt: v.number(),
+  }).index("by_tournamentId", ["tournamentId"]),
+
+  // One transfer per paid order within a payout, anchored to the order's
+  // charge via source_transaction so availability follows the original
+  // payment. amountCents is the entry fee minus this row's share of the
+  // absorbed-fee deduction.
+  payoutTransfers: defineTable({
+    payoutId: v.id("tournamentPayouts"),
+    tournamentId: v.id("tournaments"),
+    orderId: v.id("paymentOrders"),
+    stripeChargeId: v.string(),
+    amountCents: v.number(),
+    status: payoutTransferStatusValidator,
+    stripeTransferId: v.optional(v.string()),
+    attemptCount: v.number(),
+    lastError: v.optional(v.string()),
+    updatedAt: v.number(),
+  })
+    .index("by_payoutId_and_status", ["payoutId", "status"])
+    .index("by_orderId", ["orderId"]),
 
   // Processed Stripe webhook event ids. Every webhook internalMutation
   // checks-then-inserts here first and performs its whole state change in

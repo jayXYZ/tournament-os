@@ -214,6 +214,10 @@ function describeEvent(row: AuditEventRow): string {
       return `Refunded ${formatAuditCents(event.amountCents)} to ${displayPlayerName(event.player.playerName)} (${describeRefundReason(event.reason)}${event.kind === 'entry_only' ? ', entry cost only' : ''})`
     case 'refund_failed':
       return `Refund of ${formatAuditCents(event.amountCents)} to ${displayPlayerName(event.player.playerName)} failed — needs attention`
+    case 'payout_sent':
+      return `Paid out ${formatAuditCents(event.netCents)} in entry fees to the organization`
+    case 'payout_failed':
+      return 'The entry-fee payout failed — needs attention'
   }
 }
 

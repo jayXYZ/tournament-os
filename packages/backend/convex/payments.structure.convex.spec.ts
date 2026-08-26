@@ -99,3 +99,26 @@ test("registerSelf routes direct paid registration to checkout", () => {
   expect(registrationsSource).toMatch(/isPaidTournament\(tournament\)/);
   expect(registrationsSource).toMatch(/register through the payment checkout/);
 });
+
+const progressionSource = readFileSync(
+  new URL("./model/progression.ts", import.meta.url),
+  "utf8",
+);
+const payoutsSource = readFileSync(
+  new URL("./payments/payouts.ts", import.meta.url),
+  "utf8",
+);
+
+test("completing a paid tournament schedules the payout sweep", () => {
+  expect(progressionSource).toMatch(
+    /internal\.payments\.payouts\.startPayoutSweep/,
+  );
+});
+
+test("payout transfers are idempotent and re-check the live capability", () => {
+  expect(payoutsSource).toMatch(/idempotencyKey: `transfer:\$\{/);
+  expect(payoutsSource).toMatch(/retrieveTransfersCapabilityStatus/);
+  expect(payoutsSource).toMatch(/source_transaction|sourceChargeId/);
+  // No db-query .filter( — array filters over already-bounded reads are fine.
+  expect(payoutsSource).not.toMatch(/\)\s*\n?\s*\.filter\(/);
+});

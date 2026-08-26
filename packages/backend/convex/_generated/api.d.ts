@@ -42,6 +42,7 @@ import type * as model_users from "../model/users.js";
 import type * as organizations from "../organizations.js";
 import type * as payments_checkout from "../payments/checkout.js";
 import type * as payments_connect from "../payments/connect.js";
+import type * as payments_payouts from "../payments/payouts.js";
 import type * as payments_queries from "../payments/queries.js";
 import type * as payments_refunds from "../payments/refunds.js";
 import type * as payments_webhooks from "../payments/webhooks.js";
@@ -103,6 +104,7 @@ declare const fullApi: ApiFromModules<{
   organizations: typeof organizations;
   "payments/checkout": typeof payments_checkout;
   "payments/connect": typeof payments_connect;
+  "payments/payouts": typeof payments_payouts;
   "payments/queries": typeof payments_queries;
   "payments/refunds": typeof payments_refunds;
   "payments/webhooks": typeof payments_webhooks;

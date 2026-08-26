@@ -287,6 +287,27 @@ export const paymentRefundStatusValidator = v.union(
   v.literal("failed"),
 );
 
+// The tournament payout's lifecycle: enumerating (transfer rows still being
+// written by the batched sweep), sending (Stripe transfers in flight),
+// completed, failed (a transfer exhausted its retries), or blocked (the
+// account is not payouts-ready or refunds are still settling — retriable).
+export const tournamentPayoutStatusValidator = v.union(
+  v.literal("enumerating"),
+  v.literal("sending"),
+  v.literal("completed"),
+  v.literal("failed"),
+  v.literal("blocked"),
+);
+
+// One order's transfer within a payout. "skipped" is a row whose amount the
+// greedy absorbed-fee deduction reduced to zero.
+export const payoutTransferStatusValidator = v.union(
+  v.literal("queued"),
+  v.literal("sent"),
+  v.literal("skipped"),
+  v.literal("failed"),
+);
+
 // A player referenced by an audit event. The name is denormalized at write
 // time so the log stays readable without per-row joins, even if the roster
 // changes later.
@@ -505,6 +526,15 @@ export const tournamentAuditEventValidator = v.union(
     type: v.literal("refund_failed"),
     player: auditPlayerRefValidator,
     amountCents: v.number(),
+  }),
+  v.object({
+    // The completed tournament's entry fees were transferred to the
+    // organization (net of organizer-absorbed refund fees).
+    type: v.literal("payout_sent"),
+    netCents: v.number(),
+  }),
+  v.object({
+    type: v.literal("payout_failed"),
   }),
 );
 

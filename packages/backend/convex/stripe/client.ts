@@ -56,6 +56,15 @@ export interface StripeGateway {
     refundRowId: string;
     idempotencyKey: string;
   }): Promise<{ stripeRefundId: string }>;
+  createTransfer(args: {
+    destinationAccountId: string;
+    amountCents: number;
+    // The paid order's charge: anchors availability to the original payment
+    // and shares its transfer group.
+    sourceChargeId: string;
+    transferGroup: string;
+    idempotencyKey: string;
+  }): Promise<{ stripeTransferId: string }>;
   constructWebhookEvent(args: {
     payload: string;
     signature: string;
@@ -189,6 +198,20 @@ export function getStripeGateway(secretKey: string): StripeGateway {
         { idempotencyKey: args.idempotencyKey },
       );
       return { stripeRefundId: refund.id };
+    },
+
+    async createTransfer(args) {
+      const transfer = await stripe.transfers.create(
+        {
+          amount: args.amountCents,
+          currency: "usd",
+          destination: args.destinationAccountId,
+          source_transaction: args.sourceChargeId,
+          transfer_group: args.transferGroup,
+        },
+        { idempotencyKey: args.idempotencyKey },
+      );
+      return { stripeTransferId: transfer.id };
     },
 
     async constructWebhookEvent(args) {

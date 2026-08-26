@@ -7,6 +7,7 @@ import { EventDetailsCard } from './event-details-card'
 import { InviteLinkCard } from './invite-link-card'
 import { isPreStartLocked } from './is-pre-start-locked'
 import { PairingsPublicationCard } from './pairings-publication-card'
+import { PayoutCard } from './payout-card'
 import { PhaseSettingsCard } from './phase-settings-card'
 import { SettingsSkeleton } from './settings-skeleton'
 import { TournamentSettingsCard } from './tournament-settings-card'
@@ -53,6 +54,7 @@ export function TournamentSettingsView({
             key={`${setup.tournament._id}-entry-fee`}
             tournament={setup.tournament}
           />
+          <PayoutCard tournament={setup.tournament} />
           <PairingsPublicationCard tournament={setup.tournament} />
           <EventDetailsCard
             key={`${setup.tournament._id}-details`}
