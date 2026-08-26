@@ -22,6 +22,10 @@ import {
   requireCurrentPhase,
   writePhases,
 } from "../model/phases";
+import {
+  requirePayoutsReadyOrganization,
+  requireValidEntryFee,
+} from "../model/payments";
 import { parsePublicCode } from "../model/publicCodes";
 import {
   registrationForUser,
@@ -294,6 +298,10 @@ export const updateTournamentSetup = mutation({
     format: v.optional(tournamentFormatValidator),
     decklistRequired: v.optional(v.boolean()),
     registrationRequiresApproval: v.optional(v.boolean()),
+    // 0 clears the fee (a free event); a positive value sets it. The refund
+    // deadline pairs with the fee: null clears it, a timestamp sets it.
+    entryFeeCents: v.optional(v.number()),
+    refundDeadline: v.optional(v.union(v.number(), v.null())),
   },
   handler: async (ctx, args) => {
     const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
@@ -354,6 +362,53 @@ export const updateTournamentSetup = mutation({
       // each pending/waitlisted row still awaits an organizer decision, so
       // review stays a deliberate act with its own audit line.
       patch.registrationRequiresApproval = args.registrationRequiresApproval;
+    }
+
+    // Entry-fee settings (guards in model/payments.ts). Clearing the fee
+    // clears the refund deadline with it — a deadline only means anything on
+    // a paid event.
+    const clearingFee = args.entryFeeCents === 0;
+    if (args.entryFeeCents !== undefined) {
+      if (clearingFee) {
+        patch.entryFeeCents = undefined;
+        patch.refundDeadline = undefined;
+      } else {
+        if (tournament.isTestEvent) {
+          throw new Error("Test events cannot charge an entry fee");
+        }
+        requireValidEntryFee(args.entryFeeCents);
+        await requirePayoutsReadyOrganization(ctx, tournament.organizationId);
+        patch.entryFeeCents = args.entryFeeCents;
+      }
+    }
+    if (args.refundDeadline !== undefined && !clearingFee) {
+      if (args.refundDeadline === null) {
+        patch.refundDeadline = undefined;
+      } else {
+        const effectiveFeeCents =
+          args.entryFeeCents ?? tournament.entryFeeCents ?? 0;
+        if (effectiveFeeCents === 0) {
+          throw new Error("Set an entry fee before setting a refund deadline");
+        }
+        patch.refundDeadline = args.refundDeadline;
+      }
+    }
+    // A reschedule and a deadline must stay coherent whichever one moved, so
+    // the check runs on the effective (post-patch) pair.
+    const effectiveRefundDeadline =
+      "refundDeadline" in patch
+        ? patch.refundDeadline
+        : tournament.refundDeadline;
+    if (effectiveRefundDeadline !== undefined) {
+      const effectiveStartDate = patch.startDate ?? tournament.startDate;
+      if (!Number.isFinite(effectiveRefundDeadline)) {
+        throw new Error("Enter a valid refund deadline");
+      }
+      if (effectiveRefundDeadline > effectiveStartDate) {
+        throw new Error(
+          "Refund deadline must be at or before the tournament start date",
+        );
+      }
     }
 
     await ctx.db.patch(args.tournamentId, patch);

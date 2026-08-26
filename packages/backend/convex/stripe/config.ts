@@ -1,3 +1,8 @@
+import {
+  DEFAULT_FEE_CONFIG,
+  type FeeConfig,
+} from "@tournament-os/shared/payment-fees";
+
 import { env } from "../_generated/server";
 
 // Payments deployment configuration. All Stripe settings are optional in
@@ -29,4 +34,44 @@ export function requireWebAppOrigin() {
 // this to render a "not configured" notice instead of a button that throws.
 export function isStripeConfigured() {
   return Boolean(env.STRIPE_SECRET_KEY && env.WEB_APP_ORIGIN);
+}
+
+// Fee economics from env with source-baked defaults (5% platform fee,
+// 2.9% + 30¢ estimated Stripe fee). Percentages arrive as human-friendly
+// strings ("5", "2.9") and convert to basis points; a malformed value falls
+// back to its default rather than silently repricing every event.
+export function feeConfigFromEnv(): FeeConfig {
+  return {
+    platformFeeBps:
+      parsePercentToBps(env.PLATFORM_FEE_PERCENT) ??
+      DEFAULT_FEE_CONFIG.platformFeeBps,
+    stripeFeeBps:
+      parsePercentToBps(env.STRIPE_FEE_PERCENT) ??
+      DEFAULT_FEE_CONFIG.stripeFeeBps,
+    stripeFixedCents:
+      parseCents(env.STRIPE_FEE_FIXED_CENTS) ??
+      DEFAULT_FEE_CONFIG.stripeFixedCents,
+  };
+}
+
+function parsePercentToBps(value: string | undefined) {
+  if (value === undefined) {
+    return null;
+  }
+  const percent = Number.parseFloat(value);
+  if (!Number.isFinite(percent) || percent < 0 || percent >= 100) {
+    return null;
+  }
+  return Math.round(percent * 100);
+}
+
+function parseCents(value: string | undefined) {
+  if (value === undefined) {
+    return null;
+  }
+  const cents = Number.parseInt(value, 10);
+  if (!Number.isFinite(cents) || cents < 0) {
+    return null;
+  }
+  return cents;
 }

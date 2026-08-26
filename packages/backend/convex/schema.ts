@@ -139,6 +139,19 @@ export default defineSchema({
     // registrations directly but leaves already-filed applications awaiting
     // review.
     registrationRequiresApproval: v.boolean(),
+    // Entry fee in integer USD cents; absent means the event is free and the
+    // whole paid-registration flow keys off its presence. Setting it requires
+    // the organization's Stripe account to be payouts-ready, and it freezes
+    // once any payment order exists (see model/payments.ts). Per paid player
+    // the organizer is paid out exactly this amount; the player additionally
+    // absorbs the platform fee and estimated processing fee
+    // (@tournament-os/shared/payment-fees).
+    entryFeeCents: v.optional(v.number()),
+    // Optional organizer-set cutoff (epoch ms, at or before startDate) after
+    // which a player cancellation no longer triggers the automatic full
+    // refund. Absent means refunds run until the tournament starts. Only
+    // meaningful — and only settable — while entryFeeCents is set.
+    refundDeadline: v.optional(v.number()),
     // Organizer-authored event details (description, prizes, logistics) as
     // markdown, rendered on the public tournament page. Absent means the
     // organizer has not written any.

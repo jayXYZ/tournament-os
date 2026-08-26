@@ -20,6 +20,14 @@ const app = defineApp({
     // return/refresh, Checkout success/cancel), e.g. https://example.com.
     // Stripe requires HTTPS for Account Link URLs even in test mode.
     WEB_APP_ORIGIN: v.optional(v.string()),
+    // Fee economics overrides (see @tournament-os/shared/payment-fees and
+    // convex/stripe/config.ts): the platform's cut as a percentage of the
+    // entry fee, and the estimated Stripe processing fee as a percentage of
+    // the charge total plus a fixed per-charge amount in cents. Defaults:
+    // 5 / 2.9 / 30.
+    PLATFORM_FEE_PERCENT: v.optional(v.string()),
+    STRIPE_FEE_PERCENT: v.optional(v.string()),
+    STRIPE_FEE_FIXED_CENTS: v.optional(v.string()),
   },
 });
 app.use(rateLimiter);
