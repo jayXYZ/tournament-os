@@ -62,3 +62,40 @@ test("organization stripe accounts are indexed for both lookup directions", () =
     /organizationStripeAccounts: defineTable\([\s\S]*?\.index\("by_organizationId", \["organizationId"\]\)[\s\S]*?\.index\("by_stripeAccountId", \["stripeAccountId"\]\)/,
   );
 });
+
+const httpSource = readFileSync(new URL("./http.ts", import.meta.url), "utf8");
+const webhooksSource = readFileSync(
+  new URL("./payments/webhooks.ts", import.meta.url),
+  "utf8",
+);
+const registrationsSource = readFileSync(
+  new URL("./tournaments/registrations.ts", import.meta.url),
+  "utf8",
+);
+
+test("the webhook route verifies signatures before any state change", () => {
+  expect(httpSource).toMatch(/stripe-signature/);
+  expect(httpSource).toMatch(/constructWebhookEvent/);
+  expect(httpSource).toMatch(/status: 400/);
+});
+
+test("webhook mutations never call Stripe themselves", () => {
+  expect(webhooksSource).not.toMatch(/getStripeGateway/);
+  expect(webhooksSource).not.toMatch(/from "stripe"/);
+  expect(webhooksSource).not.toMatch(/\.filter\(/);
+});
+
+test("checkout sessions follow the separate-charges shape", () => {
+  // No transfer at charge time, no application fee (incompatible with
+  // separate charges and transfers), and no payment_method_types (dynamic
+  // payment methods stay enabled).
+  expect(clientSource).toMatch(/transfer_group/);
+  expect(clientSource).not.toMatch(/transfer_data/);
+  expect(clientSource).not.toMatch(/application_fee_amount/);
+  expect(clientSource).not.toMatch(/payment_method_types/);
+});
+
+test("registerSelf routes direct paid registration to checkout", () => {
+  expect(registrationsSource).toMatch(/isPaidTournament\(tournament\)/);
+  expect(registrationsSource).toMatch(/register through the payment checkout/);
+});

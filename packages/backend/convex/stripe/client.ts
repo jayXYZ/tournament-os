@@ -19,6 +19,8 @@ export type TransfersCapabilityStatus =
   | "restricted"
   | "unsupported";
 
+export type StripeWebhookEvent = Stripe.Event;
+
 export interface StripeGateway {
   createRecipientAccount(args: {
     organizationId: string;
@@ -33,6 +35,29 @@ export interface StripeGateway {
   retrieveTransfersCapabilityStatus(args: {
     stripeAccountId: string;
   }): Promise<TransfersCapabilityStatus>;
+  createCheckoutSession(args: {
+    orderId: string;
+    productName: string;
+    totalCents: number;
+    transferGroup: string;
+    successUrl: string;
+    cancelUrl: string;
+    idempotencyKey: string;
+  }): Promise<{ sessionId: string; url: string }>;
+  expireCheckoutSession(args: { sessionId: string }): Promise<void>;
+  retrievePaymentIntentCharge(args: {
+    paymentIntentId: string;
+  }): Promise<{ chargeId: string | null }>;
+  createRefund(args: {
+    chargeId: string;
+    amountCents: number;
+    idempotencyKey: string;
+  }): Promise<{ stripeRefundId: string }>;
+  constructWebhookEvent(args: {
+    payload: string;
+    signature: string;
+    secret: string;
+  }): Promise<StripeWebhookEvent>;
 }
 
 export function getStripeGateway(secretKey: string): StripeGateway {
@@ -101,6 +126,73 @@ export function getStripeGateway(secretKey: string): StripeGateway {
       return (
         account.configuration?.recipient?.capabilities?.stripe_balance
           ?.stripe_transfers?.status ?? "pending"
+      );
+    },
+
+    async createCheckoutSession(args) {
+      // Separate charges and transfers: the charge lands on the platform
+      // account, tagged with the order's transfer group — nothing moves to
+      // the connected account at charge time and no application fee is set
+      // (fees are transfer math at payout). Payment-method restriction params
+      // are deliberately omitted so Stripe picks dynamic payment methods.
+      // The structural spec pins all three omissions.
+      const session = await stripe.checkout.sessions.create(
+        {
+          mode: "payment",
+          line_items: [
+            {
+              quantity: 1,
+              price_data: {
+                currency: "usd",
+                unit_amount: args.totalCents,
+                product_data: { name: args.productName },
+              },
+            },
+          ],
+          payment_intent_data: { transfer_group: args.transferGroup },
+          success_url: args.successUrl,
+          cancel_url: args.cancelUrl,
+          metadata: { orderId: args.orderId },
+          client_reference_id: args.orderId,
+          integration_identifier: "tournament_os_entry_kqzvwhtd",
+        },
+        { idempotencyKey: args.idempotencyKey },
+      );
+      if (!session.url) {
+        throw new Error("Stripe did not return a Checkout URL");
+      }
+      return { sessionId: session.id, url: session.url };
+    },
+
+    async expireCheckoutSession(args) {
+      await stripe.checkout.sessions.expire(args.sessionId);
+    },
+
+    async retrievePaymentIntentCharge(args) {
+      const intent = await stripe.paymentIntents.retrieve(args.paymentIntentId);
+      const charge = intent.latest_charge;
+      return {
+        chargeId: typeof charge === "string" ? charge : (charge?.id ?? null),
+      };
+    },
+
+    async createRefund(args) {
+      const refund = await stripe.refunds.create(
+        { charge: args.chargeId, amount: args.amountCents },
+        { idempotencyKey: args.idempotencyKey },
+      );
+      return { stripeRefundId: refund.id };
+    },
+
+    async constructWebhookEvent(args) {
+      // Signature verification via Web Crypto — the default Convex runtime
+      // has SubtleCrypto, so the webhook route needs no Node runtime hop.
+      return await stripe.webhooks.constructEventAsync(
+        args.payload,
+        args.signature,
+        args.secret,
+        undefined,
+        Stripe.createSubtleCryptoProvider(),
       );
     },
   };

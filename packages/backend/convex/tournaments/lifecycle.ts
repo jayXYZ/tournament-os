@@ -23,6 +23,7 @@ import {
   writePhases,
 } from "../model/phases";
 import {
+  requireEntryFeeEditable,
   requirePayoutsReadyOrganization,
   requireValidEntryFee,
 } from "../model/payments";
@@ -366,8 +367,21 @@ export const updateTournamentSetup = mutation({
 
     // Entry-fee settings (guards in model/payments.ts). Clearing the fee
     // clears the refund deadline with it — a deadline only means anything on
-    // a paid event.
+    // a paid event. Any actual change to the fee or the deadline is frozen
+    // once an order exists: stored breakdowns must keep matching the
+    // configured fee, and the refund window players paid under must hold.
     const clearingFee = args.entryFeeCents === 0;
+    const wantsFeeChange =
+      args.entryFeeCents !== undefined &&
+      (clearingFee ? undefined : args.entryFeeCents) !==
+        tournament.entryFeeCents;
+    const wantsDeadlineChange =
+      (args.refundDeadline !== undefined &&
+        (args.refundDeadline ?? undefined) !== tournament.refundDeadline) ||
+      (clearingFee && tournament.refundDeadline !== undefined);
+    if (wantsFeeChange || wantsDeadlineChange) {
+      await requireEntryFeeEditable(ctx, tournament._id);
+    }
     if (args.entryFeeCents !== undefined) {
       if (clearingFee) {
         patch.entryFeeCents = undefined;

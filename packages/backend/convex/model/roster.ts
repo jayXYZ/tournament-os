@@ -4,6 +4,7 @@ import type { AuditActorRole } from "./auditLog";
 import { auditPlayerRef, logAuditEvent } from "./auditLog";
 import { concedeUnfinishedMatchOnDrop } from "./matchResults";
 import { setRegistrationState } from "./participation";
+import { ensurePostApprovalOrder, isPaidTournament } from "./payments";
 import {
   adjustConfirmedRegistrationCount,
   registrationApproveEffect,
@@ -239,6 +240,44 @@ export async function approveEntry(
   }
   requireCapacityAvailable(tournament);
   const now = Date.now();
+  // On a paid event, approval requests payment instead of seating: the entry
+  // (re)enters "pending" — no seat, no participation status — alongside a
+  // payable order, and the Checkout webhook confirms the seat when the
+  // payment lands (payments/webhooks.ts). Capacity was only a courtesy check
+  // here; it is re-checked when the payment arrives.
+  if (isPaidTournament(tournament)) {
+    if (registration.entryStatus !== "pending") {
+      await setRegistrationState(ctx, registration._id, {
+        entryStatus: "pending",
+        updatedAt: now,
+      });
+    }
+    const order = await ensurePostApprovalOrder(ctx, {
+      tournament,
+      registration,
+    });
+    await logAuditEvent(ctx, {
+      tournamentId: tournament._id,
+      actor,
+      actorRole,
+      event: {
+        type: "registration_approved",
+        player: auditPlayerRef(registration),
+        previousEntryStatus: approveEffect,
+      },
+    });
+    await logAuditEvent(ctx, {
+      tournamentId: tournament._id,
+      actor,
+      actorRole,
+      event: {
+        type: "payment_requested",
+        player: auditPlayerRef(registration),
+        totalCents: order.amountBreakdown.totalCents,
+      },
+    });
+    return;
+  }
   await setRegistrationState(ctx, registration._id, {
     entryStatus: "confirmed",
     participationStatus: "active",

@@ -218,11 +218,73 @@ export const decklistCardEntryValidator = v.object({
   quantity: v.number(),
 });
 
-// Who performed an audited action: an organizer acting on the event, or a
-// player acting on their own registration/match.
+// Who performed an audited action: an organizer acting on the event, a
+// player acting on their own registration/match, or the system itself —
+// payment webhooks and scheduled sweeps that no user performed (these rows
+// carry no actorUserId).
 export const auditActorRoleValidator = v.union(
   v.literal("organizer"),
   v.literal("player"),
+  v.literal("system"),
+);
+
+// Payment order lifecycle. "requires_payment" is an order with no open
+// Checkout Session (a post-approval order before the player clicks pay, or
+// after a session expired); "awaiting_payment" has a live session;
+// "canceled" closed unpaid (withdrawal/rejection/start). The money-holding
+// states are paid, refunded ("full" refund), partially_refunded (entry-only
+// refund kept the fees), and disputed.
+export const paymentOrderStatusValidator = v.union(
+  v.literal("requires_payment"),
+  v.literal("awaiting_payment"),
+  v.literal("paid"),
+  v.literal("expired"),
+  v.literal("failed"),
+  v.literal("canceled"),
+  v.literal("refunded"),
+  v.literal("partially_refunded"),
+  v.literal("disputed"),
+);
+
+// Why the order exists: a direct paid registration, or the payment an
+// organizer approval requested from a pending application.
+export const paymentOrderPurposeValidator = v.union(
+  v.literal("registration"),
+  v.literal("post_approval"),
+);
+
+// The amount breakdown snapshotted onto an order at creation (see
+// @tournament-os/shared/payment-fees); never recomputed afterwards.
+export const orderAmountBreakdownValidator = v.object({
+  entryFeeCents: v.number(),
+  platformFeeCents: v.number(),
+  processingFeeCents: v.number(),
+  totalCents: v.number(),
+  currency: v.string(),
+});
+
+// "full" returns the whole charge; "entry_only" returns just the entry cost
+// (a repeat drop keeps the platform and processing fees).
+export const paymentRefundKindValidator = v.union(
+  v.literal("full"),
+  v.literal("entry_only"),
+);
+
+// What triggered the refund. Only "player_cancel" flags the player for the
+// repeat-drop fee rule; "seat_unavailable" is the automatic refund when a
+// completed payment can no longer seat its player (capacity filled during
+// checkout, or the registration closed meanwhile).
+export const paymentRefundReasonValidator = v.union(
+  v.literal("player_cancel"),
+  v.literal("organizer_remove"),
+  v.literal("tournament_cancelled"),
+  v.literal("seat_unavailable"),
+);
+
+export const paymentRefundStatusValidator = v.union(
+  v.literal("pending"),
+  v.literal("succeeded"),
+  v.literal("failed"),
 );
 
 // A player referenced by an audit event. The name is denormalized at write
@@ -407,6 +469,43 @@ export const tournamentAuditEventValidator = v.union(
   }),
   v.object({ type: v.literal("tournament_completed") }),
   v.object({ type: v.literal("tournament_cancelled") }),
+  v.object({
+    // A player's entry-fee payment completed (fulfilled by webhook). Whether
+    // it seated them is the accompanying event: player_registered when it
+    // did, refund_issued (seat_unavailable) when the seat was gone.
+    type: v.literal("payment_completed"),
+    player: auditPlayerRefValidator,
+    totalCents: v.number(),
+  }),
+  v.object({
+    type: v.literal("payment_failed"),
+    player: auditPlayerRefValidator,
+  }),
+  v.object({
+    // The order's Checkout Session expired unpaid. A direct registration
+    // closes with it; a post-approval order stays payable.
+    type: v.literal("payment_expired"),
+    player: auditPlayerRefValidator,
+  }),
+  v.object({
+    // An organizer approved an application on a paid event: no seat yet —
+    // the approval requests payment, and the seat is taken when it lands.
+    type: v.literal("payment_requested"),
+    player: auditPlayerRefValidator,
+    totalCents: v.number(),
+  }),
+  v.object({
+    type: v.literal("refund_issued"),
+    player: auditPlayerRefValidator,
+    kind: paymentRefundKindValidator,
+    reason: paymentRefundReasonValidator,
+    amountCents: v.number(),
+  }),
+  v.object({
+    type: v.literal("refund_failed"),
+    player: auditPlayerRefValidator,
+    amountCents: v.number(),
+  }),
 );
 
 // The tournament's single live round timer. Server-side writes happen only on

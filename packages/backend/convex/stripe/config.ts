@@ -20,6 +20,16 @@ export function requireStripeSecretKey() {
   return key;
 }
 
+export function requireStripeWebhookSecret() {
+  const secret = env.STRIPE_WEBHOOK_SECRET;
+  if (!secret) {
+    throw new Error(
+      "Payments are not configured: set STRIPE_WEBHOOK_SECRET on this deployment",
+    );
+  }
+  return secret;
+}
+
 export function requireWebAppOrigin() {
   const origin = env.WEB_APP_ORIGIN;
   if (!origin) {

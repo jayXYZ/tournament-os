@@ -6,26 +6,29 @@ import type { tournamentAuditEventValidator } from "../validators";
 
 export type TournamentAuditEvent = Infer<typeof tournamentAuditEventValidator>;
 
-export type AuditActorRole = "organizer" | "player";
+export type AuditActorRole = "organizer" | "player" | "system";
 
 // Appends one immutable row to the tournament's audit trail. Callers pass the
 // acting user they already resolved for authorization, so logging never adds
-// an extra read.
+// an extra read. System events (payment webhooks, scheduled sweeps) have no
+// acting user: they pass the "system" role in place of an actor.
 export async function logAuditEvent(
   ctx: MutationCtx,
   args: {
     tournamentId: Id<"tournaments">;
-    actor: Doc<"users">;
-    actorRole: AuditActorRole;
     event: TournamentAuditEvent;
-  },
+  } & (
+    | { actor: Doc<"users">; actorRole: Exclude<AuditActorRole, "system"> }
+    | { actorRole: "system" }
+  ),
 ) {
+  const actor = "actor" in args ? args.actor : null;
   await ctx.db.insert("tournamentAuditEvents", {
     tournamentId: args.tournamentId,
-    actorUserId: args.actor._id,
+    actorUserId: actor?._id,
     // Same fallback as playerDisplayName, inlined to keep this module free of
     // a model/tournaments import cycle.
-    actorName: args.actor.name ?? args.actor.email ?? null,
+    actorName: actor ? (actor.name ?? actor.email ?? null) : null,
     actorRole: args.actorRole,
     event: args.event,
   });

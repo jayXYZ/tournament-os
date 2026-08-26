@@ -19,6 +19,7 @@ import {
   participantForUser,
 } from "../model/participants";
 import { setRegistrationState } from "../model/participation";
+import { isPaidTournament } from "../model/payments";
 import { tiebreakRandom } from "../model/random";
 import {
   adjustConfirmedRegistrationCount,
@@ -150,6 +151,19 @@ export const registerSelf = mutation({
         !(await inviteCodeGrantsAccess(ctx, tournament, args.inviteCode)))
     ) {
       throw new Error("Tournament is not open for registration");
+    }
+    // Direct registration on a paid event goes through the Checkout action
+    // (payments/checkout.ts), which files the pending row itself; the seat
+    // is only ever taken by the payment webhook. Approval-mode paid events
+    // still file their free application here — payment is requested at
+    // approval.
+    if (
+      isPaidTournament(tournament) &&
+      !tournament.registrationRequiresApproval
+    ) {
+      throw new Error(
+        "This event charges an entry fee — register through the payment checkout",
+      );
     }
 
     if (existing) {

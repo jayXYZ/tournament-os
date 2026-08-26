@@ -116,6 +116,15 @@ const limits = {
     period: HOUR,
     capacity: 20,
   },
+  // Each call files a registration/order row pair and mints a Stripe
+  // Checkout Session. Sized like registerSelf — churn is the abuse case, and
+  // every attempt creates external Stripe objects under our key.
+  createCheckout: {
+    kind: "token bucket",
+    rate: 30,
+    period: HOUR,
+    capacity: 10,
+  },
 } satisfies Record<string, RateLimitConfig>;
 
 export const rateLimiter = new RateLimiter(components.rateLimiter, limits);

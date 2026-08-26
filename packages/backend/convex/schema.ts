@@ -6,6 +6,12 @@ import {
   invitationStatusValidator,
   matchResultKindValidator,
   matchResultLineValidator,
+  orderAmountBreakdownValidator,
+  paymentOrderPurposeValidator,
+  paymentOrderStatusValidator,
+  paymentRefundKindValidator,
+  paymentRefundReasonValidator,
+  paymentRefundStatusValidator,
   tournamentPhaseBestOfValidator,
   membershipStatusValidator,
   organizationStatusValidator,
@@ -109,6 +115,72 @@ export default defineSchema({
   })
     .index("by_organizationId", ["organizationId"])
     .index("by_stripeAccountId", ["stripeAccountId"]),
+
+  // One row per entry-fee payment attempt chain (TODO.md §9: order, payment,
+  // and refund records separate from registration status). The registration
+  // stays "pending" while an order is live — the joined order is what
+  // disambiguates "awaiting review" from "awaiting payment" — and the
+  // Checkout webhook is the only thing that seats a paid player. The
+  // amountBreakdown is snapshotted at creation and never recomputed. The
+  // Stripe transfer_group is derived (`order:{_id}`, model/payments.ts), not
+  // stored.
+  paymentOrders: defineTable({
+    tournamentId: v.id("tournaments"),
+    organizationId: v.id("organizations"),
+    registrationId: v.id("tournamentRegistrations"),
+    participantId: v.id("participants"),
+    // The paying account. Paid registration is self-serve only, so unlike
+    // registrations an order always has a user.
+    userId: v.id("users"),
+    purpose: paymentOrderPurposeValidator,
+    amountBreakdown: orderAmountBreakdownValidator,
+    status: paymentOrderStatusValidator,
+    stripeCheckoutSessionId: v.optional(v.string()),
+    stripePaymentIntentId: v.optional(v.string()),
+    // source_transaction for the payout transfer (phase E).
+    stripeChargeId: v.optional(v.string()),
+    paidAt: v.optional(v.number()),
+    updatedAt: v.number(),
+  })
+    .index("by_registrationId", ["registrationId"])
+    .index("by_tournamentId_and_status", ["tournamentId", "status"]),
+
+  // Refund records for paymentOrders rows. absorbedFeeCents is the
+  // organizer-payout deduction the refund caused (the non-returnable
+  // processing-fee estimate on organizer-attributable full refunds; 0 for
+  // entry-only and seat-unavailable refunds) — the payout sweep sums it, so
+  // there is no separate ledger to drift.
+  paymentRefunds: defineTable({
+    orderId: v.id("paymentOrders"),
+    tournamentId: v.id("tournaments"),
+    registrationId: v.id("tournamentRegistrations"),
+    participantId: v.id("participants"),
+    kind: paymentRefundKindValidator,
+    reason: paymentRefundReasonValidator,
+    amountCents: v.number(),
+    absorbedFeeCents: v.number(),
+    stripeRefundId: v.optional(v.string()),
+    status: paymentRefundStatusValidator,
+    // Absent for system-initiated refunds (webhook races, sweeps).
+    initiatedByUserId: v.optional(v.id("users")),
+    updatedAt: v.number(),
+  })
+    .index("by_orderId", ["orderId"])
+    .index("by_tournamentId_and_participantId", [
+      "tournamentId",
+      "participantId",
+    ])
+    .index("by_tournamentId_and_status", ["tournamentId", "status"])
+    .index("by_stripeRefundId", ["stripeRefundId"]),
+
+  // Processed Stripe webhook event ids. Every webhook internalMutation
+  // checks-then-inserts here first and performs its whole state change in
+  // the same transaction, so redelivered events are exact no-ops.
+  stripeWebhookEvents: defineTable({
+    stripeEventId: v.string(),
+    type: v.string(),
+    processedAt: v.number(),
+  }).index("by_stripeEventId", ["stripeEventId"]),
 
   tournaments: defineTable({
     name: v.string(),
@@ -549,7 +621,9 @@ export default defineSchema({
   // whole tournament is deleted.
   tournamentAuditEvents: defineTable({
     tournamentId: v.id("tournaments"),
-    actorUserId: v.id("users"),
+    // Absent exactly when actorRole is "system" (payment webhooks and
+    // scheduled sweeps have no acting user).
+    actorUserId: v.optional(v.id("users")),
     // Denormalized at write time so the log renders without per-row user
     // joins and reflects the actor's name as of the action.
     actorName: v.union(v.string(), v.null()),
