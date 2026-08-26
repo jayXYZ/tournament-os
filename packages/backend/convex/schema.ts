@@ -145,7 +145,9 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_registrationId", ["registrationId"])
-    .index("by_tournamentId_and_status", ["tournamentId", "status"]),
+    .index("by_tournamentId_and_status", ["tournamentId", "status"])
+    // Dispute webhooks arrive keyed by charge, not by order metadata.
+    .index("by_stripeChargeId", ["stripeChargeId"]),
 
   // Refund records for paymentOrders rows. absorbedFeeCents is the
   // organizer-payout deduction the refund caused (the non-returnable

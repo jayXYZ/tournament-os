@@ -35,10 +35,15 @@ export async function queueRefund(
     // The processing-fee estimate deducted from the organizer's payout;
     // 0 when nobody attributable absorbs it (seat_unavailable, entry_only).
     absorbedFeeCents: number;
+    // Overrides the kind-derived amount for the one case that needs it: the
+    // cancellation sweep returning a repeat-dropper's withheld fees.
+    amountCentsOverride?: number;
     initiatedBy?: { actor: Doc<"users">; actorRole: "player" | "organizer" };
   },
 ) {
-  const amountCents = refundAmountCents(args.order.amountBreakdown, args.kind);
+  const amountCents =
+    args.amountCentsOverride ??
+    refundAmountCents(args.order.amountBreakdown, args.kind);
   const refundId = await ctx.db.insert("paymentRefunds", {
     orderId: args.order._id,
     tournamentId: args.order.tournamentId,
@@ -140,6 +145,121 @@ export async function settleOrdersOnEntryExit(
     }
   }
 }
+
+const SWEEP_BATCH = 32;
+
+// Closes every open (unpaid) order for a tournament — scheduled when it
+// starts (unpaid approvals lapse; they never seat) and as the first stage of
+// the cancellation sweep. Terminates because closed orders leave the queried
+// status ranges.
+export const closeOpenOrdersSweep = internalMutation({
+  args: { tournamentId: v.id("tournaments") },
+  handler: async (ctx, args) => {
+    let sawFullPage = false;
+    for (const status of ["requires_payment", "awaiting_payment"] as const) {
+      const orders = await ctx.db
+        .query("paymentOrders")
+        .withIndex("by_tournamentId_and_status", (q) =>
+          q.eq("tournamentId", args.tournamentId).eq("status", status),
+        )
+        .take(SWEEP_BATCH);
+      sawFullPage ||= orders.length === SWEEP_BATCH;
+      for (const order of orders) {
+        await ctx.db.patch(order._id, {
+          status: "canceled",
+          updatedAt: Date.now(),
+        });
+        if (order.stripeCheckoutSessionId) {
+          await ctx.scheduler.runAfter(
+            0,
+            internal.payments.checkout.expireAbandonedSession,
+            { sessionId: order.stripeCheckoutSessionId },
+          );
+        }
+      }
+    }
+    if (sawFullPage) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.payments.refunds.closeOpenOrdersSweep,
+        args,
+      );
+    }
+    return null;
+  },
+});
+
+// The cancellation sweep: a cancelled paid event makes every player whole.
+// Open orders close, every paid order refunds in full, and a
+// partially-refunded order (a repeat drop that kept the fees) gets its
+// remainder back — the event never happening outranks the repeat-drop rule.
+// No payout exists to deduct from, so the platform absorbs the processing
+// fees (absorbedFeeCents 0). Paid orders keep their status until their
+// refund settles, so idempotency across batches comes from the per-order
+// existing-refund guard and progress comes from the pagination cursor.
+export const cancelTournamentPaymentsSweep = internalMutation({
+  args: {
+    tournamentId: v.id("tournaments"),
+    stage: v.optional(v.union(v.literal("paid"), v.literal("remainder"))),
+    cursor: v.optional(v.union(v.string(), v.null())),
+  },
+  handler: async (ctx, args) => {
+    const stage = args.stage ?? "paid";
+    const status =
+      stage === "paid" ? ("paid" as const) : ("partially_refunded" as const);
+    const { page, isDone, continueCursor } = await ctx.db
+      .query("paymentOrders")
+      .withIndex("by_tournamentId_and_status", (q) =>
+        q.eq("tournamentId", args.tournamentId).eq("status", status),
+      )
+      .paginate({ numItems: SWEEP_BATCH, cursor: args.cursor ?? null });
+
+    for (const order of page) {
+      const existingCancellationRefund = (
+        await ctx.db
+          .query("paymentRefunds")
+          .withIndex("by_orderId", (q) => q.eq("orderId", order._id))
+          .take(8)
+      ).find((refund) => refund.reason === "tournament_cancelled");
+      if (existingCancellationRefund) {
+        continue;
+      }
+      const registration = await ctx.db.get(order.registrationId);
+      if (!registration) {
+        continue;
+      }
+      await queueRefund(ctx, {
+        order,
+        registration,
+        kind: "full",
+        reason: "tournament_cancelled",
+        absorbedFeeCents: 0,
+        // A partially-refunded order already returned the entry cost; the
+        // remainder is the withheld fees.
+        amountCentsOverride:
+          stage === "remainder"
+            ? order.amountBreakdown.totalCents -
+              order.amountBreakdown.entryFeeCents
+            : undefined,
+      });
+    }
+
+    if (!isDone) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.payments.refunds.cancelTournamentPaymentsSweep,
+        { tournamentId: args.tournamentId, stage, cursor: continueCursor },
+      );
+    } else if (stage === "paid") {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.payments.refunds.cancelTournamentPaymentsSweep,
+        { tournamentId: args.tournamentId, stage: "remainder", cursor: null },
+      );
+    }
+    return null;
+  },
+});
 
 export const beginRefundExecution = internalMutation({
   args: { refundId: v.id("paymentRefunds") },

@@ -25,6 +25,7 @@ import {
 import {
   requireEntryFeeEditable,
   requirePayoutsReadyOrganization,
+  requireTournamentPaymentsSettled,
   requireValidEntryFee,
 } from "../model/payments";
 import { parsePublicCode } from "../model/publicCodes";
@@ -602,6 +603,20 @@ export const cancelTournament = mutation({
       actorRole: "organizer",
       event: { type: "tournament_cancelled" },
     });
+    // A cancelled paid event makes every player whole: open checkouts close
+    // and every payment refunds (payments/refunds.ts sweeps).
+    if ((tournament.entryFeeCents ?? 0) > 0) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.payments.refunds.closeOpenOrdersSweep,
+        { tournamentId: args.tournamentId },
+      );
+      await ctx.scheduler.runAfter(
+        0,
+        internal.payments.refunds.cancelTournamentPaymentsSweep,
+        { tournamentId: args.tournamentId },
+      );
+    }
     return args.tournamentId;
   },
 });
@@ -616,6 +631,9 @@ export const deleteTournament = mutation({
   args: { tournamentId: v.id("tournaments") },
   handler: async (ctx, args) => {
     await requireOrganizerAccess(ctx, args.tournamentId);
+    // Hard deletion destroys the payment records, so it is refused while any
+    // player money is unsettled (model/payments.ts).
+    await requireTournamentPaymentsSettled(ctx, args.tournamentId);
     await ctx.db.patch(args.tournamentId, {
       lifecycle: "cancelled",
       visibility: "private",

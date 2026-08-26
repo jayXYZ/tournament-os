@@ -536,6 +536,12 @@ export const tournamentAuditEventValidator = v.union(
   v.object({
     type: v.literal("payout_failed"),
   }),
+  v.object({
+    // The player's card issuer opened a dispute on their entry payment; the
+    // order is excluded from the payout while it stands.
+    type: v.literal("order_disputed"),
+    player: auditPlayerRefValidator,
+  }),
 );
 
 // The tournament's single live round timer. Server-side writes happen only on

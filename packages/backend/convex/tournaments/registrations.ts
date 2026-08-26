@@ -19,7 +19,10 @@ import {
   participantForUser,
 } from "../model/participants";
 import { setRegistrationState } from "../model/participation";
-import { isPaidTournament } from "../model/payments";
+import {
+  isPaidTournament,
+  latestOrderForRegistration,
+} from "../model/payments";
 import { tiebreakRandom } from "../model/random";
 import {
   adjustConfirmedRegistrationCount,
@@ -82,6 +85,12 @@ async function registrationRows(
       // enforce, so the approve/reject/waitlist menu items and their wording
       // always match what confirming them will do.
       ...entryReviewActions(tournament, registration),
+      // The row's payment state on paid events (the newest order's status;
+      // null on free events or when the player has no order yet).
+      paymentStatus: isPaidTournament(tournament)
+        ? ((await latestOrderForRegistration(ctx, registration._id))?.status ??
+          null)
+        : null,
     }),
   );
 }

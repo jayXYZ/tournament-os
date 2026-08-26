@@ -67,6 +67,27 @@ type RegistrationRow = {
   approveEffect: 'pending' | 'waitlisted' | 'rejected' | null
   rejectEffect: 'decline' | 'remove' | 'bar' | null
   waitlistEffect: 'waitlist' | null
+  // The newest order's status on paid events; null on free events or when
+  // the player has no order.
+  paymentStatus: Doc<'paymentOrders'>['status'] | null
+}
+
+const paymentBadge: Record<
+  NonNullable<RegistrationRow['paymentStatus']>,
+  {
+    label: string
+    variant: 'default' | 'secondary' | 'destructive' | 'outline'
+  }
+> = {
+  requires_payment: { label: 'Payment due', variant: 'outline' },
+  awaiting_payment: { label: 'In checkout', variant: 'outline' },
+  paid: { label: 'Paid', variant: 'default' },
+  expired: { label: 'Unpaid', variant: 'secondary' },
+  failed: { label: 'Failed', variant: 'destructive' },
+  canceled: { label: 'Unpaid', variant: 'secondary' },
+  refunded: { label: 'Refunded', variant: 'secondary' },
+  partially_refunded: { label: 'Entry refunded', variant: 'secondary' },
+  disputed: { label: 'Disputed', variant: 'destructive' },
 }
 
 type RegistrationStatus =
@@ -182,6 +203,7 @@ export function RegistrationsView({
             searchTerm={searchTerm}
             onSearchTermChange={handleSearchTermChange}
             searchPending={searching && searchResults === undefined}
+            showPaymentColumn={(setup?.tournament.entryFeeCents ?? 0) > 0}
           />
           {!searching ? (
             <LoadMoreButton
@@ -264,9 +286,31 @@ function RegistrationSettingsMenu({
 // RegistrationsTable's `actionsDisabled` usage below.
 function getRegistrationColumns({
   actionsDisabled,
+  showPaymentColumn,
 }: {
   actionsDisabled: boolean
+  showPaymentColumn: boolean
 }): Array<ColumnDef<RegistrationRow>> {
+  const paymentColumn: Array<ColumnDef<RegistrationRow>> = showPaymentColumn
+    ? [
+        {
+          id: 'payment',
+          accessorFn: (row) => row.paymentStatus ?? '',
+          header: ({ column }) => (
+            <DataTableColumnHeader column={column} title="Payment" />
+          ),
+          meta: { className: 'w-32' },
+          cell: ({ row }) => {
+            const paymentStatus = row.original.paymentStatus
+            if (!paymentStatus) {
+              return <span className="text-sm text-muted-foreground">—</span>
+            }
+            const badge = paymentBadge[paymentStatus]
+            return <Badge variant={badge.variant}>{badge.label}</Badge>
+          },
+        },
+      ]
+    : []
   return [
     {
       id: 'player',
@@ -302,6 +346,7 @@ function getRegistrationColumns({
         )
       },
     },
+    ...paymentColumn,
     {
       id: 'actions',
       header: 'Manage',
@@ -319,11 +364,13 @@ function RegistrationsTable({
   searchTerm,
   onSearchTermChange,
   searchPending,
+  showPaymentColumn,
 }: {
   registrations: Array<RegistrationRow> | undefined
   searchTerm: string
   onSearchTermChange: (value: string) => void
   searchPending: boolean
+  showPaymentColumn: boolean
 }) {
   const searching = searchTerm.trim() !== ''
   // `registrations` may still be the previous term's rows, kept on screen
@@ -333,8 +380,12 @@ function RegistrationsTable({
   // block the destructive row action until the current term's real results
   // arrive.
   const columns = useMemo(
-    () => getRegistrationColumns({ actionsDisabled: searchPending }),
-    [searchPending],
+    () =>
+      getRegistrationColumns({
+        actionsDisabled: searchPending,
+        showPaymentColumn,
+      }),
+    [searchPending, showPaymentColumn],
   )
 
   if (registrations === undefined) {

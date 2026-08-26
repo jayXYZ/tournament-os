@@ -234,6 +234,52 @@ async function closeUnpaidSession(
   }
 }
 
+// v1 dispute policy: record-and-exclude. The order leaves "paid" so the
+// payout enumeration never transfers a disputed charge; everything further
+// (evidence, reversal, post-payout clawback) is a support workflow.
+export const handleDisputeCreated = internalMutation({
+  args: {
+    stripeEventId: v.string(),
+    stripeChargeId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    if (
+      !(await recordFirstDelivery(
+        ctx,
+        args.stripeEventId,
+        "charge.dispute.created",
+      ))
+    ) {
+      return null;
+    }
+    const order = await ctx.db
+      .query("paymentOrders")
+      .withIndex("by_stripeChargeId", (q) =>
+        q.eq("stripeChargeId", args.stripeChargeId),
+      )
+      .unique();
+    if (!order || order.status === "disputed") {
+      return null;
+    }
+    await ctx.db.patch(order._id, {
+      status: "disputed",
+      updatedAt: Date.now(),
+    });
+    const registration = await ctx.db.get(order.registrationId);
+    if (registration) {
+      await logAuditEvent(ctx, {
+        tournamentId: order.tournamentId,
+        actorRole: "system",
+        event: {
+          type: "order_disputed",
+          player: auditPlayerRef(registration),
+        },
+      });
+    }
+    return null;
+  },
+});
+
 export const handleCheckoutExpired = internalMutation({
   args: {
     stripeEventId: v.string(),

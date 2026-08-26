@@ -570,6 +570,16 @@ export async function startTournament(
       playerCount: registrations.length,
     },
   });
+  // Starting a paid event lapses its open checkouts: an approved-but-unpaid
+  // application can no longer seat, so its order closes and its session
+  // expires (payments/refunds.ts).
+  if ((tournament.entryFeeCents ?? 0) > 0) {
+    await ctx.scheduler.runAfter(
+      0,
+      internal.payments.refunds.closeOpenOrdersSweep,
+      { tournamentId: tournament._id },
+    );
+  }
   return roundId;
 }
 

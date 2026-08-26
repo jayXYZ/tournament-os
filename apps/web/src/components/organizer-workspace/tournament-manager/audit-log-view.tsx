@@ -218,6 +218,8 @@ function describeEvent(row: AuditEventRow): string {
       return `Paid out ${formatAuditCents(event.netCents)} in entry fees to the organization`
     case 'payout_failed':
       return 'The entry-fee payout failed — needs attention'
+    case 'order_disputed':
+      return `${displayPlayerName(event.player.playerName)}'s entry payment was disputed — excluded from the payout`
   }
 }
 

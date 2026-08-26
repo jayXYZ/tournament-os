@@ -108,6 +108,18 @@ http.route({
         );
         break;
       }
+      case "charge.dispute.created": {
+        const dispute = event.data.object;
+        const chargeId =
+          typeof dispute.charge === "string"
+            ? dispute.charge
+            : dispute.charge.id;
+        await ctx.runMutation(internal.payments.webhooks.handleDisputeCreated, {
+          stripeEventId: event.id,
+          stripeChargeId: chargeId,
+        });
+        break;
+      }
       case "refund.updated":
       case "refund.failed": {
         // Reconciliation backstop for the refund executor (see

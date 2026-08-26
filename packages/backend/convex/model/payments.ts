@@ -77,6 +77,23 @@ export async function ordersForRegistration(
     .take(MAX_ORDERS_PER_REGISTRATION);
 }
 
+// The registration's newest order — what payment surfaces display. One
+// indexed single-document read, cheap enough for per-row roster shaping.
+export async function latestOrderForRegistration(
+  ctx: QueryCtx,
+  registrationId: Id<"tournamentRegistrations">,
+) {
+  return (
+    await ctx.db
+      .query("paymentOrders")
+      .withIndex("by_registrationId", (q) =>
+        q.eq("registrationId", registrationId),
+      )
+      .order("desc")
+      .take(1)
+  ).at(0);
+}
+
 // The registration's payable order, if one is live: at most one order per
 // registration is ever in a non-terminal status (begin reuses it and every
 // closer runs through one mutation).
@@ -125,6 +142,60 @@ export async function hasPriorPlayerCancelFullRefund(
       refund.kind === "full" &&
       refund.status !== "failed",
   );
+}
+
+// The hard-delete guard: a tournament that still holds player money cannot
+// be deleted. Open or disputed orders and unsettled refunds always block;
+// paid orders block unless the payout completed (the money reached the
+// organization). Resolution: cancel the tournament (refunds everyone) or
+// complete it (pays out), then delete.
+export async function requireTournamentPaymentsSettled(
+  ctx: QueryCtx,
+  tournamentId: Id<"tournaments">,
+) {
+  const blockedMessage =
+    "This tournament still holds player payments — cancel it (refunding " +
+    "players) or complete it (paying out) and let payments settle before " +
+    "deleting";
+  for (const status of [
+    "requires_payment",
+    "awaiting_payment",
+    "disputed",
+  ] as const) {
+    const order = await ctx.db
+      .query("paymentOrders")
+      .withIndex("by_tournamentId_and_status", (q) =>
+        q.eq("tournamentId", tournamentId).eq("status", status),
+      )
+      .first();
+    if (order) {
+      throw new Error(blockedMessage);
+    }
+  }
+  const pendingRefund = await ctx.db
+    .query("paymentRefunds")
+    .withIndex("by_tournamentId_and_status", (q) =>
+      q.eq("tournamentId", tournamentId).eq("status", "pending"),
+    )
+    .first();
+  if (pendingRefund) {
+    throw new Error(blockedMessage);
+  }
+  const paidOrder = await ctx.db
+    .query("paymentOrders")
+    .withIndex("by_tournamentId_and_status", (q) =>
+      q.eq("tournamentId", tournamentId).eq("status", "paid"),
+    )
+    .first();
+  if (paidOrder) {
+    const payout = await ctx.db
+      .query("tournamentPayouts")
+      .withIndex("by_tournamentId", (q) => q.eq("tournamentId", tournamentId))
+      .unique();
+    if (payout?.status !== "completed") {
+      throw new Error(blockedMessage);
+    }
+  }
 }
 
 export async function requireEntryFeeEditable(
