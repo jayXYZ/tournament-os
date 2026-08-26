@@ -224,6 +224,10 @@ function RegistrationPanel({
     api.payments.queries.getMyEntryOrder,
     isPaid && user ? { tournamentId: tournament._id } : 'skip',
   )
+  const refundFlag = useQuery(
+    api.payments.queries.getMyRefundFlag,
+    isPaid && user ? { tournamentId: tournament._id } : 'skip',
+  )
   const { busy, run } = useBusyAction()
   // Checkout leaves the page for Stripe, so its pending flag deliberately
   // stays set through the redirect (useBusyAction's run would clear it).
@@ -276,6 +280,13 @@ function RegistrationPanel({
       </p>
     </>
   )
+  // On a paid event, tells the player what happened to their money when they
+  // release a seat (refund issued, or fees kept under the repeat-drop rule).
+  const cancelNote = myOrder?.cancelOutcome ? (
+    <p className="w-full text-sm text-muted-foreground">
+      {cancelOutcomeNote(myOrder.cancelOutcome)}
+    </p>
+  ) : null
   const cancelButton = (label: string, successMessage: string) => (
     <Button
       type="button"
@@ -341,14 +352,19 @@ function RegistrationPanel({
     return (
       <div className="flex flex-wrap items-center gap-3">
         <Badge>You&apos;re registered</Badge>
-        {tournament.lifecycle === 'registration'
-          ? cancelButton(
+        {tournament.lifecycle === 'registration' ? (
+          <>
+            {cancelButton(
               'Cancel registration',
               'Your registration has been cancelled.',
-            )
-          : tournament.lifecycle === 'in_progress'
-            ? controllerLink
-            : lockedNote}
+            )}
+            {cancelNote}
+          </>
+        ) : tournament.lifecycle === 'in_progress' ? (
+          controllerLink
+        ) : (
+          lockedNote
+        )}
       </div>
     )
   }
@@ -372,14 +388,19 @@ function RegistrationPanel({
             ? 'You were disqualified from this event'
             : 'You dropped from this event'}
         </Badge>
-        {tournament.lifecycle === 'registration'
-          ? cancelButton(
+        {tournament.lifecycle === 'registration' ? (
+          <>
+            {cancelButton(
               'Cancel registration',
               'Your registration has been cancelled.',
-            )
-          : tournament.lifecycle === 'in_progress'
-            ? controllerLinkWithNote
-            : lockedNote}
+            )}
+            {cancelNote}
+          </>
+        ) : tournament.lifecycle === 'in_progress' ? (
+          controllerLinkWithNote
+        ) : (
+          lockedNote
+        )}
       </div>
     )
   }
@@ -494,6 +515,12 @@ function RegistrationPanel({
               )} fees`
             : null}
         </p>
+        {refundFlag?.repeatDropFeesKept ? (
+          <p className="w-full text-sm text-muted-foreground">
+            You previously received a refund for this event — if you cancel
+            again after paying, only the entry cost is refunded.
+          </p>
+        ) : null}
       </div>
     )
   }
@@ -532,4 +559,20 @@ function formatCents(cents: number) {
     style: 'currency',
     currency: 'USD',
   })
+}
+
+// The server-computed consequence of cancelling right now (see
+// getMyEntryOrder), so this copy can never promise something the cancel
+// mutation won't do.
+function cancelOutcomeNote(
+  outcome: 'full_refund' | 'entry_only_refund' | 'no_refund',
+) {
+  switch (outcome) {
+    case 'full_refund':
+      return 'Cancelling refunds your payment in full.'
+    case 'entry_only_refund':
+      return 'Cancelling refunds the entry cost only — fees are not refunded on a repeat drop.'
+    case 'no_refund':
+      return 'The refund deadline has passed, so cancelling will not refund your payment.'
+  }
 }

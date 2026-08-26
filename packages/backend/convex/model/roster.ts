@@ -2,6 +2,7 @@ import type { Doc } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import type { AuditActorRole } from "./auditLog";
 import { auditPlayerRef, logAuditEvent } from "./auditLog";
+import { settleOrdersOnEntryExit } from "../payments/refunds";
 import { concedeUnfinishedMatchOnDrop } from "./matchResults";
 import { setRegistrationState } from "./participation";
 import { ensurePostApprovalOrder, isPaidTournament } from "./payments";
@@ -187,6 +188,14 @@ export async function cancelEntry(
       player: auditPlayerRef(registration),
     },
   });
+  // Money follows the entry out: open orders close, and a paid one refunds
+  // by whose decision this was (payments/refunds.ts).
+  await settleOrdersOnEntryExit(ctx, {
+    tournament,
+    registration,
+    actor,
+    actorRole,
+  });
 }
 
 // Restores a cancelled entry to a confirmed, active seat. Capacity applies:
@@ -338,6 +347,15 @@ export async function rejectEntry(
       player: auditPlayerRef(registration),
       previousEntryStatus,
     },
+  });
+  // An organizer decision always makes the player whole: open orders close
+  // and a paid one refunds in full, the organizer absorbing the fee
+  // (payments/refunds.ts) — and it never flags the player.
+  await settleOrdersOnEntryExit(ctx, {
+    tournament,
+    registration,
+    actor,
+    actorRole,
   });
 }
 

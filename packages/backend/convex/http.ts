@@ -108,6 +108,19 @@ http.route({
         );
         break;
       }
+      case "refund.updated":
+      case "refund.failed": {
+        // Reconciliation backstop for the refund executor (see
+        // payments/refunds.ts): recovers a result write the executor lost.
+        const refund = event.data.object;
+        await ctx.runMutation(internal.payments.refunds.handleRefundEvent, {
+          stripeEventId: event.id,
+          stripeRefundId: refund.id,
+          refundStatus: refund.status ?? "unknown",
+          refundRowId: refund.metadata?.refundId ?? null,
+        });
+        break;
+      }
       default:
         // Unsubscribed event types are acknowledged, not errors.
         break;

@@ -4,8 +4,18 @@ import { refundAmountCents } from "@tournament-os/shared/payment-fees";
 
 import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
-import { internalAction, internalMutation } from "../_generated/server";
+import {
+  internalAction,
+  internalMutation,
+  type MutationCtx,
+} from "../_generated/server";
+import type { AuditActorRole } from "../model/auditLog";
 import { auditPlayerRef, logAuditEvent } from "../model/auditLog";
+import {
+  hasPriorPlayerCancelFullRefund,
+  ordersForRegistration,
+  refundWindowOpen,
+} from "../model/payments";
 import { getStripeGateway } from "../stripe/client";
 import { requireStripeSecretKey } from "../stripe/config";
 
@@ -59,6 +69,78 @@ export async function queueRefund(
   return refundId;
 }
 
+// Settles a registration's orders when its entry leaves the event pre-start
+// (a player cancellation or an organizer rejection/removal — the roster
+// verbs call this after the entry-state change). Open orders close and
+// their sessions expire; a paid order refunds by whose decision the exit
+// was: an organizer removal always refunds in full with the organizer
+// absorbing the processing fee, while a player cancellation runs the refund
+// window and the repeat-drop rule. Past the window the order simply stays
+// paid and flows into the payout.
+export async function settleOrdersOnEntryExit(
+  ctx: MutationCtx,
+  args: {
+    tournament: Doc<"tournaments">;
+    registration: Doc<"tournamentRegistrations">;
+    actor: Doc<"users">;
+    actorRole: AuditActorRole;
+  },
+) {
+  const orders = await ordersForRegistration(ctx, args.registration._id);
+  for (const order of orders) {
+    if (
+      order.status === "requires_payment" ||
+      order.status === "awaiting_payment"
+    ) {
+      await ctx.db.patch(order._id, {
+        status: "canceled",
+        updatedAt: Date.now(),
+      });
+      if (order.stripeCheckoutSessionId) {
+        await ctx.scheduler.runAfter(
+          0,
+          internal.payments.checkout.expireAbandonedSession,
+          { sessionId: order.stripeCheckoutSessionId },
+        );
+      }
+      continue;
+    }
+    if (order.status !== "paid") {
+      continue;
+    }
+
+    if (args.actorRole === "player") {
+      if (!refundWindowOpen(args.tournament, Date.now())) {
+        continue;
+      }
+      const repeatDrop = await hasPriorPlayerCancelFullRefund(
+        ctx,
+        args.tournament._id,
+        args.registration.participantId,
+      );
+      await queueRefund(ctx, {
+        order,
+        registration: args.registration,
+        kind: repeatDrop ? "entry_only" : "full",
+        reason: "player_cancel",
+        absorbedFeeCents: repeatDrop
+          ? 0
+          : order.amountBreakdown.processingFeeCents,
+        initiatedBy: { actor: args.actor, actorRole: "player" },
+      });
+    } else {
+      await queueRefund(ctx, {
+        order,
+        registration: args.registration,
+        kind: "full",
+        reason: "organizer_remove",
+        absorbedFeeCents: order.amountBreakdown.processingFeeCents,
+        initiatedBy: { actor: args.actor, actorRole: "organizer" },
+      });
+    }
+  }
+}
+
 export const beginRefundExecution = internalMutation({
   args: { refundId: v.id("paymentRefunds") },
   handler: async (ctx, args) => {
@@ -99,6 +181,7 @@ export const executeRefund = internalAction({
       const { stripeRefundId } = await gateway.createRefund({
         chargeId: begin.stripeChargeId,
         amountCents: begin.amountCents,
+        refundRowId: args.refundId,
         idempotencyKey: `refund:${args.refundId}`,
       });
       await ctx.runMutation(internal.payments.refunds.markRefundResult, {
@@ -119,6 +202,50 @@ export const executeRefund = internalAction({
   },
 });
 
+// Applies a refund outcome to a pending refund row (and its order). Shared
+// by the executor's result write and webhook reconciliation; rows already
+// settled are left alone.
+async function applyRefundOutcome(
+  ctx: MutationCtx,
+  refund: Doc<"paymentRefunds">,
+  outcome: "succeeded" | "failed",
+  stripeRefundId?: string,
+) {
+  if (refund.status !== "pending") {
+    return;
+  }
+  const now = Date.now();
+  await ctx.db.patch(refund._id, {
+    status: outcome,
+    stripeRefundId: stripeRefundId ?? refund.stripeRefundId,
+    updatedAt: now,
+  });
+
+  if (outcome === "succeeded") {
+    const order = await ctx.db.get(refund.orderId);
+    if (order) {
+      await ctx.db.patch(order._id, {
+        status: refund.kind === "full" ? "refunded" : "partially_refunded",
+        updatedAt: now,
+      });
+    }
+    return;
+  }
+
+  const registration = await ctx.db.get(refund.registrationId);
+  if (registration) {
+    await logAuditEvent(ctx, {
+      tournamentId: refund.tournamentId,
+      actorRole: "system",
+      event: {
+        type: "refund_failed",
+        player: auditPlayerRef(registration),
+        amountCents: refund.amountCents,
+      },
+    });
+  }
+}
+
 export const markRefundResult = internalMutation({
   args: {
     refundId: v.id("paymentRefunds"),
@@ -127,38 +254,65 @@ export const markRefundResult = internalMutation({
   },
   handler: async (ctx, args) => {
     const refund = await ctx.db.get(args.refundId);
-    if (!refund || refund.status !== "pending") {
+    if (!refund) {
       return null;
     }
-    const now = Date.now();
-    await ctx.db.patch(args.refundId, {
-      status: args.outcome,
-      stripeRefundId: args.stripeRefundId,
-      updatedAt: now,
+    await applyRefundOutcome(ctx, refund, args.outcome, args.stripeRefundId);
+    return null;
+  },
+});
+
+// Reconciliation from Stripe's refund lifecycle events: recovers a pending
+// row whose executor crashed between the Stripe call and the result write.
+// Rows already settled stay settled (a post-settlement flip is rare enough
+// to be a support case, not an automated rewrite), and refunds issued
+// outside the app (dashboard) have no row and are ignored.
+export const handleRefundEvent = internalMutation({
+  args: {
+    stripeEventId: v.string(),
+    stripeRefundId: v.string(),
+    refundStatus: v.string(),
+    // The paymentRefunds row id from the refund's metadata: the fallback
+    // lookup for a row whose executor crashed before recording the Stripe
+    // refund id.
+    refundRowId: v.union(v.string(), v.null()),
+  },
+  handler: async (ctx, args) => {
+    const alreadyProcessed = await ctx.db
+      .query("stripeWebhookEvents")
+      .withIndex("by_stripeEventId", (q) =>
+        q.eq("stripeEventId", args.stripeEventId),
+      )
+      .unique();
+    if (alreadyProcessed) {
+      return null;
+    }
+    await ctx.db.insert("stripeWebhookEvents", {
+      stripeEventId: args.stripeEventId,
+      type: "refund.updated",
+      processedAt: Date.now(),
     });
 
-    if (args.outcome === "succeeded") {
-      const order = await ctx.db.get(refund.orderId);
-      if (order) {
-        await ctx.db.patch(order._id, {
-          status: refund.kind === "full" ? "refunded" : "partially_refunded",
-          updatedAt: now,
-        });
-      }
+    let refund = await ctx.db
+      .query("paymentRefunds")
+      .withIndex("by_stripeRefundId", (q) =>
+        q.eq("stripeRefundId", args.stripeRefundId),
+      )
+      .unique();
+    if (!refund && args.refundRowId) {
+      const rowId = ctx.db.normalizeId("paymentRefunds", args.refundRowId);
+      refund = rowId ? await ctx.db.get(rowId) : null;
+    }
+    if (!refund) {
       return null;
     }
-
-    const registration = await ctx.db.get(refund.registrationId);
-    if (registration) {
-      await logAuditEvent(ctx, {
-        tournamentId: refund.tournamentId,
-        actorRole: "system",
-        event: {
-          type: "refund_failed",
-          player: auditPlayerRef(registration),
-          amountCents: refund.amountCents,
-        },
-      });
+    if (args.refundStatus === "succeeded") {
+      await applyRefundOutcome(ctx, refund, "succeeded", args.stripeRefundId);
+    } else if (
+      args.refundStatus === "failed" ||
+      args.refundStatus === "canceled"
+    ) {
+      await applyRefundOutcome(ctx, refund, "failed", args.stripeRefundId);
     }
     return null;
   },

@@ -51,6 +51,9 @@ export interface StripeGateway {
   createRefund(args: {
     chargeId: string;
     amountCents: number;
+    // Our paymentRefunds row id, stamped into the refund's metadata so
+    // reconciliation can find the row even if the result write was lost.
+    refundRowId: string;
     idempotencyKey: string;
   }): Promise<{ stripeRefundId: string }>;
   constructWebhookEvent(args: {
@@ -178,7 +181,11 @@ export function getStripeGateway(secretKey: string): StripeGateway {
 
     async createRefund(args) {
       const refund = await stripe.refunds.create(
-        { charge: args.chargeId, amount: args.amountCents },
+        {
+          charge: args.chargeId,
+          amount: args.amountCents,
+          metadata: { refundId: args.refundRowId },
+        },
         { idempotencyKey: args.idempotencyKey },
       );
       return { stripeRefundId: refund.id };

@@ -2,7 +2,7 @@ import { v } from "convex/values";
 
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
-import { action, internalMutation } from "../_generated/server";
+import { action, internalAction, internalMutation } from "../_generated/server";
 import { ensureParticipantForUser } from "../model/participants";
 import { setRegistrationState } from "../model/participation";
 import {
@@ -190,6 +190,21 @@ export const attachCheckoutSession = internalMutation({
       status: "awaiting_payment",
       updatedAt: Date.now(),
     });
+    return null;
+  },
+});
+
+// Fire-and-forget session expiry for orders closed by a withdrawal or
+// rejection, so an abandoned Checkout page can never still take money.
+export const expireAbandonedSession = internalAction({
+  args: { sessionId: v.string() },
+  handler: async (_ctx, args) => {
+    const gateway = getStripeGateway(requireStripeSecretKey());
+    try {
+      await gateway.expireCheckoutSession({ sessionId: args.sessionId });
+    } catch {
+      // Already completed or expired — the webhook owns either outcome.
+    }
     return null;
   },
 });

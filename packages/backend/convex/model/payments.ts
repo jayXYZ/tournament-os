@@ -94,6 +94,39 @@ export async function openOrderForRegistration(
   );
 }
 
+// Whether a player cancellation still earns the automatic refund. The
+// default window is "until the tournament starts" — cancellation itself only
+// exists during the registration lifecycle — so only an organizer-set
+// earlier deadline narrows it.
+export function refundWindowOpen(tournament: Doc<"tournaments">, now: number) {
+  return (
+    tournament.refundDeadline === undefined || now <= tournament.refundDeadline
+  );
+}
+
+// The repeat-drop rule's memory: has this participant already taken an
+// automatic full refund for their own cancellation of this tournament?
+// Failed refunds don't count (the player never got the money); pending ones
+// do (the decision stands even while Stripe processes it).
+export async function hasPriorPlayerCancelFullRefund(
+  ctx: QueryCtx,
+  tournamentId: Id<"tournaments">,
+  participantId: Id<"participants">,
+) {
+  const refunds = await ctx.db
+    .query("paymentRefunds")
+    .withIndex("by_tournamentId_and_participantId", (q) =>
+      q.eq("tournamentId", tournamentId).eq("participantId", participantId),
+    )
+    .take(64);
+  return refunds.some(
+    (refund) =>
+      refund.reason === "player_cancel" &&
+      refund.kind === "full" &&
+      refund.status !== "failed",
+  );
+}
+
 export async function requireEntryFeeEditable(
   ctx: QueryCtx,
   tournamentId: Id<"tournaments">,
