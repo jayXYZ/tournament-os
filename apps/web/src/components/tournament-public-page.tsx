@@ -319,6 +319,18 @@ function RegistrationPanel({
 
   const totalPrice = feePreview ? formatCents(feePreview.totalCents) : null
 
+  // One definition of the cancel-registration controls, shared by the active
+  // and dropped/disqualified branches so the two player states cannot drift.
+  const cancelControls = (
+    <>
+      {cancelButton(
+        'Cancel registration',
+        'Your registration has been cancelled.',
+      )}
+      {cancelNote}
+    </>
+  )
+
   if (loading) {
     return checkingButton
   }
@@ -352,19 +364,11 @@ function RegistrationPanel({
     return (
       <div className="flex flex-wrap items-center gap-3">
         <Badge>You&apos;re registered</Badge>
-        {tournament.lifecycle === 'registration' ? (
-          <>
-            {cancelButton(
-              'Cancel registration',
-              'Your registration has been cancelled.',
-            )}
-            {cancelNote}
-          </>
-        ) : tournament.lifecycle === 'in_progress' ? (
-          controllerLink
-        ) : (
-          lockedNote
-        )}
+        {tournament.lifecycle === 'registration'
+          ? cancelControls
+          : tournament.lifecycle === 'in_progress'
+            ? controllerLink
+            : lockedNote}
       </div>
     )
   }
@@ -388,19 +392,11 @@ function RegistrationPanel({
             ? 'You were disqualified from this event'
             : 'You dropped from this event'}
         </Badge>
-        {tournament.lifecycle === 'registration' ? (
-          <>
-            {cancelButton(
-              'Cancel registration',
-              'Your registration has been cancelled.',
-            )}
-            {cancelNote}
-          </>
-        ) : tournament.lifecycle === 'in_progress' ? (
-          controllerLinkWithNote
-        ) : (
-          lockedNote
-        )}
+        {tournament.lifecycle === 'registration'
+          ? cancelControls
+          : tournament.lifecycle === 'in_progress'
+            ? controllerLinkWithNote
+            : lockedNote}
       </div>
     )
   }

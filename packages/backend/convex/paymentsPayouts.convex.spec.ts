@@ -46,7 +46,10 @@ vi.mock("./stripe/client", () => ({
     expireCheckoutSession: async () => {},
     createRefund: async (args: { chargeId: string; amountCents: number }) => {
       gatewayState.refunds.push(args);
-      return { stripeRefundId: `re_test_${gatewayState.refunds.length}` };
+      return {
+        stripeRefundId: `re_test_${gatewayState.refunds.length}`,
+        status: "succeeded" as const,
+      };
     },
     retrieveTransfersCapabilityStatus: async () =>
       gatewayState.capabilityStatus,

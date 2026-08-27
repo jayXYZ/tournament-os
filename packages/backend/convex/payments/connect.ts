@@ -217,10 +217,13 @@ export const refreshAccountStatus = action({
     const status = await gateway.retrieveTransfersCapabilityStatus({
       stripeAccountId: begin.stripeAccountId,
     });
-    await ctx.runMutation(internal.payments.connect.recordStripeAccountStatus, {
-      organizationId: args.organizationId,
-      transfersCapabilityStatus: status,
-    });
+    await (ctx.runMutation(
+      internal.payments.connect.recordStripeAccountStatus,
+      {
+        organizationId: args.organizationId,
+        transfersCapabilityStatus: status,
+      },
+    ) satisfies Promise<null>);
 
     return {
       transfersCapabilityStatus: status,

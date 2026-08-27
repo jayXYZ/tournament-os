@@ -120,12 +120,14 @@ export async function deleteTournamentOperationalDataBatch(
     .query("tournamentPayouts")
     .withIndex("by_tournamentId", (q) => q.eq("tournamentId", tournamentId))
     .take(4);
+  sawFullPage ||= payouts.length === 4;
   for (const payout of payouts) {
     const transfers = await ctx.db
       .query("payoutTransfers")
       .withIndex("by_payoutId_and_status", (q) => q.eq("payoutId", payout._id))
       .take(512);
-    sawFullPage ||= transfers.length === 512;
+    const transfersPageFull = transfers.length === 512;
+    sawFullPage ||= transfersPageFull;
     for (const transfer of transfers) {
       if (budget < 1) {
         return false;
@@ -133,7 +135,10 @@ export async function deleteTournamentOperationalDataBatch(
       await ctx.db.delete(transfer._id);
       budget -= 1;
     }
-    if (budget < 1) {
+    // A full page may hide transfers past its end; the payout must survive
+    // this pass or the next batch could never find them again (they are only
+    // reachable through their parent's id).
+    if (transfersPageFull || budget < 1) {
       return false;
     }
     await ctx.db.delete(payout._id);

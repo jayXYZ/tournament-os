@@ -41,7 +41,10 @@ vi.mock("./stripe/client", () => ({
     },
     createRefund: async (args: { chargeId: string; amountCents: number }) => {
       gatewayState.refunds.push(args);
-      return { stripeRefundId: `re_test_${gatewayState.refunds.length}` };
+      return {
+        stripeRefundId: `re_test_${gatewayState.refunds.length}`,
+        status: "succeeded" as const,
+      };
     },
     retrieveTransfersCapabilityStatus: async () => "active",
     createTransfer: async (args: {
@@ -243,6 +246,79 @@ test("cancelling a paid tournament refunds everyone, including a repeat-dropper'
     status: "succeeded",
   });
   expect((await orderById(t, repeatOrderId)).status).toBe("refunded");
+});
+
+test("the cancel sweep counts refunds already in flight instead of double-refunding", async () => {
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const tournamentId = await seedPaidTournament(t, organizationId);
+
+  // Player 1: repeat dropper whose entry-only refund is still PENDING when
+  // the cancellation sweeps — the sweep must queue only the withheld fees,
+  // or the two refunds together would exceed the charge and the second
+  // would fail at Stripe, stranding the fees.
+  await payAsPlayer(t, tournamentId, 1);
+  await t
+    .withIdentity(playerIdentity(1))
+    .mutation(api.tournaments.registrations.cancelMyRegistration, {
+      tournamentId,
+    });
+  await drainScheduler(t);
+  const repeatOrderId = await payAsPlayer(t, tournamentId, 1);
+  await t
+    .withIdentity(playerIdentity(1))
+    .mutation(api.tournaments.registrations.cancelMyRegistration, {
+      tournamentId,
+    });
+
+  // Player 2: a full player-cancel refund also still pending — the sweep
+  // must queue nothing (everything is already coming back).
+  const fullPendingOrderId = await payAsPlayer(t, tournamentId, 2);
+  await t
+    .withIdentity(playerIdentity(2))
+    .mutation(api.tournaments.registrations.cancelMyRegistration, {
+      tournamentId,
+    });
+
+  // Both cancel refunds are queued but unexecuted (no drain): the sweep
+  // observes them as pending, exactly the webhook-vs-sweep race.
+  await t.mutation(internal.payments.refunds.cancelTournamentPaymentsSweep, {
+    tournamentId,
+  });
+
+  const repeatRefunds = await t.run(
+    async (ctx) =>
+      await ctx.db
+        .query("paymentRefunds")
+        .withIndex("by_orderId", (q) => q.eq("orderId", repeatOrderId))
+        .take(8),
+  );
+  const sweepRefund = repeatRefunds.find(
+    (refund) => refund.reason === "tournament_cancelled",
+  );
+  expect(sweepRefund).toMatchObject({ amountCents: 194 });
+
+  const fullPendingRefunds = await t.run(
+    async (ctx) =>
+      await ctx.db
+        .query("paymentRefunds")
+        .withIndex("by_orderId", (q) => q.eq("orderId", fullPendingOrderId))
+        .take(8),
+  );
+  expect(
+    fullPendingRefunds.filter((r) => r.reason === "tournament_cancelled"),
+  ).toHaveLength(0);
+
+  await drainScheduler(t);
+  // Whatever order the refunds settled in, both orders end fully refunded
+  // and no charge was over-refunded.
+  expect((await orderById(t, repeatOrderId)).status).toBe("refunded");
+  expect((await orderById(t, fullPendingOrderId)).status).toBe("refunded");
+  const repeatCharge = (await orderById(t, repeatOrderId)).stripeChargeId!;
+  const refundedOnRepeatCharge = gatewayState.refunds
+    .filter((r) => r.chargeId === repeatCharge)
+    .reduce((sum, r) => sum + r.amountCents, 0);
+  expect(refundedOnRepeatCharge).toBe(2194);
 });
 
 test("starting a paid tournament lapses open checkouts without touching paid seats", async () => {

@@ -51,18 +51,18 @@ export function orderTransferGroup(orderId: Id<"paymentOrders">) {
   return `order:${orderId}`;
 }
 
-// Order statuses that hold money or can still take it. While any exists for
-// a tournament the entry fee is frozen (repricing would desync stored
-// breakdowns from the configured fee) and the tournament refuses hard
-// deletion.
-export const LIVE_OR_MONEY_ORDER_STATUSES = [
+// The single definition of an "open" order: not yet paid and still able to
+// take money. Every open/closed decision (reuse in begin, attach, webhook
+// fulfillment, the close sweeps, the deletion guard) routes through these so
+// a new status can never be classified inconsistently.
+export const OPEN_ORDER_STATUSES = [
   "requires_payment",
   "awaiting_payment",
-  "paid",
-  "refunded",
-  "partially_refunded",
-  "disputed",
 ] as const satisfies ReadonlyArray<Doc<"paymentOrders">["status"]>;
+
+export function isOpenOrderStatus(status: Doc<"paymentOrders">["status"]) {
+  return (OPEN_ORDER_STATUSES as readonly string[]).includes(status);
+}
 
 export async function ordersForRegistration(
   ctx: QueryCtx,
@@ -102,13 +102,7 @@ export async function openOrderForRegistration(
   registrationId: Id<"tournamentRegistrations">,
 ) {
   const orders = await ordersForRegistration(ctx, registrationId);
-  return (
-    orders.find(
-      (order) =>
-        order.status === "requires_payment" ||
-        order.status === "awaiting_payment",
-    ) ?? null
-  );
+  return orders.find((order) => isOpenOrderStatus(order.status)) ?? null;
 }
 
 // Whether a player cancellation still earns the automatic refund. The
@@ -157,11 +151,7 @@ export async function requireTournamentPaymentsSettled(
     "This tournament still holds player payments — cancel it (refunding " +
     "players) or complete it (paying out) and let payments settle before " +
     "deleting";
-  for (const status of [
-    "requires_payment",
-    "awaiting_payment",
-    "disputed",
-  ] as const) {
+  for (const status of [...OPEN_ORDER_STATUSES, "disputed"] as const) {
     const order = await ctx.db
       .query("paymentOrders")
       .withIndex("by_tournamentId_and_status", (q) =>
@@ -198,22 +188,25 @@ export async function requireTournamentPaymentsSettled(
   }
 }
 
+// The fee freeze: once ANY order exists — terminal ones included — the entry
+// fee is locked. Repricing would desync stored breakdowns from the
+// configured fee, and even an expired or canceled order can still turn into
+// money (an async payment completing late), so no order status is safe to
+// reprice around.
 export async function requireEntryFeeEditable(
   ctx: QueryCtx,
   tournamentId: Id<"tournaments">,
 ) {
-  for (const status of LIVE_OR_MONEY_ORDER_STATUSES) {
-    const order = await ctx.db
-      .query("paymentOrders")
-      .withIndex("by_tournamentId_and_status", (q) =>
-        q.eq("tournamentId", tournamentId).eq("status", status),
-      )
-      .first();
-    if (order) {
-      throw new Error(
-        "Entry fee settings are locked once a payment exists for this event",
-      );
-    }
+  const order = await ctx.db
+    .query("paymentOrders")
+    .withIndex("by_tournamentId_and_status", (q) =>
+      q.eq("tournamentId", tournamentId),
+    )
+    .first();
+  if (order) {
+    throw new Error(
+      "Entry fee settings are locked once a payment exists for this event",
+    );
   }
 }
 

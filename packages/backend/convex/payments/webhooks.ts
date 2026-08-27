@@ -4,6 +4,7 @@ import type { Doc } from "../_generated/dataModel";
 import { internalMutation, type MutationCtx } from "../_generated/server";
 import { auditPlayerRef, logAuditEvent } from "../model/auditLog";
 import { setRegistrationState } from "../model/participation";
+import { isOpenOrderStatus } from "../model/payments";
 import {
   adjustConfirmedRegistrationCount,
   hasCapacityAvailable,
@@ -39,10 +40,12 @@ async function recordFirstDelivery(
   return true;
 }
 
-// Resolves the order a session event targets, or null when the event should
-// no-op: an unknown/foreign order id, or a session this order no longer
-// owns. Sessions are expired before being replaced (payments/checkout.ts),
-// so a mismatched session id is a superseded session's late event.
+// Resolves the order a session event targets, or null when the event does
+// not match: an unknown/foreign order id, or a session this order no longer
+// owns. Checkout (payments/checkout.ts) proves a session dead — expired, and
+// never paid — before replacing it, and never leaves an unattached session
+// payable, so a mismatched session id should always be a dead session's late
+// event; handleCheckoutCompleted still refunds rather than trusts that.
 async function orderForSessionEvent(
   ctx: MutationCtx,
   rawOrderId: string,
@@ -65,6 +68,51 @@ async function orderForSessionEvent(
   return order;
 }
 
+// The invariant-violation backstop: a successful charge on a session the
+// order no longer recognizes. The player was never seated for it and the
+// order's own payment (if any) rode a different charge, so the stray charge
+// is refunded directly — queueRefund's chargeId override keeps the order's
+// status out of it.
+async function refundStrayCharge(
+  ctx: MutationCtx,
+  args: { orderId: string; sessionId: string; stripeChargeId: string | null },
+) {
+  if (!args.stripeChargeId) {
+    return;
+  }
+  const orderId = ctx.db.normalizeId("paymentOrders", args.orderId);
+  const order = orderId ? await ctx.db.get(orderId) : null;
+  if (!order || order.stripeCheckoutSessionId === args.sessionId) {
+    return;
+  }
+  // Both completion events for one session (completed + async success), or a
+  // replayed delivery under a new event id, must not refund twice.
+  const existing = (
+    await ctx.db
+      .query("paymentRefunds")
+      .withIndex("by_orderId", (q) => q.eq("orderId", order._id))
+      .take(64)
+  ).find((refund) => refund.stripeChargeId === args.stripeChargeId);
+  if (existing) {
+    return;
+  }
+  const registration = await ctx.db.get(order.registrationId);
+  if (!registration) {
+    return;
+  }
+  await queueRefund(ctx, {
+    order,
+    registration,
+    kind: "full",
+    reason: "seat_unavailable",
+    absorbedFeeCents: 0,
+    // Every session for an order is minted from its frozen breakdown, so the
+    // stray charge's amount is the order total.
+    amountCentsOverride: order.amountBreakdown.totalCents,
+    stripeChargeId: args.stripeChargeId,
+  });
+}
+
 export const handleCheckoutCompleted = internalMutation({
   args: {
     stripeEventId: v.string(),
@@ -85,6 +133,11 @@ export const handleCheckoutCompleted = internalMutation({
     }
     const order = await orderForSessionEvent(ctx, args.orderId, args.sessionId);
     if (!order) {
+      // Checkout's supersede proof should make a paid mismatched session
+      // impossible — but a successful charge is never silently discarded on
+      // that argument. If the money is real, refund it (without touching the
+      // order: its own payment lives on a different session).
+      await refundStrayCharge(ctx, args);
       return null;
     }
     // A payment can land on an order we already closed (the player cancelled
@@ -95,11 +148,7 @@ export const handleCheckoutCompleted = internalMutation({
       order.status === "canceled" ||
       order.status === "expired" ||
       order.status === "failed";
-    if (
-      order.status !== "requires_payment" &&
-      order.status !== "awaiting_payment" &&
-      !lateSuccess
-    ) {
+    if (!isOpenOrderStatus(order.status) && !lateSuccess) {
       return null;
     }
 

@@ -13,6 +13,8 @@ import type { AuditActorRole } from "../model/auditLog";
 import { auditPlayerRef, logAuditEvent } from "../model/auditLog";
 import {
   hasPriorPlayerCancelFullRefund,
+  isOpenOrderStatus,
+  OPEN_ORDER_STATUSES,
   ordersForRegistration,
   refundWindowOpen,
 } from "../model/payments";
@@ -35,9 +37,14 @@ export async function queueRefund(
     // The processing-fee estimate deducted from the organizer's payout;
     // 0 when nobody attributable absorbs it (seat_unavailable, entry_only).
     absorbedFeeCents: number;
-    // Overrides the kind-derived amount for the one case that needs it: the
-    // cancellation sweep returning a repeat-dropper's withheld fees.
+    // Overrides the kind-derived amount where the kind alone can't say it:
+    // the cancellation sweep returning whatever a charge still owes, or a
+    // stray charge refunding its session's total.
     amountCentsOverride?: number;
+    // Refund a charge other than the order's recorded one (a payment that
+    // landed on a superseded session). Such a refund never drives the
+    // order's status.
+    stripeChargeId?: string;
     initiatedBy?: { actor: Doc<"users">; actorRole: "player" | "organizer" };
   },
 ) {
@@ -53,6 +60,7 @@ export async function queueRefund(
     reason: args.reason,
     amountCents,
     absorbedFeeCents: args.absorbedFeeCents,
+    stripeChargeId: args.stripeChargeId,
     status: "pending",
     initiatedByUserId: args.initiatedBy?.actor._id,
     updatedAt: Date.now(),
@@ -93,10 +101,7 @@ export async function settleOrdersOnEntryExit(
 ) {
   const orders = await ordersForRegistration(ctx, args.registration._id);
   for (const order of orders) {
-    if (
-      order.status === "requires_payment" ||
-      order.status === "awaiting_payment"
-    ) {
+    if (isOpenOrderStatus(order.status)) {
       await ctx.db.patch(order._id, {
         status: "canceled",
         updatedAt: Date.now(),
@@ -156,7 +161,7 @@ export const closeOpenOrdersSweep = internalMutation({
   args: { tournamentId: v.id("tournaments") },
   handler: async (ctx, args) => {
     let sawFullPage = false;
-    for (const status of ["requires_payment", "awaiting_payment"] as const) {
+    for (const status of OPEN_ORDER_STATUSES) {
       const orders = await ctx.db
         .query("paymentOrders")
         .withIndex("by_tournamentId_and_status", (q) =>
@@ -190,13 +195,15 @@ export const closeOpenOrdersSweep = internalMutation({
 });
 
 // The cancellation sweep: a cancelled paid event makes every player whole.
-// Open orders close, every paid order refunds in full, and a
-// partially-refunded order (a repeat drop that kept the fees) gets its
-// remainder back — the event never happening outranks the repeat-drop rule.
-// No payout exists to deduct from, so the platform absorbs the processing
-// fees (absorbedFeeCents 0). Paid orders keep their status until their
-// refund settles, so idempotency across batches comes from the per-order
-// existing-refund guard and progress comes from the pagination cursor.
+// Open orders close, and every paid or partially-refunded order refunds
+// whatever its charge still owes — the event never happening outranks the
+// repeat-drop rule, and refunds already pending or settled (a player cancel
+// racing the cancellation, a repeat drop's entry-only refund) are counted
+// rather than double-issued, so the queued amount can never exceed what
+// Stripe still holds. No payout exists to deduct from, so the platform
+// absorbs the processing fees (absorbedFeeCents 0). Paid orders keep their
+// status until their refund settles, so idempotency across batches comes
+// from the per-order existing-refund guard and progress from the cursor.
 export const cancelTournamentPaymentsSweep = internalMutation({
   args: {
     tournamentId: v.id("tournaments"),
@@ -215,13 +222,24 @@ export const cancelTournamentPaymentsSweep = internalMutation({
       .paginate({ numItems: SWEEP_BATCH, cursor: args.cursor ?? null });
 
     for (const order of page) {
-      const existingCancellationRefund = (
-        await ctx.db
-          .query("paymentRefunds")
-          .withIndex("by_orderId", (q) => q.eq("orderId", order._id))
-          .take(8)
-      ).find((refund) => refund.reason === "tournament_cancelled");
-      if (existingCancellationRefund) {
+      const refunds = await ctx.db
+        .query("paymentRefunds")
+        .withIndex("by_orderId", (q) => q.eq("orderId", order._id))
+        .take(64);
+      if (refunds.some((refund) => refund.reason === "tournament_cancelled")) {
+        continue;
+      }
+      // Failed refunds returned nothing and stray-charge refunds returned a
+      // different charge's money; everything else is already coming back.
+      const alreadyReturningCents = refunds
+        .filter(
+          (refund) =>
+            refund.status !== "failed" && refund.stripeChargeId === undefined,
+        )
+        .reduce((sum, refund) => sum + refund.amountCents, 0);
+      const remainingCents =
+        order.amountBreakdown.totalCents - alreadyReturningCents;
+      if (remainingCents <= 0) {
         continue;
       }
       const registration = await ctx.db.get(order.registrationId);
@@ -234,13 +252,7 @@ export const cancelTournamentPaymentsSweep = internalMutation({
         kind: "full",
         reason: "tournament_cancelled",
         absorbedFeeCents: 0,
-        // A partially-refunded order already returned the entry cost; the
-        // remainder is the withheld fees.
-        amountCentsOverride:
-          stage === "remainder"
-            ? order.amountBreakdown.totalCents -
-              order.amountBreakdown.entryFeeCents
-            : undefined,
+        amountCentsOverride: remainingCents,
       });
     }
 
@@ -269,7 +281,8 @@ export const beginRefundExecution = internalMutation({
       return null;
     }
     const order = await ctx.db.get(refund.orderId);
-    if (!order?.stripeChargeId) {
+    const chargeId = refund.stripeChargeId ?? order?.stripeChargeId;
+    if (!chargeId) {
       // A paid order always carries its charge id (the webhook records it
       // before any refund is queued); a missing one is unexecutable.
       await ctx.db.patch(args.refundId, {
@@ -279,7 +292,7 @@ export const beginRefundExecution = internalMutation({
       return null;
     }
     return {
-      stripeChargeId: order.stripeChargeId,
+      stripeChargeId: chargeId,
       amountCents: refund.amountCents,
     };
   },
@@ -298,22 +311,33 @@ export const executeRefund = internalAction({
 
     const gateway = getStripeGateway(requireStripeSecretKey());
     try {
-      const { stripeRefundId } = await gateway.createRefund({
+      const { stripeRefundId, status } = await gateway.createRefund({
         chargeId: begin.stripeChargeId,
         amountCents: begin.amountCents,
         refundRowId: args.refundId,
         idempotencyKey: `refund:${args.refundId}`,
       });
-      await ctx.runMutation(internal.payments.refunds.markRefundResult, {
+      // Stripe accepting the creation is not the money moving: a refund can
+      // come back pending (bank rails) or requires_action, and only its
+      // terminal status settles the row — for the in-between states the row
+      // stays pending, carrying the Stripe id so the refund.updated webhook
+      // can settle it.
+      const outcome =
+        status === "succeeded"
+          ? ("succeeded" as const)
+          : status === "failed" || status === "canceled"
+            ? ("failed" as const)
+            : ("pending" as const);
+      await (ctx.runMutation(internal.payments.refunds.markRefundResult, {
         refundId: args.refundId,
-        outcome: "succeeded",
+        outcome,
         stripeRefundId,
-      });
+      }) satisfies Promise<null>);
     } catch (error) {
-      await ctx.runMutation(internal.payments.refunds.markRefundResult, {
+      await (ctx.runMutation(internal.payments.refunds.markRefundResult, {
         refundId: args.refundId,
         outcome: "failed",
-      });
+      }) satisfies Promise<null>);
       // Rethrown so the failure is visible in function logs; the refund row
       // and refund_failed audit line carry the user-facing record.
       throw error;
@@ -342,10 +366,33 @@ async function applyRefundOutcome(
   });
 
   if (outcome === "succeeded") {
+    // A stray-charge refund returned money that never belonged to the
+    // order's own charge; the order's status is not its business.
+    if (refund.stripeChargeId !== undefined) {
+      return;
+    }
     const order = await ctx.db.get(refund.orderId);
     if (order) {
+      // Derived from what has actually come back rather than this refund's
+      // kind, so two refunds settling out of order (an entry-only refund and
+      // the cancellation sweep's fee remainder) land on the same terminal
+      // status regardless of which settles last.
+      const settled = await ctx.db
+        .query("paymentRefunds")
+        .withIndex("by_orderId", (q) => q.eq("orderId", order._id))
+        .take(64);
+      const returnedCents = settled
+        .filter(
+          (row) =>
+            (row._id === refund._id || row.status === "succeeded") &&
+            row.stripeChargeId === undefined,
+        )
+        .reduce((sum, row) => sum + row.amountCents, 0);
       await ctx.db.patch(order._id, {
-        status: refund.kind === "full" ? "refunded" : "partially_refunded",
+        status:
+          returnedCents >= order.amountBreakdown.totalCents
+            ? "refunded"
+            : "partially_refunded",
         updatedAt: now,
       });
     }
@@ -369,12 +416,28 @@ async function applyRefundOutcome(
 export const markRefundResult = internalMutation({
   args: {
     refundId: v.id("paymentRefunds"),
-    outcome: v.union(v.literal("succeeded"), v.literal("failed")),
+    outcome: v.union(
+      v.literal("succeeded"),
+      v.literal("failed"),
+      // The Stripe call landed but the refund is still processing: record
+      // the Stripe id (the webhook's lookup key) and leave the row pending
+      // for refund.updated to settle.
+      v.literal("pending"),
+    ),
     stripeRefundId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const refund = await ctx.db.get(args.refundId);
     if (!refund) {
+      return null;
+    }
+    if (args.outcome === "pending") {
+      if (refund.status === "pending" && args.stripeRefundId) {
+        await ctx.db.patch(refund._id, {
+          stripeRefundId: args.stripeRefundId,
+          updatedAt: Date.now(),
+        });
+      }
       return null;
     }
     await applyRefundOutcome(ctx, refund, args.outcome, args.stripeRefundId);

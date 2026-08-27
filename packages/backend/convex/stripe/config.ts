@@ -42,8 +42,13 @@ export function requireWebAppOrigin() {
 
 // Whether the payment surface can work at all on this deployment; the UI uses
 // this to render a "not configured" notice instead of a button that throws.
+// The webhook secret is part of "configured": without it checkout could still
+// charge players while every fulfillment webhook fails verification, leaving
+// them paid but unseated.
 export function isStripeConfigured() {
-  return Boolean(env.STRIPE_SECRET_KEY && env.WEB_APP_ORIGIN);
+  return Boolean(
+    env.STRIPE_SECRET_KEY && env.STRIPE_WEBHOOK_SECRET && env.WEB_APP_ORIGIN,
+  );
 }
 
 // Fee economics from env with source-baked defaults (5% platform fee,
@@ -64,12 +69,24 @@ export function feeConfigFromEnv(): FeeConfig {
   };
 }
 
+// Strict parses: parseFloat/parseInt tolerate trailing garbage ("5oops" → 5)
+// and silently truncate ("30.9" → 30), and orders snapshot the resulting
+// price forever — so anything but a clean numeric value falls back to the
+// default, loudly.
 function parsePercentToBps(value: string | undefined) {
   if (value === undefined) {
     return null;
   }
-  const percent = Number.parseFloat(value);
-  if (!Number.isFinite(percent) || percent < 0 || percent >= 100) {
+  const percent = Number(value.trim());
+  if (
+    value.trim() === "" ||
+    !Number.isFinite(percent) ||
+    percent < 0 ||
+    percent >= 100
+  ) {
+    console.warn(
+      `Ignoring malformed fee percent ${JSON.stringify(value)}; using the default`,
+    );
     return null;
   }
   return Math.round(percent * 100);
@@ -79,8 +96,11 @@ function parseCents(value: string | undefined) {
   if (value === undefined) {
     return null;
   }
-  const cents = Number.parseInt(value, 10);
-  if (!Number.isFinite(cents) || cents < 0) {
+  const cents = Number(value.trim());
+  if (value.trim() === "" || !Number.isInteger(cents) || cents < 0) {
+    console.warn(
+      `Ignoring malformed fee cents ${JSON.stringify(value)}; using the default`,
+    );
     return null;
   }
   return cents;

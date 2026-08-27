@@ -7,6 +7,7 @@ import { ensureParticipantForUser } from "../model/participants";
 import { setRegistrationState } from "../model/participation";
 import {
   createEntryOrder,
+  isOpenOrderStatus,
   isPaidTournament,
   openOrderForRegistration,
   orderTransferGroup,
@@ -154,8 +155,20 @@ export const beginEntryCheckout = internalMutation({
       purpose: "registration",
     });
 
+    // The persisted attempt token. It scopes the Stripe idempotency key (two
+    // begins always mint distinct sessions — a shared wall-clock key could
+    // hand two concurrent actions the same session, letting the attach loser
+    // expire the session the winner just gave its player) and is the attach
+    // compare-and-set: any newer begin invalidates this attempt's attach.
+    const checkoutAttempt = (order.checkoutAttempt ?? 0) + 1;
+    await ctx.db.patch(order._id, {
+      checkoutAttempt,
+      updatedAt: Date.now(),
+    });
+
     return {
       orderId: order._id,
+      checkoutAttempt,
       transferGroup: orderTransferGroup(order._id),
       totalCents: order.amountBreakdown.totalCents,
       productName: `${tournament.name} — entry`,
@@ -167,10 +180,17 @@ export const beginEntryCheckout = internalMutation({
   },
 });
 
+// Compare-and-swap on the attempt token: the attach succeeds only if no
+// newer beginEntryCheckout ran since this attempt's begin. Returns false
+// when the caller lost — a concurrent checkout began a newer attempt, or a
+// webhook closed the order mid-flight — and the caller must then expire the
+// session it minted, so an unattached session is never left payable (a
+// payment on it would arrive at the webhook unrecognized).
 export const attachCheckoutSession = internalMutation({
   args: {
     orderId: v.id("paymentOrders"),
     stripeCheckoutSessionId: v.string(),
+    checkoutAttempt: v.number(),
   },
   handler: async (ctx, args) => {
     const order = await ctx.db.get(args.orderId);
@@ -179,18 +199,19 @@ export const attachCheckoutSession = internalMutation({
     }
     // A webhook may have closed the order between session creation and this
     // write (expiry of the prior session, a cancellation): never reopen it.
-    if (
-      order.status !== "requires_payment" &&
-      order.status !== "awaiting_payment"
-    ) {
-      return null;
+    if (!isOpenOrderStatus(order.status)) {
+      return false;
+    }
+    // A rival begin superseded this attempt; its attach owns the order now.
+    if (order.checkoutAttempt !== args.checkoutAttempt) {
+      return false;
     }
     await ctx.db.patch(args.orderId, {
       stripeCheckoutSessionId: args.stripeCheckoutSessionId,
       status: "awaiting_payment",
       updatedAt: Date.now(),
     });
-    return null;
+    return true;
   },
 });
 
@@ -220,6 +241,7 @@ export const createEntryCheckout = action({
 
     const begin: {
       orderId: Id<"paymentOrders">;
+      checkoutAttempt: number;
       transferGroup: string;
       totalCents: number;
       productName: string;
@@ -230,15 +252,28 @@ export const createEntryCheckout = action({
     });
 
     if (begin.existingSessionId) {
-      // Best-effort: an already-expired or already-completed session throws,
-      // and the webhook handles either outcome — the point is only that no
-      // superseded session stays payable.
+      // The old session must be provably dead before a replacement is
+      // minted: a payment completing on it after the order moves on would
+      // reach the webhook unrecognized and be discarded. Expiring an open
+      // session guarantees Stripe never takes money on it; when it cannot be
+      // expired, only an already-expired session is safe to replace — a
+      // completed one has a payment racing the webhook.
+      let superseded = false;
       try {
         await gateway.expireCheckoutSession({
           sessionId: begin.existingSessionId,
         });
+        superseded = true;
       } catch {
-        // Ignored; see above.
+        const status = await gateway.retrieveCheckoutSessionStatus({
+          sessionId: begin.existingSessionId,
+        });
+        superseded = status === "expired";
+      }
+      if (!superseded) {
+        throw new Error(
+          "Your previous checkout is still being processed — please wait a moment and refresh",
+        );
       }
     }
 
@@ -250,15 +285,33 @@ export const createEntryCheckout = action({
       transferGroup: begin.transferGroup,
       successUrl: `${eventUrl}/payment?session_id={CHECKOUT_SESSION_ID}`,
       cancelUrl: eventUrl,
-      // Each click deliberately mints a fresh session (the prior one was
-      // expired above), so the key varies per attempt.
-      idempotencyKey: `checkout:${begin.orderId}:${Date.now()}`,
+      // Keyed by the persisted attempt token: SDK-level retries of this one
+      // request replay as the same session, while distinct begins always
+      // mint distinct sessions. Concurrent attempts are resolved by the
+      // attach compare-and-swap below.
+      idempotencyKey: `checkout:${begin.orderId}:${begin.checkoutAttempt}`,
     });
 
-    await ctx.runMutation(internal.payments.checkout.attachCheckoutSession, {
-      orderId: begin.orderId,
-      stripeCheckoutSessionId: sessionId,
-    });
+    const attached: boolean = await ctx.runMutation(
+      internal.payments.checkout.attachCheckoutSession,
+      {
+        orderId: begin.orderId,
+        stripeCheckoutSessionId: sessionId,
+        checkoutAttempt: begin.checkoutAttempt,
+      },
+    );
+    if (!attached) {
+      // Lost the attach race, or the order closed mid-flight. This session's
+      // URL was never returned to anyone, so expiring it strands no payer.
+      try {
+        await gateway.expireCheckoutSession({ sessionId });
+      } catch {
+        // Nothing left to protect; the webhook owns any late event.
+      }
+      throw new Error(
+        "Another checkout for this entry is already in progress — please try again",
+      );
+    }
 
     return { url };
   },

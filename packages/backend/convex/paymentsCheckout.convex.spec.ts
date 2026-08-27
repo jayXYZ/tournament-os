@@ -18,6 +18,9 @@ const gatewayState = vi.hoisted(() => ({
   expired: [] as Array<string>,
   refunds: [] as Array<{ chargeId: string; amountCents: number }>,
   nextSessionNumber: 1,
+  // When set, expireCheckoutSession throws and the status probe reports this
+  // value — simulating a session Stripe refuses to expire.
+  unexpirableStatus: null as "open" | "complete" | null,
 }));
 
 vi.mock("./stripe/config", async (importOriginal) => {
@@ -38,11 +41,19 @@ vi.mock("./stripe/client", () => ({
       return { sessionId, url: `https://checkout.stripe.test/${sessionId}` };
     },
     expireCheckoutSession: async (args: { sessionId: string }) => {
+      if (gatewayState.unexpirableStatus) {
+        throw new Error("This Checkout Session cannot be expired");
+      }
       gatewayState.expired.push(args.sessionId);
     },
+    retrieveCheckoutSessionStatus: async () =>
+      gatewayState.unexpirableStatus ?? "expired",
     createRefund: async (args: { chargeId: string; amountCents: number }) => {
       gatewayState.refunds.push(args);
-      return { stripeRefundId: `re_test_${gatewayState.refunds.length}` };
+      return {
+        stripeRefundId: `re_test_${gatewayState.refunds.length}`,
+        status: "succeeded" as const,
+      };
     },
   }),
 }));
@@ -52,6 +63,7 @@ beforeEach(() => {
   gatewayState.expired = [];
   gatewayState.refunds = [];
   gatewayState.nextSessionNumber = 1;
+  gatewayState.unexpirableStatus = null;
 });
 
 const START_DATE = Date.UTC(2027, 5, 12, 17, 0, 0);
@@ -258,6 +270,10 @@ test("direct paid registration: checkout, webhook confirm, idempotent redelivery
   expect(auditTypes).toContain("player_registered");
 });
 
+// convex-test serializes mutations, so the race is driven as an explicit
+// interleaving: all three payments complete against a two-seat field, in the
+// arbitrary order the webhooks would land in. True wire-level concurrency
+// reduces to exactly this — each handler is one serializable transaction.
 test("capacity race: the losing payment is auto-refunded in full", async () => {
   const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
@@ -312,6 +328,211 @@ test("capacity race: the losing payment is auto-refunded in full", async () => {
   });
   const settledOrder = await latestOrderFor(t, tournamentId, 3);
   expect(settledOrder.status).toBe("refunded");
+});
+
+test("concurrent checkouts: the newest attempt's attach wins and the stale one is refused", async () => {
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const tournamentId = await seedPaidTournament(t, organizationId);
+  await insertPlayerUser(t, 1);
+  const asPlayer = t.withIdentity(playerIdentity(1));
+
+  // Both begins run before either attach — the double-click interleaving.
+  const beginA = await asPlayer.mutation(
+    internal.payments.checkout.beginEntryCheckout,
+    { tournamentId },
+  );
+  const beginB = await asPlayer.mutation(
+    internal.payments.checkout.beginEntryCheckout,
+    { tournamentId },
+  );
+  expect(beginB.orderId).toBe(beginA.orderId);
+  // Each begin persists its own attempt token — the Stripe idempotency
+  // scope, so two attempts can never be handed the same session.
+  expect(beginB.checkoutAttempt).toBe(beginA.checkoutAttempt + 1);
+  expect(beginA.existingSessionId).toBeNull();
+  expect(beginB.existingSessionId).toBeNull();
+
+  const attachedA = await t.mutation(
+    internal.payments.checkout.attachCheckoutSession,
+    {
+      orderId: beginA.orderId,
+      stripeCheckoutSessionId: "cs_race_a",
+      checkoutAttempt: beginA.checkoutAttempt,
+    },
+  );
+  const attachedB = await t.mutation(
+    internal.payments.checkout.attachCheckoutSession,
+    {
+      orderId: beginB.orderId,
+      stripeCheckoutSessionId: "cs_race_b",
+      checkoutAttempt: beginB.checkoutAttempt,
+    },
+  );
+  expect(attachedA).toBe(false);
+  expect(attachedB).toBe(true);
+
+  // The winner's session survives, so its payment fulfills normally instead
+  // of arriving at the webhook unrecognized.
+  let order = await latestOrderFor(t, tournamentId, 1);
+  expect(order.stripeCheckoutSessionId).toBe("cs_race_b");
+  await completePayment(t, order, "race");
+  order = await latestOrderFor(t, tournamentId, 1);
+  expect(order.status).toBe("paid");
+  const registration = await t.run(
+    async (ctx) => (await ctx.db.get(order.registrationId))!,
+  );
+  expect(registration.entryStatus).toBe("confirmed");
+});
+
+test("a paid session the order no longer owns is refunded, never silently discarded", async () => {
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const tournamentId = await seedPaidTournament(t, organizationId);
+  await insertPlayerUser(t, 1);
+  const asPlayer = t.withIdentity(playerIdentity(1));
+
+  await asPlayer.action(api.payments.checkout.createEntryCheckout, {
+    tournamentId,
+  });
+  let order = await latestOrderFor(t, tournamentId, 1);
+  await completePayment(t, order, "kept");
+  order = await latestOrderFor(t, tournamentId, 1);
+  expect(order.status).toBe("paid");
+  expect(order.stripeChargeId).toBe("ch_kept");
+
+  // The duplicate-session race: a second successful charge arrives for the
+  // same order on a session it does not carry (the invariant-violation case
+  // the checkout supersede-proof is meant to exclude). The order's own
+  // payment must stand untouched and the stray money must come back.
+  await t.mutation(internal.payments.webhooks.handleCheckoutCompleted, {
+    stripeEventId: "evt_stray",
+    orderId: order._id,
+    sessionId: "cs_stray_session",
+    stripePaymentIntentId: "pi_stray",
+    stripeChargeId: "ch_stray",
+  });
+
+  order = await latestOrderFor(t, tournamentId, 1);
+  expect(order.status).toBe("paid");
+  expect(order.stripeChargeId).toBe("ch_kept");
+  const registration = await t.run(
+    async (ctx) => (await ctx.db.get(order.registrationId))!,
+  );
+  expect(registration.entryStatus).toBe("confirmed");
+  expect(
+    (await tournamentDoc(t, tournamentId)).confirmedRegistrationCount,
+  ).toBe(1);
+
+  const refunds = await t.run(
+    async (ctx) =>
+      await ctx.db
+        .query("paymentRefunds")
+        .withIndex("by_orderId", (q) => q.eq("orderId", order._id))
+        .take(8),
+  );
+  expect(refunds).toHaveLength(1);
+  expect(refunds[0]).toMatchObject({
+    kind: "full",
+    reason: "seat_unavailable",
+    amountCents: 2194,
+    stripeChargeId: "ch_stray",
+    status: "pending",
+  });
+
+  // The executor refunds the stray charge, not the order's recorded one,
+  // and settling it leaves the order paid.
+  await t.action(internal.payments.refunds.executeRefund, {
+    refundId: refunds[0]!._id,
+  });
+  expect(gatewayState.refunds).toHaveLength(1);
+  expect(gatewayState.refunds[0]).toMatchObject({
+    chargeId: "ch_stray",
+    amountCents: 2194,
+  });
+  order = await latestOrderFor(t, tournamentId, 1);
+  expect(order.status).toBe("paid");
+
+  // A second completion event for the same stray charge (completed +
+  // async_payment_succeeded arrive as distinct event ids) refunds once.
+  await t.mutation(internal.payments.webhooks.handleCheckoutCompleted, {
+    stripeEventId: "evt_stray_redelivery",
+    orderId: order._id,
+    sessionId: "cs_stray_session",
+    stripePaymentIntentId: "pi_stray",
+    stripeChargeId: "ch_stray",
+  });
+  const refundsAfter = await t.run(
+    async (ctx) =>
+      await ctx.db
+        .query("paymentRefunds")
+        .withIndex("by_orderId", (q) => q.eq("orderId", order._id))
+        .take(8),
+  );
+  expect(refundsAfter).toHaveLength(1);
+});
+
+test("attach refuses an order a webhook closed mid-flight", async () => {
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const tournamentId = await seedPaidTournament(t, organizationId);
+  await insertPlayerUser(t, 1);
+  const asPlayer = t.withIdentity(playerIdentity(1));
+
+  const begin = await asPlayer.mutation(
+    internal.payments.checkout.beginEntryCheckout,
+    { tournamentId },
+  );
+  await t.run(async (ctx) => {
+    await ctx.db.patch(begin.orderId, { status: "canceled" });
+  });
+
+  const attached = await t.mutation(
+    internal.payments.checkout.attachCheckoutSession,
+    {
+      orderId: begin.orderId,
+      stripeCheckoutSessionId: "cs_after_close",
+      checkoutAttempt: begin.checkoutAttempt,
+    },
+  );
+  expect(attached).toBe(false);
+  const order = await latestOrderFor(t, tournamentId, 1);
+  expect(order.status).toBe("canceled");
+  expect(order.stripeCheckoutSessionId).toBeUndefined();
+});
+
+test("a session Stripe cannot expire blocks the replacement checkout", async () => {
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const tournamentId = await seedPaidTournament(t, organizationId);
+  await insertPlayerUser(t, 1);
+  const asPlayer = t.withIdentity(playerIdentity(1));
+
+  await asPlayer.action(api.payments.checkout.createEntryCheckout, {
+    tournamentId,
+  });
+  let order = await latestOrderFor(t, tournamentId, 1);
+  expect(order.stripeCheckoutSessionId).toBe("cs_test_1");
+
+  // The first session completed (payment racing the webhook), so it can
+  // neither be expired nor safely replaced.
+  gatewayState.unexpirableStatus = "complete";
+  await expect(
+    asPlayer.action(api.payments.checkout.createEntryCheckout, {
+      tournamentId,
+    }),
+  ).rejects.toThrow("still being processed");
+  expect(gatewayState.sessions).toHaveLength(1);
+  order = await latestOrderFor(t, tournamentId, 1);
+  expect(order.stripeCheckoutSessionId).toBe("cs_test_1");
+
+  // Once the probe reports the session expired, the retry goes through.
+  gatewayState.unexpirableStatus = null;
+  await asPlayer.action(api.payments.checkout.createEntryCheckout, {
+    tournamentId,
+  });
+  order = await latestOrderFor(t, tournamentId, 1);
+  expect(order.stripeCheckoutSessionId).toBe("cs_test_2");
 });
 
 test("session expiry closes a direct registration; a fresh checkout starts over", async () => {
@@ -433,6 +654,24 @@ test("the entry fee freezes once an order exists", async () => {
     .withIdentity(playerIdentity(1))
     .action(api.payments.checkout.createEntryCheckout, { tournamentId });
 
+  await expect(
+    t
+      .withIdentity(organizerIdentity)
+      .mutation(api.tournaments.lifecycle.updateTournamentSetup, {
+        tournamentId,
+        entryFeeCents: 3000,
+      }),
+  ).rejects.toThrow("locked once a payment exists");
+
+  // A terminal order locks it too: an expired session can still complete
+  // late (async payments), so no order status is safe to reprice around.
+  const order = await latestOrderFor(t, tournamentId, 1);
+  await t.mutation(internal.payments.webhooks.handleCheckoutExpired, {
+    stripeEventId: "evt_freeze_expired",
+    orderId: order._id,
+    sessionId: order.stripeCheckoutSessionId!,
+  });
+  expect((await latestOrderFor(t, tournamentId, 1)).status).toBe("expired");
   await expect(
     t
       .withIdentity(organizerIdentity)

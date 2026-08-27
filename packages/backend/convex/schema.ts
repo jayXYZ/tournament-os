@@ -137,6 +137,12 @@ export default defineSchema({
     purpose: paymentOrderPurposeValidator,
     amountBreakdown: orderAmountBreakdownValidator,
     status: paymentOrderStatusValidator,
+    // Monotonic checkout-attempt counter, bumped by beginEntryCheckout. It is
+    // the Stripe idempotency scope (each begin mints a distinct session even
+    // when two begins share a wall-clock millisecond) and the attach
+    // compare-and-set token (a stale action can never attach over a newer
+    // attempt's session).
+    checkoutAttempt: v.optional(v.number()),
     stripeCheckoutSessionId: v.optional(v.string()),
     stripePaymentIntentId: v.optional(v.string()),
     // source_transaction for the payout transfer (phase E).
@@ -163,6 +169,10 @@ export default defineSchema({
     reason: paymentRefundReasonValidator,
     amountCents: v.number(),
     absorbedFeeCents: v.number(),
+    // Set only when the refund targets a charge other than the order's
+    // recorded one (a payment that landed on a superseded checkout session).
+    // Such a refund returns stray money and never drives the order's status.
+    stripeChargeId: v.optional(v.string()),
     stripeRefundId: v.optional(v.string()),
     status: paymentRefundStatusValidator,
     // Absent for system-initiated refunds (webhook races, sweeps).

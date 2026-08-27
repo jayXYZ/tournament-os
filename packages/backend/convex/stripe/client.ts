@@ -45,6 +45,9 @@ export interface StripeGateway {
     idempotencyKey: string;
   }): Promise<{ sessionId: string; url: string }>;
   expireCheckoutSession(args: { sessionId: string }): Promise<void>;
+  retrieveCheckoutSessionStatus(args: {
+    sessionId: string;
+  }): Promise<"open" | "complete" | "expired">;
   retrievePaymentIntentCharge(args: {
     paymentIntentId: string;
   }): Promise<{ chargeId: string | null }>;
@@ -55,7 +58,14 @@ export interface StripeGateway {
     // reconciliation can find the row even if the result write was lost.
     refundRowId: string;
     idempotencyKey: string;
-  }): Promise<{ stripeRefundId: string }>;
+  }): Promise<{
+    stripeRefundId: string;
+    // Stripe's status on the created refund: acceptance of the creation
+    // request is not success (bank refunds sit pending for days and can
+    // still fail), so callers must settle rows from this, not from the call
+    // returning.
+    status: "pending" | "requires_action" | "succeeded" | "failed" | "canceled";
+  }>;
   createTransfer(args: {
     destinationAccountId: string;
     amountCents: number;
@@ -180,6 +190,13 @@ export function getStripeGateway(secretKey: string): StripeGateway {
       await stripe.checkout.sessions.expire(args.sessionId);
     },
 
+    async retrieveCheckoutSessionStatus(args) {
+      const session = await stripe.checkout.sessions.retrieve(args.sessionId);
+      // A null status never occurs for payment-mode sessions; "open" is the
+      // safe fallback (callers refuse to supersede an open session).
+      return session.status ?? "open";
+    },
+
     async retrievePaymentIntentCharge(args) {
       const intent = await stripe.paymentIntents.retrieve(args.paymentIntentId);
       const charge = intent.latest_charge;
@@ -197,7 +214,17 @@ export function getStripeGateway(secretKey: string): StripeGateway {
         },
         { idempotencyKey: args.idempotencyKey },
       );
-      return { stripeRefundId: refund.id };
+      // stripe-node types status as string | null; anything unrecognized is
+      // treated as "pending" — the safe reading, since the refund.updated
+      // webhook settles pending rows.
+      const status =
+        refund.status === "succeeded" ||
+        refund.status === "failed" ||
+        refund.status === "canceled" ||
+        refund.status === "requires_action"
+          ? refund.status
+          : ("pending" as const);
+      return { stripeRefundId: refund.id, status };
     },
 
     async createTransfer(args) {

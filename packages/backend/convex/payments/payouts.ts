@@ -156,11 +156,13 @@ export const enumeratePayoutBatch = internalMutation({
     const now = Date.now();
     for (const order of orders) {
       // Retry-safe: an order that already has its transfer row was handled
-      // by a previous pass over this page.
+      // by a previous pass over this page. .unique() makes a duplicate row —
+      // a broken one-transfer-per-order invariant — fail loudly instead of
+      // silently double-paying.
       const alreadyRowed = await ctx.db
         .query("payoutTransfers")
         .withIndex("by_orderId", (q) => q.eq("orderId", order._id))
-        .first();
+        .unique();
       if (alreadyRowed) {
         continue;
       }
@@ -363,11 +365,11 @@ export const sendTransfers = internalAction({
       stripeAccountId: begin.stripeAccountId,
     });
     if (capability !== "active") {
-      await ctx.runMutation(internal.payments.payouts.markPayoutBlocked, {
+      await (ctx.runMutation(internal.payments.payouts.markPayoutBlocked, {
         payoutId: args.payoutId,
         error:
           "The organization's Stripe account is not ready to receive payouts",
-      });
+      }) satisfies Promise<null>);
       return null;
     }
 
@@ -393,24 +395,24 @@ export const sendTransfers = internalAction({
             transferGroup: orderTransferGroup(row.orderId),
             idempotencyKey: `transfer:${row.transferRowId}`,
           });
-          await ctx.runMutation(internal.payments.payouts.markTransferResult, {
+          await (ctx.runMutation(internal.payments.payouts.markTransferResult, {
             transferRowId: row.transferRowId,
             outcome: "sent",
             stripeTransferId,
-          });
+          }) satisfies Promise<null>);
         } catch (error) {
-          await ctx.runMutation(internal.payments.payouts.markTransferResult, {
+          await (ctx.runMutation(internal.payments.payouts.markTransferResult, {
             transferRowId: row.transferRowId,
             outcome: "failed",
             errorMessage: error instanceof Error ? error.message : "Unknown",
-          });
+          }) satisfies Promise<null>);
         }
       }
     }
 
-    await ctx.runMutation(internal.payments.payouts.finalizePayout, {
+    await (ctx.runMutation(internal.payments.payouts.finalizePayout, {
       payoutId: args.payoutId,
-    });
+    }) satisfies Promise<null>);
     return null;
   },
 });
@@ -447,9 +449,9 @@ export const getTournamentPayout = query({
 export const retryPayout = action({
   args: { tournamentId: v.id("tournaments") },
   handler: async (ctx, args): Promise<null> => {
-    await ctx.runMutation(internal.payments.payouts.beginPayoutRetry, {
+    await (ctx.runMutation(internal.payments.payouts.beginPayoutRetry, {
       tournamentId: args.tournamentId,
-    });
+    }) satisfies Promise<null>);
     return null;
   },
 });

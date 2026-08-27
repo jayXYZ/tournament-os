@@ -22,6 +22,9 @@ const gatewayState = vi.hoisted(() => ({
   }>,
   expired: [] as Array<string>,
   nextSessionNumber: 1,
+  // What Stripe reports on refund creation — "pending" models bank-rail
+  // refunds that only settle via the refund.updated webhook.
+  createRefundStatus: "succeeded" as "succeeded" | "pending" | "failed",
 }));
 
 vi.mock("./stripe/config", async (importOriginal) => {
@@ -49,7 +52,10 @@ vi.mock("./stripe/client", () => ({
       refundRowId: string;
     }) => {
       gatewayState.refunds.push(args);
-      return { stripeRefundId: `re_test_${gatewayState.refunds.length}` };
+      return {
+        stripeRefundId: `re_test_${gatewayState.refunds.length}`,
+        status: gatewayState.createRefundStatus,
+      };
     },
   }),
 }));
@@ -58,6 +64,7 @@ beforeEach(() => {
   gatewayState.refunds = [];
   gatewayState.expired = [];
   gatewayState.nextSessionNumber = 1;
+  gatewayState.createRefundStatus = "succeeded";
 });
 
 const START_DATE = Date.UTC(2027, 5, 12, 17, 0, 0);
@@ -323,6 +330,83 @@ test("withdrawing an unpaid checkout closes the order without a refund", async (
   const order = await latestOrder(t, tournamentId);
   expect(order.status).toBe("canceled");
   expect(await refundsFor(t, order._id)).toHaveLength(0);
+});
+
+test("a refund Stripe reports as pending stays pending until the webhook settles it", async () => {
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const tournamentId = await seedPaidTournament(t, organizationId);
+  const asPlayer = t.withIdentity(playerOne);
+
+  const orderId = await payForEntry(t, tournamentId, "one");
+  await asPlayer.mutation(api.tournaments.registrations.cancelMyRegistration, {
+    tournamentId,
+  });
+
+  // Stripe accepts the creation but the money is still moving: the row must
+  // not be declared succeeded (the order stays paid), only the Stripe id is
+  // recorded so the webhook can find the row.
+  gatewayState.createRefundStatus = "pending";
+  const refundId = await runQueuedRefund(t, orderId);
+  let [refund] = await refundsFor(t, orderId);
+  expect(refund).toMatchObject({
+    status: "pending",
+    stripeRefundId: "re_test_1",
+  });
+  expect((await latestOrder(t, tournamentId)).status).toBe("paid");
+
+  // The refund.updated webhook settles it by Stripe refund id.
+  await t.mutation(internal.payments.refunds.handleRefundEvent, {
+    stripeEventId: "evt_refund_settle",
+    stripeRefundId: "re_test_1",
+    refundStatus: "succeeded",
+    refundRowId: refundId,
+  });
+  [refund] = await refundsFor(t, orderId);
+  expect(refund!.status).toBe("succeeded");
+  expect((await latestOrder(t, tournamentId)).status).toBe("refunded");
+});
+
+test("a refund Stripe reports as failed on creation is recorded as failed", async () => {
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const tournamentId = await seedPaidTournament(t, organizationId);
+  const asPlayer = t.withIdentity(playerOne);
+
+  const orderId = await payForEntry(t, tournamentId, "one");
+  await asPlayer.mutation(api.tournaments.registrations.cancelMyRegistration, {
+    tournamentId,
+  });
+
+  gatewayState.createRefundStatus = "failed";
+  await runQueuedRefund(t, orderId);
+  const [refund] = await refundsFor(t, orderId);
+  expect(refund!.status).toBe("failed");
+  expect((await latestOrder(t, tournamentId)).status).toBe("paid");
+});
+
+test("a pending refund a webhook reports canceled is recorded as failed", async () => {
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const tournamentId = await seedPaidTournament(t, organizationId);
+  const asPlayer = t.withIdentity(playerOne);
+
+  const orderId = await payForEntry(t, tournamentId, "one");
+  await asPlayer.mutation(api.tournaments.registrations.cancelMyRegistration, {
+    tournamentId,
+  });
+  gatewayState.createRefundStatus = "pending";
+  await runQueuedRefund(t, orderId);
+
+  await t.mutation(internal.payments.refunds.handleRefundEvent, {
+    stripeEventId: "evt_refund_cancel",
+    stripeRefundId: "re_test_1",
+    refundStatus: "canceled",
+    refundRowId: null,
+  });
+  const [refund] = await refundsFor(t, orderId);
+  expect(refund!.status).toBe("failed");
+  expect((await latestOrder(t, tournamentId)).status).toBe("paid");
 });
 
 test("refund reconciliation recovers a lost executor write by row id", async () => {
