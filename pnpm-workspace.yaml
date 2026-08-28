@@ -35,7 +35,7 @@ overrides:
 # are Expo-managed, so bump them here when upgrading the SDK.
 catalog:
   convex: ^1.42.0
-  expo: ~56.0.20
+  expo: ~56.0.21
   react: 19.2.3
   react-dom: 19.2.3
   react-native: 0.85.3
@@ -54,22 +54,34 @@ allowBuilds:
   unrs-resolver: false
   utf-8-validate: false
 minimumReleaseAgeExclude:
-  - "@expo/cli@56.1.24"
-  - "@expo/config-plugins@56.0.15"
-  - "@expo/prebuild-config@56.0.22"
+  - "@expo/cli@56.1.24 || 56.1.25"
+  - "@expo/config-plugins@56.0.15 || 56.0.16"
+  - "@expo/prebuild-config@56.0.22 || 56.0.23"
   - "@expo/router-server@56.0.18"
   - "@expo/ui@56.0.26"
-  - expo-asset@56.0.23
-  - expo-auth-session@56.0.17
-  - expo-constants@56.0.24
-  - expo-dev-client@56.0.25
-  - expo-dev-launcher@56.0.26
-  - expo-dev-menu@56.0.22
-  - expo-file-system@56.0.10
+  - expo-asset@56.0.23 || 56.0.24
+  - expo-auth-session@56.0.17 || 56.0.18
+  - expo-constants@56.0.24 || 56.0.25
+  - expo-dev-client@56.0.25 || 56.0.26
+  - expo-dev-launcher@56.0.26 || 56.0.27
+  - expo-dev-menu@56.0.22 || 56.0.23
+  - expo-file-system@56.0.10 || 56.0.11
   - expo-image@56.0.12
   - expo-linking@56.0.17
-  - expo-modules-autolinking@56.0.22
-  - expo-modules-core@56.0.24
-  - expo-router@56.2.19
+  - expo-modules-autolinking@56.0.22 || 56.0.23
+  - expo-modules-core@56.0.24 || 56.0.25
+  - expo-router@56.2.19 || 56.2.20
   - expo-server@56.0.6
-  - expo@56.0.20
+  - expo@56.0.20 || 56.0.21
+  - "@expo/config@56.0.14"
+  - "@expo/fingerprint@0.19.10"
+  - "@expo/image-utils@0.10.5"
+  - "@expo/inline-modules@0.0.16"
+  - "@expo/local-build-cache-provider@56.0.12"
+  - "@expo/metro-config@56.0.19"
+  - "@expo/metro-file-map@56.0.4"
+  - "@expo/require-utils@56.1.7"
+  - babel-preset-expo@56.0.20
+  - expo-crypto@56.0.5
+  - expo-modules-jsi@56.0.13
+  - expo-splash-screen@56.0.15
