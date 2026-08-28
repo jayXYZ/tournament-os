@@ -6,8 +6,8 @@ import { toast } from 'sonner'
 import { api } from '@tournament-os/backend/convex/_generated/api'
 import { canInviteMembers } from '@tournament-os/shared/organizer-utils'
 import { useOrganization } from './organization-context'
+import type { OrganizerInviteRole } from '@tournament-os/shared/organizer-utils'
 import type { FormEvent } from 'react'
-import type { Role } from './types'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -64,7 +64,7 @@ export function StaffView() {
     : false
 
   const [inviteEmail, setInviteEmail] = useState('')
-  const [inviteRole, setInviteRole] = useState<Role>('staff')
+  const [inviteRole, setInviteRole] = useState<OrganizerInviteRole>('staff')
   const { busy, run } = useBusyAction()
 
   async function handleInvite(event: FormEvent<HTMLFormElement>) {
@@ -167,7 +167,9 @@ export function StaffView() {
                   <FieldLabel>Role</FieldLabel>
                   <Select
                     value={inviteRole}
-                    onValueChange={(value) => setInviteRole(value as Role)}
+                    onValueChange={(value) =>
+                      setInviteRole(value as OrganizerInviteRole)
+                    }
                     disabled={!mayInvite}
                   >
                     <SelectTrigger className="w-full">

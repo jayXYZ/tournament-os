@@ -1,5 +1,6 @@
 import { Link } from '@tanstack/react-router'
 import { LogIn, SearchX, UserRound } from 'lucide-react'
+import type { ReactNode } from 'react'
 import type { Swords } from 'lucide-react'
 import type { PlayerTournamentAccess } from './use-player-tournament-access'
 import { useAppAuth } from '@/lib/use-app-auth'
@@ -34,6 +35,34 @@ export function PlayerPageSkeleton() {
   )
 }
 
+// The standard full-page empty state for player pages: PlayerAccessShell's
+// non-ready states, the decklist page's no-decklist-needed state, and the
+// editor's submission-closed state all share this one frame.
+export function PlayerPageEmpty({
+  icon: Icon,
+  title,
+  description,
+  children,
+}: {
+  icon: typeof Swords
+  title: string
+  description: string
+  children?: ReactNode
+}) {
+  return (
+    <Empty className="mt-4 min-h-80 border bg-card lg:mt-10">
+      <EmptyHeader>
+        <EmptyMedia variant="icon">
+          <Icon aria-hidden="true" />
+        </EmptyMedia>
+        <EmptyTitle>{title}</EmptyTitle>
+        <EmptyDescription>{description}</EmptyDescription>
+      </EmptyHeader>
+      {children}
+    </Empty>
+  )
+}
+
 // The four non-ready access states, rendered once for every player page.
 // Each page wraps this in its own chrome (SiteShell / DecklistFrame) and
 // supplies only the copy that differs: the sign-in pitch and the
@@ -63,33 +92,25 @@ export function PlayerAccessShell({
 
   if (access.state === 'notFound') {
     return (
-      <Empty className="mt-4 min-h-80 border bg-card lg:mt-10">
-        <EmptyHeader>
-          <EmptyMedia variant="icon">
-            <SearchX aria-hidden="true" />
-          </EmptyMedia>
-          <EmptyTitle>Tournament not found</EmptyTitle>
-          <EmptyDescription>
-            This event does not exist or is not open to the public.
-          </EmptyDescription>
-        </EmptyHeader>
+      <PlayerPageEmpty
+        icon={SearchX}
+        title="Tournament not found"
+        description="This event does not exist or is not open to the public."
+      >
         <Button asChild type="button" variant="outline">
           <Link to="/">Browse upcoming tournaments</Link>
         </Button>
-      </Empty>
+      </PlayerPageEmpty>
     )
   }
 
   if (access.state === 'signedOut') {
     return (
-      <Empty className="mt-4 min-h-80 border bg-card lg:mt-10">
-        <EmptyHeader>
-          <EmptyMedia variant="icon">
-            <UserRound aria-hidden="true" />
-          </EmptyMedia>
-          <EmptyTitle>{signIn.title}</EmptyTitle>
-          <EmptyDescription>{signIn.description}</EmptyDescription>
-        </EmptyHeader>
+      <PlayerPageEmpty
+        icon={UserRound}
+        title={signIn.title}
+        description={signIn.description}
+      >
         <Button
           type="button"
           onClick={() => void refreshAuth({ ensureSignedIn: true })}
@@ -97,20 +118,16 @@ export function PlayerAccessShell({
           <LogIn data-icon="inline-start" />
           Sign in
         </Button>
-      </Empty>
+      </PlayerPageEmpty>
     )
   }
 
-  const NotRegisteredIcon = notRegistered.icon
   return (
-    <Empty className="mt-4 min-h-80 border bg-card lg:mt-10">
-      <EmptyHeader>
-        <EmptyMedia variant="icon">
-          <NotRegisteredIcon aria-hidden="true" />
-        </EmptyMedia>
-        <EmptyTitle>You are not registered</EmptyTitle>
-        <EmptyDescription>{notRegistered.description}</EmptyDescription>
-      </EmptyHeader>
+    <PlayerPageEmpty
+      icon={notRegistered.icon}
+      title="You are not registered"
+      description={notRegistered.description}
+    >
       <Button asChild type="button" variant="outline">
         <Link
           to="/tournaments/$tournamentId"
@@ -119,6 +136,6 @@ export function PlayerAccessShell({
           View event page
         </Link>
       </Button>
-    </Empty>
+    </PlayerPageEmpty>
   )
 }

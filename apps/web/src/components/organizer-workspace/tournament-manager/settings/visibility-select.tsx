@@ -3,6 +3,7 @@ import { toast } from 'sonner'
 
 import { api } from '@tournament-os/backend/convex/_generated/api'
 import type { Doc } from '@tournament-os/backend/convex/_generated/dataModel'
+import type { TournamentVisibility } from '@/components/tournaments'
 import { tournamentVisibilities } from '@/components/tournaments'
 import {
   Select,
@@ -14,6 +15,10 @@ import {
 } from '@/components/ui/select'
 import { useBusyAction } from '@/hooks/use-busy-action'
 
+const visibilityOptions = Object.entries(tournamentVisibilities) as Array<
+  [TournamentVisibility, { label: string; description: string }]
+>
+
 export function VisibilitySelect({
   tournament,
 }: {
@@ -24,7 +29,7 @@ export function VisibilitySelect({
   )
   const { busy, run } = useBusyAction()
 
-  async function handleChange(visibility: Doc<'tournaments'>['visibility']) {
+  async function handleChange(visibility: TournamentVisibility) {
     if (visibility === tournament.visibility) {
       return
     }
@@ -41,7 +46,7 @@ export function VisibilitySelect({
       disabled={busy || tournament.lifecycle === 'cancelled'}
       value={tournament.visibility}
       onValueChange={(value) =>
-        void handleChange(value as Doc<'tournaments'>['visibility'])
+        void handleChange(value as TournamentVisibility)
       }
     >
       <SelectTrigger aria-label="Tournament visibility">
@@ -49,14 +54,7 @@ export function VisibilitySelect({
       </SelectTrigger>
       <SelectContent>
         <SelectGroup>
-          {(
-            Object.entries(tournamentVisibilities) as Array<
-              [
-                Doc<'tournaments'>['visibility'],
-                (typeof tournamentVisibilities)[keyof typeof tournamentVisibilities],
-              ]
-            >
-          ).map(([value, { label, description }]) => (
+          {visibilityOptions.map(([value, { label, description }]) => (
             <SelectItem key={value} value={value}>
               {label}
               <span className="text-muted-foreground"> — {description}</span>

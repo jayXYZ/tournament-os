@@ -1,14 +1,8 @@
 export {
   parseRoundSelectionSearch,
-  TournamentPhaseTabs,
-  TournamentRoundTabs,
   useTournamentRoundNavigation,
 } from './round-navigation'
-export type {
-  RoundNavigationMode,
-  RoundSelection,
-  TournamentRoundNavigationPhase,
-} from './round-navigation'
+export type { RoundSelection } from './round-navigation'
 export {
   RoundConfigurationFields,
   TournamentBasicsFields,
@@ -20,10 +14,15 @@ export type {
 export {
   formatTournamentDateLong,
   formatTournamentDateShort,
+  isTournamentEnded,
   toDatetimeLocalValue,
   TournamentLifecycleBadge,
   TournamentVisibilityBadge,
   tournamentVisibilities,
+} from './tournament-display'
+export type {
+  TournamentLifecycle,
+  TournamentVisibility,
 } from './tournament-display'
 export { TournamentTable } from './tournament-table'
 export type {

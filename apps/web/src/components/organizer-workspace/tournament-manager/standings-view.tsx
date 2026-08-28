@@ -141,45 +141,31 @@ const standingColumns: Array<ColumnDef<StandingRow>> = [
       )
     },
   },
-  {
-    id: 'omw',
-    accessorFn: (row) => row.standing.opponentMatchWinPct,
-    header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="OMW%" className="ml-auto" />
-    ),
-    meta: { className: 'text-right' },
-    cell: ({ row }) => (
-      <span className="tabular-nums text-muted-foreground">
-        {formatPercent(row.original.standing.opponentMatchWinPct)}
-      </span>
-    ),
-  },
-  {
-    id: 'gw',
-    accessorFn: (row) => row.standing.gameWinPct,
-    header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="GW%" className="ml-auto" />
-    ),
-    meta: { className: 'text-right' },
-    cell: ({ row }) => (
-      <span className="tabular-nums text-muted-foreground">
-        {formatPercent(row.original.standing.gameWinPct)}
-      </span>
-    ),
-  },
-  {
-    id: 'ogw',
-    accessorFn: (row) => row.standing.opponentGameWinPct,
-    header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="OGW%" className="ml-auto" />
-    ),
-    meta: { className: 'text-right' },
-    cell: ({ row }) => (
-      <span className="tabular-nums text-muted-foreground">
-        {formatPercent(row.original.standing.opponentGameWinPct)}
-      </span>
-    ),
-  },
+  ...(
+    [
+      { id: 'omw', title: 'OMW%', key: 'opponentMatchWinPct' },
+      { id: 'gw', title: 'GW%', key: 'gameWinPct' },
+      { id: 'ogw', title: 'OGW%', key: 'opponentGameWinPct' },
+    ] as const
+  ).map(
+    ({ id, title, key }): ColumnDef<StandingRow> => ({
+      id,
+      accessorFn: (row) => row.standing[key],
+      header: ({ column }) => (
+        <DataTableColumnHeader
+          column={column}
+          title={title}
+          className="ml-auto"
+        />
+      ),
+      meta: { className: 'text-right' },
+      cell: ({ row }) => (
+        <span className="tabular-nums text-muted-foreground">
+          {formatPercent(row.original.standing[key])}
+        </span>
+      ),
+    }),
+  ),
 ]
 
 function StandingsTable({ roundId }: { roundId: Id<'tournamentRounds'> }) {

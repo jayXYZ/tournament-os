@@ -3,7 +3,6 @@ import { useMutation } from 'convex/react'
 import { Archive, Building2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@tournament-os/backend/convex/_generated/api'
-import { mutationErrorMessage } from '@tournament-os/core'
 import { validateOrganizationProfileImageDetails } from '@tournament-os/shared/organization-profile-image'
 import { canManageOrganizationProfile } from '@tournament-os/shared/organizer-utils'
 import { useOrganization } from './organization-context'
@@ -29,8 +28,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
-
-type ProfileBusy = 'profile' | 'profileImage' | 'archive' | null
+import { useBusyAction } from '@/hooks/use-busy-action'
 
 export function OrganizationProfileView() {
   const { selectedOrganization, clearSelectedOrganization } = useOrganization()
@@ -49,7 +47,9 @@ export function OrganizationProfileView() {
     : false
   const organizationId = organization?._id ?? null
 
-  const [busy, setBusy] = useState<ProfileBusy>(null)
+  const profileAction = useBusyAction()
+  const imageAction = useBusyAction()
+  const archiveAction = useBusyAction()
   const [profileName, setProfileName] = useState(organization?.name ?? '')
   const [archiveConfirmationName, setArchiveConfirmationName] = useState('')
 
@@ -68,17 +68,10 @@ export function OrganizationProfileView() {
       return
     }
 
-    setBusy('profile')
-    try {
+    await profileAction.run(async () => {
       await updateProfile({ organizationId, name: profileName })
       toast.success('Organization profile updated.')
-    } catch (error) {
-      toast.error(
-        mutationErrorMessage(error, 'Could not update organization profile.'),
-      )
-    } finally {
-      setBusy(null)
-    }
+    }, 'Could not update organization profile.')
   }
 
   async function handleUpdateProfileImage(file: File) {
@@ -86,8 +79,7 @@ export function OrganizationProfileView() {
       return
     }
 
-    setBusy('profileImage')
-    try {
+    await imageAction.run(async () => {
       const dimensions = await readImageDimensions(file)
       const validationMessage = validateOrganizationProfileImageDetails({
         type: file.type,
@@ -116,16 +108,7 @@ export function OrganizationProfileView() {
         profileImageStorageId: storageId,
       })
       toast.success('Organization profile picture updated.')
-    } catch (error) {
-      toast.error(
-        mutationErrorMessage(
-          error,
-          'Could not update organization profile picture.',
-        ),
-      )
-    } finally {
-      setBusy(null)
-    }
+    }, 'Could not update organization profile picture.')
   }
 
   async function handleArchiveOrganization(event: FormEvent<HTMLFormElement>) {
@@ -134,8 +117,7 @@ export function OrganizationProfileView() {
       return
     }
 
-    setBusy('archive')
-    try {
+    await archiveAction.run(async () => {
       await archiveOrganization({
         organizationId,
         confirmationName: archiveConfirmationName,
@@ -143,13 +125,7 @@ export function OrganizationProfileView() {
       clearSelectedOrganization()
       setArchiveConfirmationName('')
       toast.success('Organization archived.')
-    } catch (error) {
-      toast.error(
-        mutationErrorMessage(error, 'Could not archive organization.'),
-      )
-    } finally {
-      setBusy(null)
-    }
+    }, 'Could not archive organization.')
   }
 
   if (!organization) {
@@ -182,15 +158,15 @@ export function OrganizationProfileView() {
                     id="profile-organization-name"
                     value={profileName}
                     onChange={(event) => setProfileName(event.target.value)}
-                    disabled={!mayManageProfile || busy === 'profile'}
+                    disabled={!mayManageProfile || profileAction.busy}
                     required
                   />
                 </Field>
                 <Button
                   type="submit"
-                  disabled={!mayManageProfile || busy === 'profile'}
+                  disabled={!mayManageProfile || profileAction.busy}
                 >
-                  {busy === 'profile' ? (
+                  {profileAction.busy ? (
                     <Spinner data-icon="inline-start" />
                   ) : null}
                   Save changes
@@ -233,7 +209,7 @@ export function OrganizationProfileView() {
                     id="profile-image"
                     type="file"
                     accept="image/png,image/jpeg,image/webp"
-                    disabled={!mayManageProfile || busy === 'profileImage'}
+                    disabled={!mayManageProfile || imageAction.busy}
                     onChange={(event) => {
                       const file = event.target.files?.[0]
                       if (file) {
@@ -246,7 +222,7 @@ export function OrganizationProfileView() {
                     Use a square image at least 256 x 256 pixels.
                   </FieldDescription>
                 </Field>
-                {busy === 'profileImage' && (
+                {imageAction.busy && (
                   <p className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Spinner data-icon="inline-start" />
                     Uploading profile picture
@@ -276,15 +252,15 @@ export function OrganizationProfileView() {
                       onChange={(event) =>
                         setArchiveConfirmationName(event.target.value)
                       }
-                      disabled={!mayManageProfile || busy === 'archive'}
+                      disabled={!mayManageProfile || archiveAction.busy}
                     />
                   </Field>
                   <Button
                     type="submit"
                     variant="destructive"
-                    disabled={!mayManageProfile || busy === 'archive'}
+                    disabled={!mayManageProfile || archiveAction.busy}
                   >
-                    {busy === 'archive' ? (
+                    {archiveAction.busy ? (
                       <Spinner data-icon="inline-start" />
                     ) : (
                       <Archive data-icon="inline-start" />

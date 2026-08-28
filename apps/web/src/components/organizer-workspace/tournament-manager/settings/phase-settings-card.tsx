@@ -3,7 +3,10 @@ import { useMutation } from 'convex/react'
 import { toast } from 'sonner'
 
 import { api } from '@tournament-os/backend/convex/_generated/api'
-import { toTournamentCreationPhasePayload } from '@tournament-os/shared/tournament-creation-utils'
+import {
+  DEFAULT_PLAYOFF_CUT_PLAYER_COUNT,
+  toTournamentCreationPhasePayload,
+} from '@tournament-os/shared/tournament-creation-utils'
 import { isPreStartLocked } from './is-pre-start-locked'
 import type { FormEvent } from 'react'
 import type { TournamentCreationPhaseForm } from '@tournament-os/shared/tournament-creation-utils'
@@ -47,7 +50,7 @@ export function PhaseSettingsCard({
       phaseCutoffKind: phase.phaseCutoff?.kind ?? 'none',
       phaseCutoffValue:
         phase.phaseCutoff === null
-          ? '8'
+          ? String(DEFAULT_PLAYOFF_CUT_PLAYER_COUNT)
           : String(
               phase.phaseCutoff.kind === 'top_X_players'
                 ? phase.phaseCutoff.playerCount
@@ -58,24 +61,20 @@ export function PhaseSettingsCard({
   )
   const { busy, run } = useBusyAction()
   const locked = isPreStartLocked(tournament)
-  const existingPhaseIds = new Set(phases.map((phase) => phase._id))
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     await run(async () => {
+      const existingPhaseIds = new Set(phases.map((phase) => phase._id))
       const phasePayloads = toTournamentCreationPhasePayload(phaseForms)
       await updateTournamentPhases({
         tournamentId: tournament._id,
-        phases: phasePayloads.map((phase, index) => ({
-          ...phase,
-          ...(existingPhaseIds.has(
-            phaseForms[index].id as Id<'tournamentPhases'>,
-          )
-            ? {
-                phaseId: phaseForms[index].id as Id<'tournamentPhases'>,
-              }
-            : {}),
-        })),
+        phases: phasePayloads.map((phase, index) => {
+          const formId = phaseForms[index].id as Id<'tournamentPhases'>
+          return existingPhaseIds.has(formId)
+            ? { ...phase, phaseId: formId }
+            : phase
+        }),
       })
       toast.success('Tournament phases saved.')
     }, 'Could not save tournament phases.')

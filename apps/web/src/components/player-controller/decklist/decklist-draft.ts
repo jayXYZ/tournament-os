@@ -21,9 +21,6 @@ export const MAX_QUANTITY = 99
 export const otherBoard = (board: BoardId): BoardId =>
   board === 'maindeck' ? 'sideboard' : 'maindeck'
 
-export const boardLabel = (board: BoardId): string =>
-  board === 'maindeck' ? 'maindeck' : 'sideboard'
-
 // Splits an optional quantity prefix off a typed entry: "4 Lightning Bolt"
 // and "4x Lightning Bolt" both mean four copies. Only 1–2 digit prefixes
 // count as quantities — card names can begin with longer numbers ("1996

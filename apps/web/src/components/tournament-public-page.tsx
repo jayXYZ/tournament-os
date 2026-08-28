@@ -1,26 +1,20 @@
 import { Link } from '@tanstack/react-router'
-import { useState } from 'react'
-import { mutationErrorMessage, useMyRegistration } from '@tournament-os/core'
+import { useMyRegistration } from '@tournament-os/core'
 import { useMutation, useQuery } from 'convex/react'
-import {
-  Building2,
-  CalendarDays,
-  LogIn,
-  SearchX,
-  Swords,
-  Users,
-} from 'lucide-react'
+import { Building2, CalendarDays, LogIn, Swords, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@tournament-os/backend/convex/_generated/api'
 import type { Doc } from '@tournament-os/backend/convex/_generated/dataModel'
+import { LoadingCard } from '@/components/shared/loading-card'
 import { MarkdownContent } from '@/components/shared/markdown-content'
+import { PageNotFound } from '@/components/shared/page-not-found'
 import { RoundTimerIndicator } from '@/components/shared/round-timer-indicator'
 import { SiteShell, SiteShellBackLink } from '@/components/shared/site-shell'
-import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'
 import {
   TournamentLifecycleBadge,
   formatTournamentDateLong,
 } from '@/components/tournaments'
+import { useBusyAction } from '@/hooks/use-busy-action'
 import { useAppAuth } from '@/lib/use-app-auth'
 
 import { Badge } from '@/components/ui/badge'
@@ -33,13 +27,6 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from '@/components/ui/empty'
 import { Separator } from '@/components/ui/separator'
 import { Spinner } from '@/components/ui/spinner'
 import { cn } from '@/lib/utils'
@@ -70,48 +57,21 @@ export function TournamentPublicPageContent({
   })
 
   return event === undefined ? (
-    <LoadingCard />
+    <LoadingCard
+      title="Loading tournament"
+      description="Fetching event details."
+    />
   ) : event === null ? (
-    <NotFound />
+    <PageNotFound
+      title="Tournament not found"
+      description="This event does not exist or is not open to the public."
+    />
   ) : (
     <TournamentDetails
       tournament={event.tournament}
       organizationName={event.organizationName}
       registeredCount={event.registeredCount}
     />
-  )
-}
-
-function LoadingCard() {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Loading tournament</CardTitle>
-        <CardDescription>Fetching event details.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <TableLoadingSkeleton />
-      </CardContent>
-    </Card>
-  )
-}
-
-function NotFound() {
-  return (
-    <Empty className="min-h-80 border bg-card">
-      <EmptyHeader>
-        <EmptyMedia variant="icon">
-          <SearchX aria-hidden="true" />
-        </EmptyMedia>
-        <EmptyTitle>Tournament not found</EmptyTitle>
-        <EmptyDescription>
-          This event does not exist or is not open to the public.
-        </EmptyDescription>
-      </EmptyHeader>
-      <Button asChild type="button" variant="outline">
-        <Link to="/">Browse upcoming tournaments</Link>
-      </Button>
-    </Empty>
   )
 }
 
@@ -223,39 +183,78 @@ function RegistrationPanel({
   const cancelRegistration = useMutation(
     api.tournaments.registrations.cancelMyRegistration,
   )
-  const [pending, setPending] = useState(false)
+  const { busy: pending, run } = useBusyAction()
 
-  const runAction = async (
-    action: () => Promise<unknown>,
-    successMessage: string,
-  ) => {
-    setPending(true)
-    try {
+  const runAction = (action: () => Promise<unknown>, successMessage: string) =>
+    run(async () => {
       await action()
       toast.success(successMessage)
-    } catch (error) {
-      toast.error(mutationErrorMessage(error, 'Something went wrong'))
-    } finally {
-      setPending(false)
-    }
-  }
+    }, 'Something went wrong')
+
+  const checkingButton = (
+    <Button type="button" variant="outline" disabled className="w-fit">
+      <Spinner />
+      Checking your registration
+    </Button>
+  )
+  const closedNote = (
+    <p className="text-sm text-muted-foreground">
+      Registration is closed for this event.
+    </p>
+  )
+  const lockedNote = (
+    <p className="text-sm text-muted-foreground">
+      The event has started, so registration changes are locked.
+    </p>
+  )
+  const spotsLeftNote = (
+    <p className="text-sm text-muted-foreground">
+      {spotsLeft === 1 ? '1 spot left' : `${spotsLeft} spots left`}
+    </p>
+  )
+  const controllerLink = (
+    <Button asChild type="button">
+      <Link
+        to="/tournaments/$tournamentId/play"
+        params={{ tournamentId: String(tournament.publicCode) }}
+      >
+        <Swords data-icon="inline-start" />
+        Open player controller
+      </Link>
+    </Button>
+  )
+  const controllerLinkWithNote = (
+    <>
+      {controllerLink}
+      <p className="text-sm text-muted-foreground">
+        You can still follow standings and your match history.
+      </p>
+    </>
+  )
+  const cancelButton = (label: string, successMessage: string) => (
+    <Button
+      type="button"
+      variant="outline"
+      disabled={pending}
+      onClick={() =>
+        void runAction(
+          () => cancelRegistration({ tournamentId: tournament._id }),
+          successMessage,
+        )
+      }
+    >
+      {pending ? <Spinner /> : null}
+      {label}
+    </Button>
+  )
 
   if (loading) {
-    return (
-      <Button type="button" variant="outline" disabled className="w-fit">
-        <Spinner />
-        Checking your registration
-      </Button>
-    )
+    return checkingButton
   }
 
   if (!user) {
     if (tournament.lifecycle !== 'registration') {
-      return (
-        <p className="text-sm text-muted-foreground">
-          Registration is closed for this event.
-        </p>
-      )
+      return closedNote
     }
     return (
       <div className="flex flex-wrap items-center gap-3">
@@ -266,20 +265,13 @@ function RegistrationPanel({
           <LogIn data-icon="inline-start" />
           Sign in to register
         </Button>
-        <p className="text-sm text-muted-foreground">
-          {spotsLeft === 1 ? '1 spot left' : `${spotsLeft} spots left`}
-        </p>
+        {spotsLeftNote}
       </div>
     )
   }
 
   if (registration === undefined) {
-    return (
-      <Button type="button" variant="outline" disabled className="w-fit">
-        <Spinner />
-        Checking your registration
-      </Button>
-    )
+    return checkingButton
   }
 
   if (
@@ -289,36 +281,14 @@ function RegistrationPanel({
     return (
       <div className="flex flex-wrap items-center gap-3">
         <Badge>You&apos;re registered</Badge>
-        {tournament.lifecycle === 'registration' ? (
-          <Button
-            type="button"
-            variant="outline"
-            disabled={pending}
-            onClick={() =>
-              void runAction(
-                () => cancelRegistration({ tournamentId: tournament._id }),
-                'Your registration has been cancelled.',
-              )
-            }
-          >
-            {pending ? <Spinner /> : null}
-            Cancel registration
-          </Button>
-        ) : tournament.lifecycle === 'in_progress' ? (
-          <Button asChild type="button">
-            <Link
-              to="/tournaments/$tournamentId/play"
-              params={{ tournamentId: String(tournament.publicCode) }}
-            >
-              <Swords data-icon="inline-start" />
-              Open player controller
-            </Link>
-          </Button>
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            The event has started, so registration changes are locked.
-          </p>
-        )}
+        {tournament.lifecycle === 'registration'
+          ? cancelButton(
+              'Cancel registration',
+              'Your registration has been cancelled.',
+            )
+          : tournament.lifecycle === 'in_progress'
+            ? controllerLink
+            : lockedNote}
       </div>
     )
   }
@@ -342,41 +312,14 @@ function RegistrationPanel({
             ? 'You were disqualified from this event'
             : 'You dropped from this event'}
         </Badge>
-        {tournament.lifecycle === 'registration' ? (
-          <Button
-            type="button"
-            variant="outline"
-            disabled={pending}
-            onClick={() =>
-              void runAction(
-                () => cancelRegistration({ tournamentId: tournament._id }),
-                'Your registration has been cancelled.',
-              )
-            }
-          >
-            {pending ? <Spinner /> : null}
-            Cancel registration
-          </Button>
-        ) : tournament.lifecycle === 'in_progress' ? (
-          <>
-            <Button asChild type="button">
-              <Link
-                to="/tournaments/$tournamentId/play"
-                params={{ tournamentId: String(tournament.publicCode) }}
-              >
-                <Swords data-icon="inline-start" />
-                Open player controller
-              </Link>
-            </Button>
-            <p className="text-sm text-muted-foreground">
-              You can still follow standings and your match history.
-            </p>
-          </>
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            The event has started, so registration changes are locked.
-          </p>
-        )}
+        {tournament.lifecycle === 'registration'
+          ? cancelButton(
+              'Cancel registration',
+              'Your registration has been cancelled.',
+            )
+          : tournament.lifecycle === 'in_progress'
+            ? controllerLinkWithNote
+            : lockedNote}
       </div>
     )
   }
@@ -393,26 +336,9 @@ function RegistrationPanel({
         <Badge variant="secondary">
           You&apos;ve been eliminated from this event
         </Badge>
-        {tournament.lifecycle === 'in_progress' ? (
-          <>
-            <Button asChild type="button">
-              <Link
-                to="/tournaments/$tournamentId/play"
-                params={{ tournamentId: String(tournament.publicCode) }}
-              >
-                <Swords data-icon="inline-start" />
-                Open player controller
-              </Link>
-            </Button>
-            <p className="text-sm text-muted-foreground">
-              You can still follow standings and your match history.
-            </p>
-          </>
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            The event has started, so registration changes are locked.
-          </p>
-        )}
+        {tournament.lifecycle === 'in_progress'
+          ? controllerLinkWithNote
+          : lockedNote}
       </div>
     )
   }
@@ -433,26 +359,12 @@ function RegistrationPanel({
             ? 'Registration pending organizer approval'
             : "You're on the waitlist"}
         </Badge>
-        {tournament.lifecycle === 'registration' ? (
-          <Button
-            type="button"
-            variant="outline"
-            disabled={pending}
-            onClick={() =>
-              void runAction(
-                () => cancelRegistration({ tournamentId: tournament._id }),
-                'Your registration has been withdrawn.',
-              )
-            }
-          >
-            {pending ? <Spinner /> : null}
-            Withdraw registration
-          </Button>
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            Registration is closed for this event.
-          </p>
-        )}
+        {tournament.lifecycle === 'registration'
+          ? cancelButton(
+              'Withdraw registration',
+              'Your registration has been withdrawn.',
+            )
+          : closedNote}
       </div>
     )
   }
@@ -464,11 +376,7 @@ function RegistrationPanel({
   }
 
   if (tournament.lifecycle !== 'registration') {
-    return (
-      <p className="text-sm text-muted-foreground">
-        Registration is closed for this event.
-      </p>
-    )
+    return closedNote
   }
 
   if (spotsLeft === 0) {
@@ -498,9 +406,7 @@ function RegistrationPanel({
           ? 'Request to register'
           : 'Register for this event'}
       </Button>
-      <p className="text-sm text-muted-foreground">
-        {spotsLeft === 1 ? '1 spot left' : `${spotsLeft} spots left`}
-      </p>
+      {spotsLeftNote}
     </div>
   )
 }

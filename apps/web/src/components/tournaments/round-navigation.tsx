@@ -1,7 +1,5 @@
 import type { Doc } from '@tournament-os/backend/convex/_generated/dataModel'
 
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-
 export type RoundNavigationMode = 'all' | 'completed'
 
 // Which phase/round the user is looking at, addressed by phaseOrder and
@@ -49,12 +47,6 @@ export type TournamentRoundNavigationPhase = {
   rounds: Array<
     Pick<Doc<'tournamentRounds'>, '_id' | 'roundNumber' | 'roundStatus'>
   >
-  // The server's round-layout projection (model/phases.ts phaseTimelines);
-  // round tabs render it instead of re-deriving the numbering math.
-  timeline: {
-    startRoundNumber: number | null
-    plannedRoundCount: number | null
-  }
 }
 
 // Selection state is owned by the caller (in practice, the route's search
@@ -102,20 +94,11 @@ export function useTournamentRoundNavigation(
     ? undefined
     : (availableRounds.find((round) => round.roundNumber === selection.round) ??
       availableRounds.at(-1))
-  // An unresolved dynamic phase plans no count, so only its real rounds get
-  // tabs; a start the server can't number yet falls back to 1 for the same
-  // phases the tab gate already keeps unreachable.
-  const roundTabCount =
-    activePhase?.timeline.plannedRoundCount ?? allRounds.length
-  const firstRoundNumber = activePhase?.timeline.startRoundNumber ?? 1
 
   return {
     activePhase,
     availableRounds,
-    firstRoundNumber,
     isPlayerMeetingSelected,
-    phases,
-    roundTabCount,
     selectedRound,
     selectPhase: (phaseId: string) => {
       const target = phases.find(({ phase }) => phase._id === phaseId)
@@ -137,81 +120,4 @@ export function useTournamentRoundNavigation(
         round: roundNumber,
       }),
   }
-}
-
-export function TournamentPhaseTabs({
-  activePhaseId,
-  mode,
-  onValueChange,
-  phases,
-}: {
-  activePhaseId: string
-  mode: RoundNavigationMode
-  onValueChange: (phaseId: string) => void
-  phases: Array<TournamentRoundNavigationPhase>
-}) {
-  if (phases.length <= 1) {
-    return null
-  }
-
-  return (
-    <Tabs value={activePhaseId} onValueChange={onValueChange}>
-      <TabsList className="max-w-full justify-start overflow-x-auto">
-        {phases.map(({ phase }) => (
-          <TabsTrigger
-            key={phase._id}
-            value={phase._id}
-            // Pairings can open an upcoming phase once its player meeting
-            // starts so the seating stays reachable. Standings still require
-            // a completed round and must not navigate to an empty phase.
-            disabled={
-              phase.phaseStatus === 'upcoming' &&
-              (mode === 'completed' || phase.playerMeetingStatus === undefined)
-            }
-          >
-            {phase.phaseName ?? `Phase ${phase.phaseOrder}`}
-          </TabsTrigger>
-        ))}
-      </TabsList>
-    </Tabs>
-  )
-}
-
-export function TournamentRoundTabs({
-  activeRoundNumber,
-  availableRoundNumbers,
-  firstRoundNumber = 1,
-  onValueChange,
-  roundCount,
-}: {
-  activeRoundNumber: number
-  availableRoundNumbers: Array<number>
-  // The phase's first global round number; tabs run from here.
-  firstRoundNumber?: number
-  onValueChange: (roundNumber: number) => void
-  roundCount: number
-}) {
-  const availableRounds = new Set(availableRoundNumbers)
-
-  return (
-    <Tabs
-      value={String(activeRoundNumber)}
-      onValueChange={(value) => onValueChange(Number(value))}
-    >
-      <TabsList className="max-w-full justify-start overflow-x-auto">
-        {Array.from({ length: roundCount }, (_, index) => {
-          const roundNumber = firstRoundNumber + index
-          return (
-            <TabsTrigger
-              key={roundNumber}
-              value={String(roundNumber)}
-              disabled={!availableRounds.has(roundNumber)}
-            >
-              Round {roundNumber}
-            </TabsTrigger>
-          )
-        })}
-      </TabsList>
-    </Tabs>
-  )
 }

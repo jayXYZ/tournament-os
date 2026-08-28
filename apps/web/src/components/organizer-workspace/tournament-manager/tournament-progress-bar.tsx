@@ -18,9 +18,10 @@ import { toast } from 'sonner'
 
 import { api } from '@tournament-os/backend/convex/_generated/api'
 import { mutationErrorMessage } from '@tournament-os/core'
+import { inProgressRound } from './pairings-board'
 import { RoundTimerChip } from './round-timer-chip'
-import type { FunctionReturnType } from 'convex/server'
 import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
+import type { PairingsBoard } from './pairings-board'
 import {
   parseRoundSelectionSearch,
   useTournamentRoundNavigation,
@@ -37,9 +38,6 @@ import {
 } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 
-type PairingsBoard = FunctionReturnType<
-  typeof api.tournaments.rounds.getPairingsBoard
->
 type PhaseBoard = PairingsBoard['phases'][number]
 type Round = PhaseBoard['rounds'][number]
 type AdvanceStep = Exclude<
@@ -77,7 +75,7 @@ type RoundSlot =
 // shapes it into nodes. A null plannedRoundCount is an unresolved dynamic
 // phase — by definition still upcoming or in progress — so it shows the
 // single "?" node.
-export function phaseSlots(phaseBoard: PhaseBoard): Array<RoundSlot> {
+function phaseSlots(phaseBoard: PhaseBoard): Array<RoundSlot> {
   const { rounds, timeline } = phaseBoard
   const slots: Array<RoundSlot> = rounds.map((round) => ({
     kind: 'round',
@@ -109,7 +107,7 @@ export function phaseSlots(phaseBoard: PhaseBoard): Array<RoundSlot> {
 // round's lifecycle. Keep that meaning on the node itself: the action button
 // can then move around the dashboard without separating the state from the
 // round it describes.
-export function activeRoundProgress(
+function activeRoundProgress(
   board: PairingsBoard,
 ): ActiveRoundProgress | null {
   const { nextStep } = board
@@ -126,16 +124,14 @@ export function activeRoundProgress(
     return null
   }
 
-  const activeRound = board.phases
-    .flatMap(({ rounds }) => rounds)
-    .find((round) => round.roundStatus === 'in_progress')
+  const activeRound = inProgressRound(board)
   return activeRound ? { roundId: activeRound._id, step: 'timerReady' } : null
 }
 
 // Once a completed round is waiting for the next one to be generated, the
 // next planned slot becomes the bar's current step. This works within a phase
 // and across phase boundaries, including dynamic phases whose node is "?".
-export function betweenRoundTarget(
+function betweenRoundTarget(
   board: PairingsBoard,
 ): BetweenRoundTarget | null {
   const betweenRounds =
@@ -348,16 +344,72 @@ function AdvanceStepButton({
     )
   }
 
-  const action = advanceAction(step, board.tournament._id, {
-    publishTournament,
-    startPlayerMeeting,
-    startTournament,
-    publishPairings,
-    startTimer,
-    generateNextRound,
-    completeRound,
-    completeTournament,
-  })
+  const tournamentId = board.tournament._id
+
+  // Success copy is shown on the button itself while it is still sized for
+  // the idle label, so keep it shorter than the matching "Hold to" label.
+  function advanceAction(advanceStep: AdvanceStep) {
+    switch (advanceStep.kind) {
+      case 'publishTournament':
+        return {
+          label: 'Hold to publish and open registration',
+          icon: <Globe />,
+          success: 'Registration opened',
+          run: () => publishTournament({ tournamentId }),
+        }
+      case 'startPlayerMeeting':
+        return {
+          label: 'Hold to start player meeting',
+          icon: <Users />,
+          success: 'Meeting started',
+          run: () => startPlayerMeeting({ phaseId: advanceStep.phaseId }),
+        }
+      case 'startTournament':
+        return {
+          label: 'Hold to generate pairings',
+          icon: <Swords />,
+          success: 'Pairings generated',
+          run: () => startTournament({ tournamentId }),
+        }
+      case 'publishPairings':
+        return {
+          label: 'Hold to publish pairings',
+          icon: <Send />,
+          success: 'Pairings published',
+          run: () => publishPairings({ roundId: advanceStep.roundId }),
+        }
+      case 'startTimer':
+        return {
+          label: 'Hold to start round timer',
+          icon: <TimerIcon />,
+          success: 'Timer started',
+          run: () => startTimer({ tournamentId }),
+        }
+      case 'completeRound':
+        return {
+          label: 'Hold to complete round and post standings',
+          icon: <ListOrdered />,
+          success: 'Round completed',
+          run: () => completeRound({ roundId: advanceStep.roundId }),
+        }
+      case 'generateNextRound':
+        return {
+          label: 'Hold to generate pairings',
+          icon: <Swords />,
+          success: 'Pairings generated',
+          run: () => generateNextRound({ tournamentId }),
+        }
+      case 'completeTournament':
+        return {
+          label: 'Hold to complete tournament',
+          icon: <Trophy />,
+          success: 'Tournament completed',
+          run: () => completeTournament({ tournamentId }),
+        }
+    }
+  }
+
+  const action = advanceAction(step)
 
   // The hold button confirms success on its own face; errors still toast.
   // Rethrow so the button skips its success state on failure.
@@ -395,96 +447,6 @@ function AdvanceStepButton({
       </HoldButton>
     </div>
   )
-}
-
-export function advanceAction(
-  step: AdvanceStep,
-  tournamentId: Id<'tournaments'>,
-  mutations: {
-    publishTournament: (args: {
-      tournamentId: Id<'tournaments'>
-    }) => Promise<unknown>
-    startPlayerMeeting: (args: {
-      phaseId: Id<'tournamentPhases'>
-    }) => Promise<unknown>
-    startTournament: (args: {
-      tournamentId: Id<'tournaments'>
-    }) => Promise<unknown>
-    publishPairings: (args: {
-      roundId: Id<'tournamentRounds'>
-    }) => Promise<unknown>
-    startTimer: (args: { tournamentId: Id<'tournaments'> }) => Promise<unknown>
-    generateNextRound: (args: {
-      tournamentId: Id<'tournaments'>
-    }) => Promise<unknown>
-    completeRound: (args: {
-      roundId: Id<'tournamentRounds'>
-    }) => Promise<unknown>
-    completeTournament: (args: {
-      tournamentId: Id<'tournaments'>
-    }) => Promise<unknown>
-  },
-) {
-  // Success copy is shown on the button itself while it is still sized for
-  // the idle label, so keep it shorter than the matching "Hold to" label.
-  switch (step.kind) {
-    case 'publishTournament':
-      return {
-        label: 'Hold to publish and open registration',
-        icon: <Globe />,
-        success: 'Registration opened',
-        run: () => mutations.publishTournament({ tournamentId }),
-      }
-    case 'startPlayerMeeting':
-      return {
-        label: 'Hold to start player meeting',
-        icon: <Users />,
-        success: 'Meeting started',
-        run: () => mutations.startPlayerMeeting({ phaseId: step.phaseId }),
-      }
-    case 'startTournament':
-      return {
-        label: 'Hold to generate pairings',
-        icon: <Swords />,
-        success: 'Pairings generated',
-        run: () => mutations.startTournament({ tournamentId }),
-      }
-    case 'publishPairings':
-      return {
-        label: 'Hold to publish pairings',
-        icon: <Send />,
-        success: 'Pairings published',
-        run: () => mutations.publishPairings({ roundId: step.roundId }),
-      }
-    case 'startTimer':
-      return {
-        label: 'Hold to start round timer',
-        icon: <TimerIcon />,
-        success: 'Timer started',
-        run: () => mutations.startTimer({ tournamentId }),
-      }
-    case 'completeRound':
-      return {
-        label: 'Hold to complete round and post standings',
-        icon: <ListOrdered />,
-        success: 'Round completed',
-        run: () => mutations.completeRound({ roundId: step.roundId }),
-      }
-    case 'generateNextRound':
-      return {
-        label: 'Hold to generate pairings',
-        icon: <Swords />,
-        success: 'Pairings generated',
-        run: () => mutations.generateNextRound({ tournamentId }),
-      }
-    case 'completeTournament':
-      return {
-        label: 'Hold to complete tournament',
-        icon: <Trophy />,
-        success: 'Tournament completed',
-        run: () => mutations.completeTournament({ tournamentId }),
-      }
-  }
 }
 
 function PhaseSection({

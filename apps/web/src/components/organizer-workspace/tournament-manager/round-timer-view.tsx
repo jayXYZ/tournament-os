@@ -14,10 +14,11 @@ import {
 } from '@tournament-os/shared/timer-utils'
 import { mutationErrorMessage, useRoundTimer } from '@tournament-os/core'
 
+import { inProgressRound } from './pairings-board'
 import { activeRoundTimer } from './round-timer-chip'
 import type { FormEvent } from 'react'
-import type { FunctionReturnType } from 'convex/server'
 import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
+import type { PairingsBoard } from './pairings-board'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -32,10 +33,6 @@ import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useBusyAction } from '@/hooks/use-busy-action'
 import { cn } from '@/lib/utils'
-
-type PairingsBoard = FunctionReturnType<
-  typeof api.tournaments.rounds.getPairingsBoard
->
 
 const MIN_MINUTES = durationMsToMinutes(MIN_ROUND_DURATION_MS)
 const MAX_MINUTES = durationMsToMinutes(MAX_ROUND_DURATION_MS)
@@ -77,10 +74,7 @@ function TimerCard({ board }: { board: PairingsBoard }) {
   const clearTimer = useMutation(api.tournaments.timer.clearTimer)
 
   const tournamentId = board.tournament._id
-  const currentRound =
-    board.phases
-      .flatMap((phaseBoard) => phaseBoard.rounds)
-      .find((round) => round.roundStatus === 'in_progress') ?? null
+  const currentRound = inProgressRound(board) ?? null
   const pairingsPublished = currentRound?.pairingsPublishedAt !== undefined
   const timer = activeRoundTimer(board)
   const { phase, remainingMs, formatted } = useRoundTimer(timer)
@@ -227,36 +221,19 @@ function TimerCard({ board }: { board: PairingsBoard }) {
                 Pause
               </Button>
             )}
-            <AdjustButton
-              deltaMinutes={-1}
-              disabled={disabled}
-              onAdjust={(deltaMs) =>
-                run(
-                  () => adjustTimer({ tournamentId, deltaMs }),
-                  'Could not adjust the timer.',
-                )
-              }
-            />
-            <AdjustButton
-              deltaMinutes={1}
-              disabled={disabled}
-              onAdjust={(deltaMs) =>
-                run(
-                  () => adjustTimer({ tournamentId, deltaMs }),
-                  'Could not adjust the timer.',
-                )
-              }
-            />
-            <AdjustButton
-              deltaMinutes={5}
-              disabled={disabled}
-              onAdjust={(deltaMs) =>
-                run(
-                  () => adjustTimer({ tournamentId, deltaMs }),
-                  'Could not adjust the timer.',
-                )
-              }
-            />
+            {[-1, 1, 5].map((deltaMinutes) => (
+              <AdjustButton
+                key={deltaMinutes}
+                deltaMinutes={deltaMinutes}
+                disabled={disabled}
+                onAdjust={(deltaMs) =>
+                  run(
+                    () => adjustTimer({ tournamentId, deltaMs }),
+                    'Could not adjust the timer.',
+                  )
+                }
+              />
+            ))}
             <HoldButton
               variant="destructive"
               disabled={disabled}

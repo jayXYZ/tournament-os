@@ -8,8 +8,8 @@ import { LogIn, RotateCcw } from 'lucide-react'
 import { api } from '@tournament-os/backend/convex/_generated/api'
 
 import { ProfilePrivacyCard } from '@/components/settings/profile-privacy-card'
+import { LoadingCard } from '@/components/shared/loading-card'
 import { SiteShell, SiteShellBackLink } from '@/components/shared/site-shell'
-import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -29,7 +29,7 @@ export function PlayerSettingsPage() {
       actions={<SiteShellBackLink to="/">All tournaments</SiteShellBackLink>}
     >
       <AuthLoading>
-        <LoadingCard />
+        <SettingsLoadingCard />
       </AuthLoading>
       <Unauthenticated>
         <SignedOutSettings />
@@ -48,7 +48,7 @@ function SettingsContent() {
 
   const me = useQuery(api.users.me)
   if (me === undefined) {
-    return <LoadingCard />
+    return <SettingsLoadingCard />
   }
   if (me === null) {
     // No users row yet: the mount upsert is creating it, and the query
@@ -57,7 +57,7 @@ function SettingsContent() {
     return upsertFailed ? (
       <AccountSetupFailedCard onRetry={retryUpsert} />
     ) : (
-      <LoadingCard />
+      <SettingsLoadingCard />
     )
   }
 
@@ -109,16 +109,11 @@ function SignedOutSettings() {
   )
 }
 
-function LoadingCard() {
+function SettingsLoadingCard() {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Loading settings</CardTitle>
-        <CardDescription>Fetching your account.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <TableLoadingSkeleton />
-      </CardContent>
-    </Card>
+    <LoadingCard
+      title="Loading settings"
+      description="Fetching your account."
+    />
   )
 }

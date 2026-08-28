@@ -24,6 +24,7 @@ import type {
   Id,
 } from '@tournament-os/backend/convex/_generated/dataModel'
 import { ConfirmActionDialog } from '@/components/shared/confirm-action-dialog'
+import { LoadMoreButton } from '@/components/shared/load-more-button'
 import { TableEmptyState } from '@/components/shared/table-empty-state'
 import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'
 import { Badge } from '@/components/ui/badge'
@@ -91,12 +92,6 @@ const statusBadgeVariant: Record<
   // Malformed data only (see effectiveRegistrationStatus); flagged distinctly
   // rather than folded into "confirmed" so it can't misread as good standing.
   [MALFORMED_REGISTRATION_STATUS]: 'outline',
-}
-
-function registrationDisplayStatus(
-  registration: Doc<'tournamentRegistrations'>,
-): RegistrationStatus {
-  return effectiveRegistrationStatus(registration)
 }
 
 export function RegistrationsView({
@@ -188,26 +183,14 @@ export function RegistrationsView({
             onSearchTermChange={handleSearchTermChange}
             searchPending={searching && searchResults === undefined}
           />
-          {!searching &&
-          status !== 'LoadingFirstPage' &&
-          status !== 'Exhausted' ? (
-            <div className="mt-4 flex justify-center">
-              <Button
-                type="button"
-                variant="outline"
-                disabled={status === 'LoadingMore'}
-                onClick={() => loadMore(REGISTRATION_PAGE_SIZE)}
-              >
-                {status === 'LoadingMore' ? (
-                  <>
-                    <Spinner />
-                    Loading older registrations…
-                  </>
-                ) : (
-                  'Load older registrations'
-                )}
-              </Button>
-            </div>
+          {!searching ? (
+            <LoadMoreButton
+              className="mt-4"
+              status={status}
+              onLoadMore={() => loadMore(REGISTRATION_PAGE_SIZE)}
+              label="Load older registrations"
+              loadingLabel="Loading older registrations…"
+            />
           ) : null}
         </CardContent>
       </Card>
@@ -302,7 +285,7 @@ function getRegistrationColumns({
     },
     {
       id: 'status',
-      accessorFn: (row) => registrationDisplayStatus(row.registration),
+      accessorFn: (row) => effectiveRegistrationStatus(row.registration),
       header: ({ column }) => (
         <DataTableColumnHeader column={column} title="Status" />
       ),
@@ -311,7 +294,7 @@ function getRegistrationColumns({
       // pages.
       meta: { className: 'w-32' },
       cell: ({ row }) => {
-        const status = registrationDisplayStatus(row.original.registration)
+        const status = effectiveRegistrationStatus(row.original.registration)
         return (
           <Badge variant={statusBadgeVariant[status]} className="capitalize">
             {status}

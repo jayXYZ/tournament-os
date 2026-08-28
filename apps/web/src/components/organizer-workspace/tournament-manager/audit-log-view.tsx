@@ -5,8 +5,8 @@ import { api } from '@tournament-os/backend/convex/_generated/api'
 import { displayPlayerName, formatGameScoreline } from '@tournament-os/core'
 import type { FunctionReturnType } from 'convex/server'
 import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
+import { LoadMoreButton } from '@/components/shared/load-more-button'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import {
   Card,
   CardContent,
@@ -81,18 +81,12 @@ export function AuditLogView({
                   <AuditEventItem key={row._id} row={row} />
                 ))}
               </ul>
-              {status !== 'Exhausted' && (
-                <div className="mt-4 flex justify-center">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={status === 'LoadingMore'}
-                    onClick={() => loadMore(PAGE_SIZE)}
-                  >
-                    Load older entries
-                  </Button>
-                </div>
-              )}
+              <LoadMoreButton
+                className="mt-4"
+                status={status}
+                onLoadMore={() => loadMore(PAGE_SIZE)}
+                label="Load older entries"
+              />
             </>
           )}
         </CardContent>

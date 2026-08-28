@@ -3,6 +3,7 @@ import { toast } from 'sonner'
 
 import { api } from '@tournament-os/backend/convex/_generated/api'
 import type { Doc } from '@tournament-os/backend/convex/_generated/dataModel'
+import { isTournamentEnded } from '@/components/tournaments'
 import {
   Card,
   CardContent,
@@ -28,10 +29,7 @@ export function PairingsPublicationCard({
     api.tournaments.lifecycle.updatePairingsAutoPublish,
   )
   const { busy, run } = useBusyAction()
-  const disabled =
-    busy ||
-    tournament.lifecycle === 'completed' ||
-    tournament.lifecycle === 'cancelled'
+  const disabled = busy || isTournamentEnded(tournament.lifecycle)
 
   async function handleChange(autoPublishPairings: boolean) {
     await run(async () => {

@@ -105,6 +105,13 @@ function TournamentPhaseField({
     index,
   )
 
+  const patchPhase = (patch: Partial<TournamentCreationPhaseForm>) =>
+    onPhasesChange(
+      phases.map((current) =>
+        current.id === phase.id ? { ...current, ...patch } : current,
+      ),
+    )
+
   return (
     <Field className="rounded-md border border-border p-3">
       <div className="grid gap-3 md:grid-cols-[180px_140px_minmax(0,1fr)_auto] md:items-end">
@@ -144,13 +151,7 @@ function TournamentPhaseField({
           <FieldLabel>Match structure</FieldLabel>
           <Select
             value={phase.bestOf}
-            onValueChange={(bestOf) =>
-              onPhasesChange(
-                phases.map((current) =>
-                  current.id === phase.id ? { ...current, bestOf } : current,
-                ),
-              )
-            }
+            onValueChange={(bestOf) => patchPhase({ bestOf })}
             disabled={disabled}
           >
             <SelectTrigger className="w-full">
@@ -176,17 +177,10 @@ function TournamentPhaseField({
             totalRounds: phase.phaseTotalRounds,
           }}
           onChange={(value) =>
-            onPhasesChange(
-              phases.map((current) =>
-                current.id === phase.id
-                  ? {
-                      ...current,
-                      phaseRoundMode: value.roundMode,
-                      phaseTotalRounds: value.totalRounds,
-                    }
-                  : current,
-              ),
-            )
+            patchPhase({
+              phaseRoundMode: value.roundMode,
+              phaseTotalRounds: value.totalRounds,
+            })
           }
           showDynamicDescription={!isSingleElimination}
         />
@@ -244,17 +238,10 @@ function TournamentPhaseField({
             <Select
               value={phase.phaseCutoffKind}
               onValueChange={(phaseCutoffKind) =>
-                onPhasesChange(
-                  phases.map((current) =>
-                    current.id === phase.id
-                      ? {
-                          ...current,
-                          phaseCutoffKind:
-                            phaseCutoffKind as TournamentCreationPhaseForm['phaseCutoffKind'],
-                        }
-                      : current,
-                  ),
-                )
+                patchPhase({
+                  phaseCutoffKind:
+                    phaseCutoffKind as TournamentCreationPhaseForm['phaseCutoffKind'],
+                })
               }
               disabled={disabled}
             >
@@ -311,13 +298,7 @@ function TournamentPhaseField({
               id={`${phase.id}-cutoff-value`}
               value={phase.phaseCutoffValue}
               onChange={(event) =>
-                onPhasesChange(
-                  phases.map((current) =>
-                    current.id === phase.id
-                      ? { ...current, phaseCutoffValue: event.target.value }
-                      : current,
-                  ),
-                )
+                patchPhase({ phaseCutoffValue: event.target.value })
               }
               type="number"
               min={phase.phaseCutoffKind === 'X_points_or_more' ? 1 : 2}
@@ -336,13 +317,7 @@ function TournamentPhaseField({
           id={`${phase.id}-player-meeting`}
           checked={phase.playerMeeting}
           onCheckedChange={(checked) =>
-            onPhasesChange(
-              phases.map((current) =>
-                current.id === phase.id
-                  ? { ...current, playerMeeting: checked === true }
-                  : current,
-              ),
-            )
+            patchPhase({ playerMeeting: checked === true })
           }
           disabled={disabled || isSingleElimination}
         />

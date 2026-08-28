@@ -1,10 +1,13 @@
 import { Link } from '@tanstack/react-router'
 import { usePaginatedQuery, useQuery } from 'convex/react'
-import { EyeOff, SearchX, Settings } from 'lucide-react'
+import { EyeOff, Settings } from 'lucide-react'
 import { useCallback, useEffect, useRef } from 'react'
 import { api } from '@tournament-os/backend/convex/_generated/api'
+import type { FunctionReturnType } from 'convex/server'
+import { LoadMoreButton } from '@/components/shared/load-more-button'
+import { LoadingCard } from '@/components/shared/loading-card'
+import { PageNotFound } from '@/components/shared/page-not-found'
 import { SiteShell, SiteShellBackLink } from '@/components/shared/site-shell'
-import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -17,22 +20,15 @@ import {
   Empty,
   EmptyDescription,
   EmptyHeader,
-  EmptyMedia,
   EmptyTitle,
 } from '@/components/ui/empty'
 import { UserPublicTournamentCard } from '@/components/user-public-tournament-card'
 
 const HISTORY_PAGE_SIZE = 10
 
-type PublicPlayer = {
-  publicCode: number
-  name: string | null
-  avatarUrl: string | null
-  isOwner: boolean
-  profileHidden: boolean
-  historyVisible: boolean
-  historyHidden: boolean
-}
+type PublicPlayer = NonNullable<
+  FunctionReturnType<typeof api.users.getPublicPlayer>
+>
 
 export function UserPublicPage({ publicCode }: { publicCode: string }) {
   const player = useQuery(api.users.getPublicPlayer, { publicCode })
@@ -43,46 +39,19 @@ export function UserPublicPage({ publicCode }: { publicCode: string }) {
       actions={<SiteShellBackLink to="/">All tournaments</SiteShellBackLink>}
     >
       {player === undefined ? (
-        <LoadingCard />
+        <LoadingCard
+          title="Loading profile"
+          description="Fetching player details."
+        />
       ) : player === null ? (
-        <NotFound />
+        <PageNotFound
+          title="Player not found"
+          description="This profile does not exist or is not public."
+        />
       ) : (
         <PlayerProfile player={player} publicCode={publicCode} />
       )}
     </SiteShell>
-  )
-}
-
-function LoadingCard() {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Loading profile</CardTitle>
-        <CardDescription>Fetching player details.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <TableLoadingSkeleton />
-      </CardContent>
-    </Card>
-  )
-}
-
-function NotFound() {
-  return (
-    <Empty className="min-h-80 border bg-card">
-      <EmptyHeader>
-        <EmptyMedia variant="icon">
-          <SearchX aria-hidden="true" />
-        </EmptyMedia>
-        <EmptyTitle>Player not found</EmptyTitle>
-        <EmptyDescription>
-          This profile does not exist or is not public.
-        </EmptyDescription>
-      </EmptyHeader>
-      <Button asChild type="button" variant="outline">
-        <Link to="/">Browse upcoming tournaments</Link>
-      </Button>
-    </Empty>
   )
 }
 
@@ -208,15 +177,10 @@ function TournamentHistory({ publicCode }: { publicCode: string }) {
   if (results.length === 0) {
     if (status !== 'Exhausted') {
       return (
-        <Card>
-          <CardHeader>
-            <CardTitle>Tournament history</CardTitle>
-            <CardDescription>Fetching past results.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <TableLoadingSkeleton />
-          </CardContent>
-        </Card>
+        <LoadingCard
+          title="Tournament history"
+          description="Fetching past results."
+        />
       )
     }
     return (
@@ -242,20 +206,12 @@ function TournamentHistory({ publicCode }: { publicCode: string }) {
           result={result}
         />
       ))}
-      {status !== 'Exhausted' ? (
-        <div className="flex justify-center">
-          <Button
-            type="button"
-            variant="outline"
-            disabled={status === 'LoadingMore'}
-            onClick={requestMore}
-          >
-            {status === 'LoadingMore'
-              ? 'Loading older tournaments…'
-              : 'Load older tournaments'}
-          </Button>
-        </div>
-      ) : null}
+      <LoadMoreButton
+        status={status}
+        onLoadMore={requestMore}
+        label="Load older tournaments"
+        loadingLabel="Loading older tournaments…"
+      />
     </div>
   )
 }

@@ -2,8 +2,8 @@ import type { Doc } from '@tournament-os/backend/convex/_generated/dataModel'
 
 import { Badge } from '@/components/ui/badge'
 
-type TournamentLifecycle = Doc<'tournaments'>['lifecycle']
-type TournamentVisibility = Doc<'tournaments'>['visibility']
+export type TournamentLifecycle = Doc<'tournaments'>['lifecycle']
+export type TournamentVisibility = Doc<'tournaments'>['visibility']
 type BadgeVariant = 'default' | 'secondary' | 'outline' | 'destructive'
 
 const shortDateFormatter = new Intl.DateTimeFormat('en-US', {
@@ -45,6 +45,11 @@ export function formatTournamentDateLong(timestamp: number) {
 export function toDatetimeLocalValue(timestamp: number) {
   const offsetMs = new Date(timestamp).getTimezoneOffset() * 60_000
   return new Date(timestamp - offsetMs).toISOString().slice(0, 16)
+}
+
+// Whether the tournament's lifecycle is over — completed or cancelled.
+export function isTournamentEnded(lifecycle: TournamentLifecycle) {
+  return lifecycle === 'completed' || lifecycle === 'cancelled'
 }
 
 export function TournamentLifecycleBadge({
