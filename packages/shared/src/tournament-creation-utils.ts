@@ -186,7 +186,7 @@ function hasValidTournamentPhaseOrder(phases: TournamentCreationPhaseForm[]) {
   );
 }
 
-export function canMoveTournamentCreationPhase(
+function movedTournamentCreationPhases(
   phases: TournamentCreationPhaseForm[],
   id: string,
   direction: -1 | 1,
@@ -194,7 +194,7 @@ export function canMoveTournamentCreationPhase(
   const currentIndex = phases.findIndex((phase) => phase.id === id);
   const nextIndex = currentIndex + direction;
   if (currentIndex === -1 || nextIndex < 0 || nextIndex >= phases.length) {
-    return false;
+    return null;
   }
 
   const reordered = [...phases];
@@ -202,7 +202,15 @@ export function canMoveTournamentCreationPhase(
     reordered[nextIndex],
     reordered[currentIndex],
   ];
-  return hasValidTournamentPhaseOrder(reordered);
+  return hasValidTournamentPhaseOrder(reordered) ? reordered : null;
+}
+
+export function canMoveTournamentCreationPhase(
+  phases: TournamentCreationPhaseForm[],
+  id: string,
+  direction: -1 | 1,
+) {
+  return movedTournamentCreationPhases(phases, id, direction) !== null;
 }
 
 export function moveTournamentCreationPhase(
@@ -210,17 +218,10 @@ export function moveTournamentCreationPhase(
   id: string,
   direction: -1 | 1,
 ) {
-  if (!canMoveTournamentCreationPhase(phases, id, direction)) {
+  const reordered = movedTournamentCreationPhases(phases, id, direction);
+  if (reordered === null) {
     return phases;
   }
-
-  const currentIndex = phases.findIndex((phase) => phase.id === id);
-  const nextIndex = currentIndex + direction;
-  const reordered = [...phases];
-  [reordered[currentIndex], reordered[nextIndex]] = [
-    reordered[nextIndex],
-    reordered[currentIndex],
-  ];
   return withPlayoffCutDefaults(phases, reordered);
 }
 

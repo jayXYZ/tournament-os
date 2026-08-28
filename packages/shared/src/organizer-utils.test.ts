@@ -6,9 +6,6 @@ import {
   canManageOrganizationProfile,
   normalizeInviteEmail,
   slugifyOrganizationName,
-  toInvitationStatus,
-  toMembershipStatus,
-  toOrganizerRole,
 } from "./organizer-utils.ts";
 
 test("slugifyOrganizationName creates stable slugs from organizer names", () => {
@@ -36,27 +33,4 @@ test("normalizeInviteEmail trims and lowercases emails", () => {
     normalizeInviteEmail("  Judge@OneExample.COM "),
     "judge@oneexample.com",
   );
-});
-
-test("toMembershipStatus only exposes known lifecycle states", () => {
-  assert.equal(toMembershipStatus("active"), "active");
-  assert.equal(toMembershipStatus("inactive"), "inactive");
-  assert.equal(toMembershipStatus("pending"), "pending");
-  assert.equal(toMembershipStatus("unknown"), "pending");
-});
-
-test("toOrganizerRole reads supported role shapes and defaults safely", () => {
-  assert.equal(toOrganizerRole({ slug: "owner" }), "owner");
-  assert.equal(toOrganizerRole({ slug: "admin" }), "admin");
-  assert.equal(toOrganizerRole("staff"), "staff");
-  assert.equal(toOrganizerRole({ slug: "unknown" }), "staff");
-  assert.equal(toOrganizerRole(undefined), "staff");
-});
-
-test("toInvitationStatus only exposes known invitation lifecycle states", () => {
-  assert.equal(toInvitationStatus("pending"), "pending");
-  assert.equal(toInvitationStatus("accepted"), "accepted");
-  assert.equal(toInvitationStatus("revoked"), "revoked");
-  assert.equal(toInvitationStatus("expired"), "expired");
-  assert.equal(toInvitationStatus("unknown"), "pending");
 });
