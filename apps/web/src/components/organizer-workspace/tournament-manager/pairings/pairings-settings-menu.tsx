@@ -4,8 +4,8 @@ import { FlaskConical, RotateCcw, Settings2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { api } from '@tournament-os/backend/convex/_generated/api'
-import type { FunctionReturnType } from 'convex/server'
 import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
+import type { PairingsBoard } from '../pairings-board'
 import { ConfirmActionDialog } from '@/components/shared/confirm-action-dialog'
 import { Button } from '@/components/ui/button'
 import {
@@ -17,10 +17,6 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Spinner } from '@/components/ui/spinner'
 import { useBusyAction } from '@/hooks/use-busy-action'
-
-export type PairingsBoard = FunctionReturnType<
-  typeof api.tournaments.rounds.getPairingsBoard
->
 
 export function PairingsSettingsMenu({
   board,

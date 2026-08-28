@@ -13,6 +13,7 @@ import { toast } from 'sonner'
 import { api } from '@tournament-os/backend/convex/_generated/api'
 import { mutationErrorMessage } from '@tournament-os/core'
 import { MAX_DECK_NAME_LENGTH } from '@tournament-os/shared/decklist-limits'
+import { PlayerPageEmpty } from '../player-access-shell'
 import { CardSearchInput } from './card-search-input'
 import {
   MAX_QUANTITY,
@@ -36,13 +37,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from '@/components/ui/empty'
 import { Field, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
@@ -185,19 +179,11 @@ export function DecklistEditor({
   // if submission reopens.
   if (!submissionOpen && !hasSubmitted && !dirty) {
     return children(
-      <Empty className="mt-4 min-h-80 border bg-card lg:mt-10">
-        <EmptyHeader>
-          <EmptyMedia variant="icon">
-            <Lock aria-hidden="true" />
-          </EmptyMedia>
-          <EmptyTitle>Submission is closed</EmptyTitle>
-          <EmptyDescription>
-            Decklists can no longer be submitted for this event, and you have
-            none on file. Talk to the organizer if you still need to register
-            one.
-          </EmptyDescription>
-        </EmptyHeader>
-      </Empty>,
+      <PlayerPageEmpty
+        icon={Lock}
+        title="Submission is closed"
+        description="Decklists can no longer be submitted for this event, and you have none on file. Talk to the organizer if you still need to register one."
+      />,
       null,
     )
   }

@@ -4,10 +4,10 @@ import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { internalMutation, mutation } from "../_generated/server";
-import { requireActiveMembership } from "../model/access";
 import { deleteTournamentOperationalDataBatch } from "../model/deletion";
 import {
   SWISS_FORMAT,
+  type TournamentPhaseInput,
   defaultSwissRoundCount,
   requireCurrentPhase,
   requirePhase,
@@ -19,14 +19,12 @@ import {
 import { advance, pairFirstRoundOfTournament } from "../model/progression";
 import { activeRegistrations } from "../model/registrations";
 import {
-  cleanName,
+  createTournament as createTournamentModel,
   requireOrganizerAccess,
   requireRound,
   requireTestTournament,
   requireTournament,
-  nextTournamentPublicCode,
   validCapacity,
-  validStartDate,
 } from "../model/tournaments";
 import {
   generateTestResults,
@@ -35,6 +33,53 @@ import {
 } from "../model/testing";
 import { enforceRateLimit } from "../rateLimits";
 import { tournamentFormatValidator } from "../validators";
+
+type TestTournamentSeedArgs = {
+  tournamentId: Id<"tournaments">;
+  dummyPlayerCount: number;
+  roundsToGenerate: number;
+  seed: number;
+};
+
+// The single fixed-length Swiss phase every test tournament plays.
+function testPhaseInput(roundsToGenerate: number): TournamentPhaseInput {
+  return {
+    phaseOrder: 1,
+    phaseRoundMode: "fixed",
+    phaseTotalRounds: roundsToGenerate,
+  };
+}
+
+async function seedTestConfigAndPlayers(
+  ctx: MutationCtx,
+  args: TestTournamentSeedArgs,
+) {
+  await ctx.db.insert("tournamentTestConfigs", {
+    tournamentId: args.tournamentId,
+    dummyPlayerCount: args.dummyPlayerCount,
+    roundsToGenerate: args.roundsToGenerate,
+    seed: args.seed,
+    updatedAt: Date.now(),
+  });
+  await seedTestPlayersModel(ctx, args.tournamentId, args.dummyPlayerCount);
+}
+
+// Recreates the phase, config, and seeded players on the reset path, where
+// the config values travel through the args because the config row itself is
+// deleted along with the rest of the operational data. Creation gets its
+// phase from createTournament instead.
+async function seedTestTournamentData(
+  ctx: MutationCtx,
+  args: TestTournamentSeedArgs,
+) {
+  await writePhases(
+    ctx,
+    args.tournamentId,
+    [testPhaseInput(args.roundsToGenerate)],
+    Date.now(),
+  );
+  await seedTestConfigAndPlayers(ctx, args);
+}
 
 export const createTestTournament = mutation({
   args: {
@@ -50,7 +95,6 @@ export const createTestTournament = mutation({
   },
   handler: async (ctx, args): Promise<Id<"tournaments">> => {
     await enforceRateLimit(ctx, "createTournament");
-    const { user } = await requireActiveMembership(ctx, args.organizationId);
     const dummyPlayerCount = validCapacity(args.dummyPlayerCount ?? 8);
     const playerCapacity = validCapacity(
       args.playerCapacity ?? dummyPlayerCount,
@@ -64,52 +108,32 @@ export const createTestTournament = mutation({
       args.roundsToGenerate ?? defaultSwissRoundCount(dummyPlayerCount),
     );
     const seed = Math.trunc(args.seed ?? now);
-    const publicCode = await nextTournamentPublicCode(ctx, now);
-    const tournamentId = await ctx.db.insert("tournaments", {
-      name: cleanName(args.name ?? "Test Tournament", "Tournament name"),
-      publicCode,
+    const {
+      tournamentId,
+      phaseIds: [phaseId],
+    } = await createTournamentModel(ctx, {
       organizationId: args.organizationId,
-      createdBy: user._id,
-      // Unlisted so a running test event is reachable by its public code (the
-      // player controller uses it) without ever appearing in public listings.
-      visibility: "unlisted",
-      lifecycle: "setup",
-      startDate:
-        args.startDate === undefined ? now : validStartDate(args.startDate),
+      name: args.name ?? "Test Tournament",
+      startDate: args.startDate ?? now,
       playerCapacity,
       format: args.format ?? "standard",
       isTestEvent: true,
-      autoPublishPairings: false,
       // Test events exercise pairing and results flows, not deck collection.
       decklistRequired: false,
-      registrationRequiresApproval: false,
-      confirmedRegistrationCount: 0,
+      // Unlisted so a running test event is reachable by its public code (the
+      // player controller uses it) without ever appearing in public listings.
+      visibility: "unlisted",
       // Mirror the test-config seed so pairings are reproducible across runs.
       seed,
-      updatedAt: now,
+      phases: [testPhaseInput(roundsToGenerate)],
     });
 
-    const [phaseId] = await writePhases(
-      ctx,
-      tournamentId,
-      [
-        {
-          phaseOrder: 1,
-          phaseRoundMode: "fixed",
-          phaseTotalRounds: roundsToGenerate,
-        },
-      ],
-      now,
-    );
-    await ctx.db.insert("tournamentTestConfigs", {
+    await seedTestConfigAndPlayers(ctx, {
       tournamentId,
       dummyPlayerCount,
       roundsToGenerate,
       seed,
-      updatedAt: now,
     });
-
-    await seedTestPlayersModel(ctx, tournamentId, dummyPlayerCount);
 
     if (args.autoStart === true) {
       // Test seeding starts play straight from "setup" (the event is never
@@ -206,50 +230,13 @@ export const advanceTestRound = mutation({
   },
 });
 
-type TestTournamentResetArgs = {
-  tournamentId: Id<"tournaments">;
-  dummyPlayerCount: number;
-  roundsToGenerate: number;
-  seed: number;
-};
-
-// Recreates the phase, config, and seeded players once all operational data
-// has been deleted. The config values travel through the reset args because
-// the config row itself is deleted along with the rest of the data.
-async function finishTestTournamentReset(
-  ctx: MutationCtx,
-  args: TestTournamentResetArgs,
-) {
-  const now = Date.now();
-  await writePhases(
-    ctx,
-    args.tournamentId,
-    [
-      {
-        phaseOrder: 1,
-        phaseRoundMode: "fixed",
-        phaseTotalRounds: args.roundsToGenerate,
-      },
-    ],
-    now,
-  );
-  await ctx.db.insert("tournamentTestConfigs", {
-    tournamentId: args.tournamentId,
-    dummyPlayerCount: args.dummyPlayerCount,
-    roundsToGenerate: args.roundsToGenerate,
-    seed: args.seed,
-    updatedAt: now,
-  });
-  await seedTestPlayersModel(ctx, args.tournamentId, args.dummyPlayerCount);
-}
-
 export const resetTestTournament = mutation({
   args: { tournamentId: v.id("tournaments") },
   handler: async (ctx, args): Promise<Id<"tournaments">> => {
     const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
     requireTestTournament(tournament);
     const config = await requireTestConfig(ctx, args.tournamentId);
-    const resetArgs: TestTournamentResetArgs = {
+    const resetArgs: TestTournamentSeedArgs = {
       tournamentId: args.tournamentId,
       dummyPlayerCount: config.dummyPlayerCount,
       roundsToGenerate: config.roundsToGenerate,
@@ -266,7 +253,7 @@ export const resetTestTournament = mutation({
     // Small tournaments clear within one transaction; larger ones continue in
     // self-rescheduled batches to stay within transaction limits.
     if (await deleteTournamentOperationalDataBatch(ctx, args.tournamentId)) {
-      await finishTestTournamentReset(ctx, resetArgs);
+      await seedTestTournamentData(ctx, resetArgs);
     } else {
       await ctx.scheduler.runAfter(
         0,
@@ -294,7 +281,7 @@ export const continueResetTestTournament = internalMutation({
       );
       return null;
     }
-    await finishTestTournamentReset(ctx, args);
+    await seedTestTournamentData(ctx, args);
     return null;
   },
 });

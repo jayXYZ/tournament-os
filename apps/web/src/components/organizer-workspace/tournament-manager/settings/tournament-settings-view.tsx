@@ -26,17 +26,16 @@ export function TournamentSettingsView({
 
   return (
     <section className="flex flex-col gap-4">
-      {setup ? (
-        <div className="flex items-center gap-2">
-          <TournamentLifecycleBadge lifecycle={setup.tournament.lifecycle} />
-          <TournamentVisibilityBadge visibility={setup.tournament.visibility} />
-        </div>
-      ) : null}
-
       {setup === undefined ? (
         <SettingsSkeleton />
       ) : (
         <>
+          <div className="flex items-center gap-2">
+            <TournamentLifecycleBadge lifecycle={setup.tournament.lifecycle} />
+            <TournamentVisibilityBadge
+              visibility={setup.tournament.visibility}
+            />
+          </div>
           {isPreStartLocked(setup.tournament) ? (
             <p className="rounded-md border bg-muted/50 px-4 py-3 text-sm text-muted-foreground">
               {setup.tournament.lifecycle === 'cancelled'

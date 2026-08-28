@@ -200,14 +200,5 @@ async function requireMatchParticipant(
     throw new Error("Opponent not found for this match");
   }
 
-  return {
-    match,
-    round,
-    tournament,
-    registration,
-    players,
-    myRow,
-    opponentRow,
-    user,
-  };
+  return { match, round, myRow, opponentRow, user };
 }

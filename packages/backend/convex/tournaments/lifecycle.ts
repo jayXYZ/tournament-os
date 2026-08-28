@@ -2,13 +2,19 @@ import { v } from "convex/values";
 
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
-import { internalMutation, mutation, query } from "../_generated/server";
+import {
+  internalMutation,
+  mutation,
+  query,
+  type QueryCtx,
+} from "../_generated/server";
 import {
   currentUserOrNull,
   getActiveMembership,
   requireActiveMembership,
 } from "../model/access";
 import { logAuditEvent } from "../model/auditLog";
+import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
 import { deleteTournamentOperationalDataBatch } from "../model/deletion";
 import { inviteCodeGrantsAccess } from "../model/invites";
 import {
@@ -72,17 +78,18 @@ export const listUpcomingPublic = query({
       .order("asc")
       .take(100);
 
-    const rows = [];
-    for (const tournament of tournaments) {
-      const organization = await ctx.db.get(tournament.organizationId);
-      rows.push({
-        ...tournament,
-        organizationName: organization?.name ?? null,
-        registeredCount: tournament.confirmedRegistrationCount,
-      });
-    }
-
-    return rows;
+    return await mapAsyncInBatches(
+      tournaments,
+      DATABASE_IO_BATCH_SIZE,
+      async (tournament) => {
+        const organization = await ctx.db.get(tournament.organizationId);
+        return {
+          ...tournament,
+          organizationName: organization?.name ?? null,
+          registeredCount: tournament.confirmedRegistrationCount,
+        };
+      },
+    );
   },
 });
 
@@ -92,20 +99,22 @@ export const listUpcomingForOrganization = query({
     await requireActiveMembership(ctx, args.organizationId);
 
     const now = Date.now();
-    const rows = [];
-    for (const lifecycle of ["setup", "registration", "in_progress"] as const) {
-      const tournaments = await ctx.db
-        .query("tournaments")
-        .withIndex("by_organizationId_and_lifecycle_and_startDate", (q) =>
-          q
-            .eq("organizationId", args.organizationId)
-            .eq("lifecycle", lifecycle)
-            .gte("startDate", now),
-        )
-        .order("asc")
-        .take(100);
-      rows.push(...tournaments);
-    }
+    const rows = (
+      await Promise.all(
+        (["setup", "registration", "in_progress"] as const).map((lifecycle) =>
+          ctx.db
+            .query("tournaments")
+            .withIndex("by_organizationId_and_lifecycle_and_startDate", (q) =>
+              q
+                .eq("organizationId", args.organizationId)
+                .eq("lifecycle", lifecycle)
+                .gte("startDate", now),
+            )
+            .order("asc")
+            .take(100),
+        ),
+      )
+    ).flat();
 
     rows.sort((left, right) => left.startDate - right.startDate);
     const limited = rows.slice(0, 100);
@@ -116,6 +125,19 @@ export const listUpcomingForOrganization = query({
   },
 });
 
+// The tournament a raw public-code string resolves to, or null for malformed
+// or unknown codes.
+async function tournamentByPublicCode(ctx: QueryCtx, rawPublicCode: string) {
+  const publicCode = parsePublicCode(rawPublicCode);
+  if (publicCode === null) {
+    return null;
+  }
+  return await ctx.db
+    .query("tournaments")
+    .withIndex("by_publicCode", (q) => q.eq("publicCode", publicCode))
+    .unique();
+}
+
 // Takes the code as a plain string because it arrives from a public URL; an
 // unrecognized or malformed code returns null instead of throwing, as does a
 // private event unless the caller is registered for it or presents the
@@ -123,15 +145,7 @@ export const listUpcomingForOrganization = query({
 export const getPublicTournament = query({
   args: { publicCode: v.string(), inviteCode: v.optional(v.string()) },
   handler: async (ctx, args) => {
-    const publicCode = parsePublicCode(args.publicCode);
-    if (publicCode === null) {
-      return null;
-    }
-
-    const tournament = await ctx.db
-      .query("tournaments")
-      .withIndex("by_publicCode", (q) => q.eq("publicCode", publicCode))
-      .unique();
+    const tournament = await tournamentByPublicCode(ctx, args.publicCode);
     if (!tournament) {
       return null;
     }
@@ -183,15 +197,7 @@ export const getPublicTournament = query({
 export const getManagedTournament = query({
   args: { publicCode: v.string() },
   handler: async (ctx, args) => {
-    const publicCode = parsePublicCode(args.publicCode);
-    if (publicCode === null) {
-      return null;
-    }
-
-    const found = await ctx.db
-      .query("tournaments")
-      .withIndex("by_publicCode", (q) => q.eq("publicCode", publicCode))
-      .unique();
+    const found = await tournamentByPublicCode(ctx, args.publicCode);
     if (!found) {
       return null;
     }
@@ -228,7 +234,7 @@ export const createTournament = mutation({
   },
   handler: async (ctx, args): Promise<Id<"tournaments">> => {
     await enforceRateLimit(ctx, "createTournament");
-    return await createTournamentModel(ctx, {
+    const { tournamentId } = await createTournamentModel(ctx, {
       organizationId: args.organizationId,
       name: args.name,
       startDate: args.startDate,
@@ -238,6 +244,7 @@ export const createTournament = mutation({
       decklistRequired: args.decklistRequired ?? false,
       phases: [{ phaseOrder: 1, phaseRoundMode: "dynamic" }],
     });
+    return tournamentId;
   },
 });
 
@@ -264,7 +271,7 @@ export const createTournamentWithPhases = mutation({
   },
   handler: async (ctx, args): Promise<Id<"tournaments">> => {
     await enforceRateLimit(ctx, "createTournament");
-    return await createTournamentModel(ctx, {
+    const { tournamentId } = await createTournamentModel(ctx, {
       organizationId: args.organizationId,
       name: args.name,
       startDate: args.startDate,
@@ -274,6 +281,7 @@ export const createTournamentWithPhases = mutation({
       decklistRequired: args.decklistRequired ?? false,
       phases: args.phases,
     });
+    return tournamentId;
   },
 });
 

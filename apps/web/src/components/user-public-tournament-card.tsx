@@ -27,7 +27,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 
-export type PlayerTournamentResult = FunctionReturnType<
+type PlayerTournamentResult = FunctionReturnType<
   typeof api.users.getPublicPlayerResults
 >['page'][number]
 

@@ -5,6 +5,7 @@ import { ChevronLeft, ScrollText } from 'lucide-react'
 
 import {
   PlayerAccessShell,
+  PlayerPageEmpty,
   PlayerPageSkeleton,
   playerShellWidth,
 } from '../player-access-shell'
@@ -14,13 +15,6 @@ import type { PlayerTournamentEvent } from '../use-player-tournament-access'
 import { SiteShell, SiteShellBackLink } from '@/components/shared/site-shell'
 import { WorkspacePageHeader } from '@/components/shared/workspace-page-header'
 import { Button } from '@/components/ui/button'
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
 
 // The player's decklist submission page, reached from the player controller.
@@ -35,11 +29,7 @@ export function DecklistPage({ publicCode }: { publicCode: string }) {
       <DecklistFrame
         publicCode={publicCode}
         eventName={
-          access.state === 'notFound'
-            ? null
-            : access.state === 'loading'
-              ? access.event?.tournament.name
-              : access.event.tournament.name
+          access.state === 'notFound' ? null : access.event?.tournament.name
         }
       >
         <PlayerAccessShell
@@ -103,17 +93,11 @@ function DecklistReady({
   ) {
     return (
       <DecklistFrame publicCode={publicCode} eventName={event.tournament.name}>
-        <Empty className="mt-4 min-h-80 border bg-card lg:mt-10">
-          <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <ScrollText aria-hidden="true" />
-            </EmptyMedia>
-            <EmptyTitle>No decklist needed</EmptyTitle>
-            <EmptyDescription>
-              This event does not collect decklists. You are all set — just show
-              up and play.
-            </EmptyDescription>
-          </EmptyHeader>
+        <PlayerPageEmpty
+          icon={ScrollText}
+          title="No decklist needed"
+          description="This event does not collect decklists. You are all set — just show up and play."
+        >
           <Button asChild type="button" variant="outline">
             <Link
               to="/tournaments/$tournamentId/play"
@@ -122,7 +106,7 @@ function DecklistReady({
               Back to player controller
             </Link>
           </Button>
-        </Empty>
+        </PlayerPageEmpty>
       </DecklistFrame>
     )
   }

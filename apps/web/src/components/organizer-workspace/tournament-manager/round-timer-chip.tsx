@@ -6,13 +6,10 @@ import {
   formatTimer,
 } from '@tournament-os/shared/timer-utils'
 
-import type { api } from '@tournament-os/backend/convex/_generated/api'
-import type { FunctionReturnType } from 'convex/server'
+import { inProgressRound } from './pairings-board'
+import type { PairingsBoard } from './pairings-board'
 import { RoundTimerIndicator } from '@/components/shared/round-timer-indicator'
-
-type PairingsBoard = FunctionReturnType<
-  typeof api.tournaments.rounds.getPairingsBoard
->
+import { isTournamentEnded } from '@/components/tournaments'
 
 // The tournament's timer, but only while it belongs to the round actually in
 // progress. completeRound clears the timer server-side, so a mismatch is a
@@ -22,10 +19,8 @@ export function activeRoundTimer(board: PairingsBoard) {
   if (!timer) {
     return null
   }
-  const inProgressRound = board.phases
-    .flatMap((phaseBoard) => phaseBoard.rounds)
-    .find((round) => round.roundStatus === 'in_progress')
-  return inProgressRound && timer.roundId === inProgressRound._id ? timer : null
+  const currentRound = inProgressRound(board)
+  return currentRound && timer.roundId === currentRound._id ? timer : null
 }
 
 // Compact countdown in the manager's progress strip, linking to the Timer tab.
@@ -40,7 +35,7 @@ export function RoundTimerChip({
   publicCode: string
 }) {
   const { lifecycle, roundDurationMs } = board.tournament
-  if (lifecycle === 'completed' || lifecycle === 'cancelled') {
+  if (isTournamentEnded(lifecycle)) {
     return null
   }
   const timer = activeRoundTimer(board)

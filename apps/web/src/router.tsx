@@ -41,7 +41,6 @@ export function getRouter() {
   })
   convexQueryClient.connect(queryClient)
 
-  // @snippet start example
   const router = routerWithQueryClient(
     createRouter({
       routeTree,
@@ -59,7 +58,6 @@ export function getRouter() {
     }),
     queryClient,
   )
-  // @snippet end example
 
   if (!router.isServer) {
     Sentry.addIntegration(

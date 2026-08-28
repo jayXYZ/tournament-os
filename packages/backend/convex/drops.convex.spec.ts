@@ -14,9 +14,11 @@ import type { Id } from "./_generated/dataModel";
 import { setRegistrationState } from "./model/participation";
 import schema from "./schema";
 import {
-  insertLinkedParticipant,
+  matchForPlayer,
+  opponentNumber,
   organizerIdentity,
-  seedOrganizer,
+  playerIdentity,
+  seedTournamentWithPlayers,
 } from "./specHelpers";
 import { createConvexTest } from "./specHelpers.runtime";
 
@@ -470,146 +472,32 @@ test("an eliminated player cannot self-drop, but the organizer can drop them", a
   });
 });
 
-function playerIdentity(playerNumber: number) {
-  return {
-    issuer: "https://convex.test",
-    subject: `player-${playerNumber}`,
-    tokenIdentifier: `https://convex.test|player-${playerNumber}`,
-    email: `player${playerNumber}@example.test`,
-    name: `Player ${playerNumber}`,
-  };
-}
-
 async function seedStartedTournament(
   t: TestConvex<typeof schema>,
   playerCount: number,
-  phases: {
+  phases?: {
     phaseOrder: number;
     phaseRoundMode: "fixed" | "dynamic";
     phaseTotalRounds?: number;
     bestOf?: 1 | 3 | 5;
-  }[] = [{ phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 3 }],
+  }[],
   options: { autoPublishPairings?: boolean } = {},
 ) {
-  const { organizationId } = await seedOrganizer(t);
-  const organizer = t.withIdentity(organizerIdentity);
-  const tournamentId: Id<"tournaments"> = await organizer.mutation(
-    api.tournaments.lifecycle.createTournamentWithPhases,
-    {
-      organizationId,
-      name: "Drop Concession Event",
-      startDate: Date.now(),
-      playerCapacity: 16,
-      format: "standard",
-      phases,
-    },
-  );
-  await organizer.mutation(
-    api.tournaments.lifecycle.updatePairingsAutoPublish,
-    {
-      tournamentId,
-      autoPublishPairings: options.autoPublishPairings ?? true,
-    },
-  );
-
-  const registrationIds = await t.run(async (ctx) => {
-    const now = Date.now();
-    const tournament = await ctx.db.get(tournamentId);
-    if (!tournament) {
-      throw new Error("Tournament not found in test setup");
-    }
-    const ids: Id<"tournamentRegistrations">[] = [];
-    for (let playerNumber = 1; playerNumber <= playerCount; playerNumber += 1) {
-      const identity = playerIdentity(playerNumber);
-      const userId = await ctx.db.insert("users", {
-        tokenIdentifier: identity.tokenIdentifier,
-        publicCode: playerNumber,
-        email: identity.email,
-        name: identity.name,
-        updatedAt: now,
-      });
-      const participant0Id = await insertLinkedParticipant(ctx, userId);
-      ids.push(
-        await ctx.db.insert("tournamentRegistrations", {
-          tournamentId,
-          participantId: participant0Id,
-          tournamentStartDate: tournament.startDate,
-          entryStatus: "confirmed",
-          participationStatus: "active",
-          createdAt: now + playerNumber,
-          // Descending so equal records rank in player-number order, keeping
-          // the round-one bye on the highest player number.
-          tiebreakRandom: 100_000 - playerNumber,
-          updatedAt: now,
-        }),
-      );
-    }
-    await ctx.db.patch(tournamentId, {
-      confirmedRegistrationCount: playerCount,
-      updatedAt: now,
+  const seeded = await seedTournamentWithPlayers(t, {
+    name: "Drop Concession Event",
+    playerCount,
+    phases,
+    autoPublishPairings: options.autoPublishPairings ?? true,
+    // Descending so equal records rank in player-number order, keeping the
+    // round-one bye on the highest player number.
+    tiebreak: "descending",
+  });
+  await t
+    .withIdentity(organizerIdentity)
+    .mutation(api.tournaments.rounds.startTournament, {
+      tournamentId: seeded.tournamentId,
     });
-    return ids;
-  });
-  await organizer.mutation(api.tournaments.lifecycle.publishTournament, {
-    tournamentId,
-  });
-  await organizer.mutation(api.tournaments.rounds.startTournament, {
-    tournamentId,
-  });
-
-  return { tournamentId, registrationIds };
-}
-
-async function matchForPlayer(
-  t: TestConvex<typeof schema>,
-  tournamentId: Id<"tournaments">,
-  roundNumber: number,
-  registrationId: Id<"tournamentRegistrations">,
-) {
-  return await t.run(async (ctx) => {
-    const playerRows = await ctx.db
-      .query("tournamentMatchPlayers")
-      .withIndex("by_playerId", (q) => q.eq("playerId", registrationId))
-      .take(16);
-    for (const playerRow of playerRows) {
-      const match = await ctx.db.get(playerRow.tournamentMatchId);
-      if (!match || match.tournamentId !== tournamentId) {
-        continue;
-      }
-      const round = await ctx.db.get(match.tournamentRoundId);
-      if (round?.roundNumber === roundNumber) {
-        return match;
-      }
-    }
-    throw new Error("Match not found in test setup");
-  });
-}
-
-// Resolves the opponent's 1-based player number in a two-player match, so
-// drop-flow tests don't depend on which pairing the seeded shuffle produced.
-async function opponentNumber(
-  t: TestConvex<typeof schema>,
-  matchId: Id<"tournamentMatches">,
-  myRegistrationId: Id<"tournamentRegistrations">,
-  registrationIds: Id<"tournamentRegistrations">[],
-) {
-  const opponentId = await t.run(async (ctx) => {
-    const players = await ctx.db
-      .query("tournamentMatchPlayers")
-      .withIndex("by_tournamentMatchId_and_playerId", (q) =>
-        q.eq("tournamentMatchId", matchId),
-      )
-      .take(2);
-    return (
-      players.find((player) => player.playerId !== myRegistrationId)
-        ?.playerId ?? null
-    );
-  });
-  const index = opponentId ? registrationIds.indexOf(opponentId) : -1;
-  if (index < 0) {
-    throw new Error("Opponent not found for match");
-  }
-  return index + 1;
+  return seeded;
 }
 
 // The match document, its player rows, and its full revision history.

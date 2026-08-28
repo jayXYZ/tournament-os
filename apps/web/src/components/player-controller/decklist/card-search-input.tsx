@@ -82,7 +82,7 @@ export function CardSearchInput({
     }
     if (event.key === 'Enter') {
       event.preventDefault()
-      add(open && options.length > 0 ? options[activeIndex] : name)
+      add(open ? options[activeIndex] : name)
       return
     }
     if (event.key === 'Escape' && (open || suggestionsPending)) {
@@ -136,7 +136,7 @@ export function CardSearchInput({
           </InputGroupAddon>
         ) : null}
       </InputGroup>
-      {open && options.length > 0 ? (
+      {open ? (
         <ul
           id={listboxId}
           role="listbox"

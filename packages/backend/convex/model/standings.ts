@@ -97,6 +97,19 @@ export function hasCumulativeTotals(standing: Doc<"roundStandings">) {
   );
 }
 
+// A round's standings rows in rank order (the index sorts by rank).
+export async function standingsInRankOrder(
+  ctx: QueryCtx,
+  roundId: Id<"tournamentRounds">,
+) {
+  return await ctx.db
+    .query("roundStandings")
+    .withIndex("by_tournamentRoundId_and_rank", (q) =>
+      q.eq("tournamentRoundId", roundId),
+    )
+    .take(MAX_TOURNAMENT_PLAYERS);
+}
+
 // Module-private on purpose: dropping a round's standings without either
 // rewriting them or repairing the rows this promotes leaves a stale
 // participation status on the standings every player reads. Callers outside
@@ -106,12 +119,7 @@ async function deleteStandingsForRound(
   ctx: MutationCtx,
   roundId: Id<"tournamentRounds">,
 ) {
-  const standings = await ctx.db
-    .query("roundStandings")
-    .withIndex("by_tournamentRoundId_and_rank", (q) =>
-      q.eq("tournamentRoundId", roundId),
-    )
-    .take(MAX_TOURNAMENT_PLAYERS);
+  const standings = await standingsInRankOrder(ctx, roundId);
   for (const standing of standings) {
     await ctx.db.delete(standing._id);
   }
@@ -141,12 +149,7 @@ export async function deleteStandingsForReopenedRound(
   if (!promoted) {
     return;
   }
-  const standings = await ctx.db
-    .query("roundStandings")
-    .withIndex("by_tournamentRoundId_and_rank", (q) =>
-      q.eq("tournamentRoundId", promoted._id),
-    )
-    .take(MAX_TOURNAMENT_PLAYERS);
+  const standings = await standingsInRankOrder(ctx, promoted._id);
   if (standings.length === 0) {
     return;
   }
@@ -255,12 +258,7 @@ async function rankedStatsForRound(
 
   const previousRound = await previousTournamentRound(ctx, round);
   const previousStandings = previousRound
-    ? await ctx.db
-        .query("roundStandings")
-        .withIndex("by_tournamentRoundId_and_rank", (q) =>
-          q.eq("tournamentRoundId", previousRound._id),
-        )
-        .take(MAX_TOURNAMENT_PLAYERS)
+    ? await standingsInRankOrder(ctx, previousRound._id)
     : [];
   const previousByPlayer = new Map(
     previousStandings.map((standing) => [standing.playerId, standing]),
@@ -390,12 +388,7 @@ async function cumulativeStatsThroughRound(
   if (round.roundNumber > 1) {
     const previousRound = await previousTournamentRound(ctx, round);
     const previousStandings = previousRound
-      ? await ctx.db
-          .query("roundStandings")
-          .withIndex("by_tournamentRoundId_and_rank", (q) =>
-            q.eq("tournamentRoundId", previousRound._id),
-          )
-          .take(MAX_TOURNAMENT_PLAYERS)
+      ? await standingsInRankOrder(ctx, previousRound._id)
       : [];
     const standingByPlayer = new Map(
       previousStandings.map((standing) => [standing.playerId, standing]),

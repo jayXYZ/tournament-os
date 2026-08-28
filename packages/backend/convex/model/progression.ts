@@ -46,6 +46,7 @@ import {
   resolveRegistrationDisplayName,
 } from "./registrations";
 import {
+  allSeatWinnersDeparted,
   eliminateSingleEliminationLosers,
   planSingleEliminationPairings,
   singleEliminationRoundName,
@@ -430,9 +431,7 @@ function generateNextRoundVerdict(
     // round count says.
     if (
       facts.bracketSeatWinners !== null &&
-      !facts.bracketSeatWinners.some(
-        (registration) => registration.participationStatus === "active",
-      )
+      allSeatWinnersDeparted(facts.bracketSeatWinners)
     ) {
       return disallowed(BRACKET_NO_LIVE_PLAYERS);
     }

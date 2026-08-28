@@ -3,7 +3,10 @@ import type { MutationCtx } from "../_generated/server";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "./batching";
 import type { CutoffPartition } from "./cutoffs";
 import { MAX_TOURNAMENT_PLAYERS, activeRegistrations } from "./registrations";
-import { deleteStandingsForReopenedRound } from "./standings";
+import {
+  deleteStandingsForReopenedRound,
+  standingsInRankOrder,
+} from "./standings";
 
 // The player-participation module: the one place that knows how a change to a
 // player's participation reaches BOTH copies of that fact — the registration
@@ -400,13 +403,10 @@ async function seatDecidedElimination(
   const qualifierIds = new Set(
     cut.qualifiers.map((registration) => registration._id),
   );
-  const active = await activeRegistrations(ctx, tournament._id);
-  const standings = await ctx.db
-    .query("roundStandings")
-    .withIndex("by_tournamentRoundId_and_rank", (q) =>
-      q.eq("tournamentRoundId", eliminatedByRoundId),
-    )
-    .take(MAX_TOURNAMENT_PLAYERS);
+  const [active, standings] = await Promise.all([
+    activeRegistrations(ctx, tournament._id),
+    standingsInRankOrder(ctx, eliminatedByRoundId),
+  ]);
   return {
     activeNonQualifiers: active.filter(
       (registration) => !qualifierIds.has(registration._id),
@@ -445,15 +445,30 @@ export async function restoreEliminationsForRewind(
     rounds.removedRound._id,
     ...(rounds.reopenedRound ? [rounds.reopenedRound._id] : []),
   ]);
-  const eliminated = await ctx.db
-    .query("tournamentRegistrations")
-    .withIndex("by_tournamentId_and_entryStatus_and_participationStatus", (q) =>
-      q
-        .eq("tournamentId", tournament._id)
-        .eq("entryStatus", "confirmed")
-        .eq("participationStatus", "eliminated"),
-    )
-    .take(MAX_TOURNAMENT_PLAYERS);
+  const [eliminated, dropped] = await Promise.all([
+    ctx.db
+      .query("tournamentRegistrations")
+      .withIndex(
+        "by_tournamentId_and_entryStatus_and_participationStatus",
+        (q) =>
+          q
+            .eq("tournamentId", tournament._id)
+            .eq("entryStatus", "confirmed")
+            .eq("participationStatus", "eliminated"),
+      )
+      .take(MAX_TOURNAMENT_PLAYERS),
+    ctx.db
+      .query("tournamentRegistrations")
+      .withIndex(
+        "by_tournamentId_and_entryStatus_and_participationStatus",
+        (q) =>
+          q
+            .eq("tournamentId", tournament._id)
+            .eq("entryStatus", "confirmed")
+            .eq("participationStatus", "dropped"),
+      )
+      .take(MAX_TOURNAMENT_PLAYERS),
+  ]);
   const restored = eliminated.filter(
     (registration) =>
       registration.eliminatedByRoundId !== undefined &&
@@ -462,15 +477,6 @@ export async function restoreEliminationsForRewind(
   // Dropped players can carry a preserved elimination (a drop after
   // being eliminated). The rewind undoes the elimination but the drop
   // stands, so only the stale round reference is cleared.
-  const dropped = await ctx.db
-    .query("tournamentRegistrations")
-    .withIndex("by_tournamentId_and_entryStatus_and_participationStatus", (q) =>
-      q
-        .eq("tournamentId", tournament._id)
-        .eq("entryStatus", "confirmed")
-        .eq("participationStatus", "dropped"),
-    )
-    .take(MAX_TOURNAMENT_PLAYERS);
   const clearedDrops = dropped.filter(
     (registration) =>
       registration.eliminatedByRoundId !== undefined &&

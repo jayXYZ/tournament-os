@@ -47,6 +47,12 @@ import {
 import { Spinner } from '@/components/ui/spinner'
 import { useBusyAction } from '@/hooks/use-busy-action'
 
+const initialBasics: TournamentBasicsValue = {
+  name: '',
+  playerCapacity: '32',
+  startDateTime: '',
+}
+
 export function CreateTournamentDialog() {
   const { selectedOrganizationId } = useOrganization()
   const createTournament = useMutation(
@@ -55,11 +61,7 @@ export function CreateTournamentDialog() {
 
   const [open, setOpen] = useState(false)
   const { busy, run } = useBusyAction()
-  const [basics, setBasics] = useState<TournamentBasicsValue>({
-    name: '',
-    playerCapacity: '32',
-    startDateTime: '',
-  })
+  const [basics, setBasics] = useState<TournamentBasicsValue>(initialBasics)
   const [format, setFormat] = useState<TournamentFormat>('standard')
   const [decklistRequired, setDecklistRequired] = useState(false)
   const [isTestEvent, setIsTestEvent] = useState(false)
@@ -70,11 +72,7 @@ export function CreateTournamentDialog() {
   const disabled = !selectedOrganizationId || busy
 
   function resetForm() {
-    setBasics({
-      name: '',
-      playerCapacity: '32',
-      startDateTime: '',
-    })
+    setBasics(initialBasics)
     setFormat('standard')
     setDecklistRequired(false)
     setIsTestEvent(false)

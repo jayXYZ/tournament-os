@@ -1,6 +1,7 @@
 import { CancelTournamentButton } from './cancel-tournament-button'
 import { DeleteTournamentButton } from './delete-tournament-button'
 import type { Doc } from '@tournament-os/backend/convex/_generated/dataModel'
+import { isTournamentEnded } from '@/components/tournaments'
 import {
   Card,
   CardContent,
@@ -15,8 +16,7 @@ export function DangerZoneCard({
 }: {
   tournament: Doc<'tournaments'>
 }) {
-  const cancellable =
-    tournament.lifecycle !== 'completed' && tournament.lifecycle !== 'cancelled'
+  const cancellable = !isTournamentEnded(tournament.lifecycle)
 
   return (
     <Card className="border-destructive/50">

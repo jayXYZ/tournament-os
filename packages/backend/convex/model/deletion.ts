@@ -1,4 +1,4 @@
-import type { Id } from "../_generated/dataModel";
+import type { Id, TableNames } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { deleteResultRevisionsForMatch } from "./matchResults";
 import { MAX_TOURNAMENT_PHASES } from "./phases";
@@ -24,6 +24,23 @@ export async function deleteTournamentOperationalDataBatch(
   // When a page comes back full there may be rows beyond the cursor, so the
   // pass cannot prove the tournament is cleared even if budget remains.
   let sawFullPage = false;
+
+  // Deletes one fetched page of rows under the shared budget. False means the
+  // budget ran out mid-page and the caller should stop the pass.
+  const drainPage = async (
+    rows: Array<{ _id: Id<TableNames> }>,
+    pageSize: number,
+  ): Promise<boolean> => {
+    sawFullPage ||= rows.length === pageSize;
+    for (const row of rows) {
+      if (budget < 1) {
+        return false;
+      }
+      await ctx.db.delete(row._id);
+      budget -= 1;
+    }
+    return true;
+  };
 
   const phases = await ctx.db
     .query("tournamentPhases")
@@ -63,13 +80,8 @@ export async function deleteTournamentOperationalDataBatch(
           q.eq("tournamentRoundId", round._id),
         )
         .take(512);
-      sawFullPage ||= standings.length === 512;
-      for (const standing of standings) {
-        if (budget < 1) {
-          return false;
-        }
-        await ctx.db.delete(standing._id);
-        budget -= 1;
+      if (!(await drainPage(standings, 512))) {
+        return false;
       }
       if (budget < 1) {
         return false;
@@ -83,13 +95,8 @@ export async function deleteTournamentOperationalDataBatch(
         q.eq("tournamentPhaseId", phase._id),
       )
       .take(512);
-    sawFullPage ||= seats.length === 512;
-    for (const seat of seats) {
-      if (budget < 1) {
-        return false;
-      }
-      await ctx.db.delete(seat._id);
-      budget -= 1;
+    if (!(await drainPage(seats, 512))) {
+      return false;
     }
     if (budget < 1) {
       return false;
@@ -102,13 +109,8 @@ export async function deleteTournamentOperationalDataBatch(
     .query("tournamentDecklists")
     .withIndex("by_tournamentId", (q) => q.eq("tournamentId", tournamentId))
     .take(512);
-  sawFullPage ||= decklists.length === 512;
-  for (const decklist of decklists) {
-    if (budget < 1) {
-      return false;
-    }
-    await ctx.db.delete(decklist._id);
-    budget -= 1;
+  if (!(await drainPage(decklists, 512))) {
+    return false;
   }
 
   const registrations = await ctx.db
@@ -117,13 +119,8 @@ export async function deleteTournamentOperationalDataBatch(
       q.eq("tournamentId", tournamentId),
     )
     .take(512);
-  sawFullPage ||= registrations.length === 512;
-  for (const registration of registrations) {
-    if (budget < 1) {
-      return false;
-    }
-    await ctx.db.delete(registration._id);
-    budget -= 1;
+  if (!(await drainPage(registrations, 512))) {
+    return false;
   }
 
   const testPlayers = await ctx.db
@@ -146,26 +143,16 @@ export async function deleteTournamentOperationalDataBatch(
     .query("tournamentAuditEvents")
     .withIndex("by_tournamentId", (q) => q.eq("tournamentId", tournamentId))
     .take(512);
-  sawFullPage ||= auditEvents.length === 512;
-  for (const auditEvent of auditEvents) {
-    if (budget < 1) {
-      return false;
-    }
-    await ctx.db.delete(auditEvent._id);
-    budget -= 1;
+  if (!(await drainPage(auditEvents, 512))) {
+    return false;
   }
 
   const configs = await ctx.db
     .query("tournamentTestConfigs")
     .withIndex("by_tournamentId", (q) => q.eq("tournamentId", tournamentId))
     .take(16);
-  sawFullPage ||= configs.length === 16;
-  for (const config of configs) {
-    if (budget < 1) {
-      return false;
-    }
-    await ctx.db.delete(config._id);
-    budget -= 1;
+  if (!(await drainPage(configs, 16))) {
+    return false;
   }
 
   // At most one invite row exists per tournament, but sweep like the rest so

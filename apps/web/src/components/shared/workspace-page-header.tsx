@@ -1,18 +1,16 @@
 import type { ReactNode } from 'react'
 
-export type WorkspacePageHeaderProps = {
-  actions?: ReactNode
-  eyebrow: ReactNode
-  metadata?: ReactNode
-  title: ReactNode
-}
-
 export function WorkspacePageHeader({
   actions,
   eyebrow,
   metadata,
   title,
-}: WorkspacePageHeaderProps) {
+}: {
+  actions?: ReactNode
+  eyebrow: ReactNode
+  metadata?: ReactNode
+  title: ReactNode
+}) {
   return (
     <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
       <div>

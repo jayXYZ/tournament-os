@@ -7,8 +7,7 @@ import {
   UserRound,
   Users,
 } from 'lucide-react'
-import { AdminBreadcrumb } from './admin-breadcrumb'
-import type { AdminView } from './types'
+import { AdminBreadcrumb, viewFromPathname } from './admin-breadcrumb'
 import { useAppAuth } from '@/lib/use-app-auth'
 
 import { Button } from '@/components/ui/button'
@@ -34,16 +33,6 @@ import {
   SidebarRail,
   SidebarTrigger,
 } from '@/components/ui/sidebar'
-
-function viewFromPathname(pathname: string): AdminView {
-  if (pathname.startsWith('/admin/staff')) {
-    return 'staff'
-  }
-  if (pathname.startsWith('/admin/organization')) {
-    return 'organization'
-  }
-  return 'tournaments'
-}
 
 export function AdminSidebar() {
   const view = viewFromPathname(useLocation().pathname)

@@ -54,7 +54,7 @@ const tournamentPageLabels: Record<string, string> = {
   standings: 'Standings',
 }
 
-function viewFromPathname(pathname: string): AdminView {
+export function viewFromPathname(pathname: string): AdminView {
   if (pathname.startsWith('/admin/staff')) {
     return 'staff'
   }

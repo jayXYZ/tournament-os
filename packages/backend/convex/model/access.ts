@@ -1,4 +1,4 @@
-import type { Id } from "../_generated/dataModel";
+import type { Doc, Id } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
 import { requireIdentity } from "../auth";
 import { canInviteMembers, canManageOrganizationProfile } from "../validators";
@@ -62,15 +62,16 @@ export async function requireActiveOrganization(
   return organization;
 }
 
-export async function requireProfilePermission(
+async function requireMembershipPermission(
   ctx: QueryCtx,
   organizationId: Id<"organizations">,
+  hasPermission: (role: Doc<"organizationMemberships">["role"]) => boolean,
 ) {
   const { user, membership } = await requireActiveMembership(
     ctx,
     organizationId,
   );
-  if (!canManageOrganizationProfile(membership.role)) {
+  if (!hasPermission(membership.role)) {
     throw new Error("Unauthorized");
   }
 
@@ -78,18 +79,24 @@ export async function requireProfilePermission(
   return { organization, membership, user };
 }
 
+export async function requireProfilePermission(
+  ctx: QueryCtx,
+  organizationId: Id<"organizations">,
+) {
+  return await requireMembershipPermission(
+    ctx,
+    organizationId,
+    canManageOrganizationProfile,
+  );
+}
+
 export async function requireInvitePermission(
   ctx: QueryCtx,
   organizationId: Id<"organizations">,
 ) {
-  const { user, membership } = await requireActiveMembership(
+  return await requireMembershipPermission(
     ctx,
     organizationId,
+    canInviteMembers,
   );
-  if (!canInviteMembers(membership.role)) {
-    throw new Error("Unauthorized");
-  }
-
-  const organization = await requireActiveOrganization(ctx, organizationId);
-  return { organization, membership, user };
 }

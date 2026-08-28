@@ -285,18 +285,13 @@ function buildTournamentColumns(
       header: 'Action',
       enableSorting: false,
       meta: { className: 'text-right' },
-      cell: ({ row }) => {
-        const { tournament } = row.original
-        const publicCode = String(tournament.publicCode)
-        return (
-          <TournamentTableAction
-            manageHref={`/admin/tournaments/${publicCode}`}
-            publicCode={publicCode}
-            tournament={tournament}
-            variant={variant}
-          />
-        )
-      },
+      cell: ({ row }) => (
+        <TournamentTableAction
+          publicCode={String(row.original.tournament.publicCode)}
+          tournament={row.original.tournament}
+          variant={variant}
+        />
+      ),
     },
   )
 
@@ -304,12 +299,10 @@ function buildTournamentColumns(
 }
 
 function TournamentTableAction({
-  manageHref,
   publicCode,
   tournament,
   variant,
 }: {
-  manageHref: string
   publicCode: string
   tournament: Doc<'tournaments'>
   variant: TournamentTableVariant
@@ -322,7 +315,10 @@ function TournamentTableAction({
         variant="outline"
         onClick={(event) => event.stopPropagation()}
       >
-        <Link to={manageHref}>
+        <Link
+          to="/admin/tournaments/$tournamentId"
+          params={{ tournamentId: publicCode }}
+        >
           Manage
           <ArrowRight data-icon="inline-end" />
         </Link>

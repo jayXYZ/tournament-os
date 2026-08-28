@@ -27,12 +27,7 @@ export function PairingsView({
   })
 
   const phases = board?.phases ?? []
-  const navigation = useTournamentRoundNavigation(
-    phases,
-    'all',
-    roundSelection,
-    onRoundSelectionChange,
-  )
+  const navigation = useTournamentRoundNavigation(phases, 'all', roundSelection)
 
   const activePhase = navigation.activePhase?.phase
 

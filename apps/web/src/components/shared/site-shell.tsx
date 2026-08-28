@@ -75,6 +75,9 @@ export function SiteShell({
   // The fixed bottom bar only renders in the app chrome (the `appBar`
   // branch below), so toast clearance keys off both props together.
   const hasBottomBar = Boolean(appBar && bottomBar)
+  const toastOffset = hasBottomBar
+    ? { bottom: 'var(--site-shell-toast-offset)' }
+    : undefined
 
   return (
     <main
@@ -157,16 +160,8 @@ export function SiteShell({
           // clearance variable set on <main> above. Object form keeps the
           // other sides on sonner's defaults; pages without a bottom bar get
           // the stock Toaster.
-          offset={
-            hasBottomBar
-              ? { bottom: 'var(--site-shell-toast-offset)' }
-              : undefined
-          }
-          mobileOffset={
-            hasBottomBar
-              ? { bottom: 'var(--site-shell-toast-offset)' }
-              : undefined
-          }
+          offset={toastOffset}
+          mobileOffset={toastOffset}
         />
       ) : null}
     </main>

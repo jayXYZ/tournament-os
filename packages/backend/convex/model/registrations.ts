@@ -414,20 +414,25 @@ export async function nonActiveParticipationStatuses(
     Id<"tournamentRegistrations">,
     "dropped" | "eliminated" | "disqualified"
   >();
-  for (const status of ["dropped", "eliminated", "disqualified"] as const) {
-    const registrations = await ctx.db
-      .query("tournamentRegistrations")
-      .withIndex(
-        "by_tournamentId_and_entryStatus_and_participationStatus",
-        (q) =>
-          q
-            .eq("tournamentId", tournamentId)
-            .eq("entryStatus", "confirmed")
-            .eq("participationStatus", status),
-      )
-      .take(MAX_TOURNAMENT_PLAYERS);
+  const statuses = ["dropped", "eliminated", "disqualified"] as const;
+  const pages = await Promise.all(
+    statuses.map((status) =>
+      ctx.db
+        .query("tournamentRegistrations")
+        .withIndex(
+          "by_tournamentId_and_entryStatus_and_participationStatus",
+          (q) =>
+            q
+              .eq("tournamentId", tournamentId)
+              .eq("entryStatus", "confirmed")
+              .eq("participationStatus", status),
+        )
+        .take(MAX_TOURNAMENT_PLAYERS),
+    ),
+  );
+  for (const [index, registrations] of pages.entries()) {
     for (const registration of registrations) {
-      byRegistrationId.set(registration._id, status);
+      byRegistrationId.set(registration._id, statuses[index]);
     }
   }
   return byRegistrationId;

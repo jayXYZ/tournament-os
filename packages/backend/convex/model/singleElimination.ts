@@ -58,6 +58,18 @@ export async function singleEliminationSeatWinners(
   );
 }
 
+// Whether a completed bracket round's seat winners leave no one to pair:
+// every remaining seat-holder has left the tournament, so chained walkovers
+// have no one to award and completing the tournament is the only move left.
+// Shared by the next-round verdict and the board's next-step projection.
+export function allSeatWinnersDeparted(
+  seatWinners: Doc<"tournamentRegistrations">[],
+): boolean {
+  return !seatWinners.some(
+    (registration) => registration.participationStatus === "active",
+  );
+}
+
 function requireBracketSeat(match: Doc<"tournamentMatches">): number {
   if (match.bracketSeat === undefined) {
     throw new Error("Single-elimination match is missing its bracket seat");

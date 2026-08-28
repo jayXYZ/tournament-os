@@ -89,6 +89,25 @@ export async function participantPublicIdentity(
   return { name: user?.name ?? null, avatarUrl: user?.avatarUrl ?? null };
 }
 
+// A registration's public identity, resolved through its participant. The
+// shared read for surfaces that show an opponent to other players (the Player
+// View's match card, the profile match log): always through the participant
+// identity, never the denormalized playerName, so an account without a name
+// can never leak its email. Null fields when the registration or participant
+// is gone.
+export async function publicIdentityForRegistration(
+  ctx: QueryCtx,
+  registrationId: Id<"tournamentRegistrations">,
+): Promise<{ name: string | null; avatarUrl: string | null }> {
+  const registration = await ctx.db.get(registrationId);
+  const participant = registration
+    ? await ctx.db.get(registration.participantId)
+    : null;
+  return participant
+    ? await participantPublicIdentity(ctx, participant)
+    : { name: null, avatarUrl: null };
+}
+
 // The sign-in Claim (CONTEXT.md "Claim", ADR 0002): merge every guest whose
 // contact email matches the account's verified email into the account
 // holder's participant — repoint the guest's registrations, delete the guest.

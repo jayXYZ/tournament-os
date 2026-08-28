@@ -7,8 +7,11 @@ import {
   roundNumberInPhase,
 } from "./phases";
 import { createSeededRandom, pairingSeed, seededShuffle } from "./random";
-import { MAX_TOURNAMENT_PLAYERS } from "./registrations";
-import { compareStandingRows, hasCumulativeTotals } from "./standings";
+import {
+  compareStandingRows,
+  hasCumulativeTotals,
+  standingsInRankOrder,
+} from "./standings";
 
 export type PairingOptions = {
   // Stored tournament seed driving the within-bracket shuffle.
@@ -149,34 +152,64 @@ export async function createSingleEliminationRoundWithPairings(
       });
       continue;
     }
-    const matchId = await ctx.db.insert("tournamentMatches", {
-      tournamentId: args.tournament._id,
-      tournamentPhaseId: args.phase._id,
-      tournamentRoundId: roundId,
+    await insertPairedMatch(ctx, {
+      tournament: args.tournament,
+      phase: args.phase,
+      roundId,
+      playerOne: pairing.playerOne,
+      playerTwo: pairing.playerTwo,
       tableNumber,
       bracketSeat: seatIndex + 1,
-      matchStatus: "upcoming",
-      updatedAt: now,
+      now,
     });
     tableNumber += 1;
-    await ctx.db.insert("tournamentMatchPlayers", {
-      tournamentMatchId: matchId,
-      playerId: pairing.playerOne._id,
-      playerName: pairing.playerOne.playerName,
-      opponentPlayerId: pairing.playerTwo._id,
-      isBye: false,
-      updatedAt: now,
-    });
-    await ctx.db.insert("tournamentMatchPlayers", {
-      tournamentMatchId: matchId,
-      playerId: pairing.playerTwo._id,
-      playerName: pairing.playerTwo.playerName,
-      opponentPlayerId: pairing.playerOne._id,
-      isBye: false,
-      updatedAt: now,
-    });
   }
   return roundId;
+}
+
+// Inserts one contested match and its two pairing rows — the shared write for
+// Swiss and bracket rounds. Byes never reach here (materializeAwardedByeMatch
+// owns awarded results).
+async function insertPairedMatch(
+  ctx: MutationCtx,
+  args: {
+    tournament: Doc<"tournaments">;
+    phase: Doc<"tournamentPhases">;
+    roundId: Id<"tournamentRounds">;
+    playerOne: Doc<"tournamentRegistrations">;
+    playerTwo: Doc<"tournamentRegistrations">;
+    tableNumber: number;
+    // The pairing's seat position in a bracket round; absent for Swiss.
+    bracketSeat?: number;
+    now: number;
+  },
+) {
+  const matchId = await ctx.db.insert("tournamentMatches", {
+    tournamentId: args.tournament._id,
+    tournamentPhaseId: args.phase._id,
+    tournamentRoundId: args.roundId,
+    tableNumber: args.tableNumber,
+    bracketSeat: args.bracketSeat,
+    matchStatus: "upcoming",
+    updatedAt: args.now,
+  });
+  await ctx.db.insert("tournamentMatchPlayers", {
+    tournamentMatchId: matchId,
+    playerId: args.playerOne._id,
+    playerName: args.playerOne.playerName,
+    opponentPlayerId: args.playerTwo._id,
+    isBye: false,
+    updatedAt: args.now,
+  });
+  await ctx.db.insert("tournamentMatchPlayers", {
+    tournamentMatchId: matchId,
+    playerId: args.playerTwo._id,
+    playerName: args.playerTwo.playerName,
+    opponentPlayerId: args.playerOne._id,
+    isBye: false,
+    updatedAt: args.now,
+  });
+  return matchId;
 }
 
 export async function createRoundWithPairings(
@@ -239,31 +272,16 @@ export async function createRoundWithPairings(
     if (!pairing.playerTwo) {
       continue;
     }
-    const matchId = await ctx.db.insert("tournamentMatches", {
-      tournamentId: args.tournament._id,
-      tournamentPhaseId: args.phase._id,
-      tournamentRoundId: roundId,
+    await insertPairedMatch(ctx, {
+      tournament: args.tournament,
+      phase: args.phase,
+      roundId,
+      playerOne: pairing.playerOne,
+      playerTwo: pairing.playerTwo,
       tableNumber,
-      matchStatus: "upcoming",
-      updatedAt: now,
+      now,
     });
     tableNumber += 1;
-    await ctx.db.insert("tournamentMatchPlayers", {
-      tournamentMatchId: matchId,
-      playerId: pairing.playerOne._id,
-      playerName: pairing.playerOne.playerName,
-      opponentPlayerId: pairing.playerTwo._id,
-      isBye: false,
-      updatedAt: now,
-    });
-    await ctx.db.insert("tournamentMatchPlayers", {
-      tournamentMatchId: matchId,
-      playerId: pairing.playerTwo._id,
-      playerName: pairing.playerTwo.playerName,
-      opponentPlayerId: pairing.playerOne._id,
-      isBye: false,
-      updatedAt: now,
-    });
   }
 
   return roundId;
@@ -292,13 +310,7 @@ export async function rankedRegistrationsForPairing(
       .sort(compareStandingRows);
   }
 
-  const previousRoundId = args.previousRoundId;
-  const standings = await ctx.db
-    .query("roundStandings")
-    .withIndex("by_tournamentRoundId_and_rank", (q) =>
-      q.eq("tournamentRoundId", previousRoundId),
-    )
-    .take(MAX_TOURNAMENT_PLAYERS);
+  const standings = await standingsInRankOrder(ctx, args.previousRoundId);
   const standingByPlayer = new Map(
     standings.map((standing) => [standing.playerId, standing]),
   );
