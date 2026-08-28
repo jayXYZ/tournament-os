@@ -20,6 +20,7 @@ import schema from "./schema";
 import {
   insertLinkedParticipant,
   organizerIdentity,
+  playerIdentity,
   seedOrganizer,
 } from "./specHelpers";
 import { createConvexTest } from "./specHelpers.runtime";
@@ -520,16 +521,6 @@ test("applications gate on confirmed seats, not on other applications", async ()
   }
   expect(await confirmedCount(t, tournamentId)).toBe(1);
 });
-
-function playerIdentity(playerNumber: number) {
-  return {
-    issuer: "https://convex.test",
-    subject: `player-${playerNumber}`,
-    tokenIdentifier: `https://convex.test|player-${playerNumber}`,
-    email: `player${playerNumber}@example.test`,
-    name: `Player ${playerNumber}`,
-  };
-}
 
 // A published tournament sitting in the "registration" lifecycle — the only
 // lifecycle in which entry decisions exist.

@@ -14,9 +14,11 @@ import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import schema from "./schema";
 import {
-  insertLinkedParticipant,
+  currentRound,
   organizerIdentity,
-  seedOrganizer,
+  playOutCurrentRound,
+  playerIdentity,
+  seedTournamentWithPlayers,
 } from "./specHelpers";
 import { createConvexTest } from "./specHelpers.runtime";
 
@@ -27,16 +29,6 @@ const outsiderIdentity = {
   email: "outsider@example.test",
   name: "Outsider",
 };
-
-function playerIdentity(playerNumber: number) {
-  return {
-    issuer: "https://convex.test",
-    subject: `player-${playerNumber}`,
-    tokenIdentifier: `https://convex.test|player-${playerNumber}`,
-    email: `player${playerNumber}@example.test`,
-    name: `Player ${playerNumber}`,
-  };
-}
 
 test("startTimer anchors a running timer to the current round", async () => {
   const t = createConvexTest();
@@ -427,25 +419,6 @@ async function forceTimerIntoOvertime(
   });
 }
 
-async function currentRound(
-  t: TestConvex<typeof schema>,
-  tournamentId: Id<"tournaments">,
-) {
-  return await t.run(async (ctx) => {
-    const phase = await ctx.db
-      .query("tournamentPhases")
-      .withIndex("by_tournamentId_and_phaseOrder", (q) =>
-        q.eq("tournamentId", tournamentId).eq("phaseOrder", 1),
-      )
-      .unique();
-    const round = await ctx.db.get(phase!.phaseCurrentRound!);
-    if (!round) {
-      throw new Error("Current round missing in test setup");
-    }
-    return round;
-  });
-}
-
 // Records an organizer result for every two-player match in the current round
 // without completing it.
 async function recordAllResults(
@@ -478,81 +451,16 @@ async function recordAllResults(
   return round;
 }
 
-// Records every result and completes the current round, so tests can advance
-// rounds without player reports.
-async function playOutCurrentRound(
-  t: TestConvex<typeof schema>,
-  tournamentId: Id<"tournaments">,
-) {
-  const round = await recordAllResults(t, tournamentId);
-  await t
-    .withIdentity(organizerIdentity)
-    .mutation(api.tournaments.rounds.completeRound, { roundId: round._id });
-}
-
 async function seedTournament(
   t: TestConvex<typeof schema>,
   playerCount: number,
 ) {
-  const { organizationId } = await seedOrganizer(t);
-  const tournamentId: Id<"tournaments"> = await t
-    .withIdentity(organizerIdentity)
-    .mutation(api.tournaments.lifecycle.createTournamentWithPhases, {
-      organizationId,
-      name: "Timer Test Event",
-      startDate: Date.now(),
-      playerCapacity: 16,
-      format: "standard",
-      phases: [{ phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 3 }],
-    });
-  await t
-    .withIdentity(organizerIdentity)
-    .mutation(api.tournaments.lifecycle.updatePairingsAutoPublish, {
-      tournamentId,
-      autoPublishPairings: true,
-    });
-
-  const registrationIds = await t.run(async (ctx) => {
-    const now = Date.now();
-    const tournament = await ctx.db.get(tournamentId);
-    if (!tournament) {
-      throw new Error("Tournament not found in test setup");
-    }
-    const ids: Id<"tournamentRegistrations">[] = [];
-    for (let playerNumber = 1; playerNumber <= playerCount; playerNumber += 1) {
-      const identity = playerIdentity(playerNumber);
-      const userId = await ctx.db.insert("users", {
-        tokenIdentifier: identity.tokenIdentifier,
-        publicCode: playerNumber + 1,
-        email: identity.email,
-        name: identity.name,
-        updatedAt: now,
-      });
-      const participant0Id = await insertLinkedParticipant(ctx, userId);
-      ids.push(
-        await ctx.db.insert("tournamentRegistrations", {
-          tournamentId,
-          participantId: participant0Id,
-          tournamentStartDate: tournament.startDate,
-          entryStatus: "confirmed",
-          participationStatus: "active",
-          createdAt: now + playerNumber,
-          tiebreakRandom: playerNumber,
-          updatedAt: now,
-        }),
-      );
-    }
-    await ctx.db.patch(tournamentId, {
-      confirmedRegistrationCount: playerCount,
-      updatedAt: now,
-    });
-    return ids;
+  return await seedTournamentWithPlayers(t, {
+    name: "Timer Test Event",
+    playerCount,
+    // Clear of the organizer's publicCode 1.
+    firstPublicCode: 2,
   });
-  await t
-    .withIdentity(organizerIdentity)
-    .mutation(api.tournaments.lifecycle.publishTournament, { tournamentId });
-
-  return { tournamentId, registrationIds };
 }
 
 async function seedStartedTournament(

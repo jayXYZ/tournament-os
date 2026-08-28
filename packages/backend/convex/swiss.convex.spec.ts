@@ -4,21 +4,16 @@ import { expect, test } from "vitest";
 
 import { api } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
-import {
-  comparableFromStats,
-  compareStandingRows,
-  recomputeStatsThroughRound,
-} from "./model/standings";
 import { organizerIdentity, seedOrganizer } from "./specHelpers";
-import { createConvexTest } from "./specHelpers.runtime";
+import {
+  createConvexTest,
+  expectStandingsMatchOracle,
+} from "./specHelpers.runtime";
 
-function createTest() {
-  return createConvexTest();
-}
-type Test = ReturnType<typeof createTest>;
+type Test = ReturnType<typeof createConvexTest>;
 
 test("Swiss pairings and fold-forward standings hold at player capacity", async () => {
-  const t = createTest();
+  const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const authed = t.withIdentity(organizerIdentity);
 
@@ -52,7 +47,9 @@ test("Swiss pairings and fold-forward standings hold at player capacity", async 
     expect(standings.map((row) => row.rank)).toEqual(
       standings.map((_, index) => index + 1),
     );
-    await expectStandingsMatchOracle(t, tournamentId, round!._id, roundNumber);
+    await expectStandingsMatchOracle(t, tournamentId, round!._id, roundNumber, {
+      assertRankOrder: true,
+    });
   }
 
   const setup = await authed.query(
@@ -70,7 +67,7 @@ test("Swiss pairings and fold-forward standings hold at player capacity", async 
 }, 60_000);
 
 test("odd-sized Swiss events give byes to distinct players and stay consistent", async () => {
-  const t = createTest();
+  const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const authed = t.withIdentity(organizerIdentity);
 
@@ -133,11 +130,13 @@ test("odd-sized Swiss events give byes to distinct players and stay consistent",
   expect(byePlayerIds).toHaveLength(4);
   expect(new Set(byePlayerIds).size).toBe(4);
 
-  await expectStandingsMatchOracle(t, tournamentId, finalRound!._id, 4);
+  await expectStandingsMatchOracle(t, tournamentId, finalRound!._id, 4, {
+    assertRankOrder: true,
+  });
 });
 
 test("standings and pairings fall back to match history for legacy rows", async () => {
-  const t = createTest();
+  const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const authed = t.withIdentity(organizerIdentity);
 
@@ -199,11 +198,13 @@ test("standings and pairings fall back to match history for legacy rows", async 
   const { pairKeys } = await collectPairingFacts(t, tournamentId);
   expect(new Set(pairKeys).size).toBe(pairKeys.length);
 
-  await expectStandingsMatchOracle(t, tournamentId, roundTwoId, 2);
+  await expectStandingsMatchOracle(t, tournamentId, roundTwoId, 2, {
+    assertRankOrder: true,
+  });
 });
 
 test("dropped players keep feeding their opponents' tiebreakers", async () => {
-  const t = createTest();
+  const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const authed = t.withIdentity(organizerIdentity);
 
@@ -335,11 +336,13 @@ test("dropped players keep feeding their opponents' tiebreakers", async () => {
     );
   });
 
-  await expectStandingsMatchOracle(t, tournamentId, roundTwoId, 2);
+  await expectStandingsMatchOracle(t, tournamentId, roundTwoId, 2, {
+    assertRankOrder: true,
+  });
 });
 
 test("same seed reproduces identical pairings across runs", async () => {
-  const t = createTest();
+  const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const authed = t.withIdentity(organizerIdentity);
 
@@ -416,68 +419,6 @@ async function pairingSignature(t: Test, tournamentId: Id<"tournaments">) {
       signature.push(pairs.sort().join(","));
     }
     return signature;
-  });
-}
-
-async function expectStandingsMatchOracle(
-  t: Test,
-  tournamentId: Id<"tournaments">,
-  roundId: Id<"tournamentRounds">,
-  roundNumber: number,
-) {
-  await t.run(async (ctx) => {
-    const standings = await ctx.db
-      .query("roundStandings")
-      .withIndex("by_tournamentRoundId_and_rank", (q) =>
-        q.eq("tournamentRoundId", roundId),
-      )
-      .collect();
-    const oracle = await recomputeStatsThroughRound(
-      ctx,
-      tournamentId,
-      roundNumber,
-    );
-
-    // The oracle contains only confirmed entries; everyone who took part
-    // receives a rank, including dropped players with a frozen record.
-    const expectedOrder = [...oracle.values()].sort((left, right) =>
-      compareStandingRows(
-        comparableFromStats(left, oracle),
-        comparableFromStats(right, oracle),
-      ),
-    );
-    expect(standings.map((row) => row.playerId)).toEqual(
-      expectedOrder.map((stats) => stats.registration._id),
-    );
-
-    for (const [index, standing] of standings.entries()) {
-      const stats = oracle.get(standing.playerId);
-      expect(stats).toBeDefined();
-      const comparable = comparableFromStats(stats!, oracle);
-
-      expect(standing.rank).toBe(index + 1);
-      expect(standing.matchPoints).toBe(stats!.matchPoints);
-      expect(standing.matchWins).toBe(stats!.matchWins);
-      expect(standing.matchLosses).toBe(stats!.matchLosses);
-      expect(standing.matchDraws).toBe(stats!.matchDraws);
-      expect(standing.gameWins).toBe(stats!.gameWins);
-      expect(standing.gameLosses).toBe(stats!.gameLosses);
-      expect(standing.gameDraws).toBe(stats!.gameDraws);
-      expect(standing.byeCount).toBe(stats!.byeCount);
-      expect(standing.byeGameWins).toBe(stats!.byeGameWins);
-      expect([...(standing.opponentIds ?? [])].sort()).toEqual(
-        [...stats!.opponentIds].sort(),
-      );
-      expect(standing.opponentMatchWinPct).toBeCloseTo(
-        comparable.opponentMatchWinPct,
-        12,
-      );
-      expect(standing.gameWinPct).toBeCloseTo(comparable.gameWinPct, 12);
-      expect(standing.opponentGameWinPct).toBeCloseTo(
-        comparable.opponentGameWinPct,
-        12,
-      );
-    }
   });
 }
 

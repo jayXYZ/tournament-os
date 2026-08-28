@@ -7,27 +7,21 @@ import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import schema from "./schema";
 import {
-  insertLinkedParticipant,
+  matchForPlayer,
+  opponentNumber,
   organizerIdentity,
+  outsiderNumber,
   playOutCurrentRound,
+  playerIdentity,
   seedOrganizer,
+  seedTournamentWithPlayers,
 } from "./specHelpers";
 import { createConvexTest } from "./specHelpers.runtime";
-
-function playerIdentity(playerNumber: number) {
-  return {
-    issuer: "https://convex.test",
-    subject: `player-${playerNumber}`,
-    tokenIdentifier: `https://convex.test|player-${playerNumber}`,
-    email: `player${playerNumber}@example.test`,
-    name: `Player ${playerNumber}`,
-  };
-}
 
 test("result reports and organizer overrides are audited", async () => {
   const t = createConvexTest();
   const { tournamentId, registrationIds } = await seedStartedTournament(t, 4);
-  const match = await matchForPlayer(t, tournamentId, registrationIds[0]);
+  const match = await matchForPlayer(t, tournamentId, 1, registrationIds[0]);
   const opponent = await opponentNumber(
     t,
     match._id,
@@ -94,6 +88,7 @@ test("result reports and organizer overrides are audited", async () => {
   const otherMatch = await matchForPlayer(
     t,
     tournamentId,
+    1,
     registrationIds[otherNumber - 1],
   );
   const otherOpponent = await opponentNumber(
@@ -351,72 +346,18 @@ async function auditEvents(
 async function seedTournament(
   t: TestConvex<typeof schema>,
   playerCount: number,
-  phases: {
+  phases?: {
     phaseOrder: number;
     phaseRoundMode: "fixed" | "dynamic";
     phaseTotalRounds?: number;
-  }[] = [{ phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 3 }],
+  }[],
 ) {
-  const { organizationId } = await seedOrganizer(t);
-  const tournamentId: Id<"tournaments"> = await t
-    .withIdentity(organizerIdentity)
-    .mutation(api.tournaments.lifecycle.createTournamentWithPhases, {
-      organizationId,
-      name: "Audit Log Event",
-      startDate: Date.now(),
-      playerCapacity: 16,
-      format: "standard",
-      phases,
-    });
-  await t
-    .withIdentity(organizerIdentity)
-    .mutation(api.tournaments.lifecycle.updatePairingsAutoPublish, {
-      tournamentId,
-      autoPublishPairings: true,
-    });
-
-  const registrationIds = await t.run(async (ctx) => {
-    const now = Date.now();
-    const tournament = await ctx.db.get(tournamentId);
-    if (!tournament) {
-      throw new Error("Tournament not found in test setup");
-    }
-    const ids: Id<"tournamentRegistrations">[] = [];
-    for (let playerNumber = 1; playerNumber <= playerCount; playerNumber += 1) {
-      const identity = playerIdentity(playerNumber);
-      const userId = await ctx.db.insert("users", {
-        tokenIdentifier: identity.tokenIdentifier,
-        publicCode: playerNumber,
-        email: identity.email,
-        name: identity.name,
-        updatedAt: now,
-      });
-      const participant0Id = await insertLinkedParticipant(ctx, userId);
-      ids.push(
-        await ctx.db.insert("tournamentRegistrations", {
-          tournamentId,
-          participantId: participant0Id,
-          tournamentStartDate: tournament.startDate,
-          entryStatus: "confirmed",
-          participationStatus: "active",
-          playerName: identity.name,
-          createdAt: now + playerNumber,
-          tiebreakRandom: playerNumber,
-          updatedAt: now,
-        }),
-      );
-    }
-    await ctx.db.patch(tournamentId, {
-      confirmedRegistrationCount: playerCount,
-      updatedAt: now,
-    });
-    return ids;
+  return await seedTournamentWithPlayers(t, {
+    name: "Audit Log Event",
+    playerCount,
+    phases,
+    playerNames: true,
   });
-  await t
-    .withIdentity(organizerIdentity)
-    .mutation(api.tournaments.lifecycle.publishTournament, { tournamentId });
-
-  return { tournamentId, registrationIds };
 }
 
 async function seedStartedTournament(
@@ -430,73 +371,4 @@ async function seedStartedTournament(
       tournamentId: seeded.tournamentId,
     });
   return seeded;
-}
-
-async function matchForPlayer(
-  t: TestConvex<typeof schema>,
-  tournamentId: Id<"tournaments">,
-  registrationId: Id<"tournamentRegistrations">,
-) {
-  return await t.run(async (ctx) => {
-    const playerRows = await ctx.db
-      .query("tournamentMatchPlayers")
-      .withIndex("by_playerId", (q) => q.eq("playerId", registrationId))
-      .take(16);
-    for (const playerRow of playerRows) {
-      const match = await ctx.db.get(playerRow.tournamentMatchId);
-      if (match && match.tournamentId === tournamentId) {
-        return match;
-      }
-    }
-    throw new Error("Match not found in test setup");
-  });
-}
-
-// Resolves the opponent's 1-based player number in a two-player match, so
-// tests don't depend on which pairing the seeded shuffle produced.
-async function opponentNumber(
-  t: TestConvex<typeof schema>,
-  matchId: Id<"tournamentMatches">,
-  myRegistrationId: Id<"tournamentRegistrations">,
-  registrationIds: Id<"tournamentRegistrations">[],
-) {
-  const opponentId = await t.run(async (ctx) => {
-    const players = await ctx.db
-      .query("tournamentMatchPlayers")
-      .withIndex("by_tournamentMatchId_and_playerId", (q) =>
-        q.eq("tournamentMatchId", matchId),
-      )
-      .take(2);
-    return (
-      players.find((player) => player.playerId !== myRegistrationId)
-        ?.playerId ?? null
-    );
-  });
-  const index = opponentId ? registrationIds.indexOf(opponentId) : -1;
-  if (index < 0) {
-    throw new Error("Opponent not found for match");
-  }
-  return index + 1;
-}
-
-// A registered player who is not in the given match, for cross-table checks.
-async function outsiderNumber(
-  t: TestConvex<typeof schema>,
-  matchId: Id<"tournamentMatches">,
-  registrationIds: Id<"tournamentRegistrations">[],
-) {
-  const participantIds = await t.run(async (ctx) => {
-    const players = await ctx.db
-      .query("tournamentMatchPlayers")
-      .withIndex("by_tournamentMatchId_and_playerId", (q) =>
-        q.eq("tournamentMatchId", matchId),
-      )
-      .take(2);
-    return players.map((player) => player.playerId);
-  });
-  const index = registrationIds.findIndex((id) => !participantIds.includes(id));
-  if (index < 0) {
-    throw new Error("No outsider available for match");
-  }
-  return index + 1;
 }

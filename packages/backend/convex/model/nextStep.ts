@@ -1,5 +1,6 @@
 import type { Id } from "../_generated/dataModel";
 import { playerMeetingPending } from "./phases";
+import { allSeatWinnersDeparted } from "./singleElimination";
 import { isPairingsVisibleToPlayers } from "./tournaments";
 import type { ProgressionActions, ProgressionFacts } from "./progression";
 
@@ -133,9 +134,7 @@ export function pairingsNextStep(
     // case below).
     if (
       facts.bracketSeatWinners !== null &&
-      !facts.bracketSeatWinners.some(
-        (registration) => registration.participationStatus === "active",
-      )
+      allSeatWinnersDeparted(facts.bracketSeatWinners)
     ) {
       return { kind: "completeTournament", ready: true, reason: null };
     }

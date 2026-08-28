@@ -10,19 +10,10 @@ import {
   insertLinkedParticipant,
   organizerIdentity,
   playOutCurrentRound,
-  seedOrganizer,
+  playerIdentity,
+  seedTournamentWithPlayers,
 } from "./specHelpers";
 import { createConvexTest } from "./specHelpers.runtime";
-
-function playerIdentity(playerNumber: number) {
-  return {
-    issuer: "https://convex.test",
-    subject: `player-${playerNumber}`,
-    tokenIdentifier: `https://convex.test|player-${playerNumber}`,
-    email: `player${playerNumber}@example.test`,
-    name: `Player ${playerNumber}`,
-  };
-}
 
 test("phase-1 meeting walks startPlayerMeeting -> startTournament -> completed", async () => {
   const t = createConvexTest();
@@ -1691,7 +1682,7 @@ test("a meeting cut stamps only its own tournament's drops", async () => {
 async function seedTournament(
   t: TestConvex<typeof schema>,
   playerCount: number,
-  phases: {
+  phases?: {
     phaseOrder: number;
     phaseRoundMode: "fixed" | "dynamic";
     phaseTotalRounds?: number;
@@ -1700,71 +1691,15 @@ async function seedTournament(
       | { kind: "X_points_or_more"; matchPoints: number }
       | null;
     playerMeeting?: boolean;
-  }[] = [{ phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 3 }],
+  }[],
   playerNames?: string[],
 ) {
-  const { organizationId } = await seedOrganizer(t);
-  const tournamentId: Id<"tournaments"> = await t
-    .withIdentity(organizerIdentity)
-    .mutation(api.tournaments.lifecycle.createTournamentWithPhases, {
-      organizationId,
-      name: "Player Meeting Event",
-      startDate: Date.now(),
-      playerCapacity: 16,
-      format: "standard",
-      phases,
-    });
-  await t
-    .withIdentity(organizerIdentity)
-    .mutation(api.tournaments.lifecycle.updatePairingsAutoPublish, {
-      tournamentId,
-      autoPublishPairings: true,
-    });
-
-  const registrationIds = await t.run(async (ctx) => {
-    const now = Date.now();
-    const tournament = await ctx.db.get(tournamentId);
-    if (!tournament) {
-      throw new Error("Tournament not found in test setup");
-    }
-    const ids: Id<"tournamentRegistrations">[] = [];
-    for (let playerNumber = 1; playerNumber <= playerCount; playerNumber += 1) {
-      const identity = playerIdentity(playerNumber);
-      const playerName =
-        playerNames?.[playerNumber - 1] ?? `Player ${playerNumber}`;
-      const userId = await ctx.db.insert("users", {
-        tokenIdentifier: identity.tokenIdentifier,
-        publicCode: playerNumber,
-        email: identity.email,
-        name: playerName,
-        updatedAt: now,
-      });
-      const participant2Id = await insertLinkedParticipant(ctx, userId);
-      ids.push(
-        await ctx.db.insert("tournamentRegistrations", {
-          tournamentId,
-          participantId: participant2Id,
-          tournamentStartDate: tournament.startDate,
-          entryStatus: "confirmed",
-          participationStatus: "active",
-          playerName,
-          createdAt: now + playerNumber,
-          tiebreakRandom: playerNumber,
-          updatedAt: now,
-        }),
-      );
-    }
-    await ctx.db.patch(tournamentId, {
-      confirmedRegistrationCount: playerCount,
-      updatedAt: now,
-    });
-    return ids;
+  return await seedTournamentWithPlayers(t, {
+    name: "Player Meeting Event",
+    playerCount,
+    phases,
+    playerNames: playerNames ?? true,
   });
-  await t
-    .withIdentity(organizerIdentity)
-    .mutation(api.tournaments.lifecycle.publishTournament, { tournamentId });
-
-  return { tournamentId, registrationIds };
 }
 
 async function firstPhaseId(

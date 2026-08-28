@@ -23,12 +23,12 @@ import {
   adjustConfirmedRegistrationCount,
   entryReviewActions,
   playerDisplayName,
-  registrationDisplayName,
   registrationDropEffect,
   registrationForUser,
   registrationReinstateEffect,
   requireCapacityAvailable,
   requireRegistration,
+  resolveRegistrationDisplayName,
 } from "../model/registrations";
 import {
   approveEntry,
@@ -64,9 +64,11 @@ async function registrationRows(
     DATABASE_IO_BATCH_SIZE,
     async (registration) => ({
       registration,
-      playerName:
-        registration.playerName ??
-        (await registrationDisplayName(ctx, registration._id)),
+      playerName: await resolveRegistrationDisplayName(
+        ctx,
+        registration.playerName,
+        registration._id,
+      ),
       // What dropRegistration would do to this row right now (null when it
       // is unavailable), so the client renders the drop action from server
       // truth instead of mirroring the lifecycle rules.
@@ -277,40 +279,50 @@ export const listMyTournaments = query({
     if (!participant) {
       return [];
     }
-    const registrations: Array<Doc<"tournamentRegistrations">> = [];
-    for (const entryStatus of ["confirmed", "pending", "waitlisted"] as const) {
-      registrations.push(
-        ...(await ctx.db
-          .query("tournamentRegistrations")
-          .withIndex(
-            "by_participantId_and_entryStatus_and_tournamentStartDate",
-            (q) =>
-              q
-                .eq("participantId", participant._id)
-                .eq("entryStatus", entryStatus),
-          )
-          .order("desc")
-          .take(100)),
-      );
-    }
+    const registrations = (
+      await Promise.all(
+        (["confirmed", "pending", "waitlisted"] as const).map((entryStatus) =>
+          ctx.db
+            .query("tournamentRegistrations")
+            .withIndex(
+              "by_participantId_and_entryStatus_and_tournamentStartDate",
+              (q) =>
+                q
+                  .eq("participantId", participant._id)
+                  .eq("entryStatus", entryStatus),
+            )
+            .order("desc")
+            .take(100),
+        ),
+      )
+    ).flat();
 
+    const joined = await mapAsyncInBatches(
+      registrations,
+      DATABASE_IO_BATCH_SIZE,
+      async (registration) => {
+        const tournament = await ctx.db.get(registration.tournamentId);
+        if (
+          !tournament ||
+          (tournament.lifecycle !== "registration" &&
+            tournament.lifecycle !== "in_progress")
+        ) {
+          return null;
+        }
+        const organization = await ctx.db.get(tournament.organizationId);
+        return {
+          registration,
+          tournament,
+          organizationName: organization?.name ?? null,
+          registeredCount: tournament.confirmedRegistrationCount,
+        };
+      },
+    );
     const rows = [];
-    for (const registration of registrations) {
-      const tournament = await ctx.db.get(registration.tournamentId);
-      if (
-        !tournament ||
-        (tournament.lifecycle !== "registration" &&
-          tournament.lifecycle !== "in_progress")
-      ) {
-        continue;
+    for (const row of joined) {
+      if (row !== null) {
+        rows.push(row);
       }
-      const organization = await ctx.db.get(tournament.organizationId);
-      rows.push({
-        registration,
-        tournament,
-        organizationName: organization?.name ?? null,
-        registeredCount: tournament.confirmedRegistrationCount,
-      });
     }
 
     rows.sort(

@@ -9,7 +9,10 @@ import { applyMatchResult } from "./matchResults";
 import { createGuestParticipant } from "./participants";
 import { requirePhase } from "./phases";
 import { createSeededRandom, tiebreakRandom } from "./random";
-import { adjustConfirmedRegistrationCount } from "./registrations";
+import {
+  MAX_TOURNAMENT_PLAYERS,
+  adjustConfirmedRegistrationCount,
+} from "./registrations";
 import {
   matchPlayers,
   requireTestTournament,
@@ -109,18 +112,24 @@ export async function seedTestPlayers(
     return 0;
   }
 
+  // One range read covers every taken player number (test players are
+  // capacity-bounded), instead of a point query per candidate number.
+  const existingTestPlayers = await ctx.db
+    .query("testTournamentPlayers")
+    .withIndex("by_tournamentId_and_playerNumber", (q) =>
+      q.eq("tournamentId", tournamentId),
+    )
+    .take(MAX_TOURNAMENT_PLAYERS);
+  const takenPlayerNumbers = new Set(
+    existingTestPlayers.map((player) => player.playerNumber),
+  );
+
   const now = Date.now();
   let created = 0;
   let playerNumber = 1;
 
   while (created < playersToCreate) {
-    const existingTestPlayer = await ctx.db
-      .query("testTournamentPlayers")
-      .withIndex("by_tournamentId_and_playerNumber", (q) =>
-        q.eq("tournamentId", tournamentId).eq("playerNumber", playerNumber),
-      )
-      .unique();
-    if (existingTestPlayer) {
+    if (takenPlayerNumbers.has(playerNumber)) {
       playerNumber += 1;
       continue;
     }

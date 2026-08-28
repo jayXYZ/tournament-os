@@ -9,19 +9,10 @@ import schema from "./schema";
 import {
   insertLinkedParticipant,
   organizerIdentity,
+  playerIdentity,
   seedOrganizer,
 } from "./specHelpers";
 import { createConvexTest } from "./specHelpers.runtime";
-
-function playerIdentity(playerNumber: number) {
-  return {
-    issuer: "https://convex.test",
-    subject: `player-${playerNumber}`,
-    tokenIdentifier: `https://convex.test|player-${playerNumber}`,
-    email: `player${playerNumber}@example.test`,
-    name: `Player ${playerNumber}`,
-  };
-}
 
 // A published tournament open for registration, with playerCount confirmed
 // active players seeded directly (the pattern the player suite uses; the

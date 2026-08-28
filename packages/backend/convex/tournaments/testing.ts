@@ -36,6 +36,45 @@ import {
 import { enforceRateLimit } from "../rateLimits";
 import { tournamentFormatValidator } from "../validators";
 
+type TestTournamentSeedArgs = {
+  tournamentId: Id<"tournaments">;
+  dummyPlayerCount: number;
+  roundsToGenerate: number;
+  seed: number;
+};
+
+// Creates the phase, config, and seeded players for a test tournament, and
+// returns the phase id. Shared between creation and reset: on the reset path
+// the config values travel through the args because the config row itself is
+// deleted along with the rest of the operational data.
+async function seedTestTournamentData(
+  ctx: MutationCtx,
+  args: TestTournamentSeedArgs,
+) {
+  const now = Date.now();
+  const [phaseId] = await writePhases(
+    ctx,
+    args.tournamentId,
+    [
+      {
+        phaseOrder: 1,
+        phaseRoundMode: "fixed",
+        phaseTotalRounds: args.roundsToGenerate,
+      },
+    ],
+    now,
+  );
+  await ctx.db.insert("tournamentTestConfigs", {
+    tournamentId: args.tournamentId,
+    dummyPlayerCount: args.dummyPlayerCount,
+    roundsToGenerate: args.roundsToGenerate,
+    seed: args.seed,
+    updatedAt: now,
+  });
+  await seedTestPlayersModel(ctx, args.tournamentId, args.dummyPlayerCount);
+  return phaseId;
+}
+
 export const createTestTournament = mutation({
   args: {
     organizationId: v.id("organizations"),
@@ -89,27 +128,12 @@ export const createTestTournament = mutation({
       updatedAt: now,
     });
 
-    const [phaseId] = await writePhases(
-      ctx,
-      tournamentId,
-      [
-        {
-          phaseOrder: 1,
-          phaseRoundMode: "fixed",
-          phaseTotalRounds: roundsToGenerate,
-        },
-      ],
-      now,
-    );
-    await ctx.db.insert("tournamentTestConfigs", {
+    const phaseId = await seedTestTournamentData(ctx, {
       tournamentId,
       dummyPlayerCount,
       roundsToGenerate,
       seed,
-      updatedAt: now,
     });
-
-    await seedTestPlayersModel(ctx, tournamentId, dummyPlayerCount);
 
     if (args.autoStart === true) {
       // Test seeding starts play straight from "setup" (the event is never
@@ -206,50 +230,13 @@ export const advanceTestRound = mutation({
   },
 });
 
-type TestTournamentResetArgs = {
-  tournamentId: Id<"tournaments">;
-  dummyPlayerCount: number;
-  roundsToGenerate: number;
-  seed: number;
-};
-
-// Recreates the phase, config, and seeded players once all operational data
-// has been deleted. The config values travel through the reset args because
-// the config row itself is deleted along with the rest of the data.
-async function finishTestTournamentReset(
-  ctx: MutationCtx,
-  args: TestTournamentResetArgs,
-) {
-  const now = Date.now();
-  await writePhases(
-    ctx,
-    args.tournamentId,
-    [
-      {
-        phaseOrder: 1,
-        phaseRoundMode: "fixed",
-        phaseTotalRounds: args.roundsToGenerate,
-      },
-    ],
-    now,
-  );
-  await ctx.db.insert("tournamentTestConfigs", {
-    tournamentId: args.tournamentId,
-    dummyPlayerCount: args.dummyPlayerCount,
-    roundsToGenerate: args.roundsToGenerate,
-    seed: args.seed,
-    updatedAt: now,
-  });
-  await seedTestPlayersModel(ctx, args.tournamentId, args.dummyPlayerCount);
-}
-
 export const resetTestTournament = mutation({
   args: { tournamentId: v.id("tournaments") },
   handler: async (ctx, args): Promise<Id<"tournaments">> => {
     const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
     requireTestTournament(tournament);
     const config = await requireTestConfig(ctx, args.tournamentId);
-    const resetArgs: TestTournamentResetArgs = {
+    const resetArgs: TestTournamentSeedArgs = {
       tournamentId: args.tournamentId,
       dummyPlayerCount: config.dummyPlayerCount,
       roundsToGenerate: config.roundsToGenerate,
@@ -266,7 +253,7 @@ export const resetTestTournament = mutation({
     // Small tournaments clear within one transaction; larger ones continue in
     // self-rescheduled batches to stay within transaction limits.
     if (await deleteTournamentOperationalDataBatch(ctx, args.tournamentId)) {
-      await finishTestTournamentReset(ctx, resetArgs);
+      await seedTestTournamentData(ctx, resetArgs);
     } else {
       await ctx.scheduler.runAfter(
         0,
@@ -294,7 +281,7 @@ export const continueResetTestTournament = internalMutation({
       );
       return null;
     }
-    await finishTestTournamentReset(ctx, args);
+    await seedTestTournamentData(ctx, args);
     return null;
   },
 });

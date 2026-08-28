@@ -7,7 +7,7 @@ import {
   selectCurrentPhase,
 } from "./phases";
 import { dropConcedesMatch, storedOutcomeForPlayer } from "./matchResults";
-import { participantPublicIdentity } from "./participants";
+import { publicIdentityForRegistration } from "./participants";
 import {
   isPairingsVisibleToPlayers,
   matchPlayers,
@@ -165,13 +165,10 @@ export async function currentMatchForPlayer(
   const opponentRow = players.find((player) => player._id !== myRow._id);
   let opponent: OpponentSummary | null = null;
   if (opponentRow) {
-    const opponentRegistration = await ctx.db.get(opponentRow.playerId);
-    const opponentParticipant = opponentRegistration
-      ? await ctx.db.get(opponentRegistration.participantId)
-      : null;
-    const identity = opponentParticipant
-      ? await participantPublicIdentity(ctx, opponentParticipant)
-      : { name: null, avatarUrl: null };
+    const identity = await publicIdentityForRegistration(
+      ctx,
+      opponentRow.playerId,
+    );
     opponent = {
       registrationId: opponentRow.playerId,
       name: identity.name,

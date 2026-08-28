@@ -15,6 +15,7 @@ import {
   insertLinkedParticipant,
   organizerIdentity,
   playOutCurrentRound,
+  playerIdentity,
   seedOrganizer,
 } from "./specHelpers";
 import { createConvexTest } from "./specHelpers.runtime";
@@ -22,16 +23,6 @@ import { createConvexTest } from "./specHelpers.runtime";
 // Manually seeded users get codes far above the allocation counter (which
 // starts at 1) so mutations that upsert a fresh user never collide with them.
 const ORGANIZER_PUBLIC_CODE = 1000;
-
-function playerIdentity(playerNumber: number) {
-  return {
-    issuer: "https://convex.test",
-    subject: `player-${playerNumber}`,
-    tokenIdentifier: `https://convex.test|player-${playerNumber}`,
-    email: `player${playerNumber}@example.test`,
-    name: `Player ${playerNumber}`,
-  };
-}
 
 function playerPublicCode(playerNumber: number) {
   return String(100 + playerNumber);

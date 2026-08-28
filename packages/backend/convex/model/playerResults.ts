@@ -5,7 +5,7 @@ import { env, type QueryCtx } from "../_generated/server";
 import { currentUserOrNull, getActiveMembership } from "./access";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "./batching";
 import { storedOutcomeForPlayer } from "./matchResults";
-import { participantPublicIdentity } from "./participants";
+import { publicIdentityForRegistration } from "./participants";
 import { MAX_MATCHES_PER_PLAYER, latestCompletedRound } from "./phases";
 import { parsePublicCode } from "./publicCodes";
 import { registrationForUser } from "./registrations";
@@ -448,18 +448,10 @@ export async function matchLogForRegistration(
       // Opponent names read through the participant identity (not the
       // denormalized playerName) so an account without a name never leaks its
       // email here; a guest shows their organizer-provided display name.
-      let opponentName: string | null = null;
-      if (playerRow.opponentPlayerId) {
-        const opponentRegistration = await ctx.db.get(
-          playerRow.opponentPlayerId,
-        );
-        const opponentParticipant = opponentRegistration
-          ? await ctx.db.get(opponentRegistration.participantId)
-          : null;
-        opponentName = opponentParticipant
-          ? (await participantPublicIdentity(ctx, opponentParticipant)).name
-          : null;
-      }
+      const opponentName = playerRow.opponentPlayerId
+        ? (await publicIdentityForRegistration(ctx, playerRow.opponentPlayerId))
+            .name
+        : null;
 
       return {
         roundNumber: round.roundNumber,

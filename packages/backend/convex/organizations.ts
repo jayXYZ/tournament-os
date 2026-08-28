@@ -11,6 +11,7 @@ import {
   requireInvitePermission,
   requireProfilePermission,
 } from "./model/access";
+import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "./model/batching";
 import { ensureCurrentUser } from "./model/users";
 import { enforceRateLimit } from "./rateLimits";
 import {
@@ -34,21 +35,27 @@ export const listMine = query({
       )
       .take(128);
 
-    const rows = [];
-    for (const membership of memberships) {
-      const organization = await ctx.db.get(membership.organizationId);
-      if (organization && organization.status === "active") {
-        rows.push({
-          organization: await organizationWithProfileImageUrl(
-            ctx,
-            organization,
-          ),
-          membership,
-        });
-      }
-    }
+    const rows = await mapAsyncInBatches(
+      memberships,
+      DATABASE_IO_BATCH_SIZE,
+      async (membership) => {
+        const organization = await ctx.db.get(membership.organizationId);
+        if (!organization || organization.status !== "active") {
+          return [];
+        }
+        return [
+          {
+            organization: await organizationWithProfileImageUrl(
+              ctx,
+              organization,
+            ),
+            membership,
+          },
+        ];
+      },
+    );
 
-    return rows;
+    return rows.flat();
   },
 });
 

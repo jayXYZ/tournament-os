@@ -1,11 +1,9 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "./batching";
-import {
-  activeRegistrations,
-  droppedRegistrations,
-  MAX_TOURNAMENT_PLAYERS,
-} from "./registrations";
+import { meetingSeats } from "./phases";
+import { activeRegistrations, droppedRegistrations } from "./registrations";
+import { standingsInRankOrder } from "./standings";
 
 export type TournamentPhaseCutoff = NonNullable<
   Doc<"tournamentPhases">["phaseCutoff"]
@@ -243,7 +241,7 @@ async function meetingCutoffPartition(
   ctx: QueryCtx,
   phase: Doc<"tournamentPhases">,
 ): Promise<CutoffPartition> {
-  const seats = await meetingSeatRows(ctx, phase._id);
+  const seats = await meetingSeats(ctx, phase._id);
   const seated = await mapAsyncInBatches(
     seats,
     DATABASE_IO_BATCH_SIZE,
@@ -294,7 +292,7 @@ async function supersededMeetingCutoffPartition(
   cutoff: TournamentPhaseCutoff,
   phase: Doc<"tournamentPhases">,
 ): Promise<CutoffPartition> {
-  const seats = await meetingSeatRows(ctx, phase._id);
+  const seats = await meetingSeats(ctx, phase._id);
   const grantedEntryIds = new Set(seats.map((seat) => seat.registrationId));
   return await standingsCutoffPartition(
     ctx,
@@ -392,25 +390,4 @@ export async function activeRegistrationsInRankOrder(
     }
   }
   return [...ranked, ...activeById.values()];
-}
-
-async function meetingSeatRows(ctx: QueryCtx, phaseId: Id<"tournamentPhases">) {
-  return await ctx.db
-    .query("playerMeetingSeats")
-    .withIndex("by_tournamentPhaseId_and_tableNumber", (q) =>
-      q.eq("tournamentPhaseId", phaseId),
-    )
-    .take(MAX_TOURNAMENT_PLAYERS);
-}
-
-async function standingsInRankOrder(
-  ctx: QueryCtx,
-  roundId: Id<"tournamentRounds">,
-) {
-  return await ctx.db
-    .query("roundStandings")
-    .withIndex("by_tournamentRoundId_and_rank", (q) =>
-      q.eq("tournamentRoundId", roundId),
-    )
-    .take(MAX_TOURNAMENT_PLAYERS);
 }
