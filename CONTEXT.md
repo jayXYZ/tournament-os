@@ -135,6 +135,18 @@ the account's verified email into that account holder's Participant. A Guest
 whose merge would collide — both identities registered in the same
 tournament — stays unclaimed.
 
+**Invite Link**:
+A tournament's shared join code, minted and rotated by organizers. Anyone
+holding it can view the event page and register (or apply, under approval
+mode) whatever the event's visibility — it is the way into a Private event
+for players the event has never admitted. Rotating or disabling the link
+kills every previously shared copy but never unseats a player it admitted.
+It is purely an entry grant: it never overrides an entry decision (a
+rejected player stays rejected), capacity, or lifecycle gates, and it opens
+nothing before publication.
+_Avoid_: invite code (as a distinct concept — the code is the link's
+URL-embedded, human-readable form)
+
 **Entry Status**:
 A registration's admission state (pending, waitlisted, confirmed, cancelled,
 rejected). Independent of competitive state.

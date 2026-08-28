@@ -10,6 +10,7 @@ import {
 } from "../model/access";
 import { logAuditEvent } from "../model/auditLog";
 import { deleteTournamentOperationalDataBatch } from "../model/deletion";
+import { inviteCodeGrantsAccess } from "../model/invites";
 import {
   phasesInOrder,
   requireCurrentPhase,
@@ -117,9 +118,10 @@ export const listUpcomingForOrganization = query({
 
 // Takes the code as a plain string because it arrives from a public URL; an
 // unrecognized or malformed code returns null instead of throwing, as does a
-// private event unless the caller is registered for it.
+// private event unless the caller is registered for it or presents the
+// event's invite code.
 export const getPublicTournament = query({
-  args: { publicCode: v.string() },
+  args: { publicCode: v.string(), inviteCode: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const publicCode = parsePublicCode(args.publicCode);
     if (publicCode === null) {
@@ -137,8 +139,14 @@ export const getPublicTournament = query({
     // if test data or an organizer-created row already registered a player.
     // After publication, going private only removes public access: registered
     // players must still resolve the code or a live visibility change would
-    // lock them out of pairings and result reporting.
-    if (!isPubliclyViewable(tournament)) {
+    // lock them out of pairings and result reporting — and the event's invite
+    // code opens the page too (never a setup event; inviteCodeGrantsAccess
+    // excludes that lifecycle), so an invited player can read what they are
+    // joining before they register.
+    if (
+      !isPubliclyViewable(tournament) &&
+      !(await inviteCodeGrantsAccess(ctx, tournament, args.inviteCode))
+    ) {
       const user = await currentUserOrNull(ctx);
       const membership = user
         ? await getActiveMembership(ctx, tournament.organizationId, user._id)

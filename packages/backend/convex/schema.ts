@@ -178,6 +178,23 @@ export default defineSchema({
     .index("by_userId", ["userId"])
     .index("by_contactEmail", ["contactEmail"]),
 
+  // The tournament's shared join code (see CONTEXT.md "Invite Link"). Its own
+  // table rather than a tournament field because tournament documents are
+  // returned verbatim to players and public viewers, and the code is a bearer
+  // secret: anyone holding it can view and register for a private event. At
+  // most one row per tournament — the management mutations upsert through
+  // by_tournamentId, so rotating the code rewrites the row and every
+  // previously shared link dies with it.
+  tournamentInvites: defineTable({
+    tournamentId: v.id("tournaments"),
+    // Normalized join code; model/invites.ts owns the alphabet and the
+    // normalization rule that maps user-typed lookalikes onto it.
+    code: v.string(),
+    updatedAt: v.number(),
+  })
+    .index("by_tournamentId", ["tournamentId"])
+    .index("by_code", ["code"]),
+
   tournamentRegistrations: defineTable({
     tournamentId: v.id("tournaments"),
     participantId: v.id("participants"),

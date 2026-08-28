@@ -27,6 +27,9 @@ export function displayPlayerName(name: string | null | undefined) {
 // structure dictates, so a scoreline alone cannot distinguish a Concession
 // from a played win — views must carry this label beside it. "played" (and a
 // match with no result yet) returns null: the default case gets no marker.
+// "bye" returns null too — a bye's pairing has no opponent, and every
+// surface already names that in the pairing itself, so a marker beside the
+// scoreline would just say it twice.
 export function matchResultKindLabel(
   kind:
     | "played"
@@ -41,8 +44,6 @@ export function matchResultKindLabel(
   switch (kind) {
     case "concession":
       return "Conceded";
-    case "bye":
-      return "Bye";
     case "forfeit":
       return "Forfeit";
     case "no_show":
