@@ -107,9 +107,7 @@ function phaseSlots(phaseBoard: PhaseBoard): Array<RoundSlot> {
 // round's lifecycle. Keep that meaning on the node itself: the action button
 // can then move around the dashboard without separating the state from the
 // round it describes.
-function activeRoundProgress(
-  board: PairingsBoard,
-): ActiveRoundProgress | null {
+function activeRoundProgress(board: PairingsBoard): ActiveRoundProgress | null {
   const { nextStep } = board
   if (nextStep.kind === 'publishPairings') {
     return { roundId: nextStep.roundId, step: 'pairingsReady' }
@@ -131,9 +129,7 @@ function activeRoundProgress(
 // Once a completed round is waiting for the next one to be generated, the
 // next planned slot becomes the bar's current step. This works within a phase
 // and across phase boundaries, including dynamic phases whose node is "?".
-function betweenRoundTarget(
-  board: PairingsBoard,
-): BetweenRoundTarget | null {
+function betweenRoundTarget(board: PairingsBoard): BetweenRoundTarget | null {
   const betweenRounds =
     board.tournament.lifecycle === 'in_progress' &&
     board.nextStep.kind === 'generateNextRound'
@@ -198,7 +194,6 @@ function useCurrentTimelineSelection(
     phases,
     view === 'standings' ? 'completed' : 'all',
     search,
-    () => undefined,
   )
   const activePhase = navigation.activePhase?.phase
 

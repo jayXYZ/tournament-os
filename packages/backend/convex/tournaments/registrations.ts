@@ -12,7 +12,7 @@ import { currentUserOrNull } from "../model/access";
 import { logAuditEvent } from "../model/auditLog";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
 import { registrationsConcededByDrop } from "../model/matchResults";
-import { clampPageSize } from "../model/pagination";
+import { ORGANIZER_LIST_PAGE_SIZE, clampPageSize } from "../model/pagination";
 import {
   ensureParticipantForUser,
   participantForUser,
@@ -46,8 +46,6 @@ import {
   requireTournament,
 } from "../model/tournaments";
 import { enforceRateLimit } from "../rateLimits";
-
-const REGISTRATION_PAGE_SIZE = 100;
 
 async function registrationRows(
   ctx: QueryCtx,
@@ -361,7 +359,7 @@ export const listRegistrationPage = query({
         ...args.paginationOpts,
         numItems: clampPageSize(
           args.paginationOpts.numItems,
-          REGISTRATION_PAGE_SIZE,
+          ORGANIZER_LIST_PAGE_SIZE,
         ),
       });
 
@@ -388,7 +386,7 @@ export const searchRegistrations = query({
           .search("playerName", args.search)
           .eq("tournamentId", args.tournamentId),
       )
-      .take(REGISTRATION_PAGE_SIZE);
+      .take(ORGANIZER_LIST_PAGE_SIZE);
 
     return await registrationRows(ctx, tournament, matches);
   },

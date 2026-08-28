@@ -9,3 +9,8 @@ export function clampPageSize(requested: number, max: number): number {
   }
   return Math.min(max, Math.max(1, Math.floor(requested)));
 }
+
+// Shared ceiling for the organizer-facing admin list pages (audit log,
+// registrations): the same shape of per-tournament history list, so the same
+// cap.
+export const ORGANIZER_LIST_PAGE_SIZE = 100;

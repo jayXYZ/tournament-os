@@ -58,7 +58,6 @@ export function useTournamentRoundNavigation(
   phases: Array<TournamentRoundNavigationPhase>,
   mode: RoundNavigationMode,
   selection: RoundSelection,
-  onSelectionChange: (selection: RoundSelection) => void,
 ) {
   const roundsForMode = (rounds: TournamentRoundNavigationPhase['rounds']) =>
     mode === 'completed'
@@ -100,24 +99,5 @@ export function useTournamentRoundNavigation(
     availableRounds,
     isPlayerMeetingSelected,
     selectedRound,
-    selectPhase: (phaseId: string) => {
-      const target = phases.find(({ phase }) => phase._id === phaseId)
-      onSelectionChange(
-        target
-          ? {
-              phase: target.phase.phaseOrder,
-              ...(mode === 'all' &&
-              target.phase.playerMeetingStatus === 'in_progress'
-                ? { meeting: true as const }
-                : {}),
-            }
-          : {},
-      )
-    },
-    selectRound: (roundNumber: number) =>
-      onSelectionChange({
-        phase: activePhase?.phase.phaseOrder,
-        round: roundNumber,
-      }),
   }
 }

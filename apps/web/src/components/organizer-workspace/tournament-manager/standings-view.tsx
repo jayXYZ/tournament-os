@@ -26,11 +26,9 @@ type StandingRow = FunctionReturnType<
 export function StandingsView({
   tournamentId,
   roundSelection,
-  onRoundSelectionChange,
 }: {
   tournamentId: Id<'tournaments'>
   roundSelection: RoundSelection
-  onRoundSelectionChange: (selection: RoundSelection) => void
 }) {
   const board = useQuery(api.tournaments.rounds.getPairingsBoard, {
     tournamentId,
@@ -41,7 +39,6 @@ export function StandingsView({
     phases,
     'completed',
     roundSelection,
-    onRoundSelectionChange,
   )
 
   return (

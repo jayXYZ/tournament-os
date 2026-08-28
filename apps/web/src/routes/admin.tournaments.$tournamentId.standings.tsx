@@ -13,14 +13,10 @@ export const Route = createFileRoute(
 function RouteComponent() {
   const { tournamentId } = useManagedTournament()
   const roundSelection = Route.useSearch()
-  const navigate = Route.useNavigate()
   return (
     <StandingsView
       tournamentId={tournamentId}
       roundSelection={roundSelection}
-      onRoundSelectionChange={(selection) =>
-        void navigate({ search: selection, replace: true })
-      }
     />
   )
 }

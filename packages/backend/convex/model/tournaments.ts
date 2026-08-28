@@ -179,6 +179,8 @@ export async function createTournament(
     isTestEvent: boolean;
     decklistRequired: boolean;
     phases: TournamentPhaseInput[];
+    visibility?: Doc<"tournaments">["visibility"];
+    seed?: number;
   },
 ) {
   const { user } = await requireActiveMembership(ctx, args.organizationId);
@@ -189,7 +191,7 @@ export async function createTournament(
     publicCode,
     organizationId: args.organizationId,
     createdBy: user._id,
-    visibility: "public",
+    visibility: args.visibility ?? "public",
     lifecycle: "setup",
     startDate: validStartDate(args.startDate),
     playerCapacity: validCapacity(args.playerCapacity),
@@ -199,12 +201,12 @@ export async function createTournament(
     decklistRequired: args.decklistRequired,
     registrationRequiresApproval: false,
     confirmedRegistrationCount: 0,
-    seed: Math.floor(Math.random() * 0x7fffffff),
+    seed: args.seed ?? Math.floor(Math.random() * 0x7fffffff),
     updatedAt: now,
   });
 
-  await writePhases(ctx, tournamentId, args.phases, now);
-  return tournamentId;
+  const phaseIds = await writePhases(ctx, tournamentId, args.phases, now);
+  return { tournamentId, phaseIds };
 }
 
 export async function nextTournamentPublicCode(

@@ -226,7 +226,7 @@ export const createTournament = mutation({
   },
   handler: async (ctx, args): Promise<Id<"tournaments">> => {
     await enforceRateLimit(ctx, "createTournament");
-    return await createTournamentModel(ctx, {
+    const { tournamentId } = await createTournamentModel(ctx, {
       organizationId: args.organizationId,
       name: args.name,
       startDate: args.startDate,
@@ -236,6 +236,7 @@ export const createTournament = mutation({
       decklistRequired: args.decklistRequired ?? false,
       phases: [{ phaseOrder: 1, phaseRoundMode: "dynamic" }],
     });
+    return tournamentId;
   },
 });
 
@@ -262,7 +263,7 @@ export const createTournamentWithPhases = mutation({
   },
   handler: async (ctx, args): Promise<Id<"tournaments">> => {
     await enforceRateLimit(ctx, "createTournament");
-    return await createTournamentModel(ctx, {
+    const { tournamentId } = await createTournamentModel(ctx, {
       organizationId: args.organizationId,
       name: args.name,
       startDate: args.startDate,
@@ -272,6 +273,7 @@ export const createTournamentWithPhases = mutation({
       decklistRequired: args.decklistRequired ?? false,
       phases: args.phases,
     });
+    return tournamentId;
   },
 });
 

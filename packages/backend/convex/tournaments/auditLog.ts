@@ -2,13 +2,8 @@ import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 
 import { query } from "../_generated/server";
-import { clampPageSize } from "../model/pagination";
+import { ORGANIZER_LIST_PAGE_SIZE, clampPageSize } from "../model/pagination";
 import { requireOrganizerAccess } from "../model/tournaments";
-
-// Mirrors REGISTRATION_PAGE_SIZE in tournaments/registrations.ts: this is the
-// same shape of organizer-facing admin history list, so it gets the same
-// ceiling.
-const AUDIT_EVENTS_PAGE_SIZE = 100;
 
 // The tournament's audit trail, newest first. Organizer-only: the log exists
 // for dispute resolution and can reference players who are no longer on the
@@ -36,7 +31,7 @@ export const listAuditEvents = query({
         ...args.paginationOpts,
         numItems: clampPageSize(
           args.paginationOpts.numItems,
-          AUDIT_EVENTS_PAGE_SIZE,
+          ORGANIZER_LIST_PAGE_SIZE,
         ),
       });
   },
