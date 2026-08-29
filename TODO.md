@@ -499,23 +499,40 @@ claimed by one.
 Model conventions and other umbrella events as first-class containers instead
 of overloading a tournament or relying on naming conventions. Tournaments must
 remain usable on their own and keep their own registration, phases, rounds,
-results, and standings.
+results, and standings. Core landed (see ADR 0003): the `conventions` entity
+with badge registration and badge fees through the shared payment engine,
+parent-child attach/detach, configurable badge gating for child-event
+registration, the organizer convention workspace, and the public landing page.
 
-- [ ] Add an umbrella-event entity that can contain multiple tournaments
-  - [ ] Support convention and generic umbrella-event types without allowing recursive nesting
-  - [ ] Store the container's name, description, date range, timezone, visibility, and lifecycle
-  - [ ] Allow a tournament to belong to zero or one umbrella event
-  - [ ] Define cancellation, deletion, and archival behavior without silently changing completed child events
+- [x] Add an umbrella-event entity that can contain multiple tournaments
+  - [x] Support conventions without allowing recursive nesting (a generic
+        umbrella-event kind discriminator is deferred; pre-production makes
+        adding one later free)
+  - [x] Store the container's name, description, date range, visibility, and
+        lifecycle (timezone deferred — nothing app-wide is timezone-aware
+        yet; epoch ms rendered browser-local, same as tournaments)
+  - [x] Allow a tournament to belong to zero or one umbrella event
+  - [x] Define cancellation and deletion behavior without silently changing
+        completed child events (cancel leaves children attached and running;
+        delete force-detaches and preserves them)
 - [ ] Add convention-level event management
-  - [ ] Create a child tournament from a convention and attach, detach, or move an existing tournament with permission checks
+  - [x] Create a child tournament from a convention and attach or detach an
+        existing tournament with permission checks (move = detach + attach)
   - [ ] Share convention staff with child tournaments while allowing event-specific roles and overrides
   - [ ] Reuse convention venue and schedule defaults while allowing each child event to override them
   - [ ] Detect obvious scheduling conflicts when the same player registers for overlapping child events
-- [ ] Add convention organizer and public surfaces
-  - [ ] Show all child events with their format, registration state, schedule, capacity, and lifecycle status
-  - [ ] Add convention-scoped navigation and an organizer overview across all child events
-  - [ ] Add a public convention landing page with schedule and event discovery
-  - [ ] Preserve direct tournament URLs and standalone discovery for child events
+- [x] Add convention organizer and public surfaces
+  - [x] Show all child events with their registration state, schedule, capacity, and lifecycle status
+  - [x] Add convention-scoped navigation and an organizer overview across all child events
+  - [x] Add a public convention landing page with schedule and event discovery
+  - [x] Preserve direct tournament URLs and standalone discovery for child events
+- [ ] Convention follow-ups deliberately out of v1
+  - [ ] Badge sales while the convention is in progress (door sales) — widen
+        `isConventionRegistrationOpen` in model/conventions.ts
+  - [ ] Badge approval/waitlist flows (the shared entry-status validator
+        already admits the states)
+  - [ ] Convention invite links for private conventions
+  - [ ] Guest badge enrollment
 
 ## 5. Judge operations and player conduct
 

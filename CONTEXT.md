@@ -1,7 +1,8 @@
 # Tournament OS — Competitive Engine
 
-Shared language for the tournament engine: pairing, scoring, standings, and
-progression. The Magic: The Gathering Tournament Rules (MTR) are the normative
+Shared language for the tournament engine — pairing, scoring, standings, and
+progression — plus the container tier above it (conventions and the events
+they hold). The Magic: The Gathering Tournament Rules (MTR) are the normative
 standard — where this glossary does not record a deliberate deviation, MTR
 behavior is the intended behavior.
 
@@ -216,3 +217,35 @@ What a player faces in a tournament right now, always exactly one state: the
 tournament not yet started, their meeting seat, a wait for pairings or the
 next round, no match this round, or their live match.
 _Avoid_: current match (as a concept name), play surface
+
+### Containers
+
+**Event**:
+A tournament or a convention — the two things that sell entries. The
+paid-event rules (fee presence, capacity, refund window, the fee freeze)
+apply to both; everything competitive belongs to tournaments alone.
+_Avoid_: event as a synonym for tournament specifically
+
+**Convention**:
+A first-class umbrella event spanning a date range: it sells Badges, holds
+Child Events, and never nests inside another convention. It has the
+tournament lifecycle vocabulary but no rounds — an organizer publishes,
+starts, and completes it explicitly, and completing a paid convention
+releases the badge-fee payout.
+_Avoid_: umbrella event, series, meta event
+
+**Badge**:
+A Participant's registration for a convention itself. A badge has an Entry
+Status but no competitive state. When a convention requires badges, a
+confirmed one is the admission gate for self-serve Child Event
+registration — an admission gate only: cancelling a badge never revokes
+event registrations already made, and organizer actions bypass it.
+_Avoid_: convention registration (in UI copy), ticket
+
+**Child Event**:
+A tournament held at a convention (`tournaments.conventionId`). It remains a
+complete tournament — its own registration, fees, phases, rounds, and
+standings — and belongs to at most one convention. Attach and detach only
+touch events still in setup or registration; an event that has started keeps
+its convention association as history.
+_Avoid_: sub-event, satellite
