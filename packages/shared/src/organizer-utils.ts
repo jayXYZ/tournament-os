@@ -36,6 +36,13 @@ export function canManageOrganizationProfile(role: OrganizerRole) {
   return role === "owner" || role === "admin";
 }
 
+// Connecting and managing the organization's Stripe account controls where
+// event money lands, so it is owner-only rather than sharing the
+// owner-or-admin profile rule.
+export function canManageOrganizationPayments(role: OrganizerRole) {
+  return role === "owner";
+}
+
 export function normalizeInviteEmail(email: string) {
   return email.trim().toLowerCase();
 }

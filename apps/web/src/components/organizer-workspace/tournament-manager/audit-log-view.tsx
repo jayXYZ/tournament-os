@@ -105,15 +105,26 @@ function AuditEventItem({ row }: { row: AuditEventRow }) {
     <li className="flex flex-col gap-1 py-3">
       <div className="flex flex-wrap items-center gap-2">
         <Badge
-          variant={row.actorRole === 'organizer' ? 'default' : 'secondary'}
+          variant={
+            row.actorRole === 'organizer'
+              ? 'default'
+              : row.actorRole === 'system'
+                ? 'outline'
+                : 'secondary'
+          }
         >
-          {row.actorRole === 'organizer' ? 'Organizer' : 'Player'}
+          {row.actorRole === 'organizer'
+            ? 'Organizer'
+            : row.actorRole === 'system'
+              ? 'System'
+              : 'Player'}
         </Badge>
         {previousResult !== null && (
           <Badge variant="destructive">Result edit</Badge>
         )}
         <span className="text-sm font-medium">
-          {row.actorName ?? 'Unknown user'}
+          {row.actorName ??
+            (row.actorRole === 'system' ? 'Automatic' : 'Unknown user')}
         </span>
         <span
           className="ml-auto text-xs text-muted-foreground"
@@ -191,7 +202,51 @@ function describeEvent(row: AuditEventRow): string {
       return 'Completed the tournament'
     case 'tournament_cancelled':
       return 'Cancelled the tournament'
+    case 'payment_completed':
+      return `${displayPlayerName(event.player.playerName)}'s entry payment of ${formatAuditCents(event.totalCents)} completed`
+    case 'payment_failed':
+      return `${displayPlayerName(event.player.playerName)}'s entry payment failed`
+    case 'payment_expired':
+      return `${displayPlayerName(event.player.playerName)}'s checkout expired unpaid`
+    case 'payment_requested':
+      return `Approved ${displayPlayerName(event.player.playerName)}'s application and requested the ${formatAuditCents(event.totalCents)} entry payment`
+    case 'refund_issued':
+      return `Refunded ${formatAuditCents(event.amountCents)} to ${displayPlayerName(event.player.playerName)} (${describeRefundReason(event.reason)}${event.kind === 'entry_only' ? ', entry cost only' : ''})`
+    case 'refund_failed':
+      return `Refund of ${formatAuditCents(event.amountCents)} to ${displayPlayerName(event.player.playerName)} failed — needs attention`
+    case 'payout_sent':
+      return `Paid out ${formatAuditCents(event.netCents)} in entry fees to the organization`
+    case 'payout_failed':
+      return 'The entry-fee payout failed — needs attention'
+    case 'order_disputed':
+      return `${displayPlayerName(event.player.playerName)}'s entry payment was disputed — excluded from the payout`
   }
+}
+
+function describeRefundReason(
+  reason:
+    | 'player_cancel'
+    | 'organizer_remove'
+    | 'tournament_cancelled'
+    | 'seat_unavailable',
+) {
+  switch (reason) {
+    case 'player_cancel':
+      return 'player unregistered'
+    case 'organizer_remove':
+      return 'removed by organizer'
+    case 'tournament_cancelled':
+      return 'tournament cancelled'
+    case 'seat_unavailable':
+      return 'no seat available'
+  }
+}
+
+function formatAuditCents(cents: number) {
+  return (cents / 100).toLocaleString('en-US', {
+    style: 'currency',
+    currency: 'USD',
+  })
 }
 
 function matchLocation(event: {

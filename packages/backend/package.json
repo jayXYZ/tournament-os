@@ -14,7 +14,8 @@
   "dependencies": {
     "@convex-dev/rate-limiter": "^0.3.2",
     "@tournament-os/shared": "workspace:*",
-    "convex": "catalog:"
+    "convex": "catalog:",
+    "stripe": "^22.5.0"
   },
   "devDependencies": {
     "@convex-dev/eslint-plugin": "^2.0.0",

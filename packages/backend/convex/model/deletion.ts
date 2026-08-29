@@ -113,6 +113,68 @@ export async function deleteTournamentOperationalDataBatch(
     return false;
   }
 
+  // Payment rows are only reachable here after the delete guard proved every
+  // order terminal and every refund settled (deleteTournament); the rows are
+  // pure history by now.
+  const payouts = await ctx.db
+    .query("tournamentPayouts")
+    .withIndex("by_tournamentId", (q) => q.eq("tournamentId", tournamentId))
+    .take(4);
+  sawFullPage ||= payouts.length === 4;
+  for (const payout of payouts) {
+    const transfers = await ctx.db
+      .query("payoutTransfers")
+      .withIndex("by_payoutId_and_status", (q) => q.eq("payoutId", payout._id))
+      .take(512);
+    const transfersPageFull = transfers.length === 512;
+    sawFullPage ||= transfersPageFull;
+    for (const transfer of transfers) {
+      if (budget < 1) {
+        return false;
+      }
+      await ctx.db.delete(transfer._id);
+      budget -= 1;
+    }
+    // A full page may hide transfers past its end; the payout must survive
+    // this pass or the next batch could never find them again (they are only
+    // reachable through their parent's id).
+    if (transfersPageFull || budget < 1) {
+      return false;
+    }
+    await ctx.db.delete(payout._id);
+    budget -= 1;
+  }
+
+  const paymentRefunds = await ctx.db
+    .query("paymentRefunds")
+    .withIndex("by_tournamentId_and_status", (q) =>
+      q.eq("tournamentId", tournamentId),
+    )
+    .take(512);
+  sawFullPage ||= paymentRefunds.length === 512;
+  for (const paymentRefund of paymentRefunds) {
+    if (budget < 1) {
+      return false;
+    }
+    await ctx.db.delete(paymentRefund._id);
+    budget -= 1;
+  }
+
+  const paymentOrders = await ctx.db
+    .query("paymentOrders")
+    .withIndex("by_tournamentId_and_status", (q) =>
+      q.eq("tournamentId", tournamentId),
+    )
+    .take(512);
+  sawFullPage ||= paymentOrders.length === 512;
+  for (const paymentOrder of paymentOrders) {
+    if (budget < 1) {
+      return false;
+    }
+    await ctx.db.delete(paymentOrder._id);
+    budget -= 1;
+  }
+
   const registrations = await ctx.db
     .query("tournamentRegistrations")
     .withIndex("by_tournamentId_and_tournamentStartDate", (q) =>

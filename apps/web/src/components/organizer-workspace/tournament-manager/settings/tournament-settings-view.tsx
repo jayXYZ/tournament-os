@@ -2,10 +2,12 @@ import { useQuery } from 'convex/react'
 
 import { api } from '@tournament-os/backend/convex/_generated/api'
 import { DangerZoneCard } from './danger-zone-card'
+import { EntryFeeCard } from './entry-fee-card'
 import { EventDetailsCard } from './event-details-card'
 import { InviteLinkCard } from './invite-link-card'
 import { isPreStartLocked } from './is-pre-start-locked'
 import { PairingsPublicationCard } from './pairings-publication-card'
+import { PayoutCard } from './payout-card'
 import { PhaseSettingsCard } from './phase-settings-card'
 import { SettingsSkeleton } from './settings-skeleton'
 import { TournamentSettingsCard } from './tournament-settings-card'
@@ -48,6 +50,11 @@ export function TournamentSettingsView({
             tournament={setup.tournament}
           />
           <InviteLinkCard tournament={setup.tournament} />
+          <EntryFeeCard
+            key={`${setup.tournament._id}-entry-fee`}
+            tournament={setup.tournament}
+          />
+          <PayoutCard tournament={setup.tournament} />
           <PairingsPublicationCard tournament={setup.tournament} />
           <EventDetailsCard
             key={`${setup.tournament._id}-details`}

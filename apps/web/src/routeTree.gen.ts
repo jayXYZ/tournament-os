@@ -17,10 +17,12 @@ import { Route as UsersPublicCodeRouteImport } from './routes/users.$publicCode'
 import { Route as SignUpSplatRouteImport } from './routes/sign-up.$'
 import { Route as SignInSplatRouteImport } from './routes/sign-in.$'
 import { Route as JoinInviteCodeRouteImport } from './routes/join.$inviteCode'
+import { Route as AdminStripeReturnRouteImport } from './routes/admin.stripe-return'
 import { Route as AdminStaffRouteImport } from './routes/admin.staff'
 import { Route as AdminOrganizationRouteImport } from './routes/admin.organization'
 import { Route as TournamentsTournamentIdIndexRouteImport } from './routes/tournaments.$tournamentId.index'
 import { Route as TournamentsTournamentIdPlayRouteImport } from './routes/tournaments.$tournamentId.play'
+import { Route as TournamentsTournamentIdPaymentRouteImport } from './routes/tournaments.$tournamentId.payment'
 import { Route as TournamentsTournamentIdDecklistRouteImport } from './routes/tournaments.$tournamentId.decklist'
 import { Route as AdminTournamentsTournamentIdRouteImport } from './routes/admin.tournaments.$tournamentId'
 import { Route as AdminTournamentsTournamentIdIndexRouteImport } from './routes/admin.tournaments.$tournamentId.index'
@@ -71,6 +73,11 @@ const JoinInviteCodeRoute = JoinInviteCodeRouteImport.update({
   path: '/join/$inviteCode',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminStripeReturnRoute = AdminStripeReturnRouteImport.update({
+  id: '/stripe-return',
+  path: '/stripe-return',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminStaffRoute = AdminStaffRouteImport.update({
   id: '/staff',
   path: '/staff',
@@ -91,6 +98,12 @@ const TournamentsTournamentIdPlayRoute =
   TournamentsTournamentIdPlayRouteImport.update({
     id: '/tournaments/$tournamentId/play',
     path: '/tournaments/$tournamentId/play',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const TournamentsTournamentIdPaymentRoute =
+  TournamentsTournamentIdPaymentRouteImport.update({
+    id: '/tournaments/$tournamentId/payment',
+    path: '/tournaments/$tournamentId/payment',
     getParentRoute: () => rootRouteImport,
   } as any)
 const TournamentsTournamentIdDecklistRoute =
@@ -154,6 +167,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRoute
   '/admin/organization': typeof AdminOrganizationRoute
   '/admin/staff': typeof AdminStaffRoute
+  '/admin/stripe-return': typeof AdminStripeReturnRoute
   '/join/$inviteCode': typeof JoinInviteCodeRoute
   '/sign-in/$': typeof SignInSplatRoute
   '/sign-up/$': typeof SignUpSplatRoute
@@ -161,6 +175,7 @@ export interface FileRoutesByFullPath {
   '/admin/': typeof AdminIndexRoute
   '/admin/tournaments/$tournamentId': typeof AdminTournamentsTournamentIdRouteWithChildren
   '/tournaments/$tournamentId/decklist': typeof TournamentsTournamentIdDecklistRoute
+  '/tournaments/$tournamentId/payment': typeof TournamentsTournamentIdPaymentRoute
   '/tournaments/$tournamentId/play': typeof TournamentsTournamentIdPlayRoute
   '/tournaments/$tournamentId/': typeof TournamentsTournamentIdIndexRoute
   '/admin/tournaments/$tournamentId/log': typeof AdminTournamentsTournamentIdLogRoute
@@ -176,12 +191,14 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsRoute
   '/admin/organization': typeof AdminOrganizationRoute
   '/admin/staff': typeof AdminStaffRoute
+  '/admin/stripe-return': typeof AdminStripeReturnRoute
   '/join/$inviteCode': typeof JoinInviteCodeRoute
   '/sign-in/$': typeof SignInSplatRoute
   '/sign-up/$': typeof SignUpSplatRoute
   '/users/$publicCode': typeof UsersPublicCodeRoute
   '/admin': typeof AdminIndexRoute
   '/tournaments/$tournamentId/decklist': typeof TournamentsTournamentIdDecklistRoute
+  '/tournaments/$tournamentId/payment': typeof TournamentsTournamentIdPaymentRoute
   '/tournaments/$tournamentId/play': typeof TournamentsTournamentIdPlayRoute
   '/tournaments/$tournamentId': typeof TournamentsTournamentIdIndexRoute
   '/admin/tournaments/$tournamentId/log': typeof AdminTournamentsTournamentIdLogRoute
@@ -199,6 +216,7 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRoute
   '/admin/organization': typeof AdminOrganizationRoute
   '/admin/staff': typeof AdminStaffRoute
+  '/admin/stripe-return': typeof AdminStripeReturnRoute
   '/join/$inviteCode': typeof JoinInviteCodeRoute
   '/sign-in/$': typeof SignInSplatRoute
   '/sign-up/$': typeof SignUpSplatRoute
@@ -206,6 +224,7 @@ export interface FileRoutesById {
   '/admin/': typeof AdminIndexRoute
   '/admin/tournaments/$tournamentId': typeof AdminTournamentsTournamentIdRouteWithChildren
   '/tournaments/$tournamentId/decklist': typeof TournamentsTournamentIdDecklistRoute
+  '/tournaments/$tournamentId/payment': typeof TournamentsTournamentIdPaymentRoute
   '/tournaments/$tournamentId/play': typeof TournamentsTournamentIdPlayRoute
   '/tournaments/$tournamentId/': typeof TournamentsTournamentIdIndexRoute
   '/admin/tournaments/$tournamentId/log': typeof AdminTournamentsTournamentIdLogRoute
@@ -224,6 +243,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/admin/organization'
     | '/admin/staff'
+    | '/admin/stripe-return'
     | '/join/$inviteCode'
     | '/sign-in/$'
     | '/sign-up/$'
@@ -231,6 +251,7 @@ export interface FileRouteTypes {
     | '/admin/'
     | '/admin/tournaments/$tournamentId'
     | '/tournaments/$tournamentId/decklist'
+    | '/tournaments/$tournamentId/payment'
     | '/tournaments/$tournamentId/play'
     | '/tournaments/$tournamentId/'
     | '/admin/tournaments/$tournamentId/log'
@@ -246,12 +267,14 @@ export interface FileRouteTypes {
     | '/settings'
     | '/admin/organization'
     | '/admin/staff'
+    | '/admin/stripe-return'
     | '/join/$inviteCode'
     | '/sign-in/$'
     | '/sign-up/$'
     | '/users/$publicCode'
     | '/admin'
     | '/tournaments/$tournamentId/decklist'
+    | '/tournaments/$tournamentId/payment'
     | '/tournaments/$tournamentId/play'
     | '/tournaments/$tournamentId'
     | '/admin/tournaments/$tournamentId/log'
@@ -268,6 +291,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/admin/organization'
     | '/admin/staff'
+    | '/admin/stripe-return'
     | '/join/$inviteCode'
     | '/sign-in/$'
     | '/sign-up/$'
@@ -275,6 +299,7 @@ export interface FileRouteTypes {
     | '/admin/'
     | '/admin/tournaments/$tournamentId'
     | '/tournaments/$tournamentId/decklist'
+    | '/tournaments/$tournamentId/payment'
     | '/tournaments/$tournamentId/play'
     | '/tournaments/$tournamentId/'
     | '/admin/tournaments/$tournamentId/log'
@@ -295,6 +320,7 @@ export interface RootRouteChildren {
   SignUpSplatRoute: typeof SignUpSplatRoute
   UsersPublicCodeRoute: typeof UsersPublicCodeRoute
   TournamentsTournamentIdDecklistRoute: typeof TournamentsTournamentIdDecklistRoute
+  TournamentsTournamentIdPaymentRoute: typeof TournamentsTournamentIdPaymentRoute
   TournamentsTournamentIdPlayRoute: typeof TournamentsTournamentIdPlayRoute
   TournamentsTournamentIdIndexRoute: typeof TournamentsTournamentIdIndexRoute
 }
@@ -357,6 +383,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof JoinInviteCodeRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/stripe-return': {
+      id: '/admin/stripe-return'
+      path: '/stripe-return'
+      fullPath: '/admin/stripe-return'
+      preLoaderRoute: typeof AdminStripeReturnRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/staff': {
       id: '/admin/staff'
       path: '/staff'
@@ -383,6 +416,13 @@ declare module '@tanstack/react-router' {
       path: '/tournaments/$tournamentId/play'
       fullPath: '/tournaments/$tournamentId/play'
       preLoaderRoute: typeof TournamentsTournamentIdPlayRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/tournaments/$tournamentId/payment': {
+      id: '/tournaments/$tournamentId/payment'
+      path: '/tournaments/$tournamentId/payment'
+      fullPath: '/tournaments/$tournamentId/payment'
+      preLoaderRoute: typeof TournamentsTournamentIdPaymentRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/tournaments/$tournamentId/decklist': {
@@ -486,6 +526,7 @@ const AdminTournamentsTournamentIdRouteWithChildren =
 interface AdminRouteChildren {
   AdminOrganizationRoute: typeof AdminOrganizationRoute
   AdminStaffRoute: typeof AdminStaffRoute
+  AdminStripeReturnRoute: typeof AdminStripeReturnRoute
   AdminIndexRoute: typeof AdminIndexRoute
   AdminTournamentsTournamentIdRoute: typeof AdminTournamentsTournamentIdRouteWithChildren
 }
@@ -493,6 +534,7 @@ interface AdminRouteChildren {
 const AdminRouteChildren: AdminRouteChildren = {
   AdminOrganizationRoute: AdminOrganizationRoute,
   AdminStaffRoute: AdminStaffRoute,
+  AdminStripeReturnRoute: AdminStripeReturnRoute,
   AdminIndexRoute: AdminIndexRoute,
   AdminTournamentsTournamentIdRoute:
     AdminTournamentsTournamentIdRouteWithChildren,
@@ -509,6 +551,7 @@ const rootRouteChildren: RootRouteChildren = {
   SignUpSplatRoute: SignUpSplatRoute,
   UsersPublicCodeRoute: UsersPublicCodeRoute,
   TournamentsTournamentIdDecklistRoute: TournamentsTournamentIdDecklistRoute,
+  TournamentsTournamentIdPaymentRoute: TournamentsTournamentIdPaymentRoute,
   TournamentsTournamentIdPlayRoute: TournamentsTournamentIdPlayRoute,
   TournamentsTournamentIdIndexRoute: TournamentsTournamentIdIndexRoute,
 }

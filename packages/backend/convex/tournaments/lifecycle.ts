@@ -22,6 +22,12 @@ import {
   requireCurrentPhase,
   writePhases,
 } from "../model/phases";
+import {
+  requireEntryFeeEditable,
+  requirePayoutsReadyOrganization,
+  requireTournamentPaymentsSettled,
+  requireValidEntryFee,
+} from "../model/payments";
 import { parsePublicCode } from "../model/publicCodes";
 import {
   registrationForUser,
@@ -294,6 +300,10 @@ export const updateTournamentSetup = mutation({
     format: v.optional(tournamentFormatValidator),
     decklistRequired: v.optional(v.boolean()),
     registrationRequiresApproval: v.optional(v.boolean()),
+    // 0 clears the fee (a free event); a positive value sets it. The refund
+    // deadline pairs with the fee: null clears it, a timestamp sets it.
+    entryFeeCents: v.optional(v.number()),
+    refundDeadline: v.optional(v.union(v.number(), v.null())),
   },
   handler: async (ctx, args) => {
     const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
@@ -354,6 +364,66 @@ export const updateTournamentSetup = mutation({
       // each pending/waitlisted row still awaits an organizer decision, so
       // review stays a deliberate act with its own audit line.
       patch.registrationRequiresApproval = args.registrationRequiresApproval;
+    }
+
+    // Entry-fee settings (guards in model/payments.ts). Clearing the fee
+    // clears the refund deadline with it — a deadline only means anything on
+    // a paid event. Any actual change to the fee or the deadline is frozen
+    // once an order exists: stored breakdowns must keep matching the
+    // configured fee, and the refund window players paid under must hold.
+    const clearingFee = args.entryFeeCents === 0;
+    const wantsFeeChange =
+      args.entryFeeCents !== undefined &&
+      (clearingFee ? undefined : args.entryFeeCents) !==
+        tournament.entryFeeCents;
+    const wantsDeadlineChange =
+      (args.refundDeadline !== undefined &&
+        (args.refundDeadline ?? undefined) !== tournament.refundDeadline) ||
+      (clearingFee && tournament.refundDeadline !== undefined);
+    if (wantsFeeChange || wantsDeadlineChange) {
+      await requireEntryFeeEditable(ctx, tournament._id);
+    }
+    if (args.entryFeeCents !== undefined) {
+      if (clearingFee) {
+        patch.entryFeeCents = undefined;
+        patch.refundDeadline = undefined;
+      } else {
+        if (tournament.isTestEvent) {
+          throw new Error("Test events cannot charge an entry fee");
+        }
+        requireValidEntryFee(args.entryFeeCents);
+        await requirePayoutsReadyOrganization(ctx, tournament.organizationId);
+        patch.entryFeeCents = args.entryFeeCents;
+      }
+    }
+    if (args.refundDeadline !== undefined && !clearingFee) {
+      if (args.refundDeadline === null) {
+        patch.refundDeadline = undefined;
+      } else {
+        const effectiveFeeCents =
+          args.entryFeeCents ?? tournament.entryFeeCents ?? 0;
+        if (effectiveFeeCents === 0) {
+          throw new Error("Set an entry fee before setting a refund deadline");
+        }
+        patch.refundDeadline = args.refundDeadline;
+      }
+    }
+    // A reschedule and a deadline must stay coherent whichever one moved, so
+    // the check runs on the effective (post-patch) pair.
+    const effectiveRefundDeadline =
+      "refundDeadline" in patch
+        ? patch.refundDeadline
+        : tournament.refundDeadline;
+    if (effectiveRefundDeadline !== undefined) {
+      const effectiveStartDate = patch.startDate ?? tournament.startDate;
+      if (!Number.isFinite(effectiveRefundDeadline)) {
+        throw new Error("Enter a valid refund deadline");
+      }
+      if (effectiveRefundDeadline > effectiveStartDate) {
+        throw new Error(
+          "Refund deadline must be at or before the tournament start date",
+        );
+      }
     }
 
     await ctx.db.patch(args.tournamentId, patch);
@@ -533,6 +603,20 @@ export const cancelTournament = mutation({
       actorRole: "organizer",
       event: { type: "tournament_cancelled" },
     });
+    // A cancelled paid event makes every player whole: open checkouts close
+    // and every payment refunds (payments/refunds.ts sweeps).
+    if ((tournament.entryFeeCents ?? 0) > 0) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.payments.refunds.closeOpenOrdersSweep,
+        { tournamentId: args.tournamentId },
+      );
+      await ctx.scheduler.runAfter(
+        0,
+        internal.payments.refunds.cancelTournamentPaymentsSweep,
+        { tournamentId: args.tournamentId },
+      );
+    }
     return args.tournamentId;
   },
 });
@@ -547,6 +631,9 @@ export const deleteTournament = mutation({
   args: { tournamentId: v.id("tournaments") },
   handler: async (ctx, args) => {
     await requireOrganizerAccess(ctx, args.tournamentId);
+    // Hard deletion destroys the payment records, so it is refused while any
+    // player money is unsettled (model/payments.ts).
+    await requireTournamentPaymentsSettled(ctx, args.tournamentId);
     await ctx.db.patch(args.tournamentId, {
       lifecycle: "cancelled",
       visibility: "private",

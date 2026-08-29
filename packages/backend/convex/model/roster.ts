@@ -2,8 +2,17 @@ import type { Doc } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import type { AuditActorRole } from "./auditLog";
 import { auditPlayerRef, logAuditEvent } from "./auditLog";
+import {
+  closeOpenOrdersForRegistration,
+  settleOrdersOnEntryExit,
+} from "../payments/refunds";
 import { concedeUnfinishedMatchOnDrop } from "./matchResults";
 import { setRegistrationState } from "./participation";
+import {
+  ensurePostApprovalOrder,
+  isPaidTournament,
+  registrationHoldsPaidOrder,
+} from "./payments";
 import {
   adjustConfirmedRegistrationCount,
   registrationApproveEffect,
@@ -186,11 +195,24 @@ export async function cancelEntry(
       player: auditPlayerRef(registration),
     },
   });
+  // Money follows the entry out: open orders close, and a paid one refunds
+  // by whose decision this was (payments/refunds.ts).
+  await settleOrdersOnEntryExit(ctx, {
+    tournament,
+    registration,
+    actor,
+    actorRole,
+  });
 }
 
 // Restores a cancelled entry to a confirmed, active seat. Capacity applies:
 // the cancellation released the seat, so retaking it competes with every
-// registration since.
+// registration since. On a paid event a seat moves only with its money: an
+// entry whose payment left (or is leaving) with the cancellation re-enters
+// "pending" alongside a payable order — approveEntry's payment arm — and
+// the Checkout webhook seats it when the new payment lands. Only an entry
+// whose order is still paid and unrefunded (a cancel past the refund
+// window) reseats directly.
 export async function restoreEntry(
   ctx: MutationCtx,
   { tournament, registration, actor, actorRole }: RosterTransitionArgs,
@@ -203,6 +225,39 @@ export async function restoreEntry(
   }
   requireCapacityAvailable(tournament);
   const now = Date.now();
+  if (
+    isPaidTournament(tournament) &&
+    !(await registrationHoldsPaidOrder(ctx, registration._id))
+  ) {
+    await setRegistrationState(ctx, registration._id, {
+      entryStatus: "pending",
+      updatedAt: now,
+    });
+    const order = await ensurePostApprovalOrder(ctx, {
+      tournament,
+      registration,
+    });
+    await logAuditEvent(ctx, {
+      tournamentId: tournament._id,
+      actor,
+      actorRole,
+      event: {
+        type: "player_reinstated",
+        player: auditPlayerRef(registration),
+      },
+    });
+    await logAuditEvent(ctx, {
+      tournamentId: tournament._id,
+      actor,
+      actorRole,
+      event: {
+        type: "payment_requested",
+        player: auditPlayerRef(registration),
+        totalCents: order.amountBreakdown.totalCents,
+      },
+    });
+    return;
+  }
   await setRegistrationState(ctx, registration._id, {
     entryStatus: "confirmed",
     participationStatus: "active",
@@ -239,6 +294,44 @@ export async function approveEntry(
   }
   requireCapacityAvailable(tournament);
   const now = Date.now();
+  // On a paid event, approval requests payment instead of seating: the entry
+  // (re)enters "pending" — no seat, no participation status — alongside a
+  // payable order, and the Checkout webhook confirms the seat when the
+  // payment lands (payments/webhooks.ts). Capacity was only a courtesy check
+  // here; it is re-checked when the payment arrives.
+  if (isPaidTournament(tournament)) {
+    if (registration.entryStatus !== "pending") {
+      await setRegistrationState(ctx, registration._id, {
+        entryStatus: "pending",
+        updatedAt: now,
+      });
+    }
+    const order = await ensurePostApprovalOrder(ctx, {
+      tournament,
+      registration,
+    });
+    await logAuditEvent(ctx, {
+      tournamentId: tournament._id,
+      actor,
+      actorRole,
+      event: {
+        type: "registration_approved",
+        player: auditPlayerRef(registration),
+        previousEntryStatus: approveEffect,
+      },
+    });
+    await logAuditEvent(ctx, {
+      tournamentId: tournament._id,
+      actor,
+      actorRole,
+      event: {
+        type: "payment_requested",
+        player: auditPlayerRef(registration),
+        totalCents: order.amountBreakdown.totalCents,
+      },
+    });
+    return;
+  }
   await setRegistrationState(ctx, registration._id, {
     entryStatus: "confirmed",
     participationStatus: "active",
@@ -300,6 +393,15 @@ export async function rejectEntry(
       previousEntryStatus,
     },
   });
+  // An organizer decision always makes the player whole: open orders close
+  // and a paid one refunds in full, the organizer absorbing the fee
+  // (payments/refunds.ts) — and it never flags the player.
+  await settleOrdersOnEntryExit(ctx, {
+    tournament,
+    registration,
+    actor,
+    actorRole,
+  });
 }
 
 // The organizer holds a pending application on the waitlist instead of
@@ -332,4 +434,9 @@ export async function waitlistEntry(
       player: auditPlayerRef(registration),
     },
   });
+  // A waitlisted entry must not stay payable: an open checkout completing
+  // would only bounce off the webhook's seat check and auto-refund with the
+  // processing fee eaten. The hold closes the order; a later approval mints
+  // a fresh one (ensurePostApprovalOrder).
+  await closeOpenOrdersForRegistration(ctx, registration._id);
 }

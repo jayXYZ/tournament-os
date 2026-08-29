@@ -1,3 +1,4 @@
+import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { logAuditEvent } from "./auditLog";
@@ -569,6 +570,16 @@ export async function startTournament(
       playerCount: registrations.length,
     },
   });
+  // Starting a paid event lapses its open checkouts: an approved-but-unpaid
+  // application can no longer seat, so its order closes and its session
+  // expires (payments/refunds.ts).
+  if ((tournament.entryFeeCents ?? 0) > 0) {
+    await ctx.scheduler.runAfter(
+      0,
+      internal.payments.refunds.closeOpenOrdersSweep,
+      { tournamentId: tournament._id },
+    );
+  }
   return roundId;
 }
 
@@ -941,6 +952,16 @@ async function executeCompleteTournament(
     actorRole: "organizer",
     event: { type: "tournament_completed" },
   });
+  // Completion is the payout trigger for paid events: the refund window is
+  // long closed and every charge has settled, so the entry fees sweep to the
+  // organization (payments/payouts.ts).
+  if ((tournament.entryFeeCents ?? 0) > 0) {
+    await ctx.scheduler.runAfter(
+      0,
+      internal.payments.payouts.startPayoutSweep,
+      { tournamentId: tournament._id },
+    );
+  }
 }
 
 export type AdvanceOutcome =

@@ -15,6 +15,7 @@
     "./decklist-limits": "./src/decklist-limits.ts",
     "./match-structure": "./src/match-structure.ts",
     "./organizer-utils": "./src/organizer-utils.ts",
+    "./payment-fees": "./src/payment-fees.ts",
     "./registration-status": "./src/registration-status.ts",
     "./timer-utils": "./src/timer-utils.ts",
     "./tournament-creation-utils": "./src/tournament-creation-utils.ts",

@@ -19,6 +19,10 @@ import {
   participantForUser,
 } from "../model/participants";
 import { setRegistrationState } from "../model/participation";
+import {
+  isPaidTournament,
+  latestOrderForRegistration,
+} from "../model/payments";
 import { tiebreakRandom } from "../model/random";
 import {
   adjustConfirmedRegistrationCount,
@@ -81,6 +85,12 @@ async function registrationRows(
       // enforce, so the approve/reject/waitlist menu items and their wording
       // always match what confirming them will do.
       ...entryReviewActions(tournament, registration),
+      // The row's payment state on paid events (the newest order's status;
+      // null on free events or when the player has no order yet).
+      paymentStatus: isPaidTournament(tournament)
+        ? ((await latestOrderForRegistration(ctx, registration._id))?.status ??
+          null)
+        : null,
     }),
   );
 }
@@ -150,6 +160,19 @@ export const registerSelf = mutation({
         !(await inviteCodeGrantsAccess(ctx, tournament, args.inviteCode)))
     ) {
       throw new Error("Tournament is not open for registration");
+    }
+    // Direct registration on a paid event goes through the Checkout action
+    // (payments/checkout.ts), which files the pending row itself; the seat
+    // is only ever taken by the payment webhook. Approval-mode paid events
+    // still file their free application here — payment is requested at
+    // approval.
+    if (
+      isPaidTournament(tournament) &&
+      !tournament.registrationRequiresApproval
+    ) {
+      throw new Error(
+        "This event charges an entry fee — register through the payment checkout",
+      );
     }
 
     if (existing) {

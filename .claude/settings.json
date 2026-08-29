@@ -1,0 +1,19 @@
+{
+  "enabledPlugins": {
+    "typescript-lsp@claude-plugins-official": true
+  },
+  "permissions": {
+    "deny": [
+      "Bash(npm)",
+      "Bash(npm *)",
+      "Bash(npx)",
+      "Bash(npx *)",
+      "Bash(yarn)",
+      "Bash(yarn *)",
+      "Bash(bun)",
+      "Bash(bun *)",
+      "Bash(bunx)",
+      "Bash(bunx *)"
+    ]
+  }
+}

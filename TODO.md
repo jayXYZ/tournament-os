@@ -437,9 +437,10 @@ claimed by one.
   - [ ] Define capacity, decklist, payment, cancellation, and refund guards
         for each transition (capacity guards landed with the transitions —
         every seat-taking path routes through requireCapacityAvailable — and
-        cancellation is lifecycle-gated; payment/refund guards are blocked on
-        section 9's order and refund records, decklist guards on section 6's
-        publication/submission policy work)
+        cancellation is lifecycle-gated; payment and refund guards landed
+        with section 9's order/refund records — paid seats move only through
+        the payment webhook and exits settle their orders; decklist guards
+        remain blocked on section 6's publication/submission policy work)
 - [ ] Add invite-only admission modes
   - [x] Support public, unlisted, and private tournament visibility
   - [x] Add join-by-link/code invitations (2026-08-22, CONTEXT.md "Invite
@@ -657,17 +658,63 @@ push, analytics, and monitoring should be independent consumers.
 
 ## 9. Payments
 
-Record the platform decision early, but implement payment state only after the
-admission and cancellation state machines are explicit.
+Stripe Connect integration (2026-08-26, see `docs/payments.md` and the
+`payments.structure.convex.spec.ts` invariants). Architecture: Accounts v2
+recipient-configured connected accounts (express dashboard, platform-owned
+fees and losses — the legacy Standard/Express account types are deprecated in
+favor of these explicit v2 dimensions) with separate charges and transfers:
+players pay the platform via Stripe-hosted Checkout, funds hold through the
+refund window, and entry fees transfer to the organization when the
+tournament completes. Players absorb the platform fee (default 5%) plus a
+grossed-up processing estimate (`@tournament-os/shared/payment-fees`); the
+organizer is paid exactly the entry cost per paid seat.
 
-- [ ] Decide platform versus marketplace payment architecture
-  - [ ] Evaluate Stripe Connect Standard and Express for organizer payouts
-  - [ ] Record ownership of fees, disputes, refunds, tax, and support obligations
-- [ ] Add entry-fee settings to tournaments
-- [ ] Add separate order, payment, and refund records with idempotent webhook processing
-- [ ] Add paid registration and organizer payout onboarding
-- [ ] Add cancellation/drop refund rules before tournament start
-- [ ] Reconcile payment state with registration transitions without overloading registration status
+- [x] Decide platform versus marketplace payment architecture
+  - [x] Evaluate organizer payout account shapes: Accounts v2 recipient
+        configuration with the express dashboard replaces the old
+        Standard-vs-Express question; OAuth-linking existing Stripe accounts
+        is a deprecated v1 pattern and out of scope
+  - [x] Record ownership: the platform is merchant of record and owns Stripe
+        fees, disputes (record-and-exclude in v1), and negative-balance
+        liability; refunds are automatic per the rules below; tax is out of
+        scope pre-launch
+- [x] Add entry-fee settings to tournaments: `entryFeeCents` +
+      `refundDeadline`, pre-start editable from the settings card with a live
+      player-price breakdown, requiring a payouts-ready connection, frozen
+      once any order exists
+- [x] Add separate order, payment, and refund records with idempotent webhook
+      processing: paymentOrders/paymentRefunds/tournamentPayouts/
+      payoutTransfers plus the processed-event table; fulfillment happens
+      only in the signed `/stripe/events` httpAction, which re-checks
+      capacity at payment time and auto-refunds when the seat is gone
+- [x] Add paid registration and organizer payout onboarding: Checkout-based
+      registration (approval-mode events charge after approval), Connect
+      onboarding from the organization page, and the completion payout sweep
+      (per-order transfers with idempotency keys, greedy absorbed-fee
+      deduction, live capability re-check, owner-retriable when blocked)
+- [x] Add cancellation/drop refund rules before tournament start: a player's
+      first pre-deadline cancel refunds in full (organizer absorbs the
+      processing estimate from their payout); a repeat cancel refunds entry
+      only; organizer removals always refund in full without flagging;
+      cancelling the tournament refunds everyone (withheld repeat-drop fees
+      included); mid-event drops never refund
+- [x] Reconcile payment state with registration transitions without
+      overloading registration status: no new entry statuses — "awaiting
+      payment" is a pending entry plus a live order, seats move only through
+      the webhook, and hard deletion refuses while money is unsettled
+- [ ] Verify the flow end-to-end against Stripe test mode (blocked on
+      human-only dashboard setup: platform profile with the negative-balance
+      liability acknowledgment, a restricted key + webhook endpoint, and the
+      payment env vars — see `docs/payments.md`)
+- [ ] Subscribe a v2 event destination for
+      `v2.core.account[requirements].updated` so connected-account status
+      stays fresh without polling (v1 polls on onboarding return and
+      re-checks live before every transfer, so staleness never moves money)
+- [ ] Build the dispute workflow beyond v1's record-and-exclude (evidence
+      submission, post-payout clawback via transfer reversals)
+- [ ] Reconcile the estimated processing fee against Stripe's actual
+      per-charge fee (balance transactions) before scale — international
+      cards cost more than the default 2.9% + 30¢ estimate
 
 ## 10. Design system and platform polish
 

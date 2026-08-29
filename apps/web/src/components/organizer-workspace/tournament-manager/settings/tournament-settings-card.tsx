@@ -204,18 +204,7 @@ export function TournamentSettingsCard({
                 These settings are not available yet.
               </FieldDescription>
               <FieldGroup>
-                <div className="grid gap-4 md:grid-cols-3">
-                  <Field>
-                    <FieldLabel htmlFor="settings-entry-cost">
-                      Entry cost
-                    </FieldLabel>
-                    <Input
-                      id="settings-entry-cost"
-                      type="number"
-                      placeholder="$0.00"
-                      disabled
-                    />
-                  </Field>
+                <div className="grid gap-4 md:grid-cols-2">
                   <Field>
                     <FieldLabel htmlFor="settings-registration-deadline">
                       Registration deadline

@@ -339,6 +339,9 @@ importers:
       convex:
         specifier: 'catalog:'
         version: 1.42.0(@clerk/clerk-react@5.61.8(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(@clerk/react@6.10.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)
+      stripe:
+        specifier: ^22.5.0
+        version: 22.5.0(@types/node@26.0.1)
     devDependencies:
       '@convex-dev/eslint-plugin':
         specifier: ^2.0.0
@@ -8064,6 +8067,15 @@ packages:
   strip-json-comments@3.1.1:
     resolution: {integrity: sha512-6fPc+R4ihwqP6N/aIv2f1gMH8lOVtWQHoqC4yK6oSDVVocumAsfCqjkXnqiYMhmMwS/mEHLp7Vehlt3ql6lEig==}
     engines: {node: '>=8'}
+
+  stripe@22.5.0:
+    resolution: {integrity: sha512-QVwMwriC0bbySx6R4dpsvJ0W//GojC1kwWVS6rPSoVqDUIZX4Hy3TaUrd2AZeXEAaKbfWIjQjvo3vKAReHZ0vQ==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      '@types/node': '>=18'
+    peerDependenciesMeta:
+      '@types/node':
+        optional: true
 
   structured-headers@0.4.1:
     resolution: {integrity: sha512-0MP/Cxx5SzeeZ10p/bZI0S6MpgD+yxAhi1BOQ34jgnMXsCq3j1t6tQnZu+KdlL7dvJTLT3g9xN8tl10TqgFMcg==}
@@ -18502,6 +18514,10 @@ snapshots:
       min-indent: 1.0.1
 
   strip-json-comments@3.1.1: {}
+
+  stripe@22.5.0(@types/node@26.0.1):
+    optionalDependencies:
+      '@types/node': 26.0.1
 
   structured-headers@0.4.1: {}
 

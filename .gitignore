@@ -45,4 +45,5 @@ next-env.d.ts
 /.agents/skills/
 skills-lock.json
 /packages/backend/convex/_generated/ai/
-.claude/
+.claude/*
+!.claude/settings.json

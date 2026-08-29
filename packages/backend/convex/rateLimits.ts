@@ -98,6 +98,33 @@ const limits = {
     period: HOUR,
     capacity: 20,
   },
+  // Each call can mint a Stripe connected account (first time) and always
+  // mints a single-use onboarding link. Sized for an owner fumbling through
+  // onboarding a few times (expired links re-enter here), not for scripts
+  // minting external accounts with our key.
+  stripeOnboarding: {
+    kind: "token bucket",
+    rate: 24,
+    period: DAY,
+    capacity: 8,
+  },
+  // One Stripe account retrieve per call; cheap, but bounded so a script
+  // cannot hammer the Stripe API under our key.
+  refreshStripeStatus: {
+    kind: "token bucket",
+    rate: 60,
+    period: HOUR,
+    capacity: 20,
+  },
+  // Each call files a registration/order row pair and mints a Stripe
+  // Checkout Session. Sized like registerSelf — churn is the abuse case, and
+  // every attempt creates external Stripe objects under our key.
+  createCheckout: {
+    kind: "token bucket",
+    rate: 30,
+    period: HOUR,
+    capacity: 10,
+  },
 } satisfies Record<string, RateLimitConfig>;
 
 export const rateLimiter = new RateLimiter(components.rateLimiter, limits);

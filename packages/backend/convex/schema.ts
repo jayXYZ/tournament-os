@@ -6,10 +6,19 @@ import {
   invitationStatusValidator,
   matchResultKindValidator,
   matchResultLineValidator,
+  orderAmountBreakdownValidator,
+  paymentOrderPurposeValidator,
+  paymentOrderStatusValidator,
+  paymentRefundKindValidator,
+  paymentRefundReasonValidator,
+  paymentRefundStatusValidator,
+  payoutTransferStatusValidator,
+  tournamentPayoutStatusValidator,
   tournamentPhaseBestOfValidator,
   membershipStatusValidator,
   organizationStatusValidator,
   organizerRoleValidator,
+  stripeTransfersCapabilityStatusValidator,
   tournamentFormatValidator,
   tournamentVisibilityValidator,
   tournamentLifecycleValidator,
@@ -89,6 +98,153 @@ export default defineSchema({
     .index("by_email_and_status", ["email", "status"])
     .index("by_organizationId_and_email", ["organizationId", "email"]),
 
+  // One row per organization that has started Stripe Connect onboarding: the
+  // connected account identity plus a capability snapshot from the last
+  // retrieve. Kept off the organization document because every organizer
+  // surface subscribes to that doc, while this row changes on sync cadence
+  // and is read only by payment surfaces. Money movement never trusts the
+  // snapshot — the payout action re-checks the live capability first.
+  organizationStripeAccounts: defineTable({
+    organizationId: v.id("organizations"),
+    stripeAccountId: v.string(),
+    transfersCapabilityStatus: stripeTransfersCapabilityStatusValidator,
+    // Denormalized transfersCapabilityStatus === "active" so guards and UI
+    // read one boolean.
+    payoutsReady: v.boolean(),
+    lastSyncedAt: v.number(),
+    createdBy: v.id("users"),
+    updatedAt: v.number(),
+  })
+    .index("by_organizationId", ["organizationId"])
+    .index("by_stripeAccountId", ["stripeAccountId"]),
+
+  // One row per entry-fee payment attempt chain (TODO.md §9: order, payment,
+  // and refund records separate from registration status). The registration
+  // stays "pending" while an order is live — the joined order is what
+  // disambiguates "awaiting review" from "awaiting payment" — and the
+  // Checkout webhook is the only thing that seats a paid player. The
+  // amountBreakdown is snapshotted at creation and never recomputed. The
+  // Stripe transfer_group is derived (`order:{_id}`, model/payments.ts), not
+  // stored.
+  paymentOrders: defineTable({
+    tournamentId: v.id("tournaments"),
+    organizationId: v.id("organizations"),
+    registrationId: v.id("tournamentRegistrations"),
+    participantId: v.id("participants"),
+    // The paying account. Paid registration is self-serve only, so unlike
+    // registrations an order always has a user.
+    userId: v.id("users"),
+    purpose: paymentOrderPurposeValidator,
+    amountBreakdown: orderAmountBreakdownValidator,
+    status: paymentOrderStatusValidator,
+    // Monotonic checkout-attempt counter, bumped by beginEntryCheckout. It is
+    // the Stripe idempotency scope (each begin mints a distinct session even
+    // when two begins share a wall-clock millisecond) and the attach
+    // compare-and-set token (a stale action can never attach over a newer
+    // attempt's session).
+    checkoutAttempt: v.optional(v.number()),
+    stripeCheckoutSessionId: v.optional(v.string()),
+    // The session a begin detached but no action has yet proven dead. It
+    // keeps the supersede honest across retries: while set, every new
+    // checkout must expire (or verify expired) this session before minting a
+    // replacement, so a completed-but-unfulfilled charge can never be paid
+    // over twice. Cleared when a replacement session attaches.
+    supersededSessionId: v.optional(v.string()),
+    stripePaymentIntentId: v.optional(v.string()),
+    // source_transaction for the payout transfer (phase E).
+    stripeChargeId: v.optional(v.string()),
+    paidAt: v.optional(v.number()),
+    updatedAt: v.number(),
+  })
+    .index("by_registrationId", ["registrationId"])
+    .index("by_tournamentId_and_status", ["tournamentId", "status"])
+    // Dispute webhooks arrive keyed by charge, not by order metadata.
+    .index("by_stripeChargeId", ["stripeChargeId"]),
+
+  // Refund records for paymentOrders rows. absorbedFeeCents is the
+  // organizer-payout deduction the refund caused (the non-returnable
+  // processing-fee estimate on organizer-attributable full refunds; 0 for
+  // entry-only and seat-unavailable refunds) — the payout sweep sums it, so
+  // there is no separate ledger to drift.
+  paymentRefunds: defineTable({
+    orderId: v.id("paymentOrders"),
+    tournamentId: v.id("tournaments"),
+    registrationId: v.id("tournamentRegistrations"),
+    participantId: v.id("participants"),
+    kind: paymentRefundKindValidator,
+    reason: paymentRefundReasonValidator,
+    amountCents: v.number(),
+    absorbedFeeCents: v.number(),
+    // Set only when the refund targets a charge other than the order's
+    // recorded one (a payment that landed on a superseded checkout session).
+    // Such a refund returns stray money and never drives the order's status.
+    stripeChargeId: v.optional(v.string()),
+    stripeRefundId: v.optional(v.string()),
+    status: paymentRefundStatusValidator,
+    // Absent for system-initiated refunds (webhook races, sweeps).
+    initiatedByUserId: v.optional(v.id("users")),
+    updatedAt: v.number(),
+  })
+    .index("by_orderId", ["orderId"])
+    .index("by_tournamentId_and_participantId", [
+      "tournamentId",
+      "participantId",
+    ])
+    .index("by_tournamentId_and_status", ["tournamentId", "status"])
+    .index("by_stripeRefundId", ["stripeRefundId"]),
+
+  // One row per completed paid tournament: the payout of its entry fees to
+  // the organization, created by the sweep completeTournament schedules
+  // (payments/payouts.ts). netCents = totalEntryCents − absorbedFeeCents;
+  // remainingDeductionCents is the greedy-deduction carry the batched
+  // enumeration spends across transfer rows.
+  tournamentPayouts: defineTable({
+    tournamentId: v.id("tournaments"),
+    organizationId: v.id("organizations"),
+    // Destination snapshot at sweep start; the send action re-checks the
+    // live capability before transferring.
+    stripeAccountId: v.string(),
+    status: tournamentPayoutStatusValidator,
+    totalEntryCents: v.number(),
+    absorbedFeeCents: v.number(),
+    netCents: v.number(),
+    remainingDeductionCents: v.number(),
+    // Pagination cursor for the batched enumeration over paid orders (they
+    // stay "paid" while transfer rows are written, so a plain take() would
+    // re-read the same page forever).
+    enumerationCursor: v.optional(v.string()),
+    error: v.optional(v.string()),
+    updatedAt: v.number(),
+  }).index("by_tournamentId", ["tournamentId"]),
+
+  // One transfer per paid order within a payout, anchored to the order's
+  // charge via source_transaction so availability follows the original
+  // payment. amountCents is the entry fee minus this row's share of the
+  // absorbed-fee deduction.
+  payoutTransfers: defineTable({
+    payoutId: v.id("tournamentPayouts"),
+    tournamentId: v.id("tournaments"),
+    orderId: v.id("paymentOrders"),
+    stripeChargeId: v.string(),
+    amountCents: v.number(),
+    status: payoutTransferStatusValidator,
+    stripeTransferId: v.optional(v.string()),
+    attemptCount: v.number(),
+    lastError: v.optional(v.string()),
+    updatedAt: v.number(),
+  })
+    .index("by_payoutId_and_status", ["payoutId", "status"])
+    .index("by_orderId", ["orderId"]),
+
+  // Processed Stripe webhook event ids. Every webhook internalMutation
+  // checks-then-inserts here first and performs its whole state change in
+  // the same transaction, so redelivered events are exact no-ops.
+  stripeWebhookEvents: defineTable({
+    stripeEventId: v.string(),
+    type: v.string(),
+    processedAt: v.number(),
+  }).index("by_stripeEventId", ["stripeEventId"]),
+
   tournaments: defineTable({
     name: v.string(),
     publicCode: v.number(),
@@ -118,6 +274,19 @@ export default defineSchema({
     // registrations directly but leaves already-filed applications awaiting
     // review.
     registrationRequiresApproval: v.boolean(),
+    // Entry fee in integer USD cents; absent means the event is free and the
+    // whole paid-registration flow keys off its presence. Setting it requires
+    // the organization's Stripe account to be payouts-ready, and it freezes
+    // once any payment order exists (see model/payments.ts). Per paid player
+    // the organizer is paid out exactly this amount; the player additionally
+    // absorbs the platform fee and estimated processing fee
+    // (@tournament-os/shared/payment-fees).
+    entryFeeCents: v.optional(v.number()),
+    // Optional organizer-set cutoff (epoch ms, at or before startDate) after
+    // which a player cancellation no longer triggers the automatic full
+    // refund. Absent means refunds run until the tournament starts. Only
+    // meaningful — and only settable — while entryFeeCents is set.
+    refundDeadline: v.optional(v.number()),
     // Organizer-authored event details (description, prizes, logistics) as
     // markdown, rendered on the public tournament page. Absent means the
     // organizer has not written any.
@@ -515,7 +684,9 @@ export default defineSchema({
   // whole tournament is deleted.
   tournamentAuditEvents: defineTable({
     tournamentId: v.id("tournaments"),
-    actorUserId: v.id("users"),
+    // Absent exactly when actorRole is "system" (payment webhooks and
+    // scheduled sweeps have no acting user).
+    actorUserId: v.optional(v.id("users")),
     // Denormalized at write time so the log renders without per-row user
     // joins and reflects the actor's name as of the action.
     actorName: v.union(v.string(), v.null()),

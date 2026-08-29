@@ -1,6 +1,7 @@
 import { Link } from '@tanstack/react-router'
-import { useMyRegistration } from '@tournament-os/core'
-import { useMutation, useQuery } from 'convex/react'
+import { useState } from 'react'
+import { mutationErrorMessage, useMyRegistration } from '@tournament-os/core'
+import { useAction, useMutation, useQuery } from 'convex/react'
 import { Building2, CalendarDays, LogIn, Swords, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@tournament-os/backend/convex/_generated/api'
@@ -211,7 +212,27 @@ function RegistrationPanel({
   const cancelRegistration = useMutation(
     api.tournaments.registrations.cancelMyRegistration,
   )
-  const { busy: pending, run } = useBusyAction()
+  const createEntryCheckout = useAction(
+    api.payments.checkout.createEntryCheckout,
+  )
+  const isPaid = (tournament.entryFeeCents ?? 0) > 0
+  const feePreview = useQuery(
+    api.payments.queries.getFeePreview,
+    isPaid ? { entryFeeCents: tournament.entryFeeCents! } : 'skip',
+  )
+  const myOrder = useQuery(
+    api.payments.queries.getMyEntryOrder,
+    isPaid && user ? { tournamentId: tournament._id } : 'skip',
+  )
+  const refundFlag = useQuery(
+    api.payments.queries.getMyRefundFlag,
+    isPaid && user ? { tournamentId: tournament._id } : 'skip',
+  )
+  const { busy, run } = useBusyAction()
+  // Checkout leaves the page for Stripe, so its pending flag deliberately
+  // stays set through the redirect (useBusyAction's run would clear it).
+  const [checkoutPending, setCheckoutPending] = useState(false)
+  const pending = busy || checkoutPending
 
   const runAction = (action: () => Promise<unknown>, successMessage: string) =>
     run(async () => {
@@ -259,6 +280,13 @@ function RegistrationPanel({
       </p>
     </>
   )
+  // On a paid event, tells the player what happened to their money when they
+  // release a seat (refund issued, or fees kept under the repeat-drop rule).
+  const cancelNote = myOrder?.cancelOutcome ? (
+    <p className="w-full text-sm text-muted-foreground">
+      {cancelOutcomeNote(myOrder.cancelOutcome)}
+    </p>
+  ) : null
   const cancelButton = (label: string, successMessage: string) => (
     <Button
       type="button"
@@ -274,6 +302,34 @@ function RegistrationPanel({
       {pending ? <Spinner /> : null}
       {label}
     </Button>
+  )
+
+  const startCheckout = async () => {
+    setCheckoutPending(true)
+    try {
+      const { url } = await createEntryCheckout({
+        tournamentId: tournament._id,
+        inviteCode,
+      })
+      window.location.assign(url)
+    } catch (error) {
+      toast.error(mutationErrorMessage(error, 'Could not start checkout.'))
+      setCheckoutPending(false)
+    }
+  }
+
+  const totalPrice = feePreview ? formatCents(feePreview.totalCents) : null
+
+  // One definition of the cancel-registration controls, shared by the active
+  // and dropped/disqualified branches so the two player states cannot drift.
+  const cancelControls = (
+    <>
+      {cancelButton(
+        'Cancel registration',
+        'Your registration has been cancelled.',
+      )}
+      {cancelNote}
+    </>
   )
 
   if (loading) {
@@ -310,10 +366,7 @@ function RegistrationPanel({
       <div className="flex flex-wrap items-center gap-3">
         <Badge>You&apos;re registered</Badge>
         {tournament.lifecycle === 'registration'
-          ? cancelButton(
-              'Cancel registration',
-              'Your registration has been cancelled.',
-            )
+          ? cancelControls
           : tournament.lifecycle === 'in_progress'
             ? controllerLink
             : lockedNote}
@@ -341,10 +394,7 @@ function RegistrationPanel({
             : 'You dropped from this event'}
         </Badge>
         {tournament.lifecycle === 'registration'
-          ? cancelButton(
-              'Cancel registration',
-              'Your registration has been cancelled.',
-            )
+          ? cancelControls
           : tournament.lifecycle === 'in_progress'
             ? controllerLinkWithNote
             : lockedNote}
@@ -380,13 +430,37 @@ function RegistrationPanel({
     registration?.entryStatus === 'pending' ||
     registration?.entryStatus === 'waitlisted'
   ) {
+    // On a paid event a "pending" entry with a payable order is past review:
+    // it is either an approved application awaiting its payment, or the
+    // player's own unfinished direct checkout. Payment takes the seat.
+    const paymentDue =
+      registration.entryStatus === 'pending' &&
+      isPaid &&
+      (myOrder?.status === 'requires_payment' ||
+        myOrder?.status === 'awaiting_payment')
     return (
       <div className="flex flex-wrap items-center gap-3">
         <Badge variant="outline">
-          {registration.entryStatus === 'pending'
-            ? 'Registration pending organizer approval'
-            : "You're on the waitlist"}
+          {registration.entryStatus === 'waitlisted'
+            ? "You're on the waitlist"
+            : paymentDue
+              ? myOrder.purpose === 'post_approval'
+                ? 'Application approved — payment required'
+                : 'Payment required to finish registering'
+              : 'Registration pending organizer approval'}
         </Badge>
+        {paymentDue && tournament.lifecycle === 'registration' ? (
+          <Button
+            type="button"
+            disabled={pending}
+            onClick={() => void startCheckout()}
+          >
+            {pending ? <Spinner /> : null}
+            {totalPrice
+              ? `Complete payment — ${totalPrice}`
+              : 'Complete payment'}
+          </Button>
+        ) : null}
         {tournament.lifecycle === 'registration'
           ? cancelButton(
               'Withdraw registration',
@@ -415,6 +489,39 @@ function RegistrationPanel({
     )
   }
 
+  // Paid direct registration goes through Stripe Checkout: the seat is taken
+  // by the payment webhook, never by a mutation from this page. Approval-mode
+  // paid events still file the free application here — payment is requested
+  // when the organizer approves.
+  if (isPaid && !tournament.registrationRequiresApproval) {
+    return (
+      <div className="flex flex-wrap items-center gap-3">
+        <Button
+          type="button"
+          disabled={pending}
+          onClick={() => void startCheckout()}
+        >
+          {pending ? <Spinner /> : null}
+          {totalPrice ? `Register — ${totalPrice}` : 'Register for this event'}
+        </Button>
+        <p className="text-sm text-muted-foreground">
+          {spotsLeft === 1 ? '1 spot left' : `${spotsLeft} spots left`}
+          {feePreview
+            ? ` · ${formatCents(feePreview.entryFeeCents)} entry + ${formatCents(
+                feePreview.platformFeeCents + feePreview.processingFeeCents,
+              )} fees`
+            : null}
+        </p>
+        {refundFlag?.repeatDropFeesKept ? (
+          <p className="w-full text-sm text-muted-foreground">
+            You previously received a refund for this event — if you cancel
+            again after paying, only the entry cost is refunded.
+          </p>
+        ) : null}
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-wrap items-center gap-3">
       <Button
@@ -434,7 +541,35 @@ function RegistrationPanel({
           ? 'Request to register'
           : 'Register for this event'}
       </Button>
-      {spotsLeftNote}
+      <p className="text-sm text-muted-foreground">
+        {spotsLeft === 1 ? '1 spot left' : `${spotsLeft} spots left`}
+        {isPaid && feePreview
+          ? ` · ${formatCents(feePreview.totalCents)} due after approval`
+          : null}
+      </p>
     </div>
   )
+}
+
+function formatCents(cents: number) {
+  return (cents / 100).toLocaleString('en-US', {
+    style: 'currency',
+    currency: 'USD',
+  })
+}
+
+// The server-computed consequence of cancelling right now (see
+// getMyEntryOrder), so this copy can never promise something the cancel
+// mutation won't do.
+function cancelOutcomeNote(
+  outcome: 'full_refund' | 'entry_only_refund' | 'no_refund',
+) {
+  switch (outcome) {
+    case 'full_refund':
+      return 'Cancelling refunds your payment in full.'
+    case 'entry_only_refund':
+      return 'Cancelling refunds the entry cost only — fees are not refunded on a repeat drop.'
+    case 'no_refund':
+      return 'The refund deadline has passed, so cancelling will not refund your payment.'
+  }
 }
