@@ -176,10 +176,18 @@ export const beginEntryCheckout = internalMutation({
     // payment that still completes on the detached session finds the order
     // open and seats normally until the replacement attaches; after that it
     // is a stray charge and refunds (payments/webhooks.ts).
-    const existingSessionId = order.stripeCheckoutSessionId ?? null;
+    //
+    // Detaching must not forget: the session moves to supersededSessionId
+    // (carrying forward one an earlier begin parked there) rather than
+    // vanishing, so a retry after a failed supersede proof still has to
+    // prove the same session dead before minting — otherwise a "complete"
+    // session whose webhook hasn't landed could be paid over twice.
+    const existingSessionId =
+      order.stripeCheckoutSessionId ?? order.supersededSessionId ?? null;
     await ctx.db.patch(order._id, {
       checkoutAttempt,
       stripeCheckoutSessionId: undefined,
+      supersededSessionId: existingSessionId ?? undefined,
       ...(order.status === "awaiting_payment"
         ? { status: "requires_payment" as const }
         : {}),
@@ -228,6 +236,9 @@ export const attachCheckoutSession = internalMutation({
     }
     await ctx.db.patch(args.orderId, {
       stripeCheckoutSessionId: args.stripeCheckoutSessionId,
+      // The replacement only minted because the superseded session was
+      // proven dead (expired, never paid), so the memory of it can go.
+      supersededSessionId: undefined,
       status: "awaiting_payment",
       updatedAt: Date.now(),
     });

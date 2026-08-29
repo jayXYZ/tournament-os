@@ -144,6 +144,12 @@ export default defineSchema({
     // attempt's session).
     checkoutAttempt: v.optional(v.number()),
     stripeCheckoutSessionId: v.optional(v.string()),
+    // The session a begin detached but no action has yet proven dead. It
+    // keeps the supersede honest across retries: while set, every new
+    // checkout must expire (or verify expired) this session before minting a
+    // replacement, so a completed-but-unfulfilled charge can never be paid
+    // over twice. Cleared when a replacement session attaches.
+    supersededSessionId: v.optional(v.string()),
     stripePaymentIntentId: v.optional(v.string()),
     // source_transaction for the payout transfer (phase E).
     stripeChargeId: v.optional(v.string()),

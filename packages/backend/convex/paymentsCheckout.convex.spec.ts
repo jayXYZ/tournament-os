@@ -529,14 +529,27 @@ test("a session Stripe cannot expire blocks the replacement checkout", async () 
   order = await latestOrderFor(t, tournamentId, 1);
   expect(order.status).toBe("requires_payment");
   expect(order.stripeCheckoutSessionId).toBeUndefined();
+  // The detach parks the session rather than forgetting it, so retries keep
+  // having to prove it dead.
+  expect(order.supersededSessionId).toBe("cs_test_1");
 
-  // With no session left to supersede, the retry mints directly.
+  // A retry while the charge is still in flight is blocked the same way —
+  // no second session is ever minted over a live charge.
+  await expect(
+    asPlayer.action(api.payments.checkout.createEntryCheckout, {
+      tournamentId,
+    }),
+  ).rejects.toThrow("still being processed");
+  expect(gatewayState.sessions).toHaveLength(1);
+
+  // Once the session is proven dead, the retry mints its replacement.
   gatewayState.unexpirableStatus = null;
   await asPlayer.action(api.payments.checkout.createEntryCheckout, {
     tournamentId,
   });
   order = await latestOrderFor(t, tournamentId, 1);
   expect(order.stripeCheckoutSessionId).toBe("cs_test_2");
+  expect(order.supersededSessionId).toBeUndefined();
 });
 
 test("a superseded session's expiry event cannot cancel the replacement checkout", async () => {
