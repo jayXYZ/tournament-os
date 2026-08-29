@@ -340,7 +340,12 @@ export const executeRefund = internalAction({
     const gateway = getStripeGateway(requireStripeSecretKey());
     let created: {
       stripeRefundId: string;
-      status: "pending" | "requires_action" | "succeeded" | "failed" | "canceled";
+      status:
+        | "pending"
+        | "requires_action"
+        | "succeeded"
+        | "failed"
+        | "canceled";
     };
     try {
       created = await gateway.createRefund({
