@@ -223,9 +223,12 @@ function BadgePanel({
     api.conventions.registrations.getMyBadge,
     user ? { conventionId: convention._id } : 'skip',
   )
-  const ticketTypes = useQuery(api.conventions.ticketTypes.listPublicTicketTypes, {
-    conventionId: convention._id,
-  })
+  const ticketTypes = useQuery(
+    api.conventions.ticketTypes.listPublicTicketTypes,
+    {
+      conventionId: convention._id,
+    },
+  )
   const cancelBadge = useMutation(api.conventions.registrations.cancelMyBadge)
   const myOrder = useQuery(
     api.payments.queries.getMyBadgeOrder,
@@ -267,9 +270,7 @@ function BadgePanel({
     </p>
   ) : null
 
-  const startCheckout = async (
-    ticketTypeId: Id<'conventionTicketTypes'>,
-  ) => {
+  const startCheckout = async (ticketTypeId: Id<'conventionTicketTypes'>) => {
     setCheckoutPending(true)
     try {
       const { url } = await createBadgeCheckout({
@@ -368,8 +369,7 @@ function BadgePanel({
             onClick={() => void startCheckout(badge.ticketTypeId)}
           >
             {pending ? <Spinner /> : null}
-            Complete payment —{' '}
-            {formatCents(myOrder.amountBreakdown.totalCents)}
+            Complete payment — {formatCents(myOrder.amountBreakdown.totalCents)}
           </Button>
         ) : null}
         {registrationOpen ? (

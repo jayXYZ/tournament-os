@@ -147,14 +147,16 @@ test("sale windows: door sales stay open, a pass for a finished day is not purch
 
   // A day pass whose admitted day already ended: never buyable now — its
   // effective sale end defaulted to the admission end.
-  const yesterdayPassId: Id<"conventionTicketTypes"> =
-    await organizer.mutation(api.conventions.ticketTypes.createTicketType, {
+  const yesterdayPassId: Id<"conventionTicketTypes"> = await organizer.mutation(
+    api.conventions.ticketTypes.createTicketType,
+    {
       conventionId,
       name: "Yesterday pass",
       priceCents: 0,
       admissionStartDate: startDate,
       admissionEndDate: Date.now() - 60_000,
-    });
+    },
+  );
   // A pass whose sale has not started yet.
   const laterPassId: Id<"conventionTicketTypes"> = await organizer.mutation(
     api.conventions.ticketTypes.createTicketType,

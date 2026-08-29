@@ -78,9 +78,7 @@ export function effectiveSaleEnd(
   convention: Doc<"conventions">,
 ) {
   return (
-    ticketType.saleEndDate ??
-    ticketType.admissionEndDate ??
-    convention.endDate
+    ticketType.saleEndDate ?? ticketType.admissionEndDate ?? convention.endDate
   );
 }
 
@@ -184,9 +182,7 @@ export async function requireTicketTypeDeletable(
     ? null
     : await ctx.db
         .query("conventionRegistrations")
-        .withIndex("by_ticketTypeId", (q) =>
-          q.eq("ticketTypeId", ticketTypeId),
-        )
+        .withIndex("by_ticketTypeId", (q) => q.eq("ticketTypeId", ticketTypeId))
         .first();
   if (order || badge) {
     throw new Error(
@@ -237,7 +233,8 @@ export function validTicketTypeInputs(
   const admissionEnd = inputs.admissionEndDate;
   if (
     admissionStart !== undefined &&
-    (admissionStart < convention.startDate || admissionStart > convention.endDate)
+    (admissionStart < convention.startDate ||
+      admissionStart > convention.endDate)
   ) {
     throw new Error("Admission must start within the convention's dates");
   }
@@ -278,9 +275,7 @@ export async function validIncludedTournamentIds(
   convention: Doc<"conventions">,
   includedTournamentIds: Array<Id<"tournaments">>,
 ) {
-  if (
-    includedTournamentIds.length > MAX_INCLUDED_TOURNAMENTS_PER_TICKET_TYPE
-  ) {
+  if (includedTournamentIds.length > MAX_INCLUDED_TOURNAMENTS_PER_TICKET_TYPE) {
     throw new Error(
       `A ticket type can include at most ${MAX_INCLUDED_TOURNAMENTS_PER_TICKET_TYPE} events`,
     );

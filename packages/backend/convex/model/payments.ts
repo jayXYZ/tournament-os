@@ -391,7 +391,9 @@ export async function createEntryOrder(
     registrationId: args.registration._id,
     participantId: args.registration.participantId,
     ticketTypeId:
-      args.pricing.kind === "convention" ? args.pricing.ticketTypeId : undefined,
+      args.pricing.kind === "convention"
+        ? args.pricing.ticketTypeId
+        : undefined,
     userId: participant.userId,
     purpose: args.purpose,
     amountBreakdown: computeOrderBreakdown(entryFeeCents, feeConfigFromEnv()),

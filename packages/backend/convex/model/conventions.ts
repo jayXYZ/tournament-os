@@ -579,7 +579,11 @@ export async function badgeCompsChildEvent(
   if (!participant) {
     return false;
   }
-  return await participantBadgeCompsChildEvent(ctx, tournament, participant._id);
+  return await participantBadgeCompsChildEvent(
+    ctx,
+    tournament,
+    participant._id,
+  );
 }
 
 // Attach/detach rules. Both directions require organizer access to the

@@ -31,9 +31,7 @@ function formatCents(cents: number) {
 // One line summarizing the pass lineup (ADR 0004: pricing lives on ticket
 // types): "Free badge", "$20.00 badge", or a count with the price range.
 function ticketTypeSummary(
-  ticketTypes:
-    | Array<{ name: string; priceCents: number }>
-    | undefined,
+  ticketTypes: Array<{ name: string; priceCents: number }> | undefined,
 ) {
   if (ticketTypes === undefined || ticketTypes.length === 0) {
     return 'No tickets configured'

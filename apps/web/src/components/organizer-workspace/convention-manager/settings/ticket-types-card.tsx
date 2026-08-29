@@ -278,8 +278,7 @@ function TicketTypeDialog({
         name,
         description: description === '' ? undefined : description,
         priceCents: draftCents,
-        capacity:
-          capacity === '' ? undefined : Number.parseInt(capacity, 10),
+        capacity: capacity === '' ? undefined : Number.parseInt(capacity, 10),
         admissionStartDate: parseOptionalDate(
           admissionStart,
           'admission start',
@@ -325,9 +324,7 @@ function TicketTypeDialog({
                 />
               </Field>
               <Field>
-                <FieldLabel htmlFor="ticket-type-price">
-                  Price (USD)
-                </FieldLabel>
+                <FieldLabel htmlFor="ticket-type-price">Price (USD)</FieldLabel>
                 <Input
                   id="ticket-type-price"
                   type="number"
@@ -359,9 +356,7 @@ function TicketTypeDialog({
             </Field>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field>
-                <FieldLabel htmlFor="ticket-type-capacity">
-                  Capacity
-                </FieldLabel>
+                <FieldLabel htmlFor="ticket-type-capacity">Capacity</FieldLabel>
                 <Input
                   id="ticket-type-capacity"
                   type="number"
