@@ -105,6 +105,49 @@ export async function openOrderForRegistration(
   return orders.find((order) => isOpenOrderStatus(order.status)) ?? null;
 }
 
+// Refund rows are bounded by orders (the rate limiter bounds those); this
+// bounds the per-order refund read.
+export const MAX_REFUNDS_PER_ORDER = 64;
+
+// The order's refunds that are returning (or have returned) its own charge's
+// money: failed rows returned nothing, and stray-charge rows returned a
+// different charge's money. A pending row counts — the decision to return
+// the money stands even while Stripe processes it — so callers use this to
+// ask "is this order's money already spoken for?".
+export async function refundsReturningForOrder(
+  ctx: QueryCtx,
+  orderId: Id<"paymentOrders">,
+) {
+  const refunds = await ctx.db
+    .query("paymentRefunds")
+    .withIndex("by_orderId", (q) => q.eq("orderId", orderId))
+    .take(MAX_REFUNDS_PER_ORDER);
+  return refunds.filter(
+    (refund) =>
+      refund.status !== "failed" && refund.stripeChargeId === undefined,
+  );
+}
+
+// Whether the registration's entry is still paid for: an order in "paid"
+// status with no refund queued or settled against its charge. restoreEntry
+// routes on this — a cancelled row whose money left (or is leaving) must go
+// back through payment rather than retake a seat.
+export async function registrationHoldsPaidOrder(
+  ctx: QueryCtx,
+  registrationId: Id<"tournamentRegistrations">,
+) {
+  const orders = await ordersForRegistration(ctx, registrationId);
+  for (const order of orders) {
+    if (order.status !== "paid") {
+      continue;
+    }
+    if ((await refundsReturningForOrder(ctx, order._id)).length === 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // Whether a player cancellation still earns the automatic refund. The
 // default window is "until the tournament starts" — cancellation itself only
 // exists during the registration lifecycle — so only an organizer-set

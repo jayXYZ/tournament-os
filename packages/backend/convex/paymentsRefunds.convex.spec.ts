@@ -12,7 +12,11 @@ import type schema from "./schema";
 // in full and flags them, their repeat cancel refunds the entry cost only,
 // an organizer removal always refunds in full without flagging, a
 // past-deadline cancel refunds nothing, and webhook reconciliation recovers
-// a lost executor write.
+// a lost executor write. Around them, the money-per-seat invariants: a
+// second exit never double-refunds, a restore only reseats an entry whose
+// order is still paid (otherwise it re-requests payment), a waitlist hold
+// closes the open checkout, and a refund's local failure never outranks
+// Stripe's report that the money moved.
 
 const gatewayState = vi.hoisted(() => ({
   refunds: [] as Array<{
@@ -25,6 +29,9 @@ const gatewayState = vi.hoisted(() => ({
   // What Stripe reports on refund creation — "pending" models bank-rail
   // refunds that only settle via the refund.updated webhook.
   createRefundStatus: "succeeded" as "succeeded" | "pending" | "failed",
+  // When set, createRefund throws instead of returning — models the call
+  // failing (a connection drop, a Stripe rejection).
+  createRefundError: null as Error | null,
 }));
 
 vi.mock("./stripe/config", async (importOriginal) => {
@@ -51,6 +58,9 @@ vi.mock("./stripe/client", () => ({
       amountCents: number;
       refundRowId: string;
     }) => {
+      if (gatewayState.createRefundError) {
+        throw gatewayState.createRefundError;
+      }
       gatewayState.refunds.push(args);
       return {
         stripeRefundId: `re_test_${gatewayState.refunds.length}`,
@@ -65,6 +75,7 @@ beforeEach(() => {
   gatewayState.expired = [];
   gatewayState.nextSessionNumber = 1;
   gatewayState.createRefundStatus = "succeeded";
+  gatewayState.createRefundError = null;
 });
 
 const START_DATE = Date.UTC(2027, 5, 12, 17, 0, 0);
@@ -407,6 +418,202 @@ test("a pending refund a webhook reports canceled is recorded as failed", async 
   const [refund] = await refundsFor(t, orderId);
   expect(refund!.status).toBe("failed");
   expect((await latestOrder(t, tournamentId)).status).toBe("paid");
+});
+
+test("a second exit on the same registration never queues a duplicate refund", async () => {
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const tournamentId = await seedPaidTournament(t, organizationId);
+  const asPlayer = t.withIdentity(playerOne);
+
+  const orderId = await payForEntry(t, tournamentId, "one");
+  await asPlayer.mutation(api.tournaments.registrations.cancelMyRegistration, {
+    tournamentId,
+  });
+  expect(await refundsFor(t, orderId)).toHaveLength(1);
+
+  // The player's refund is still pending, so the order is still "paid" —
+  // the organizer barring the cancelled row must not refund it again.
+  const registrationId = (await t.run(
+    async (ctx) => (await ctx.db.get(orderId))!.registrationId,
+  )) as Id<"tournamentRegistrations">;
+  await t
+    .withIdentity(organizerIdentity)
+    .mutation(api.tournaments.registrations.rejectRegistration, {
+      registrationId,
+    });
+
+  const refunds = await refundsFor(t, orderId);
+  expect(refunds).toHaveLength(1);
+  expect(refunds[0]!.reason).toBe("player_cancel");
+});
+
+test("restoring a refunded entry re-requests payment instead of reseating for free", async () => {
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const tournamentId = await seedPaidTournament(t, organizationId);
+  const asPlayer = t.withIdentity(playerOne);
+
+  const orderId = await payForEntry(t, tournamentId, "one");
+  await asPlayer.mutation(api.tournaments.registrations.cancelMyRegistration, {
+    tournamentId,
+  });
+  await runQueuedRefund(t, orderId);
+  expect((await latestOrder(t, tournamentId)).status).toBe("refunded");
+
+  const registrationId = (await t.run(
+    async (ctx) => (await ctx.db.get(orderId))!.registrationId,
+  )) as Id<"tournamentRegistrations">;
+  await t
+    .withIdentity(organizerIdentity)
+    .mutation(api.tournaments.registrations.reinstateRegistration, {
+      registrationId,
+    });
+
+  // The money left with the cancellation, so the restore lands in "pending"
+  // with a fresh payable order — no seat until the Checkout webhook seats
+  // the new payment.
+  const registration = await t.run(
+    async (ctx) => (await ctx.db.get(registrationId))!,
+  );
+  expect(registration.entryStatus).toBe("pending");
+  const order = await latestOrder(t, tournamentId);
+  expect(order).toMatchObject({
+    status: "requires_payment",
+    purpose: "post_approval",
+  });
+  const tournament = await t.run(
+    async (ctx) => (await ctx.db.get(tournamentId))!,
+  );
+  expect(tournament.confirmedRegistrationCount).toBe(0);
+});
+
+test("restoring an entry whose order is still paid and unrefunded reseats directly", async () => {
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const tournamentId = await seedPaidTournament(t, organizationId, {
+    refundDeadline: Date.now() - 86_400_000,
+  });
+  const asPlayer = t.withIdentity(playerOne);
+
+  const orderId = await payForEntry(t, tournamentId, "one");
+  // Past the deadline the cancel refunds nothing — the money stayed.
+  await asPlayer.mutation(api.tournaments.registrations.cancelMyRegistration, {
+    tournamentId,
+  });
+  expect(await refundsFor(t, orderId)).toHaveLength(0);
+
+  const registrationId = (await t.run(
+    async (ctx) => (await ctx.db.get(orderId))!.registrationId,
+  )) as Id<"tournamentRegistrations">;
+  await t
+    .withIdentity(organizerIdentity)
+    .mutation(api.tournaments.registrations.reinstateRegistration, {
+      registrationId,
+    });
+
+  const registration = await t.run(
+    async (ctx) => (await ctx.db.get(registrationId))!,
+  );
+  expect(registration.entryStatus).toBe("confirmed");
+  const tournament = await t.run(
+    async (ctx) => (await ctx.db.get(tournamentId))!,
+  );
+  expect(tournament.confirmedRegistrationCount).toBe(1);
+});
+
+test("waitlisting a pending paid application closes its open order and expires the session", async () => {
+  vi.useFakeTimers();
+  try {
+    const t = createConvexTest();
+    const { organizationId } = await seedOrganizer(t);
+    const tournamentId = await seedPaidTournament(t, organizationId);
+
+    // The player is mid-checkout: registration pending, order awaiting
+    // payment on a live session.
+    await t
+      .withIdentity(playerOne)
+      .action(api.payments.checkout.createEntryCheckout, { tournamentId });
+    const order = await latestOrder(t, tournamentId);
+    expect(order.status).toBe("awaiting_payment");
+
+    await t
+      .withIdentity(organizerIdentity)
+      .mutation(api.tournaments.registrations.waitlistRegistration, {
+        registrationId: order.registrationId,
+      });
+
+    const closed = await latestOrder(t, tournamentId);
+    expect(closed.status).toBe("canceled");
+    expect(await refundsFor(t, order._id)).toHaveLength(0);
+
+    // The session expiry rides the scheduler; flush it to see the call.
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect(gatewayState.expired).toContain(order.stripeCheckoutSessionId);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("an ambiguous createRefund failure leaves the row pending for the webhook to settle", async () => {
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const tournamentId = await seedPaidTournament(t, organizationId);
+  const asPlayer = t.withIdentity(playerOne);
+
+  const orderId = await payForEntry(t, tournamentId, "one");
+  await asPlayer.mutation(api.tournaments.registrations.cancelMyRegistration, {
+    tournamentId,
+  });
+
+  // A connection drop after Stripe may have accepted the refund: the row
+  // must NOT settle as failed, or the order stays "paid" into the payout
+  // while the money already went back.
+  gatewayState.createRefundError = new Error("socket hang up");
+  const [refund] = await refundsFor(t, orderId);
+  await expect(
+    t.action(internal.payments.refunds.executeRefund, {
+      refundId: refund!._id,
+    }),
+  ).rejects.toThrow("socket hang up");
+  expect((await refundsFor(t, orderId))[0]!.status).toBe("pending");
+
+  // The refund.updated webhook carries the truth and settles the row.
+  await t.mutation(internal.payments.refunds.handleRefundEvent, {
+    stripeEventId: "evt_refund_recover",
+    stripeRefundId: "re_recovered_1",
+    refundStatus: "succeeded",
+    refundRowId: refund!._id,
+  });
+  expect((await refundsFor(t, orderId))[0]!.status).toBe("succeeded");
+  expect((await latestOrder(t, tournamentId)).status).toBe("refunded");
+});
+
+test("a webhook success recovers a refund row wrongly settled as failed", async () => {
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const tournamentId = await seedPaidTournament(t, organizationId);
+  const asPlayer = t.withIdentity(playerOne);
+
+  const orderId = await payForEntry(t, tournamentId, "one");
+  await asPlayer.mutation(api.tournaments.registrations.cancelMyRegistration, {
+    tournamentId,
+  });
+  const [refund] = await refundsFor(t, orderId);
+  await t.run(async (ctx) => {
+    await ctx.db.patch(refund!._id, { status: "failed" });
+  });
+
+  // Stripe's succeeded event is proof the money moved; it outranks the
+  // local failure and flips the order off "paid" so the payout skips it.
+  await t.mutation(internal.payments.refunds.handleRefundEvent, {
+    stripeEventId: "evt_refund_override",
+    stripeRefundId: "re_override_1",
+    refundStatus: "succeeded",
+    refundRowId: refund!._id,
+  });
+  expect((await refundsFor(t, orderId))[0]!.status).toBe("succeeded");
+  expect((await latestOrder(t, tournamentId)).status).toBe("refunded");
 });
 
 test("refund reconciliation recovers a lost executor write by row id", async () => {

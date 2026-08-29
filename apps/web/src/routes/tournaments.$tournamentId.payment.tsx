@@ -122,13 +122,15 @@ function OrderOutcome({
           />
         )
       }
-      // Paid but not seated: the seat re-check failed (the event filled or
-      // closed during checkout) and the automatic refund is on its way.
+      // Paid but not seated: the seat re-check refused the payment — the
+      // event filled up, closed, or the entry changed during checkout — and
+      // the automatic refund is on its way. The page can't tell which from
+      // the order alone, so the copy names the refund, not a cause.
       return (
         <OutcomeCard
           icon={<ReceiptText aria-hidden="true" />}
-          title="Payment received — but the event filled up"
-          description="A seat was no longer available when your payment landed, so it is being refunded in full automatically."
+          title="Payment received — seat not confirmed"
+          description="Your seat could not be confirmed when the payment landed — the event may have filled up, closed, or your entry may have changed during checkout — so the payment is being refunded in full automatically."
           publicCode={publicCode}
         />
       )

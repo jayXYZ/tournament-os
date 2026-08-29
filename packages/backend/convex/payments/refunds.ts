@@ -16,10 +16,12 @@ import {
   isOpenOrderStatus,
   OPEN_ORDER_STATUSES,
   ordersForRegistration,
+  refundsReturningForOrder,
   refundWindowOpen,
 } from "../model/payments";
 import { getStripeGateway } from "../stripe/client";
 import { requireStripeSecretKey } from "../stripe/config";
+import { isDefinitiveStripeFailure } from "../stripe/errors";
 
 // Refund execution. A refund is queued as a pending paymentRefunds row inside
 // whatever mutation decided it (webhook race, player cancel, organizer
@@ -82,6 +84,33 @@ export async function queueRefund(
   return refundId;
 }
 
+// Closes the registration's open (unpaid) orders and expires their Checkout
+// sessions, so the decision that removed the entry from payment's path — an
+// exit, or a waitlist hold — leaves nothing payable behind for the player to
+// complete anyway.
+export async function closeOpenOrdersForRegistration(
+  ctx: MutationCtx,
+  registrationId: Doc<"tournamentRegistrations">["_id"],
+) {
+  const orders = await ordersForRegistration(ctx, registrationId);
+  for (const order of orders) {
+    if (!isOpenOrderStatus(order.status)) {
+      continue;
+    }
+    await ctx.db.patch(order._id, {
+      status: "canceled",
+      updatedAt: Date.now(),
+    });
+    if (order.stripeCheckoutSessionId) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.payments.checkout.expireAbandonedSession,
+        { sessionId: order.stripeCheckoutSessionId },
+      );
+    }
+  }
+}
+
 // Settles a registration's orders when its entry leaves the event pre-start
 // (a player cancellation or an organizer rejection/removal — the roster
 // verbs call this after the entry-state change). Open orders close and
@@ -99,23 +128,16 @@ export async function settleOrdersOnEntryExit(
     actorRole: AuditActorRole;
   },
 ) {
+  await closeOpenOrdersForRegistration(ctx, args.registration._id);
   const orders = await ordersForRegistration(ctx, args.registration._id);
   for (const order of orders) {
-    if (isOpenOrderStatus(order.status)) {
-      await ctx.db.patch(order._id, {
-        status: "canceled",
-        updatedAt: Date.now(),
-      });
-      if (order.stripeCheckoutSessionId) {
-        await ctx.scheduler.runAfter(
-          0,
-          internal.payments.checkout.expireAbandonedSession,
-          { sessionId: order.stripeCheckoutSessionId },
-        );
-      }
+    if (order.status !== "paid") {
       continue;
     }
-    if (order.status !== "paid") {
+    // An order stays "paid" until its refund settles, so a second exit on
+    // the same registration (a player cancel followed by an organizer bar)
+    // must not queue another refund against money already coming back.
+    if ((await refundsReturningForOrder(ctx, order._id)).length > 0) {
       continue;
     }
 
@@ -298,8 +320,14 @@ export const beginRefundExecution = internalMutation({
   },
 });
 
+const REFUND_RETRY_DELAY_MS = 60_000;
+const MAX_REFUND_ATTEMPTS = 5;
+
 export const executeRefund = internalAction({
-  args: { refundId: v.id("paymentRefunds") },
+  args: {
+    refundId: v.id("paymentRefunds"),
+    attempt: v.optional(v.number()),
+  },
   handler: async (ctx, args) => {
     const begin: { stripeChargeId: string; amountCents: number } | null =
       await ctx.runMutation(internal.payments.refunds.beginRefundExecution, {
@@ -310,52 +338,79 @@ export const executeRefund = internalAction({
     }
 
     const gateway = getStripeGateway(requireStripeSecretKey());
+    let created: {
+      stripeRefundId: string;
+      status: "pending" | "requires_action" | "succeeded" | "failed" | "canceled";
+    };
     try {
-      const { stripeRefundId, status } = await gateway.createRefund({
+      created = await gateway.createRefund({
         chargeId: begin.stripeChargeId,
         amountCents: begin.amountCents,
         refundRowId: args.refundId,
         idempotencyKey: `refund:${args.refundId}`,
       });
-      // Stripe accepting the creation is not the money moving: a refund can
-      // come back pending (bank rails) or requires_action, and only its
-      // terminal status settles the row — for the in-between states the row
-      // stays pending, carrying the Stripe id so the refund.updated webhook
-      // can settle it.
-      const outcome =
-        status === "succeeded"
-          ? ("succeeded" as const)
-          : status === "failed" || status === "canceled"
-            ? ("failed" as const)
-            : ("pending" as const);
-      await (ctx.runMutation(internal.payments.refunds.markRefundResult, {
-        refundId: args.refundId,
-        outcome,
-        stripeRefundId,
-      }) satisfies Promise<null>);
     } catch (error) {
-      await (ctx.runMutation(internal.payments.refunds.markRefundResult, {
-        refundId: args.refundId,
-        outcome: "failed",
-      }) satisfies Promise<null>);
+      // Only a definitive Stripe rejection settles the row as failed. An
+      // ambiguous failure (a connection drop, a Stripe 5xx) can land AFTER
+      // Stripe created the refund, and a row settled "failed" would keep its
+      // order in the payout while the charge's money went back — so the row
+      // stays pending and the call retries under its idempotency key, with
+      // refund.updated reconciliation settling whichever truth emerges.
+      if (isDefinitiveStripeFailure(error)) {
+        await (ctx.runMutation(internal.payments.refunds.markRefundResult, {
+          refundId: args.refundId,
+          outcome: "failed",
+        }) satisfies Promise<null>);
+      } else if ((args.attempt ?? 1) < MAX_REFUND_ATTEMPTS) {
+        await ctx.scheduler.runAfter(
+          REFUND_RETRY_DELAY_MS,
+          internal.payments.refunds.executeRefund,
+          { refundId: args.refundId, attempt: (args.attempt ?? 1) + 1 },
+        );
+      }
       // Rethrown so the failure is visible in function logs; the refund row
       // and refund_failed audit line carry the user-facing record.
       throw error;
     }
+    // Stripe accepting the creation is not the money moving: a refund can
+    // come back pending (bank rails) or requires_action, and only its
+    // terminal status settles the row — for the in-between states the row
+    // stays pending, carrying the Stripe id so the refund.updated webhook
+    // can settle it.
+    const outcome =
+      created.status === "succeeded"
+        ? ("succeeded" as const)
+        : created.status === "failed" || created.status === "canceled"
+          ? ("failed" as const)
+          : ("pending" as const);
+    await (ctx.runMutation(internal.payments.refunds.markRefundResult, {
+      refundId: args.refundId,
+      outcome,
+      stripeRefundId: created.stripeRefundId,
+    }) satisfies Promise<null>);
     return null;
   },
 });
 
 // Applies a refund outcome to a pending refund row (and its order). Shared
 // by the executor's result write and webhook reconciliation; rows already
-// settled are left alone.
+// settled are left alone, with one exception: reconciliation may flip a
+// "failed" row to succeeded (recoverFailed), because a refund.updated
+// success is Stripe's proof the money moved and outranks whatever local
+// error settled the row.
 async function applyRefundOutcome(
   ctx: MutationCtx,
   refund: Doc<"paymentRefunds">,
   outcome: "succeeded" | "failed",
   stripeRefundId?: string,
+  opts?: { recoverFailed?: boolean },
 ) {
-  if (refund.status !== "pending") {
+  const applies =
+    refund.status === "pending" ||
+    (opts?.recoverFailed === true &&
+      refund.status === "failed" &&
+      outcome === "succeeded");
+  if (!applies) {
     return;
   }
   const now = Date.now();
@@ -446,10 +501,11 @@ export const markRefundResult = internalMutation({
 });
 
 // Reconciliation from Stripe's refund lifecycle events: recovers a pending
-// row whose executor crashed between the Stripe call and the result write.
-// Rows already settled stay settled (a post-settlement flip is rare enough
-// to be a support case, not an automated rewrite), and refunds issued
-// outside the app (dashboard) have no row and are ignored.
+// row whose executor crashed between the Stripe call and the result write,
+// and a "failed" row Stripe reports succeeded (the executor's error was
+// wrong about the money). A succeeded row stays succeeded (a post-success
+// flip is rare enough to be a support case, not an automated rewrite), and
+// refunds issued outside the app (dashboard) have no row and are ignored.
 export const handleRefundEvent = internalMutation({
   args: {
     stripeEventId: v.string(),
@@ -490,7 +546,9 @@ export const handleRefundEvent = internalMutation({
       return null;
     }
     if (args.refundStatus === "succeeded") {
-      await applyRefundOutcome(ctx, refund, "succeeded", args.stripeRefundId);
+      await applyRefundOutcome(ctx, refund, "succeeded", args.stripeRefundId, {
+        recoverFailed: true,
+      });
     } else if (
       args.refundStatus === "failed" ||
       args.refundStatus === "canceled"
