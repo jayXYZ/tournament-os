@@ -7,7 +7,7 @@
     "node": ">=24"
   },
   "scripts": {
-    "preinstall": "npx only-allow pnpm",
+    "preinstall": "node scripts/ensure-pnpm.js",
     "dev": "pnpm run dev:frontend & pnpm run dev:backend",
     "dev:frontend": "pnpm --filter @tournament-os/web dev",
     "dev:backend": "pnpm --filter @tournament-os/backend dev",

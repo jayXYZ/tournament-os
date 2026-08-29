@@ -210,7 +210,11 @@ export const handleCheckoutCompleted = internalMutation({
       return null;
     }
 
-    if (registration.entryStatus === "pending") {
+    // Only a live attempt's refusal settles the entry. On a late success the
+    // order was already closed and whatever closed it settled the entry then;
+    // a row pending NOW belongs to a newer checkout (a cancel-and-retry, a
+    // re-approval) that this stale payment must not withdraw.
+    if (!lateSuccess && registration.entryStatus === "pending") {
       await setRegistrationState(ctx, registration._id, {
         entryStatus: "cancelled",
         updatedAt: now,

@@ -309,6 +309,7 @@ function RegistrationPanel({
     try {
       const { url } = await createEntryCheckout({
         tournamentId: tournament._id,
+        inviteCode,
       })
       window.location.assign(url)
     } catch (error) {

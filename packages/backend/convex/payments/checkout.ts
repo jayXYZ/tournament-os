@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import { action, internalAction, internalMutation } from "../_generated/server";
+import { inviteCodeGrantsAccess } from "../model/invites";
 import { ensureParticipantForUser } from "../model/participants";
 import { setRegistrationState } from "../model/participation";
 import {
@@ -57,7 +58,10 @@ function entryBlocksCheckout(
 }
 
 export const beginEntryCheckout = internalMutation({
-  args: { tournamentId: v.id("tournaments") },
+  args: {
+    tournamentId: v.id("tournaments"),
+    inviteCode: v.optional(v.string()),
+  },
   handler: async (ctx, args) => {
     await enforceRateLimit(ctx, "createCheckout");
     const user = await ensureCurrentUser(ctx);
@@ -71,10 +75,13 @@ export const beginEntryCheckout = internalMutation({
       user._id,
     );
     // Same admission gates as registerSelf: open lifecycle, and a private
-    // event only re-admits a player who already holds a row for it.
+    // event admits a first-time payer only through its invite code — an
+    // existing row is the standing re-admission for a player already let in.
     if (
       tournament.lifecycle !== "registration" ||
-      (tournament.visibility === "private" && existing === null)
+      (tournament.visibility === "private" &&
+        existing === null &&
+        !(await inviteCodeGrantsAccess(ctx, tournament, args.inviteCode)))
     ) {
       throw new Error("Tournament is not open for registration");
     }
@@ -161,8 +168,21 @@ export const beginEntryCheckout = internalMutation({
     // expire the session the winner just gave its player) and is the attach
     // compare-and-set: any newer begin invalidates this attempt's attach.
     const checkoutAttempt = (order.checkoutAttempt ?? 0) + 1;
+    // Detaching the superseded session here — before the action expires it —
+    // keeps the expiry webhook from reading the supersede as an abandonment:
+    // with the session gone and the order back in requires_payment, the
+    // checkout.session.expired handler no-ops instead of closing the order
+    // and cancelling the entry under the replacement attempt's feet. A
+    // payment that still completes on the detached session finds the order
+    // open and seats normally until the replacement attaches; after that it
+    // is a stray charge and refunds (payments/webhooks.ts).
+    const existingSessionId = order.stripeCheckoutSessionId ?? null;
     await ctx.db.patch(order._id, {
       checkoutAttempt,
+      stripeCheckoutSessionId: undefined,
+      ...(order.status === "awaiting_payment"
+        ? { status: "requires_payment" as const }
+        : {}),
       updatedAt: Date.now(),
     });
 
@@ -175,7 +195,7 @@ export const beginEntryCheckout = internalMutation({
       tournamentPublicCode: String(tournament.publicCode),
       // A previous session to expire before minting the replacement, so two
       // live sessions can never both pay for one order.
-      existingSessionId: order.stripeCheckoutSessionId ?? null,
+      existingSessionId,
     };
   },
 });
@@ -233,7 +253,10 @@ export const expireAbandonedSession = internalAction({
 // Public entry point for both paid flows; returns the Stripe-hosted Checkout
 // URL the client redirects to.
 export const createEntryCheckout = action({
-  args: { tournamentId: v.id("tournaments") },
+  args: {
+    tournamentId: v.id("tournaments"),
+    inviteCode: v.optional(v.string()),
+  },
   handler: async (ctx, args): Promise<{ url: string }> => {
     const secretKey = requireStripeSecretKey();
     const origin = requireWebAppOrigin();
@@ -249,6 +272,7 @@ export const createEntryCheckout = action({
       existingSessionId: string | null;
     } = await ctx.runMutation(internal.payments.checkout.beginEntryCheckout, {
       tournamentId: args.tournamentId,
+      inviteCode: args.inviteCode,
     });
 
     if (begin.existingSessionId) {

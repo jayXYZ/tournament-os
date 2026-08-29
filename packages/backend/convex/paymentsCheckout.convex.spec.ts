@@ -523,16 +523,183 @@ test("a session Stripe cannot expire blocks the replacement checkout", async () 
     }),
   ).rejects.toThrow("still being processed");
   expect(gatewayState.sessions).toHaveLength(1);
+  // The begin already detached the superseded session, so the order sits
+  // open with no session — the racing payment still fulfills, because the
+  // completed webhook matches an open order with no recorded session.
   order = await latestOrderFor(t, tournamentId, 1);
-  expect(order.stripeCheckoutSessionId).toBe("cs_test_1");
+  expect(order.status).toBe("requires_payment");
+  expect(order.stripeCheckoutSessionId).toBeUndefined();
 
-  // Once the probe reports the session expired, the retry goes through.
+  // With no session left to supersede, the retry mints directly.
   gatewayState.unexpirableStatus = null;
   await asPlayer.action(api.payments.checkout.createEntryCheckout, {
     tournamentId,
   });
   order = await latestOrderFor(t, tournamentId, 1);
   expect(order.stripeCheckoutSessionId).toBe("cs_test_2");
+});
+
+test("a superseded session's expiry event cannot cancel the replacement checkout", async () => {
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const tournamentId = await seedPaidTournament(t, organizationId);
+  await insertPlayerUser(t, 1);
+  const asPlayer = t.withIdentity(playerIdentity(1));
+
+  await asPlayer.action(api.payments.checkout.createEntryCheckout, {
+    tournamentId,
+  });
+  const first = await latestOrderFor(t, tournamentId, 1);
+  expect(first.stripeCheckoutSessionId).toBe("cs_test_1");
+
+  // The retry's begin detaches the old session before the action expires it.
+  const begin = await asPlayer.mutation(
+    internal.payments.checkout.beginEntryCheckout,
+    { tournamentId },
+  );
+  expect(begin.existingSessionId).toBe("cs_test_1");
+
+  // The race under test: Stripe's checkout.session.expired for the old
+  // session lands before the replacement attaches. It must read as the
+  // supersede it is, not as an abandonment that closes the order and
+  // cancels the entry.
+  await t.mutation(internal.payments.webhooks.handleCheckoutExpired, {
+    stripeEventId: "evt_supersede_expired",
+    orderId: begin.orderId,
+    sessionId: "cs_test_1",
+  });
+  let order = await latestOrderFor(t, tournamentId, 1);
+  expect(order.status).toBe("requires_payment");
+  let registration = await t.run(
+    async (ctx) => (await ctx.db.get(order.registrationId))!,
+  );
+  expect(registration.entryStatus).toBe("pending");
+
+  // The replacement attaches and its payment seats normally.
+  const attached = await t.mutation(
+    internal.payments.checkout.attachCheckoutSession,
+    {
+      orderId: begin.orderId,
+      stripeCheckoutSessionId: "cs_replacement",
+      checkoutAttempt: begin.checkoutAttempt,
+    },
+  );
+  expect(attached).toBe(true);
+  order = await latestOrderFor(t, tournamentId, 1);
+  await completePayment(t, order, "supersede");
+  registration = await t.run(
+    async (ctx) => (await ctx.db.get(order.registrationId))!,
+  );
+  expect(registration.entryStatus).toBe("confirmed");
+});
+
+test("a late payment on a closed order refunds without cancelling the newer registration", async () => {
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const tournamentId = await seedPaidTournament(t, organizationId);
+  await insertPlayerUser(t, 1);
+  const asPlayer = t.withIdentity(playerIdentity(1));
+
+  // First attempt dies by expiry: order closed, entry cancelled.
+  await asPlayer.action(api.payments.checkout.createEntryCheckout, {
+    tournamentId,
+  });
+  const oldOrder = await latestOrderFor(t, tournamentId, 1);
+  await t.mutation(internal.payments.webhooks.handleCheckoutExpired, {
+    stripeEventId: "evt_late_expired",
+    orderId: oldOrder._id,
+    sessionId: oldOrder.stripeCheckoutSessionId!,
+  });
+
+  // The player starts over: same registration row back to pending, fresh
+  // order.
+  await asPlayer.action(api.payments.checkout.createEntryCheckout, {
+    tournamentId,
+  });
+  const newOrder = await latestOrderFor(t, tournamentId, 1);
+  expect(newOrder._id).not.toBe(oldOrder._id);
+
+  // The old attempt's async payment lands anyway. It must refund itself
+  // without withdrawing the retry's pending registration.
+  await t.mutation(internal.payments.webhooks.handleCheckoutCompleted, {
+    stripeEventId: "evt_late_success",
+    orderId: oldOrder._id,
+    sessionId: oldOrder.stripeCheckoutSessionId!,
+    stripePaymentIntentId: "pi_late",
+    stripeChargeId: "ch_late",
+  });
+  const settledOld = await t.run(
+    async (ctx) => (await ctx.db.get(oldOrder._id))!,
+  );
+  expect(settledOld.status).toBe("paid");
+  const refund = await t.run(async (ctx) =>
+    (
+      await ctx.db
+        .query("paymentRefunds")
+        .withIndex("by_orderId", (q) => q.eq("orderId", oldOrder._id))
+        .take(4)
+    ).at(0),
+  );
+  expect(refund).toMatchObject({
+    kind: "full",
+    reason: "seat_unavailable",
+    amountCents: 2194,
+    status: "pending",
+  });
+  let registration = await t.run(
+    async (ctx) => (await ctx.db.get(newOrder.registrationId))!,
+  );
+  expect(registration.entryStatus).toBe("pending");
+
+  // The retry's own payment still seats the player.
+  await completePayment(t, newOrder, "retry");
+  registration = await t.run(
+    async (ctx) => (await ctx.db.get(newOrder.registrationId))!,
+  );
+  expect(registration.entryStatus).toBe("confirmed");
+});
+
+test("a private paid event admits a first-time payer through its invite code", async () => {
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const tournamentId = await seedPaidTournament(t, organizationId);
+  const asOwner = t.withIdentity(organizerIdentity);
+  await asOwner.mutation(api.tournaments.lifecycle.updateTournamentVisibility, {
+    tournamentId,
+    visibility: "private",
+  });
+  const code: string = await asOwner.mutation(
+    api.tournaments.invites.regenerateInviteLink,
+    { tournamentId },
+  );
+  await insertPlayerUser(t, 1);
+  const asPlayer = t.withIdentity(playerIdentity(1));
+
+  // No code (or a wrong one) leaves the event closed to a stranger.
+  await expect(
+    asPlayer.action(api.payments.checkout.createEntryCheckout, {
+      tournamentId,
+    }),
+  ).rejects.toThrow("not open for registration");
+  await expect(
+    asPlayer.action(api.payments.checkout.createEntryCheckout, {
+      tournamentId,
+      inviteCode: "0000000000",
+    }),
+  ).rejects.toThrow("not open for registration");
+
+  // The invite code opens the paid direct path end to end.
+  const { url } = await asPlayer.action(
+    api.payments.checkout.createEntryCheckout,
+    { tournamentId, inviteCode: code },
+  );
+  expect(url).toMatch(/^https:\/\/checkout\.stripe\.test\//);
+  const order = await latestOrderFor(t, tournamentId, 1);
+  await completePayment(t, order, "invited");
+  const registration = await t.run(
+    async (ctx) => (await ctx.db.get(order.registrationId))!,
+  );
+  expect(registration.entryStatus).toBe("confirmed");
 });
 
 test("session expiry closes a direct registration; a fresh checkout starts over", async () => {
