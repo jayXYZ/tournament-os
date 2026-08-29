@@ -3,6 +3,7 @@ import {
   ArrowLeft,
   Building2,
   LogOut,
+  Tent,
   Trophy,
   UserRound,
   Users,
@@ -53,6 +54,18 @@ export function AdminSidebar() {
                   <Link to="/admin">
                     <Trophy />
                     <span>Tournaments</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  isActive={view === 'conventions'}
+                  tooltip="Conventions"
+                >
+                  <Link to="/admin/conventions">
+                    <Tent />
+                    <span>Conventions</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>

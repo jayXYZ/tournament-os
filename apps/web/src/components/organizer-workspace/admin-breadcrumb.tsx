@@ -43,6 +43,7 @@ import { useBusyAction } from '@/hooks/use-busy-action'
 
 const viewLabels: Record<AdminView, string> = {
   tournaments: 'Tournaments',
+  conventions: 'Conventions',
   staff: 'Staff',
   organization: 'Organization',
 }
@@ -54,7 +55,17 @@ const tournamentPageLabels: Record<string, string> = {
   standings: 'Standings',
 }
 
+const conventionPageLabels: Record<string, string> = {
+  registrations: 'Registrations',
+  events: 'Events',
+  settings: 'Settings',
+  log: 'Log',
+}
+
 export function viewFromPathname(pathname: string): AdminView {
+  if (pathname.startsWith('/admin/conventions')) {
+    return 'conventions'
+  }
   if (pathname.startsWith('/admin/staff')) {
     return 'staff'
   }
@@ -75,6 +86,19 @@ export function AdminBreadcrumb() {
       <TournamentBreadcrumb
         publicCode={tournamentMatch[1]}
         segment={tournamentMatch[2]}
+      />
+    )
+  }
+
+  const conventionMatch = pathname.match(
+    /^\/admin\/conventions\/([^/]+)(?:\/([^/]+))?/,
+  )
+
+  if (conventionMatch) {
+    return (
+      <ConventionBreadcrumb
+        publicCode={conventionMatch[1]}
+        segment={conventionMatch[2]}
       />
     )
   }
@@ -120,6 +144,63 @@ function TournamentBreadcrumb({
         <BreadcrumbItem>
           <BreadcrumbLink asChild>
             <Link to="/admin">Tournaments</Link>
+          </BreadcrumbLink>
+        </BreadcrumbItem>
+        <BreadcrumbSeparator />
+        <BreadcrumbItem>
+          {managed === undefined ? (
+            <Skeleton className="h-4 w-28" />
+          ) : name === undefined ? (
+            <BreadcrumbPage>Not found</BreadcrumbPage>
+          ) : pageLabel ? (
+            <BreadcrumbLink asChild>
+              <Link to={base} className="max-w-48 truncate">
+                {name}
+              </Link>
+            </BreadcrumbLink>
+          ) : (
+            <BreadcrumbPage className="max-w-48 truncate">
+              {name}
+            </BreadcrumbPage>
+          )}
+        </BreadcrumbItem>
+        {pageLabel && (
+          <>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbPage>{pageLabel}</BreadcrumbPage>
+            </BreadcrumbItem>
+          </>
+        )}
+      </BreadcrumbList>
+    </Breadcrumb>
+  )
+}
+
+function ConventionBreadcrumb({
+  publicCode,
+  segment,
+}: {
+  publicCode: string
+  segment?: string
+}) {
+  const managed = useQuery(api.conventions.lifecycle.getManagedConvention, {
+    publicCode,
+  })
+  const name = managed?.convention.name
+  const pageLabel = segment ? conventionPageLabels[segment] : undefined
+  const base = `/admin/conventions/${publicCode}`
+
+  return (
+    <Breadcrumb>
+      <BreadcrumbList>
+        <BreadcrumbItem>
+          <OrganizationSwitcher />
+        </BreadcrumbItem>
+        <BreadcrumbSeparator />
+        <BreadcrumbItem>
+          <BreadcrumbLink asChild>
+            <Link to="/admin/conventions">Conventions</Link>
           </BreadcrumbLink>
         </BreadcrumbItem>
         <BreadcrumbSeparator />

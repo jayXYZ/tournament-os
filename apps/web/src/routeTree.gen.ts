@@ -21,17 +21,26 @@ import { Route as AdminStripeReturnRouteImport } from './routes/admin.stripe-ret
 import { Route as AdminStaffRouteImport } from './routes/admin.staff'
 import { Route as AdminOrganizationRouteImport } from './routes/admin.organization'
 import { Route as TournamentsTournamentIdIndexRouteImport } from './routes/tournaments.$tournamentId.index'
+import { Route as ConventionsConventionIdIndexRouteImport } from './routes/conventions.$conventionId.index'
+import { Route as AdminConventionsIndexRouteImport } from './routes/admin.conventions.index'
 import { Route as TournamentsTournamentIdPlayRouteImport } from './routes/tournaments.$tournamentId.play'
 import { Route as TournamentsTournamentIdPaymentRouteImport } from './routes/tournaments.$tournamentId.payment'
 import { Route as TournamentsTournamentIdDecklistRouteImport } from './routes/tournaments.$tournamentId.decklist'
+import { Route as ConventionsConventionIdPaymentRouteImport } from './routes/conventions.$conventionId.payment'
 import { Route as AdminTournamentsTournamentIdRouteImport } from './routes/admin.tournaments.$tournamentId'
+import { Route as AdminConventionsConventionIdRouteImport } from './routes/admin.conventions.$conventionId'
 import { Route as AdminTournamentsTournamentIdIndexRouteImport } from './routes/admin.tournaments.$tournamentId.index'
+import { Route as AdminConventionsConventionIdIndexRouteImport } from './routes/admin.conventions.$conventionId.index'
 import { Route as AdminTournamentsTournamentIdTimerRouteImport } from './routes/admin.tournaments.$tournamentId.timer'
 import { Route as AdminTournamentsTournamentIdStandingsRouteImport } from './routes/admin.tournaments.$tournamentId.standings'
 import { Route as AdminTournamentsTournamentIdSettingsRouteImport } from './routes/admin.tournaments.$tournamentId.settings'
 import { Route as AdminTournamentsTournamentIdRegistrationsRouteImport } from './routes/admin.tournaments.$tournamentId.registrations'
 import { Route as AdminTournamentsTournamentIdPairingsRouteImport } from './routes/admin.tournaments.$tournamentId.pairings'
 import { Route as AdminTournamentsTournamentIdLogRouteImport } from './routes/admin.tournaments.$tournamentId.log'
+import { Route as AdminConventionsConventionIdSettingsRouteImport } from './routes/admin.conventions.$conventionId.settings'
+import { Route as AdminConventionsConventionIdRegistrationsRouteImport } from './routes/admin.conventions.$conventionId.registrations'
+import { Route as AdminConventionsConventionIdLogRouteImport } from './routes/admin.conventions.$conventionId.log'
+import { Route as AdminConventionsConventionIdEventsRouteImport } from './routes/admin.conventions.$conventionId.events'
 
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
@@ -94,6 +103,17 @@ const TournamentsTournamentIdIndexRoute =
     path: '/tournaments/$tournamentId/',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ConventionsConventionIdIndexRoute =
+  ConventionsConventionIdIndexRouteImport.update({
+    id: '/conventions/$conventionId/',
+    path: '/conventions/$conventionId/',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const AdminConventionsIndexRoute = AdminConventionsIndexRouteImport.update({
+  id: '/conventions/',
+  path: '/conventions/',
+  getParentRoute: () => AdminRoute,
+} as any)
 const TournamentsTournamentIdPlayRoute =
   TournamentsTournamentIdPlayRouteImport.update({
     id: '/tournaments/$tournamentId/play',
@@ -112,10 +132,22 @@ const TournamentsTournamentIdDecklistRoute =
     path: '/tournaments/$tournamentId/decklist',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ConventionsConventionIdPaymentRoute =
+  ConventionsConventionIdPaymentRouteImport.update({
+    id: '/conventions/$conventionId/payment',
+    path: '/conventions/$conventionId/payment',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const AdminTournamentsTournamentIdRoute =
   AdminTournamentsTournamentIdRouteImport.update({
     id: '/tournaments/$tournamentId',
     path: '/tournaments/$tournamentId',
+    getParentRoute: () => AdminRoute,
+  } as any)
+const AdminConventionsConventionIdRoute =
+  AdminConventionsConventionIdRouteImport.update({
+    id: '/conventions/$conventionId',
+    path: '/conventions/$conventionId',
     getParentRoute: () => AdminRoute,
   } as any)
 const AdminTournamentsTournamentIdIndexRoute =
@@ -123,6 +155,12 @@ const AdminTournamentsTournamentIdIndexRoute =
     id: '/',
     path: '/',
     getParentRoute: () => AdminTournamentsTournamentIdRoute,
+  } as any)
+const AdminConventionsConventionIdIndexRoute =
+  AdminConventionsConventionIdIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AdminConventionsConventionIdRoute,
   } as any)
 const AdminTournamentsTournamentIdTimerRoute =
   AdminTournamentsTournamentIdTimerRouteImport.update({
@@ -160,6 +198,30 @@ const AdminTournamentsTournamentIdLogRoute =
     path: '/log',
     getParentRoute: () => AdminTournamentsTournamentIdRoute,
   } as any)
+const AdminConventionsConventionIdSettingsRoute =
+  AdminConventionsConventionIdSettingsRouteImport.update({
+    id: '/settings',
+    path: '/settings',
+    getParentRoute: () => AdminConventionsConventionIdRoute,
+  } as any)
+const AdminConventionsConventionIdRegistrationsRoute =
+  AdminConventionsConventionIdRegistrationsRouteImport.update({
+    id: '/registrations',
+    path: '/registrations',
+    getParentRoute: () => AdminConventionsConventionIdRoute,
+  } as any)
+const AdminConventionsConventionIdLogRoute =
+  AdminConventionsConventionIdLogRouteImport.update({
+    id: '/log',
+    path: '/log',
+    getParentRoute: () => AdminConventionsConventionIdRoute,
+  } as any)
+const AdminConventionsConventionIdEventsRoute =
+  AdminConventionsConventionIdEventsRouteImport.update({
+    id: '/events',
+    path: '/events',
+    getParentRoute: () => AdminConventionsConventionIdRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -173,17 +235,26 @@ export interface FileRoutesByFullPath {
   '/sign-up/$': typeof SignUpSplatRoute
   '/users/$publicCode': typeof UsersPublicCodeRoute
   '/admin/': typeof AdminIndexRoute
+  '/admin/conventions/$conventionId': typeof AdminConventionsConventionIdRouteWithChildren
   '/admin/tournaments/$tournamentId': typeof AdminTournamentsTournamentIdRouteWithChildren
+  '/conventions/$conventionId/payment': typeof ConventionsConventionIdPaymentRoute
   '/tournaments/$tournamentId/decklist': typeof TournamentsTournamentIdDecklistRoute
   '/tournaments/$tournamentId/payment': typeof TournamentsTournamentIdPaymentRoute
   '/tournaments/$tournamentId/play': typeof TournamentsTournamentIdPlayRoute
+  '/admin/conventions/': typeof AdminConventionsIndexRoute
+  '/conventions/$conventionId/': typeof ConventionsConventionIdIndexRoute
   '/tournaments/$tournamentId/': typeof TournamentsTournamentIdIndexRoute
+  '/admin/conventions/$conventionId/events': typeof AdminConventionsConventionIdEventsRoute
+  '/admin/conventions/$conventionId/log': typeof AdminConventionsConventionIdLogRoute
+  '/admin/conventions/$conventionId/registrations': typeof AdminConventionsConventionIdRegistrationsRoute
+  '/admin/conventions/$conventionId/settings': typeof AdminConventionsConventionIdSettingsRoute
   '/admin/tournaments/$tournamentId/log': typeof AdminTournamentsTournamentIdLogRoute
   '/admin/tournaments/$tournamentId/pairings': typeof AdminTournamentsTournamentIdPairingsRoute
   '/admin/tournaments/$tournamentId/registrations': typeof AdminTournamentsTournamentIdRegistrationsRoute
   '/admin/tournaments/$tournamentId/settings': typeof AdminTournamentsTournamentIdSettingsRoute
   '/admin/tournaments/$tournamentId/standings': typeof AdminTournamentsTournamentIdStandingsRoute
   '/admin/tournaments/$tournamentId/timer': typeof AdminTournamentsTournamentIdTimerRoute
+  '/admin/conventions/$conventionId/': typeof AdminConventionsConventionIdIndexRoute
   '/admin/tournaments/$tournamentId/': typeof AdminTournamentsTournamentIdIndexRoute
 }
 export interface FileRoutesByTo {
@@ -197,16 +268,24 @@ export interface FileRoutesByTo {
   '/sign-up/$': typeof SignUpSplatRoute
   '/users/$publicCode': typeof UsersPublicCodeRoute
   '/admin': typeof AdminIndexRoute
+  '/conventions/$conventionId/payment': typeof ConventionsConventionIdPaymentRoute
   '/tournaments/$tournamentId/decklist': typeof TournamentsTournamentIdDecklistRoute
   '/tournaments/$tournamentId/payment': typeof TournamentsTournamentIdPaymentRoute
   '/tournaments/$tournamentId/play': typeof TournamentsTournamentIdPlayRoute
+  '/admin/conventions': typeof AdminConventionsIndexRoute
+  '/conventions/$conventionId': typeof ConventionsConventionIdIndexRoute
   '/tournaments/$tournamentId': typeof TournamentsTournamentIdIndexRoute
+  '/admin/conventions/$conventionId/events': typeof AdminConventionsConventionIdEventsRoute
+  '/admin/conventions/$conventionId/log': typeof AdminConventionsConventionIdLogRoute
+  '/admin/conventions/$conventionId/registrations': typeof AdminConventionsConventionIdRegistrationsRoute
+  '/admin/conventions/$conventionId/settings': typeof AdminConventionsConventionIdSettingsRoute
   '/admin/tournaments/$tournamentId/log': typeof AdminTournamentsTournamentIdLogRoute
   '/admin/tournaments/$tournamentId/pairings': typeof AdminTournamentsTournamentIdPairingsRoute
   '/admin/tournaments/$tournamentId/registrations': typeof AdminTournamentsTournamentIdRegistrationsRoute
   '/admin/tournaments/$tournamentId/settings': typeof AdminTournamentsTournamentIdSettingsRoute
   '/admin/tournaments/$tournamentId/standings': typeof AdminTournamentsTournamentIdStandingsRoute
   '/admin/tournaments/$tournamentId/timer': typeof AdminTournamentsTournamentIdTimerRoute
+  '/admin/conventions/$conventionId': typeof AdminConventionsConventionIdIndexRoute
   '/admin/tournaments/$tournamentId': typeof AdminTournamentsTournamentIdIndexRoute
 }
 export interface FileRoutesById {
@@ -222,17 +301,26 @@ export interface FileRoutesById {
   '/sign-up/$': typeof SignUpSplatRoute
   '/users/$publicCode': typeof UsersPublicCodeRoute
   '/admin/': typeof AdminIndexRoute
+  '/admin/conventions/$conventionId': typeof AdminConventionsConventionIdRouteWithChildren
   '/admin/tournaments/$tournamentId': typeof AdminTournamentsTournamentIdRouteWithChildren
+  '/conventions/$conventionId/payment': typeof ConventionsConventionIdPaymentRoute
   '/tournaments/$tournamentId/decklist': typeof TournamentsTournamentIdDecklistRoute
   '/tournaments/$tournamentId/payment': typeof TournamentsTournamentIdPaymentRoute
   '/tournaments/$tournamentId/play': typeof TournamentsTournamentIdPlayRoute
+  '/admin/conventions/': typeof AdminConventionsIndexRoute
+  '/conventions/$conventionId/': typeof ConventionsConventionIdIndexRoute
   '/tournaments/$tournamentId/': typeof TournamentsTournamentIdIndexRoute
+  '/admin/conventions/$conventionId/events': typeof AdminConventionsConventionIdEventsRoute
+  '/admin/conventions/$conventionId/log': typeof AdminConventionsConventionIdLogRoute
+  '/admin/conventions/$conventionId/registrations': typeof AdminConventionsConventionIdRegistrationsRoute
+  '/admin/conventions/$conventionId/settings': typeof AdminConventionsConventionIdSettingsRoute
   '/admin/tournaments/$tournamentId/log': typeof AdminTournamentsTournamentIdLogRoute
   '/admin/tournaments/$tournamentId/pairings': typeof AdminTournamentsTournamentIdPairingsRoute
   '/admin/tournaments/$tournamentId/registrations': typeof AdminTournamentsTournamentIdRegistrationsRoute
   '/admin/tournaments/$tournamentId/settings': typeof AdminTournamentsTournamentIdSettingsRoute
   '/admin/tournaments/$tournamentId/standings': typeof AdminTournamentsTournamentIdStandingsRoute
   '/admin/tournaments/$tournamentId/timer': typeof AdminTournamentsTournamentIdTimerRoute
+  '/admin/conventions/$conventionId/': typeof AdminConventionsConventionIdIndexRoute
   '/admin/tournaments/$tournamentId/': typeof AdminTournamentsTournamentIdIndexRoute
 }
 export interface FileRouteTypes {
@@ -249,17 +337,26 @@ export interface FileRouteTypes {
     | '/sign-up/$'
     | '/users/$publicCode'
     | '/admin/'
+    | '/admin/conventions/$conventionId'
     | '/admin/tournaments/$tournamentId'
+    | '/conventions/$conventionId/payment'
     | '/tournaments/$tournamentId/decklist'
     | '/tournaments/$tournamentId/payment'
     | '/tournaments/$tournamentId/play'
+    | '/admin/conventions/'
+    | '/conventions/$conventionId/'
     | '/tournaments/$tournamentId/'
+    | '/admin/conventions/$conventionId/events'
+    | '/admin/conventions/$conventionId/log'
+    | '/admin/conventions/$conventionId/registrations'
+    | '/admin/conventions/$conventionId/settings'
     | '/admin/tournaments/$tournamentId/log'
     | '/admin/tournaments/$tournamentId/pairings'
     | '/admin/tournaments/$tournamentId/registrations'
     | '/admin/tournaments/$tournamentId/settings'
     | '/admin/tournaments/$tournamentId/standings'
     | '/admin/tournaments/$tournamentId/timer'
+    | '/admin/conventions/$conventionId/'
     | '/admin/tournaments/$tournamentId/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -273,16 +370,24 @@ export interface FileRouteTypes {
     | '/sign-up/$'
     | '/users/$publicCode'
     | '/admin'
+    | '/conventions/$conventionId/payment'
     | '/tournaments/$tournamentId/decklist'
     | '/tournaments/$tournamentId/payment'
     | '/tournaments/$tournamentId/play'
+    | '/admin/conventions'
+    | '/conventions/$conventionId'
     | '/tournaments/$tournamentId'
+    | '/admin/conventions/$conventionId/events'
+    | '/admin/conventions/$conventionId/log'
+    | '/admin/conventions/$conventionId/registrations'
+    | '/admin/conventions/$conventionId/settings'
     | '/admin/tournaments/$tournamentId/log'
     | '/admin/tournaments/$tournamentId/pairings'
     | '/admin/tournaments/$tournamentId/registrations'
     | '/admin/tournaments/$tournamentId/settings'
     | '/admin/tournaments/$tournamentId/standings'
     | '/admin/tournaments/$tournamentId/timer'
+    | '/admin/conventions/$conventionId'
     | '/admin/tournaments/$tournamentId'
   id:
     | '__root__'
@@ -297,17 +402,26 @@ export interface FileRouteTypes {
     | '/sign-up/$'
     | '/users/$publicCode'
     | '/admin/'
+    | '/admin/conventions/$conventionId'
     | '/admin/tournaments/$tournamentId'
+    | '/conventions/$conventionId/payment'
     | '/tournaments/$tournamentId/decklist'
     | '/tournaments/$tournamentId/payment'
     | '/tournaments/$tournamentId/play'
+    | '/admin/conventions/'
+    | '/conventions/$conventionId/'
     | '/tournaments/$tournamentId/'
+    | '/admin/conventions/$conventionId/events'
+    | '/admin/conventions/$conventionId/log'
+    | '/admin/conventions/$conventionId/registrations'
+    | '/admin/conventions/$conventionId/settings'
     | '/admin/tournaments/$tournamentId/log'
     | '/admin/tournaments/$tournamentId/pairings'
     | '/admin/tournaments/$tournamentId/registrations'
     | '/admin/tournaments/$tournamentId/settings'
     | '/admin/tournaments/$tournamentId/standings'
     | '/admin/tournaments/$tournamentId/timer'
+    | '/admin/conventions/$conventionId/'
     | '/admin/tournaments/$tournamentId/'
   fileRoutesById: FileRoutesById
 }
@@ -319,9 +433,11 @@ export interface RootRouteChildren {
   SignInSplatRoute: typeof SignInSplatRoute
   SignUpSplatRoute: typeof SignUpSplatRoute
   UsersPublicCodeRoute: typeof UsersPublicCodeRoute
+  ConventionsConventionIdPaymentRoute: typeof ConventionsConventionIdPaymentRoute
   TournamentsTournamentIdDecklistRoute: typeof TournamentsTournamentIdDecklistRoute
   TournamentsTournamentIdPaymentRoute: typeof TournamentsTournamentIdPaymentRoute
   TournamentsTournamentIdPlayRoute: typeof TournamentsTournamentIdPlayRoute
+  ConventionsConventionIdIndexRoute: typeof ConventionsConventionIdIndexRoute
   TournamentsTournamentIdIndexRoute: typeof TournamentsTournamentIdIndexRoute
 }
 
@@ -411,6 +527,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TournamentsTournamentIdIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/conventions/$conventionId/': {
+      id: '/conventions/$conventionId/'
+      path: '/conventions/$conventionId'
+      fullPath: '/conventions/$conventionId/'
+      preLoaderRoute: typeof ConventionsConventionIdIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/conventions/': {
+      id: '/admin/conventions/'
+      path: '/conventions'
+      fullPath: '/admin/conventions/'
+      preLoaderRoute: typeof AdminConventionsIndexRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/tournaments/$tournamentId/play': {
       id: '/tournaments/$tournamentId/play'
       path: '/tournaments/$tournamentId/play'
@@ -432,11 +562,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TournamentsTournamentIdDecklistRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/conventions/$conventionId/payment': {
+      id: '/conventions/$conventionId/payment'
+      path: '/conventions/$conventionId/payment'
+      fullPath: '/conventions/$conventionId/payment'
+      preLoaderRoute: typeof ConventionsConventionIdPaymentRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin/tournaments/$tournamentId': {
       id: '/admin/tournaments/$tournamentId'
       path: '/tournaments/$tournamentId'
       fullPath: '/admin/tournaments/$tournamentId'
       preLoaderRoute: typeof AdminTournamentsTournamentIdRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/conventions/$conventionId': {
+      id: '/admin/conventions/$conventionId'
+      path: '/conventions/$conventionId'
+      fullPath: '/admin/conventions/$conventionId'
+      preLoaderRoute: typeof AdminConventionsConventionIdRouteImport
       parentRoute: typeof AdminRoute
     }
     '/admin/tournaments/$tournamentId/': {
@@ -445,6 +589,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/admin/tournaments/$tournamentId/'
       preLoaderRoute: typeof AdminTournamentsTournamentIdIndexRouteImport
       parentRoute: typeof AdminTournamentsTournamentIdRoute
+    }
+    '/admin/conventions/$conventionId/': {
+      id: '/admin/conventions/$conventionId/'
+      path: '/'
+      fullPath: '/admin/conventions/$conventionId/'
+      preLoaderRoute: typeof AdminConventionsConventionIdIndexRouteImport
+      parentRoute: typeof AdminConventionsConventionIdRoute
     }
     '/admin/tournaments/$tournamentId/timer': {
       id: '/admin/tournaments/$tournamentId/timer'
@@ -488,8 +639,62 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminTournamentsTournamentIdLogRouteImport
       parentRoute: typeof AdminTournamentsTournamentIdRoute
     }
+    '/admin/conventions/$conventionId/settings': {
+      id: '/admin/conventions/$conventionId/settings'
+      path: '/settings'
+      fullPath: '/admin/conventions/$conventionId/settings'
+      preLoaderRoute: typeof AdminConventionsConventionIdSettingsRouteImport
+      parentRoute: typeof AdminConventionsConventionIdRoute
+    }
+    '/admin/conventions/$conventionId/registrations': {
+      id: '/admin/conventions/$conventionId/registrations'
+      path: '/registrations'
+      fullPath: '/admin/conventions/$conventionId/registrations'
+      preLoaderRoute: typeof AdminConventionsConventionIdRegistrationsRouteImport
+      parentRoute: typeof AdminConventionsConventionIdRoute
+    }
+    '/admin/conventions/$conventionId/log': {
+      id: '/admin/conventions/$conventionId/log'
+      path: '/log'
+      fullPath: '/admin/conventions/$conventionId/log'
+      preLoaderRoute: typeof AdminConventionsConventionIdLogRouteImport
+      parentRoute: typeof AdminConventionsConventionIdRoute
+    }
+    '/admin/conventions/$conventionId/events': {
+      id: '/admin/conventions/$conventionId/events'
+      path: '/events'
+      fullPath: '/admin/conventions/$conventionId/events'
+      preLoaderRoute: typeof AdminConventionsConventionIdEventsRouteImport
+      parentRoute: typeof AdminConventionsConventionIdRoute
+    }
   }
 }
+
+interface AdminConventionsConventionIdRouteChildren {
+  AdminConventionsConventionIdEventsRoute: typeof AdminConventionsConventionIdEventsRoute
+  AdminConventionsConventionIdLogRoute: typeof AdminConventionsConventionIdLogRoute
+  AdminConventionsConventionIdRegistrationsRoute: typeof AdminConventionsConventionIdRegistrationsRoute
+  AdminConventionsConventionIdSettingsRoute: typeof AdminConventionsConventionIdSettingsRoute
+  AdminConventionsConventionIdIndexRoute: typeof AdminConventionsConventionIdIndexRoute
+}
+
+const AdminConventionsConventionIdRouteChildren: AdminConventionsConventionIdRouteChildren =
+  {
+    AdminConventionsConventionIdEventsRoute:
+      AdminConventionsConventionIdEventsRoute,
+    AdminConventionsConventionIdLogRoute: AdminConventionsConventionIdLogRoute,
+    AdminConventionsConventionIdRegistrationsRoute:
+      AdminConventionsConventionIdRegistrationsRoute,
+    AdminConventionsConventionIdSettingsRoute:
+      AdminConventionsConventionIdSettingsRoute,
+    AdminConventionsConventionIdIndexRoute:
+      AdminConventionsConventionIdIndexRoute,
+  }
+
+const AdminConventionsConventionIdRouteWithChildren =
+  AdminConventionsConventionIdRoute._addFileChildren(
+    AdminConventionsConventionIdRouteChildren,
+  )
 
 interface AdminTournamentsTournamentIdRouteChildren {
   AdminTournamentsTournamentIdLogRoute: typeof AdminTournamentsTournamentIdLogRoute
@@ -528,7 +733,9 @@ interface AdminRouteChildren {
   AdminStaffRoute: typeof AdminStaffRoute
   AdminStripeReturnRoute: typeof AdminStripeReturnRoute
   AdminIndexRoute: typeof AdminIndexRoute
+  AdminConventionsConventionIdRoute: typeof AdminConventionsConventionIdRouteWithChildren
   AdminTournamentsTournamentIdRoute: typeof AdminTournamentsTournamentIdRouteWithChildren
+  AdminConventionsIndexRoute: typeof AdminConventionsIndexRoute
 }
 
 const AdminRouteChildren: AdminRouteChildren = {
@@ -536,8 +743,11 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminStaffRoute: AdminStaffRoute,
   AdminStripeReturnRoute: AdminStripeReturnRoute,
   AdminIndexRoute: AdminIndexRoute,
+  AdminConventionsConventionIdRoute:
+    AdminConventionsConventionIdRouteWithChildren,
   AdminTournamentsTournamentIdRoute:
     AdminTournamentsTournamentIdRouteWithChildren,
+  AdminConventionsIndexRoute: AdminConventionsIndexRoute,
 }
 
 const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
@@ -550,9 +760,11 @@ const rootRouteChildren: RootRouteChildren = {
   SignInSplatRoute: SignInSplatRoute,
   SignUpSplatRoute: SignUpSplatRoute,
   UsersPublicCodeRoute: UsersPublicCodeRoute,
+  ConventionsConventionIdPaymentRoute: ConventionsConventionIdPaymentRoute,
   TournamentsTournamentIdDecklistRoute: TournamentsTournamentIdDecklistRoute,
   TournamentsTournamentIdPaymentRoute: TournamentsTournamentIdPaymentRoute,
   TournamentsTournamentIdPlayRoute: TournamentsTournamentIdPlayRoute,
+  ConventionsConventionIdIndexRoute: ConventionsConventionIdIndexRoute,
   TournamentsTournamentIdIndexRoute: TournamentsTournamentIdIndexRoute,
 }
 export const routeTree = rootRouteImport

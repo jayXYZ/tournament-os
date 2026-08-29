@@ -60,6 +60,16 @@ export function TournamentPublicPage({
 // optional invite code (from a /join link's ?invite param) opens a private
 // event's page and rides along on the register call; it is meaningless on an
 // event the viewer can already see, so nothing here branches on it.
+// The owning convention's summary shipped alongside the tournament (see
+// getPublicTournament): enough for the "part of" link and the badge-gate
+// notice without another query.
+type ConventionSummary = {
+  name: string
+  publicCode: number
+  badgeRequiredForChildEvents: boolean
+  myBadgeStatus: Doc<'conventionRegistrations'>['entryStatus'] | null
+}
+
 export function TournamentPublicPageContent({
   publicCode,
   inviteCode,
@@ -87,6 +97,7 @@ export function TournamentPublicPageContent({
       tournament={event.tournament}
       organizationName={event.organizationName}
       registeredCount={event.registeredCount}
+      convention={event.convention}
       inviteCode={inviteCode}
     />
   )
@@ -96,11 +107,13 @@ function TournamentDetails({
   tournament,
   organizationName,
   registeredCount,
+  convention,
   inviteCode,
 }: {
   tournament: Tournament
   organizationName: string | null
   registeredCount: number
+  convention: ConventionSummary | null
   inviteCode?: string
 }) {
   const spotsLeft = Math.max(tournament.playerCapacity - registeredCount, 0)
@@ -120,6 +133,18 @@ function TournamentDetails({
               ? 'Private event'
               : 'Public event'}
           {organizationName ? ` hosted by ${organizationName}` : ''}
+          {convention ? (
+            <>
+              {' · part of '}
+              <Link
+                to="/conventions/$conventionId"
+                params={{ conventionId: String(convention.publicCode) }}
+                className="underline underline-offset-4"
+              >
+                {convention.name}
+              </Link>
+            </>
+          ) : null}
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4">
@@ -149,6 +174,21 @@ function TournamentDetails({
           ) : null}
         </div>
         <Separator />
+        {convention?.badgeRequiredForChildEvents &&
+        convention.myBadgeStatus !== 'confirmed' &&
+        tournament.lifecycle === 'registration' ? (
+          <p className="rounded-md border bg-muted/50 px-4 py-3 text-sm text-muted-foreground">
+            This event requires a confirmed {convention.name} badge —{' '}
+            <Link
+              to="/conventions/$conventionId"
+              params={{ conventionId: String(convention.publicCode) }}
+              className="underline underline-offset-4"
+            >
+              register for the convention
+            </Link>{' '}
+            first.
+          </p>
+        ) : null}
         <RegistrationPanel
           tournament={tournament}
           spotsLeft={spotsLeft}
