@@ -7,6 +7,7 @@ import {
 
 import { query } from "../_generated/server";
 import { currentUserOrNull } from "../model/access";
+import { badgeForUser } from "../model/conventions";
 import {
   hasPriorPlayerCancelFullRefund,
   ordersForRegistration,
@@ -69,8 +70,56 @@ export const getMyEntryOrder = query({
           ? "no_refund"
           : (await hasPriorPlayerCancelFullRefund(
                 ctx,
-                tournament._id,
+                { kind: "tournament", event: tournament },
                 registration.participantId,
+              ))
+            ? "entry_only_refund"
+            : "full_refund";
+      }
+    }
+
+    return {
+      status: order.status,
+      purpose: order.purpose,
+      amountBreakdown: order.amountBreakdown,
+      cancelOutcome,
+    };
+  },
+});
+
+// The badge twin of getMyEntryOrder: the caller's latest badge order for a
+// convention — what the badge panel and the payment return page render.
+export const getMyBadgeOrder = query({
+  args: { conventionId: v.id("conventions") },
+  handler: async (ctx, args) => {
+    const user = await currentUserOrNull(ctx);
+    if (!user) {
+      return null;
+    }
+    const badge = await badgeForUser(ctx, args.conventionId, user._id);
+    if (!badge) {
+      return null;
+    }
+    const orders = await ordersForRegistration(ctx, badge._id);
+    const order = orders[0];
+    if (!order) {
+      return null;
+    }
+
+    let cancelOutcome:
+      | "full_refund"
+      | "entry_only_refund"
+      | "no_refund"
+      | null = null;
+    if (order.status === "paid") {
+      const convention = await ctx.db.get(args.conventionId);
+      if (convention) {
+        cancelOutcome = !refundWindowOpen(convention, Date.now())
+          ? "no_refund"
+          : (await hasPriorPlayerCancelFullRefund(
+                ctx,
+                { kind: "convention", event: convention },
+                badge.participantId,
               ))
             ? "entry_only_refund"
             : "full_refund";
@@ -104,11 +153,39 @@ export const getMyRefundFlag = query({
     if (!registration) {
       return { repeatDropFeesKept: false };
     }
+    const tournament = await ctx.db.get(args.tournamentId);
+    if (!tournament) {
+      return { repeatDropFeesKept: false };
+    }
     return {
       repeatDropFeesKept: await hasPriorPlayerCancelFullRefund(
         ctx,
-        args.tournamentId,
+        { kind: "tournament", event: tournament },
         registration.participantId,
+      ),
+    };
+  },
+});
+
+// The badge twin of getMyRefundFlag: the repeat-drop warning before a
+// caller pays for a badge again.
+export const getMyBadgeRefundFlag = query({
+  args: { conventionId: v.id("conventions") },
+  handler: async (ctx, args) => {
+    const user = await currentUserOrNull(ctx);
+    if (!user) {
+      return { repeatDropFeesKept: false };
+    }
+    const badge = await badgeForUser(ctx, args.conventionId, user._id);
+    const convention = badge ? await ctx.db.get(args.conventionId) : null;
+    if (!badge || !convention) {
+      return { repeatDropFeesKept: false };
+    }
+    return {
+      repeatDropFeesKept: await hasPriorPlayerCancelFullRefund(
+        ctx,
+        { kind: "convention", event: convention },
+        badge.participantId,
       ),
     };
   },

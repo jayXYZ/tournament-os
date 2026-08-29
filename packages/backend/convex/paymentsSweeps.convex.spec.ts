@@ -282,7 +282,7 @@ test("the cancel sweep counts refunds already in flight instead of double-refund
 
   // Both cancel refunds are queued but unexecuted (no drain): the sweep
   // observes them as pending, exactly the webhook-vs-sweep race.
-  await t.mutation(internal.payments.refunds.cancelTournamentPaymentsSweep, {
+  await t.mutation(internal.payments.refunds.cancelEventPaymentsSweep, {
     tournamentId,
   });
 

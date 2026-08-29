@@ -1,9 +1,19 @@
 # Payments (Stripe Connect)
 
-Paid event entry, built on Stripe Connect. The invariants below are pinned by
+Paid event entry, built on Stripe Connect. Two kinds of event sell entries
+through one shared engine: tournaments (entry fees) and conventions (badge
+fees). The money tables (`paymentOrders`, `paymentRefunds`, `eventPayouts`,
+`payoutTransfers`) carry an exactly-one-of owner pair
+(`tournamentId`/`conventionId`) matching `registrationId`'s table;
+`model/paidEvents.ts` is the one seam that resolves a row back to its owner,
+and the domain rules in `model/payments.ts` are structural over either doc
+(the convention document deliberately reuses the tournament paid-event field
+names — see ADR 0003). Everything below applies to both kinds unless it says
+otherwise. The invariants are pinned by
 `packages/backend/convex/payments.structure.convex.spec.ts`; the behavioral
 suites are `paymentsConnect` / `entryFeeSettings` / `paymentsCheckout` /
-`paymentsRefunds` / `paymentsPayouts` / `paymentsSweeps` `.convex.spec.ts`.
+`paymentsRefunds` / `paymentsPayouts` / `paymentsSweeps` /
+`conventionPayments` `.convex.spec.ts`.
 
 ## Architecture
 
@@ -48,9 +58,13 @@ suites are `paymentsConnect` / `entryFeeSettings` / `paymentsCheckout` /
   never refund.
 - **Payout** — completion schedules a sweep: one transfer per paid order
   (`source_transaction` = the order's charge, per-row idempotency keys),
-  greedily reduced by the organizer-absorbed refund fees. Blocked payouts
-  (refunds settling, account not payouts-ready) and exhausted-retry failures
-  surface on the tournament settings page with an owner-only retry.
+  greedily reduced by the organizer-absorbed refund fees. One payout per
+  event: a tournament's fires from `completeTournament`, a convention's from
+  the organizer's explicit `completeConvention` (a convention has no rounds
+  to derive completion from); the two settle independently even when the
+  tournament is a child of the convention. Blocked payouts (refunds
+  settling, account not payouts-ready) and exhausted-retry failures surface
+  on the event's settings page with an owner-only retry.
 - **Webhooks** — single signed endpoint,
   `POST <deployment>.convex.site/stripe/events`. Fulfillment happens only
   here; success pages just watch the order reactively. Every handler is a

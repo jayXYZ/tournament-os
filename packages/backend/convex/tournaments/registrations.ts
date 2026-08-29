@@ -20,9 +20,10 @@ import {
 } from "../model/participants";
 import { setRegistrationState } from "../model/participation";
 import {
-  isPaidTournament,
-  latestOrderForRegistration,
-} from "../model/payments";
+  badgeCompsChildEvent,
+  requireBadgeForChildEvent,
+} from "../model/conventions";
+import { isPaidEvent, latestOrderForRegistration } from "../model/payments";
 import { tiebreakRandom } from "../model/random";
 import {
   adjustConfirmedRegistrationCount,
@@ -87,7 +88,7 @@ async function registrationRows(
       ...entryReviewActions(tournament, registration),
       // The row's payment state on paid events (the newest order's status;
       // null on free events or when the player has no order yet).
-      paymentStatus: isPaidTournament(tournament)
+      paymentStatus: isPaidEvent(tournament)
         ? ((await latestOrderForRegistration(ctx, registration._id))?.status ??
           null)
         : null,
@@ -161,14 +162,20 @@ export const registerSelf = mutation({
     ) {
       throw new Error("Tournament is not open for registration");
     }
+    // A badge-gated child event admits self-registration only with a
+    // confirmed convention badge (model/conventions.ts). Organizer verbs
+    // (approve, guest enroll) bypass the gate by never routing here.
+    await requireBadgeForChildEvent(ctx, tournament, user._id);
     // Direct registration on a paid event goes through the Checkout action
     // (payments/checkout.ts), which files the pending row itself; the seat
     // is only ever taken by the payment webhook. Approval-mode paid events
     // still file their free application here — payment is requested at
-    // approval.
+    // approval. A player whose convention pass comps this event (ADR 0004)
+    // registers free right here: no order is ever created for them.
     if (
-      isPaidTournament(tournament) &&
-      !tournament.registrationRequiresApproval
+      isPaidEvent(tournament) &&
+      !tournament.registrationRequiresApproval &&
+      !(await badgeCompsChildEvent(ctx, tournament, user._id))
     ) {
       throw new Error(
         "This event charges an entry fee — register through the payment checkout",

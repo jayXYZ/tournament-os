@@ -244,7 +244,10 @@ test("direct paid registration: checkout, webhook confirm, idempotent redelivery
   expect(order.stripeChargeId).toBe("ch_one");
 
   const registration = await t.run(
-    async (ctx) => (await ctx.db.get(order.registrationId))!,
+    async (ctx) =>
+      (await ctx.db.get(
+        order.registrationId as Id<"tournamentRegistrations">,
+      ))!,
   );
   expect(registration.entryStatus).toBe("confirmed");
   expect(registration.participationStatus).toBe("active");

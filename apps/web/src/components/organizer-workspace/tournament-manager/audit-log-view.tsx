@@ -228,6 +228,7 @@ function describeRefundReason(
     | 'player_cancel'
     | 'organizer_remove'
     | 'tournament_cancelled'
+    | 'convention_cancelled'
     | 'seat_unavailable',
 ) {
   switch (reason) {
@@ -237,6 +238,10 @@ function describeRefundReason(
       return 'removed by organizer'
     case 'tournament_cancelled':
       return 'tournament cancelled'
+    // Never emitted into a tournament's log (the reason belongs to badge
+    // refunds), but the shared validator admits it, so describe it honestly.
+    case 'convention_cancelled':
+      return 'convention cancelled'
     case 'seat_unavailable':
       return 'no seat available'
   }

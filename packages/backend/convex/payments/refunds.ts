@@ -10,14 +10,25 @@ import {
   type MutationCtx,
 } from "../_generated/server";
 import type { AuditActorRole } from "../model/auditLog";
-import { auditPlayerRef, logAuditEvent } from "../model/auditLog";
+import { logEntryPaymentAudit } from "../model/auditLog";
+import type { MoneyRowOwner } from "../model/paidEventOwner";
+import {
+  moneyRowOwnerArgs,
+  moneyRowOwnerColumns,
+  parseMoneyRowOwner,
+} from "../model/paidEventOwner";
+import type {
+  AnyEntryRegistration,
+  AnyEntryRegistrationId,
+  PaidEventRef,
+} from "../model/payments";
 import {
   hasPriorPlayerCancelFullRefund,
   isOpenOrderStatus,
   OPEN_ORDER_STATUSES,
   ordersForRegistration,
+  paidEntryRefundWindowOpen,
   refundsReturningForOrder,
-  refundWindowOpen,
 } from "../model/payments";
 import { getStripeGateway } from "../stripe/client";
 import { requireStripeSecretKey } from "../stripe/config";
@@ -30,10 +41,10 @@ import { isDefinitiveStripeFailure } from "../stripe/errors";
 // stays transactional and the Stripe call is idempotent per refund row.
 
 export async function queueRefund(
-  ctx: Parameters<typeof logAuditEvent>[0],
+  ctx: MutationCtx,
   args: {
     order: Doc<"paymentOrders">;
-    registration: Doc<"tournamentRegistrations">;
+    registration: AnyEntryRegistration;
     kind: Doc<"paymentRefunds">["kind"];
     reason: Doc<"paymentRefunds">["reason"];
     // The processing-fee estimate deducted from the organizer's payout;
@@ -55,7 +66,10 @@ export async function queueRefund(
     refundAmountCents(args.order.amountBreakdown, args.kind);
   const refundId = await ctx.db.insert("paymentRefunds", {
     orderId: args.order._id,
+    // The owner pair copies straight off the order — the single place the
+    // exactly-one-of invariant was established (createEntryOrder).
     tournamentId: args.order.tournamentId,
+    conventionId: args.order.conventionId,
     registrationId: args.order.registrationId,
     participantId: args.order.participantId,
     kind: args.kind,
@@ -67,12 +81,12 @@ export async function queueRefund(
     initiatedByUserId: args.initiatedBy?.actor._id,
     updatedAt: Date.now(),
   });
-  await logAuditEvent(ctx, {
-    tournamentId: args.order.tournamentId,
+  await logEntryPaymentAudit(ctx, {
+    owner: args.order,
+    registration: args.registration,
     ...(args.initiatedBy ?? { actorRole: "system" as const }),
     event: {
       type: "refund_issued",
-      player: auditPlayerRef(args.registration),
       kind: args.kind,
       reason: args.reason,
       amountCents,
@@ -90,7 +104,7 @@ export async function queueRefund(
 // complete anyway.
 export async function closeOpenOrdersForRegistration(
   ctx: MutationCtx,
-  registrationId: Doc<"tournamentRegistrations">["_id"],
+  registrationId: AnyEntryRegistrationId,
 ) {
   const orders = await ordersForRegistration(ctx, registrationId);
   for (const order of orders) {
@@ -112,8 +126,8 @@ export async function closeOpenOrdersForRegistration(
 }
 
 // Settles a registration's orders when its entry leaves the event pre-start
-// (a player cancellation or an organizer rejection/removal — the roster
-// verbs call this after the entry-state change). Open orders close and
+// (a player cancellation or an organizer rejection/removal — the roster and
+// badge verbs call this after the entry-state change). Open orders close and
 // their sessions expire; a paid order refunds by whose decision the exit
 // was: an organizer removal always refunds in full with the organizer
 // absorbing the processing fee, while a player cancellation runs the refund
@@ -122,8 +136,8 @@ export async function closeOpenOrdersForRegistration(
 export async function settleOrdersOnEntryExit(
   ctx: MutationCtx,
   args: {
-    tournament: Doc<"tournaments">;
-    registration: Doc<"tournamentRegistrations">;
+    owner: PaidEventRef;
+    registration: AnyEntryRegistration;
     actor: Doc<"users">;
     actorRole: AuditActorRole;
   },
@@ -142,12 +156,12 @@ export async function settleOrdersOnEntryExit(
     }
 
     if (args.actorRole === "player") {
-      if (!refundWindowOpen(args.tournament, Date.now())) {
+      if (!paidEntryRefundWindowOpen(args.owner, Date.now())) {
         continue;
       }
       const repeatDrop = await hasPriorPlayerCancelFullRefund(
         ctx,
-        args.tournament._id,
+        args.owner,
         args.registration.participantId,
       );
       await queueRefund(ctx, {
@@ -175,21 +189,64 @@ export async function settleOrdersOnEntryExit(
 
 const SWEEP_BATCH = 32;
 
-// Closes every open (unpaid) order for a tournament — scheduled when it
-// starts (unpaid approvals lapse; they never seat) and as the first stage of
-// the cancellation sweep. Terminates because closed orders leave the queried
+// One status page of an owner's orders, through the matching owner index.
+// Two shapes because Convex allows at most one .paginate() per function:
+// the close sweep takes fixed pages, the cancel sweep paginates by cursor.
+async function ownerOrdersTake(
+  ctx: MutationCtx,
+  owner: MoneyRowOwner,
+  status: Doc<"paymentOrders">["status"],
+  count: number,
+) {
+  if (owner.kind === "convention") {
+    return await ctx.db
+      .query("paymentOrders")
+      .withIndex("by_conventionId_and_status", (q) =>
+        q.eq("conventionId", owner.conventionId).eq("status", status),
+      )
+      .take(count);
+  }
+  return await ctx.db
+    .query("paymentOrders")
+    .withIndex("by_tournamentId_and_status", (q) =>
+      q.eq("tournamentId", owner.tournamentId).eq("status", status),
+    )
+    .take(count);
+}
+
+async function ownerOrdersPage(
+  ctx: MutationCtx,
+  owner: MoneyRowOwner,
+  status: Doc<"paymentOrders">["status"],
+  pagination: { numItems: number; cursor: string | null },
+) {
+  if (owner.kind === "convention") {
+    return await ctx.db
+      .query("paymentOrders")
+      .withIndex("by_conventionId_and_status", (q) =>
+        q.eq("conventionId", owner.conventionId).eq("status", status),
+      )
+      .paginate(pagination);
+  }
+  return await ctx.db
+    .query("paymentOrders")
+    .withIndex("by_tournamentId_and_status", (q) =>
+      q.eq("tournamentId", owner.tournamentId).eq("status", status),
+    )
+    .paginate(pagination);
+}
+
+// Closes every open (unpaid) order for an event — scheduled when it starts
+// (unpaid approvals lapse; they never seat) and as the first stage of the
+// cancellation sweep. Terminates because closed orders leave the queried
 // status ranges.
 export const closeOpenOrdersSweep = internalMutation({
-  args: { tournamentId: v.id("tournaments") },
+  args: moneyRowOwnerArgs,
   handler: async (ctx, args) => {
+    const owner = parseMoneyRowOwner(args);
     let sawFullPage = false;
     for (const status of OPEN_ORDER_STATUSES) {
-      const orders = await ctx.db
-        .query("paymentOrders")
-        .withIndex("by_tournamentId_and_status", (q) =>
-          q.eq("tournamentId", args.tournamentId).eq("status", status),
-        )
-        .take(SWEEP_BATCH);
+      const orders = await ownerOrdersTake(ctx, owner, status, SWEEP_BATCH);
       sawFullPage ||= orders.length === SWEEP_BATCH;
       for (const order of orders) {
         await ctx.db.patch(order._id, {
@@ -226,29 +283,34 @@ export const closeOpenOrdersSweep = internalMutation({
 // absorbs the processing fees (absorbedFeeCents 0). Paid orders keep their
 // status until their refund settles, so idempotency across batches comes
 // from the per-order existing-refund guard and progress from the cursor.
-export const cancelTournamentPaymentsSweep = internalMutation({
+export const cancelEventPaymentsSweep = internalMutation({
   args: {
-    tournamentId: v.id("tournaments"),
+    ...moneyRowOwnerArgs,
     stage: v.optional(v.union(v.literal("paid"), v.literal("remainder"))),
     cursor: v.optional(v.union(v.string(), v.null())),
   },
   handler: async (ctx, args) => {
+    const owner = parseMoneyRowOwner(args);
     const stage = args.stage ?? "paid";
     const status =
       stage === "paid" ? ("paid" as const) : ("partially_refunded" as const);
-    const { page, isDone, continueCursor } = await ctx.db
-      .query("paymentOrders")
-      .withIndex("by_tournamentId_and_status", (q) =>
-        q.eq("tournamentId", args.tournamentId).eq("status", status),
-      )
-      .paginate({ numItems: SWEEP_BATCH, cursor: args.cursor ?? null });
+    const cancelReason =
+      owner.kind === "convention"
+        ? ("convention_cancelled" as const)
+        : ("tournament_cancelled" as const);
+    const { page, isDone, continueCursor } = await ownerOrdersPage(
+      ctx,
+      owner,
+      status,
+      { numItems: SWEEP_BATCH, cursor: args.cursor ?? null },
+    );
 
     for (const order of page) {
       const refunds = await ctx.db
         .query("paymentRefunds")
         .withIndex("by_orderId", (q) => q.eq("orderId", order._id))
         .take(64);
-      if (refunds.some((refund) => refund.reason === "tournament_cancelled")) {
+      if (refunds.some((refund) => refund.reason === cancelReason)) {
         continue;
       }
       // Failed refunds returned nothing and stray-charge refunds returned a
@@ -272,7 +334,7 @@ export const cancelTournamentPaymentsSweep = internalMutation({
         order,
         registration,
         kind: "full",
-        reason: "tournament_cancelled",
+        reason: cancelReason,
         absorbedFeeCents: 0,
         amountCentsOverride: remainingCents,
       });
@@ -281,14 +343,14 @@ export const cancelTournamentPaymentsSweep = internalMutation({
     if (!isDone) {
       await ctx.scheduler.runAfter(
         0,
-        internal.payments.refunds.cancelTournamentPaymentsSweep,
-        { tournamentId: args.tournamentId, stage, cursor: continueCursor },
+        internal.payments.refunds.cancelEventPaymentsSweep,
+        { ...moneyRowOwnerColumns(owner), stage, cursor: continueCursor },
       );
     } else if (stage === "paid") {
       await ctx.scheduler.runAfter(
         0,
-        internal.payments.refunds.cancelTournamentPaymentsSweep,
-        { tournamentId: args.tournamentId, stage: "remainder", cursor: null },
+        internal.payments.refunds.cancelEventPaymentsSweep,
+        { ...moneyRowOwnerColumns(owner), stage: "remainder", cursor: null },
       );
     }
     return null;
@@ -461,12 +523,12 @@ async function applyRefundOutcome(
 
   const registration = await ctx.db.get(refund.registrationId);
   if (registration) {
-    await logAuditEvent(ctx, {
-      tournamentId: refund.tournamentId,
+    await logEntryPaymentAudit(ctx, {
+      owner: refund,
+      registration,
       actorRole: "system",
       event: {
         type: "refund_failed",
-        player: auditPlayerRef(registration),
         amountCents: refund.amountCents,
       },
     });

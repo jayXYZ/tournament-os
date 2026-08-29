@@ -438,8 +438,13 @@ export async function nonActiveParticipationStatuses(
   return byRegistrationId;
 }
 
-export function hasCapacityAvailable(tournament: Doc<"tournaments">) {
-  return tournament.confirmedRegistrationCount < tournament.playerCapacity;
+// Structural over tournaments and conventions — both carry the same
+// capacity/counter pair (see the conventions table comment in schema.ts).
+export function hasCapacityAvailable(event: {
+  confirmedRegistrationCount: number;
+  playerCapacity: number;
+}) {
+  return event.confirmedRegistrationCount < event.playerCapacity;
 }
 
 export function requireCapacityAvailable(tournament: Doc<"tournaments">) {

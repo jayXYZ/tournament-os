@@ -6,14 +6,53 @@ import {
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { feeConfigFromEnv } from "../stripe/config";
+import { moneyRowOwnerColumns } from "./paidEventOwner";
 import { stripeAccountForOrganization } from "./stripeAccounts";
 
-// Paid-event domain rules. The presence of entryFeeCents is what makes a
-// tournament paid; everything money-shaped hangs off order records rather
-// than registration state (TODO.md §9: never overload registration status).
+// Paid-event domain rules. Everything money-shaped hangs off order records
+// rather than registration state (TODO.md §9: never overload registration
+// status).
+//
+// Two kinds of event sell entries: tournaments (entry fees, priced by the
+// document's entryFeeCents — its presence is what makes a tournament paid)
+// and conventions (badge fees, priced per ticket type — ADR 0004,
+// model/ticketTypes.ts). The documents deliberately share the
+// lifecycle/capacity field names (see the conventions table in schema.ts),
+// so most rules here are structural over either doc; where a database index
+// or a price source must be chosen, the discriminated PaidEventRef picks
+// it.
 
-export function isPaidTournament(tournament: Doc<"tournaments">) {
-  return (tournament.entryFeeCents ?? 0) > 0;
+// The discriminated owner of a paid entry — the one seam type the payment
+// engine branches on. `event` carries the full doc so structural rules
+// (fees, capacity, refund window) read it directly.
+export type PaidEventRef =
+  | { kind: "tournament"; event: Doc<"tournaments"> }
+  | { kind: "convention"; event: Doc<"conventions"> };
+
+// Either kind of entry row an order can pay for.
+export type AnyEntryRegistration =
+  | Doc<"tournamentRegistrations">
+  | Doc<"conventionRegistrations">;
+
+export type AnyEntryRegistrationId =
+  | Id<"tournamentRegistrations">
+  | Id<"conventionRegistrations">;
+
+// The owner-pair columns stamped onto money rows: exactly one id set,
+// matching the registrationId's table. Reads go back through the parsers in
+// model/paidEventOwner.ts.
+export function paidEventOwnerColumns(ref: PaidEventRef) {
+  return moneyRowOwnerColumns(
+    ref.kind === "tournament"
+      ? { kind: "tournament", tournamentId: ref.event._id }
+      : { kind: "convention", conventionId: ref.event._id },
+  );
+}
+
+// Tournaments only — a convention's paid-ness lives on its ticket types
+// (model/ticketTypes.ts isPaidTicketType).
+export function isPaidEvent(event: { entryFeeCents?: number }) {
+  return (event.entryFeeCents ?? 0) > 0;
 }
 
 export function requireValidEntryFee(entryFeeCents: number) {
@@ -66,7 +105,7 @@ export function isOpenOrderStatus(status: Doc<"paymentOrders">["status"]) {
 
 export async function ordersForRegistration(
   ctx: QueryCtx,
-  registrationId: Id<"tournamentRegistrations">,
+  registrationId: AnyEntryRegistrationId,
 ) {
   return await ctx.db
     .query("paymentOrders")
@@ -81,7 +120,7 @@ export async function ordersForRegistration(
 // indexed single-document read, cheap enough for per-row roster shaping.
 export async function latestOrderForRegistration(
   ctx: QueryCtx,
-  registrationId: Id<"tournamentRegistrations">,
+  registrationId: AnyEntryRegistrationId,
 ) {
   return (
     await ctx.db
@@ -99,7 +138,7 @@ export async function latestOrderForRegistration(
 // closer runs through one mutation).
 export async function openOrderForRegistration(
   ctx: QueryCtx,
-  registrationId: Id<"tournamentRegistrations">,
+  registrationId: AnyEntryRegistrationId,
 ) {
   const orders = await ordersForRegistration(ctx, registrationId);
   return orders.find((order) => isOpenOrderStatus(order.status)) ?? null;
@@ -134,7 +173,7 @@ export async function refundsReturningForOrder(
 // back through payment rather than retake a seat.
 export async function registrationHoldsPaidOrder(
   ctx: QueryCtx,
-  registrationId: Id<"tournamentRegistrations">,
+  registrationId: AnyEntryRegistrationId,
 ) {
   const orders = await ordersForRegistration(ctx, registrationId);
   for (const order of orders) {
@@ -148,31 +187,56 @@ export async function registrationHoldsPaidOrder(
   return false;
 }
 
-// Whether a player cancellation still earns the automatic refund. The
-// default window is "until the tournament starts" — cancellation itself only
-// exists during the registration lifecycle — so only an organizer-set
-// earlier deadline narrows it.
-export function refundWindowOpen(tournament: Doc<"tournaments">, now: number) {
-  return (
-    tournament.refundDeadline === undefined || now <= tournament.refundDeadline
-  );
+// Whether a player cancellation still earns the automatic refund
+// (tournaments). The default window is "until the event starts" —
+// cancellation itself only exists during the registration lifecycle — so
+// only an organizer-set earlier deadline narrows it.
+export function refundWindowOpen(
+  event: { refundDeadline?: number },
+  now: number,
+) {
+  return event.refundDeadline === undefined || now <= event.refundDeadline;
+}
+
+// The owner-aware refund window. Tournaments keep the lifecycle-implied
+// default above; conventions anchor the default to their start date
+// (refundDeadline ?? startDate, ADR 0004) — with "registration" spanning
+// the whole live run, "refundable while cancellable" would let an attendee
+// self-refund mid-convention.
+export function paidEntryRefundWindowOpen(owner: PaidEventRef, now: number) {
+  if (owner.kind === "convention") {
+    return now <= (owner.event.refundDeadline ?? owner.event.startDate);
+  }
+  return refundWindowOpen(owner.event, now);
 }
 
 // The repeat-drop rule's memory: has this participant already taken an
-// automatic full refund for their own cancellation of this tournament?
-// Failed refunds don't count (the player never got the money); pending ones
-// do (the decision stands even while Stripe processes it).
+// automatic full refund for their own cancellation of this event? Failed
+// refunds don't count (the player never got the money); pending ones do
+// (the decision stands even while Stripe processes it).
 export async function hasPriorPlayerCancelFullRefund(
   ctx: QueryCtx,
-  tournamentId: Id<"tournaments">,
+  ref: PaidEventRef,
   participantId: Id<"participants">,
 ) {
-  const refunds = await ctx.db
-    .query("paymentRefunds")
-    .withIndex("by_tournamentId_and_participantId", (q) =>
-      q.eq("tournamentId", tournamentId).eq("participantId", participantId),
-    )
-    .take(64);
+  const refunds =
+    ref.kind === "tournament"
+      ? await ctx.db
+          .query("paymentRefunds")
+          .withIndex("by_tournamentId_and_participantId", (q) =>
+            q
+              .eq("tournamentId", ref.event._id)
+              .eq("participantId", participantId),
+          )
+          .take(64)
+      : await ctx.db
+          .query("paymentRefunds")
+          .withIndex("by_conventionId_and_participantId", (q) =>
+            q
+              .eq("conventionId", ref.event._id)
+              .eq("participantId", participantId),
+          )
+          .take(64);
   return refunds.some(
     (refund) =>
       refund.reason === "player_cancel" &&
@@ -181,69 +245,98 @@ export async function hasPriorPlayerCancelFullRefund(
   );
 }
 
-// The hard-delete guard: a tournament that still holds player money cannot
-// be deleted. Open or disputed orders and unsettled refunds always block;
-// paid orders block unless the payout completed (the money reached the
-// organization). Resolution: cancel the tournament (refunds everyone) or
-// complete it (pays out), then delete.
-export async function requireTournamentPaymentsSettled(
+// The paid orders for an event in one status, read through the owner's index.
+async function firstOrderWithStatus(
   ctx: QueryCtx,
-  tournamentId: Id<"tournaments">,
+  ref: PaidEventRef,
+  status: Doc<"paymentOrders">["status"],
+) {
+  return ref.kind === "tournament"
+    ? await ctx.db
+        .query("paymentOrders")
+        .withIndex("by_tournamentId_and_status", (q) =>
+          q.eq("tournamentId", ref.event._id).eq("status", status),
+        )
+        .first()
+    : await ctx.db
+        .query("paymentOrders")
+        .withIndex("by_conventionId_and_status", (q) =>
+          q.eq("conventionId", ref.event._id).eq("status", status),
+        )
+        .first();
+}
+
+// The hard-delete guard: an event that still holds player money cannot be
+// deleted. Open or disputed orders and unsettled refunds always block; paid
+// orders block unless the payout completed (the money reached the
+// organization). Resolution: cancel the event (refunds everyone) or
+// complete it (pays out), then delete.
+export async function requireEventPaymentsSettled(
+  ctx: QueryCtx,
+  ref: PaidEventRef,
 ) {
   const blockedMessage =
-    "This tournament still holds player payments — cancel it (refunding " +
+    `This ${ref.kind} still holds player payments — cancel it (refunding ` +
     "players) or complete it (paying out) and let payments settle before " +
     "deleting";
   for (const status of [...OPEN_ORDER_STATUSES, "disputed"] as const) {
-    const order = await ctx.db
-      .query("paymentOrders")
-      .withIndex("by_tournamentId_and_status", (q) =>
-        q.eq("tournamentId", tournamentId).eq("status", status),
-      )
-      .first();
-    if (order) {
+    if (await firstOrderWithStatus(ctx, ref, status)) {
       throw new Error(blockedMessage);
     }
   }
-  const pendingRefund = await ctx.db
-    .query("paymentRefunds")
-    .withIndex("by_tournamentId_and_status", (q) =>
-      q.eq("tournamentId", tournamentId).eq("status", "pending"),
-    )
-    .first();
+  const pendingRefund =
+    ref.kind === "tournament"
+      ? await ctx.db
+          .query("paymentRefunds")
+          .withIndex("by_tournamentId_and_status", (q) =>
+            q.eq("tournamentId", ref.event._id).eq("status", "pending"),
+          )
+          .first()
+      : await ctx.db
+          .query("paymentRefunds")
+          .withIndex("by_conventionId_and_status", (q) =>
+            q.eq("conventionId", ref.event._id).eq("status", "pending"),
+          )
+          .first();
   if (pendingRefund) {
     throw new Error(blockedMessage);
   }
-  const paidOrder = await ctx.db
-    .query("paymentOrders")
-    .withIndex("by_tournamentId_and_status", (q) =>
-      q.eq("tournamentId", tournamentId).eq("status", "paid"),
-    )
-    .first();
+  const paidOrder = await firstOrderWithStatus(ctx, ref, "paid");
   if (paidOrder) {
-    const payout = await ctx.db
-      .query("tournamentPayouts")
-      .withIndex("by_tournamentId", (q) => q.eq("tournamentId", tournamentId))
-      .unique();
+    const payout =
+      ref.kind === "tournament"
+        ? await ctx.db
+            .query("eventPayouts")
+            .withIndex("by_tournamentId", (q) =>
+              q.eq("tournamentId", ref.event._id),
+            )
+            .unique()
+        : await ctx.db
+            .query("eventPayouts")
+            .withIndex("by_conventionId", (q) =>
+              q.eq("conventionId", ref.event._id),
+            )
+            .unique();
     if (payout?.status !== "completed") {
       throw new Error(blockedMessage);
     }
   }
 }
 
-// The fee freeze: once ANY order exists — terminal ones included — the entry
-// fee is locked. Repricing would desync stored breakdowns from the
-// configured fee, and even an expired or canceled order can still turn into
-// money (an async payment completing late), so no order status is safe to
-// reprice around.
+// The fee freeze (tournaments): once ANY order exists — terminal ones
+// included — the entry fee is locked. Repricing would desync stored
+// breakdowns from the configured fee, and even an expired or canceled order
+// can still turn into money (an async payment completing late), so no order
+// status is safe to reprice around. Convention pricing freezes per ticket
+// type instead (model/ticketTypes.ts requireTicketTypePriceEditable).
 export async function requireEntryFeeEditable(
   ctx: QueryCtx,
-  tournamentId: Id<"tournaments">,
+  tournament: Doc<"tournaments">,
 ) {
   const order = await ctx.db
     .query("paymentOrders")
     .withIndex("by_tournamentId_and_status", (q) =>
-      q.eq("tournamentId", tournamentId),
+      q.eq("tournamentId", tournament._id),
     )
     .first();
   if (order) {
@@ -253,19 +346,37 @@ export async function requireEntryFeeEditable(
   }
 }
 
+// What an order charges for, resolved by the caller from the owner's price
+// source: a tournament's entryFeeCents, or the chosen ticket type's
+// priceCents. The ticketTypeId travels with a convention price so the order
+// can be stamped with it (the per-type freeze and delete guard read the
+// stamp) — createEntryOrder enforces the pairing the same way the owner
+// pair is enforced.
+export type EntryOrderPricing =
+  | { kind: "tournament"; entryFeeCents: number }
+  | {
+      kind: "convention";
+      entryFeeCents: number;
+      ticketTypeId: Id<"conventionTicketTypes">;
+    };
+
 // Inserts a fresh payable order for the registration, snapshotting the
-// breakdown from the tournament's fee and the deployment's fee config. The
+// breakdown from the resolved price and the deployment's fee config. The
 // payer must be the registration's linked account — paid entry is self-serve
 // only, so a Guest registration cannot take an order.
 export async function createEntryOrder(
   ctx: MutationCtx,
   args: {
-    tournament: Doc<"tournaments">;
-    registration: Doc<"tournamentRegistrations">;
+    owner: PaidEventRef;
+    registration: AnyEntryRegistration;
     purpose: Doc<"paymentOrders">["purpose"];
+    pricing: EntryOrderPricing;
   },
 ) {
-  const entryFeeCents = args.tournament.entryFeeCents ?? 0;
+  if (args.pricing.kind !== args.owner.kind) {
+    throw new Error("Order owner and pricing source disagree");
+  }
+  const entryFeeCents = args.pricing.entryFeeCents;
   if (entryFeeCents <= 0) {
     throw new Error("This event has no entry fee");
   }
@@ -275,10 +386,12 @@ export async function createEntryOrder(
   }
   const now = Date.now();
   const orderId = await ctx.db.insert("paymentOrders", {
-    tournamentId: args.tournament._id,
-    organizationId: args.tournament.organizationId,
+    ...paidEventOwnerColumns(args.owner),
+    organizationId: args.owner.event.organizationId,
     registrationId: args.registration._id,
     participantId: args.registration.participantId,
+    ticketTypeId:
+      args.pricing.kind === "convention" ? args.pricing.ticketTypeId : undefined,
     userId: participant.userId,
     purpose: args.purpose,
     amountBreakdown: computeOrderBreakdown(entryFeeCents, feeConfigFromEnv()),
@@ -301,5 +414,13 @@ export async function ensurePostApprovalOrder(
   if (existing) {
     return existing;
   }
-  return await createEntryOrder(ctx, { ...args, purpose: "post_approval" });
+  return await createEntryOrder(ctx, {
+    owner: { kind: "tournament", event: args.tournament },
+    registration: args.registration,
+    purpose: "post_approval",
+    pricing: {
+      kind: "tournament",
+      entryFeeCents: args.tournament.entryFeeCents ?? 0,
+    },
+  });
 }

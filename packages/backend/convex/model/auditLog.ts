@@ -2,11 +2,21 @@ import type { Infer } from "convex/values";
 
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
-import type { tournamentAuditEventValidator } from "../validators";
+import { parseMoneyRowEntry, parseMoneyRowOwner } from "./paidEventOwner";
+import type {
+  conventionAuditEventValidator,
+  tournamentAuditEventValidator,
+} from "../validators";
 
 export type TournamentAuditEvent = Infer<typeof tournamentAuditEventValidator>;
+export type ConventionAuditEvent = Infer<typeof conventionAuditEventValidator>;
 
 export type AuditActorRole = "organizer" | "player" | "system";
+
+// The actor half of an audit append, shared by both logs.
+type AuditActorArgs =
+  | { actor: Doc<"users">; actorRole: Exclude<AuditActorRole, "system"> }
+  | { actorRole: "system" };
 
 // Appends one immutable row to the tournament's audit trail. Callers pass the
 // acting user they already resolved for authorization, so logging never adds
@@ -17,10 +27,7 @@ export async function logAuditEvent(
   args: {
     tournamentId: Id<"tournaments">;
     event: TournamentAuditEvent;
-  } & (
-    | { actor: Doc<"users">; actorRole: Exclude<AuditActorRole, "system"> }
-    | { actorRole: "system" }
-  ),
+  } & AuditActorArgs,
 ) {
   const actor = "actor" in args ? args.actor : null;
   await ctx.db.insert("tournamentAuditEvents", {
@@ -31,6 +38,131 @@ export async function logAuditEvent(
     actorName: actor ? (actor.name ?? actor.email ?? null) : null,
     actorRole: args.actorRole,
     event: args.event,
+  });
+}
+
+// The convention log's append, mirroring logAuditEvent.
+export async function logConventionAuditEvent(
+  ctx: MutationCtx,
+  args: {
+    conventionId: Id<"conventions">;
+    event: ConventionAuditEvent;
+  } & AuditActorArgs,
+) {
+  const actor = "actor" in args ? args.actor : null;
+  await ctx.db.insert("conventionAuditEvents", {
+    conventionId: args.conventionId,
+    actorUserId: actor?._id,
+    actorName: actor ? (actor.name ?? actor.email ?? null) : null,
+    actorRole: args.actorRole,
+    event: args.event,
+  });
+}
+
+// Shapes a badge registration into the convention log's player reference.
+export function conventionAuditPlayerRef(
+  registration: Doc<"conventionRegistrations">,
+) {
+  return {
+    registrationId: registration._id,
+    playerName: registration.playerName ?? null,
+  };
+}
+
+// The payment/refund audit arms shared verbatim by both logs, minus the
+// player ref this router fills in.
+export type PaidEntryAuditEvent =
+  | { type: "payment_completed"; totalCents: number }
+  | { type: "payment_failed" }
+  | { type: "payment_expired" }
+  | {
+      type: "refund_issued";
+      kind: Doc<"paymentRefunds">["kind"];
+      reason: Doc<"paymentRefunds">["reason"];
+      amountCents: number;
+    }
+  | { type: "refund_failed"; amountCents: number }
+  | { type: "order_disputed" };
+
+// Routes a payment-shaped audit event to the log of the paid event that owns
+// the money row. The owner pair comes straight off a paymentOrders or
+// paymentRefunds row; parseMoneyRowEntry (model/paidEventOwner.ts) turns it
+// into the discriminated owner-plus-registration reference.
+export async function logEntryPaymentAudit(
+  ctx: MutationCtx,
+  args: {
+    owner: {
+      tournamentId?: Id<"tournaments">;
+      conventionId?: Id<"conventions">;
+    };
+    registration: {
+      _id: Id<"tournamentRegistrations"> | Id<"conventionRegistrations">;
+      playerName?: string;
+    };
+    event: PaidEntryAuditEvent;
+  } & AuditActorArgs,
+) {
+  const actorArgs: AuditActorArgs =
+    "actor" in args
+      ? { actor: args.actor, actorRole: args.actorRole }
+      : { actorRole: "system" };
+  const entry = parseMoneyRowEntry({
+    ...args.owner,
+    registrationId: args.registration._id,
+  });
+  if (entry.kind === "convention") {
+    await logConventionAuditEvent(ctx, {
+      conventionId: entry.conventionId,
+      event: {
+        ...args.event,
+        player: {
+          registrationId: entry.registrationId,
+          playerName: args.registration.playerName ?? null,
+        },
+      },
+      ...actorArgs,
+    });
+    return;
+  }
+  await logAuditEvent(ctx, {
+    tournamentId: entry.tournamentId,
+    event: {
+      ...args.event,
+      player: {
+        registrationId: entry.registrationId,
+        playerName: args.registration.playerName ?? null,
+      },
+    },
+    ...actorArgs,
+  });
+}
+
+// Routes a payout audit event (no player) to the owning event's log.
+export async function logEventPayoutAudit(
+  ctx: MutationCtx,
+  args: {
+    owner: {
+      tournamentId?: Id<"tournaments">;
+      conventionId?: Id<"conventions">;
+    };
+    event:
+      | { type: "payout_sent"; netCents: number }
+      | { type: "payout_failed" };
+  },
+) {
+  const owner = parseMoneyRowOwner(args.owner);
+  if (owner.kind === "convention") {
+    await logConventionAuditEvent(ctx, {
+      conventionId: owner.conventionId,
+      event: args.event,
+      actorRole: "system",
+    });
+    return;
+  }
+  await logAuditEvent(ctx, {
+    tournamentId: owner.tournamentId,
+    event: args.event,
+    actorRole: "system",
   });
 }
 

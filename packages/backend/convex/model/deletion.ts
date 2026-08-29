@@ -2,6 +2,7 @@ import type { Id, TableNames } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { deleteResultRevisionsForMatch } from "./matchResults";
 import { MAX_TOURNAMENT_PHASES } from "./phases";
+import { MAX_TICKET_TYPES_PER_CONVENTION } from "./ticketTypes";
 import { matchPlayers, roundMatches } from "./tournaments";
 
 // Deletion budget per transaction. Each invocation deletes at most this many
@@ -117,7 +118,7 @@ export async function deleteTournamentOperationalDataBatch(
   // order terminal and every refund settled (deleteTournament); the rows are
   // pure history by now.
   const payouts = await ctx.db
-    .query("tournamentPayouts")
+    .query("eventPayouts")
     .withIndex("by_tournamentId", (q) => q.eq("tournamentId", tournamentId))
     .take(4);
   sawFullPage ||= payouts.length === 4;
@@ -230,6 +231,136 @@ export async function deleteTournamentOperationalDataBatch(
     }
     await ctx.db.delete(invite._id);
     budget -= 1;
+  }
+
+  return !sawFullPage;
+}
+
+// Deletes up to DELETE_BATCH_SIZE operational documents for a convention:
+// child events are force-detached (patched, not deleted — deleting a
+// convention preserves the events it hosted, TODO.md §4), then payouts with
+// their transfers, refunds, orders, badges, and audit events drain in the
+// same batched pattern as tournaments. Payment rows are only reachable here
+// after the delete guard proved every order terminal and every refund
+// settled (requireEventPaymentsSettled).
+export async function deleteConventionOperationalDataBatch(
+  ctx: MutationCtx,
+  conventionId: Id<"conventions">,
+): Promise<boolean> {
+  let budget = DELETE_BATCH_SIZE;
+  let sawFullPage = false;
+
+  const drainPage = async (
+    rows: Array<{ _id: Id<TableNames> }>,
+    pageSize: number,
+  ): Promise<boolean> => {
+    sawFullPage ||= rows.length === pageSize;
+    for (const row of rows) {
+      if (budget < 1) {
+        return false;
+      }
+      await ctx.db.delete(row._id);
+      budget -= 1;
+    }
+    return true;
+  };
+
+  // Force-detach children first so no tournament ever points at a deleted
+  // convention. Patches spend the same write budget as deletes.
+  const children = await ctx.db
+    .query("tournaments")
+    .withIndex("by_conventionId_and_startDate", (q) =>
+      q.eq("conventionId", conventionId),
+    )
+    .take(512);
+  sawFullPage ||= children.length === 512;
+  for (const child of children) {
+    if (budget < 1) {
+      return false;
+    }
+    await ctx.db.patch(child._id, {
+      conventionId: undefined,
+      updatedAt: Date.now(),
+    });
+    budget -= 1;
+  }
+
+  const payouts = await ctx.db
+    .query("eventPayouts")
+    .withIndex("by_conventionId", (q) => q.eq("conventionId", conventionId))
+    .take(4);
+  sawFullPage ||= payouts.length === 4;
+  for (const payout of payouts) {
+    const transfers = await ctx.db
+      .query("payoutTransfers")
+      .withIndex("by_payoutId_and_status", (q) => q.eq("payoutId", payout._id))
+      .take(512);
+    const transfersPageFull = transfers.length === 512;
+    sawFullPage ||= transfersPageFull;
+    for (const transfer of transfers) {
+      if (budget < 1) {
+        return false;
+      }
+      await ctx.db.delete(transfer._id);
+      budget -= 1;
+    }
+    // A full page may hide transfers past its end; the payout must survive
+    // this pass or the next batch could never find them again.
+    if (transfersPageFull || budget < 1) {
+      return false;
+    }
+    await ctx.db.delete(payout._id);
+    budget -= 1;
+  }
+
+  const paymentRefunds = await ctx.db
+    .query("paymentRefunds")
+    .withIndex("by_conventionId_and_status", (q) =>
+      q.eq("conventionId", conventionId),
+    )
+    .take(512);
+  if (!(await drainPage(paymentRefunds, 512))) {
+    return false;
+  }
+
+  const paymentOrders = await ctx.db
+    .query("paymentOrders")
+    .withIndex("by_conventionId_and_status", (q) =>
+      q.eq("conventionId", conventionId),
+    )
+    .take(512);
+  if (!(await drainPage(paymentOrders, 512))) {
+    return false;
+  }
+
+  const badges = await ctx.db
+    .query("conventionRegistrations")
+    .withIndex("by_conventionId_and_participantId", (q) =>
+      q.eq("conventionId", conventionId),
+    )
+    .take(512);
+  if (!(await drainPage(badges, 512))) {
+    return false;
+  }
+
+  // Ticket types die with their convention (the money and badge rows that
+  // referenced them are already gone by this point in the batch).
+  const ticketTypes = await ctx.db
+    .query("conventionTicketTypes")
+    .withIndex("by_conventionId_and_sortOrder", (q) =>
+      q.eq("conventionId", conventionId),
+    )
+    .take(MAX_TICKET_TYPES_PER_CONVENTION);
+  if (!(await drainPage(ticketTypes, MAX_TICKET_TYPES_PER_CONVENTION))) {
+    return false;
+  }
+
+  const auditEvents = await ctx.db
+    .query("conventionAuditEvents")
+    .withIndex("by_conventionId", (q) => q.eq("conventionId", conventionId))
+    .take(512);
+  if (!(await drainPage(auditEvents, 512))) {
+    return false;
   }
 
   return !sawFullPage;
