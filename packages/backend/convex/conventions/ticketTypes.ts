@@ -120,15 +120,23 @@ async function validatedInputs(
     convention,
     args.includedTournamentIds ?? [],
   );
-  if (isPaidTicketType(inputs)) {
-    if (convention.isTestEvent) {
-      throw new Error("Test conventions cannot charge for tickets");
-    }
-    // Charging is only allowed once the organization can be paid out, same
-    // rule as the tournament entry fee.
-    await requirePayoutsReadyOrganization(ctx, convention.organizationId);
-  }
   return { inputs, includedTournamentIds };
+}
+
+// The gate on a price BECOMING paid — create, or an update actually changing
+// the price: real conventions only, and only once the organization can be
+// paid out (the same rule as the tournament entry fee). Deliberately not
+// re-checked on edits that keep a paid price as-is: if Stripe readiness
+// regresses after a type sells, the organizer must still be able to edit
+// capacity and sale windows — stopping the sale included.
+async function requireCanChargeForTickets(
+  ctx: MutationCtx,
+  convention: Doc<"conventions">,
+) {
+  if (convention.isTestEvent) {
+    throw new Error("Test conventions cannot charge for tickets");
+  }
+  await requirePayoutsReadyOrganization(ctx, convention.organizationId);
 }
 
 export const createTicketType = mutation({
@@ -142,6 +150,14 @@ export const createTicketType = mutation({
       args.conventionId,
     );
     requireConventionEditable(convention);
+    // New types are only mintable before the convention starts (ADR 0004);
+    // editing existing ones — sale windows included — stays open for the
+    // whole live run.
+    if (Date.now() >= convention.startDate) {
+      throw new Error(
+        "New ticket types cannot be added once the convention has started",
+      );
+    }
     const existing = await listTicketTypes(ctx, args.conventionId);
     if (existing.length >= MAX_TICKET_TYPES_PER_CONVENTION) {
       throw new Error(
@@ -153,6 +169,9 @@ export const createTicketType = mutation({
       convention,
       args,
     );
+    if (isPaidTicketType(inputs)) {
+      await requireCanChargeForTickets(ctx, convention);
+    }
     const now = Date.now();
     return await ctx.db.insert("conventionTicketTypes", {
       conventionId: args.conventionId,
@@ -201,6 +220,9 @@ export const updateTicketType = mutation({
     );
     if (inputs.priceCents !== ticketType.priceCents) {
       await requireTicketTypePriceEditable(ctx, ticketType._id);
+      if (isPaidTicketType(inputs)) {
+        await requireCanChargeForTickets(ctx, convention);
+      }
     }
     if (
       inputs.capacity !== undefined &&

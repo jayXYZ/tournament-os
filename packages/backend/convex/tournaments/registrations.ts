@@ -171,11 +171,16 @@ export const registerSelf = mutation({
     // is only ever taken by the payment webhook. Approval-mode paid events
     // still file their free application here — payment is requested at
     // approval. A player whose convention pass comps this event (ADR 0004)
-    // registers free right here: no order is ever created for them.
+    // registers free right here: no order is ever created for them, and the
+    // audit row records the comp.
+    const compedByBadge =
+      isPaidEvent(tournament) &&
+      !tournament.registrationRequiresApproval &&
+      (await badgeCompsChildEvent(ctx, tournament, user._id));
     if (
       isPaidEvent(tournament) &&
       !tournament.registrationRequiresApproval &&
-      !(await badgeCompsChildEvent(ctx, tournament, user._id))
+      !compedByBadge
     ) {
       throw new Error(
         "This event charges an entry fee — register through the payment checkout",
@@ -241,10 +246,16 @@ export const registerSelf = mutation({
       tournamentId: tournament._id,
       actor: user,
       actorRole: "player",
-      event: {
-        type: requiresApproval ? "registration_requested" : "player_registered",
-        player: { registrationId, playerName: playerName ?? null },
-      },
+      event: requiresApproval
+        ? {
+            type: "registration_requested",
+            player: { registrationId, playerName: playerName ?? null },
+          }
+        : {
+            type: "player_registered",
+            player: { registrationId, playerName: playerName ?? null },
+            compedByBadge: compedByBadge || undefined,
+          },
     });
     return registrationId;
   },

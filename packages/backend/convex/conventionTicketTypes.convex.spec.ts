@@ -104,6 +104,38 @@ async function makePayoutsReady(
   });
 }
 
+// Creates a ticket type as the organizer did before the convention started —
+// new types are only mintable pre-start (ADR 0004), so the fixture winds the
+// fake clock back to just before the start and returns it to the live "now"
+// afterwards.
+async function createTicketTypePreStart(
+  t: TestConvex<typeof schema>,
+  startDate: number,
+  args: {
+    conventionId: Id<"conventions">;
+    name: string;
+    priceCents: number;
+    capacity?: number;
+    admissionStartDate?: number;
+    admissionEndDate?: number;
+    saleStartDate?: number;
+    saleEndDate?: number;
+    includedTournamentIds?: Array<Id<"tournaments">>;
+  },
+): Promise<Id<"conventionTicketTypes">> {
+  const organizer = t.withIdentity(organizerIdentity);
+  const liveNow = Date.now();
+  vi.setSystemTime(startDate - 60 * 60 * 1000);
+  try {
+    return await organizer.mutation(
+      api.conventions.ticketTypes.createTicketType,
+      args,
+    );
+  } finally {
+    vi.setSystemTime(liveNow);
+  }
+}
+
 // A convention already underway: started yesterday, ends the day after
 // tomorrow — the door-sales shape the removed in_progress phase now allows.
 async function seedLiveConvention(
@@ -147,29 +179,23 @@ test("sale windows: door sales stay open, a pass for a finished day is not purch
 
   // A day pass whose admitted day already ended: never buyable now — its
   // effective sale end defaulted to the admission end.
-  const yesterdayPassId: Id<"conventionTicketTypes"> = await organizer.mutation(
-    api.conventions.ticketTypes.createTicketType,
-    {
-      conventionId,
-      name: "Yesterday pass",
-      priceCents: 0,
-      admissionStartDate: startDate,
-      admissionEndDate: Date.now() - 60_000,
-    },
-  );
+  const yesterdayPassId = await createTicketTypePreStart(t, startDate, {
+    conventionId,
+    name: "Yesterday pass",
+    priceCents: 0,
+    admissionStartDate: startDate,
+    admissionEndDate: Date.now() - 60_000,
+  });
   // A pass whose sale has not started yet.
-  const laterPassId: Id<"conventionTicketTypes"> = await organizer.mutation(
-    api.conventions.ticketTypes.createTicketType,
-    {
-      conventionId,
-      name: "Late-drop pass",
-      priceCents: 0,
-      saleStartDate: Date.now() + DAY,
-    },
-  );
+  const laterPassId = await createTicketTypePreStart(t, startDate, {
+    conventionId,
+    name: "Late-drop pass",
+    priceCents: 0,
+    saleStartDate: Date.now() + DAY,
+  });
   // An explicit sale end past the admission end is refused outright.
   await expect(
-    organizer.mutation(api.conventions.ticketTypes.createTicketType, {
+    createTicketTypePreStart(t, startDate, {
       conventionId,
       name: "Overlong sale",
       priceCents: 0,
@@ -178,6 +204,16 @@ test("sale windows: door sales stay open, a pass for a finished day is not purch
       saleEndDate: Date.now() + DAY,
     }),
   ).rejects.toThrow(/sales must end/i);
+
+  // Minting a NEW type once the convention is underway is refused (ADR
+  // 0004); editing existing ones stays open for the whole run.
+  await expect(
+    organizer.mutation(api.conventions.ticketTypes.createTicketType, {
+      conventionId,
+      name: "Door special",
+      priceCents: 0,
+    }),
+  ).rejects.toThrow(/cannot be added once the convention has started/);
 
   await insertPlayerUser(t, 1);
   const player = t.withIdentity(playerIdentity(1));
@@ -216,12 +252,16 @@ test("sale windows: door sales stay open, a pass for a finished day is not purch
 test("per-type capacity: a full pass refuses registration and releases its seat on cancel", async () => {
   const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
-  const { conventionId } = await seedLiveConvention(t, organizationId);
-  const organizer = t.withIdentity(organizerIdentity);
-  const vipId: Id<"conventionTicketTypes"> = await organizer.mutation(
-    api.conventions.ticketTypes.createTicketType,
-    { conventionId, name: "VIP", priceCents: 0, capacity: 1 },
+  const { conventionId, startDate } = await seedLiveConvention(
+    t,
+    organizationId,
   );
+  const vipId = await createTicketTypePreStart(t, startDate, {
+    conventionId,
+    name: "VIP",
+    priceCents: 0,
+    capacity: 1,
+  });
   await insertPlayerUser(t, 1);
   await insertPlayerUser(t, 2);
 
@@ -259,16 +299,20 @@ test("switching ticket types mid-checkout closes the old order and mints one for
   const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   await makePayoutsReady(t, organizationId);
-  const { conventionId } = await seedLiveConvention(t, organizationId);
-  const organizer = t.withIdentity(organizerIdentity);
-  const dayPassId: Id<"conventionTicketTypes"> = await organizer.mutation(
-    api.conventions.ticketTypes.createTicketType,
-    { conventionId, name: "Day pass", priceCents: 1500 },
+  const { conventionId, startDate } = await seedLiveConvention(
+    t,
+    organizationId,
   );
-  const weekendPassId: Id<"conventionTicketTypes"> = await organizer.mutation(
-    api.conventions.ticketTypes.createTicketType,
-    { conventionId, name: "Weekend pass", priceCents: 4000 },
-  );
+  const dayPassId = await createTicketTypePreStart(t, startDate, {
+    conventionId,
+    name: "Day pass",
+    priceCents: 1500,
+  });
+  const weekendPassId = await createTicketTypePreStart(t, startDate, {
+    conventionId,
+    name: "Weekend pass",
+    priceCents: 4000,
+  });
   await insertPlayerUser(t, 1);
   const player = t.withIdentity(playerIdentity(1));
 
@@ -314,10 +358,8 @@ test("a pass that comps a child event registers its holder free; other badges st
   const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   await makePayoutsReady(t, organizationId);
-  const { conventionId, defaultTicketTypeId } = await seedLiveConvention(
-    t,
-    organizationId,
-  );
+  const { conventionId, startDate, defaultTicketTypeId } =
+    await seedLiveConvention(t, organizationId);
   const organizer = t.withIdentity(organizerIdentity);
   const tournamentId: Id<"tournaments"> = await organizer.mutation(
     api.conventions.events.createTournamentForConvention,
@@ -337,15 +379,12 @@ test("a pass that comps a child event registers its holder free; other badges st
   await organizer.mutation(api.tournaments.lifecycle.publishTournament, {
     tournamentId,
   });
-  const vipId: Id<"conventionTicketTypes"> = await organizer.mutation(
-    api.conventions.ticketTypes.createTicketType,
-    {
-      conventionId,
-      name: "VIP",
-      priceCents: 0,
-      includedTournamentIds: [tournamentId],
-    },
-  );
+  const vipId = await createTicketTypePreStart(t, startDate, {
+    conventionId,
+    name: "VIP",
+    priceCents: 0,
+    includedTournamentIds: [tournamentId],
+  });
 
   // The VIP holder registers for the paid child event with no order.
   await insertPlayerUser(t, 1);
@@ -371,6 +410,28 @@ test("a pass that comps a child event registers its holder free; other badges st
     ),
   ).toBeNull();
 
+  // The free admission is audited as a comped entry (ADR 0004).
+  const auditEvents = await t.run(async (ctx) =>
+    ctx.db
+      .query("tournamentAuditEvents")
+      .withIndex("by_tournamentId", (q) => q.eq("tournamentId", tournamentId))
+      .take(16),
+  );
+  expect(auditEvents.map((row) => row.event)).toContainEqual(
+    expect.objectContaining({ type: "player_registered", compedByBadge: true }),
+  );
+
+  // The public page's flag routes the holder to free direct registration
+  // instead of Checkout.
+  const publicCode = String(
+    (await t.run(async (ctx) => ctx.db.get(tournamentId)))!.publicCode,
+  );
+  expect(
+    (await vip.query(api.tournaments.lifecycle.getPublicTournament, {
+      publicCode,
+    }))!.convention!.myBadgeCompsThisEvent,
+  ).toBe(true);
+
   // A general-admission badge holder is not comped.
   await insertPlayerUser(t, 2);
   const general = t.withIdentity(playerIdentity(2));
@@ -383,6 +444,153 @@ test("a pass that comps a child event registers its holder free; other badges st
       tournamentId,
     }),
   ).rejects.toThrow(/entry fee/);
+  expect(
+    (await general.query(api.tournaments.lifecycle.getPublicTournament, {
+      publicCode,
+    }))!.convention!.myBadgeCompsThisEvent,
+  ).toBe(false);
+});
+
+test("approval and restore seat a comped participant free and audit the comp", async () => {
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  await makePayoutsReady(t, organizationId);
+  const { conventionId, startDate } = await seedLiveConvention(
+    t,
+    organizationId,
+  );
+  const organizer = t.withIdentity(organizerIdentity);
+  const tournamentId: Id<"tournaments"> = await organizer.mutation(
+    api.conventions.events.createTournamentForConvention,
+    {
+      conventionId,
+      name: "Paid Invitational",
+      startDate: Date.now() + DAY,
+      playerCapacity: 8,
+      format: "modern",
+      phases: [{ phaseOrder: 1, phaseRoundMode: "dynamic" }],
+    },
+  );
+  await organizer.mutation(api.tournaments.lifecycle.updateTournamentSetup, {
+    tournamentId,
+    entryFeeCents: 2500,
+    registrationRequiresApproval: true,
+  });
+  await organizer.mutation(api.tournaments.lifecycle.publishTournament, {
+    tournamentId,
+  });
+  const vipId = await createTicketTypePreStart(t, startDate, {
+    conventionId,
+    name: "VIP",
+    priceCents: 0,
+    includedTournamentIds: [tournamentId],
+  });
+
+  await insertPlayerUser(t, 1);
+  const vip = t.withIdentity(playerIdentity(1));
+  await vip.mutation(api.conventions.registrations.registerSelfForConvention, {
+    conventionId,
+    ticketTypeId: vipId,
+  });
+  const registrationId: Id<"tournamentRegistrations"> = await vip.mutation(
+    api.tournaments.registrations.registerSelf,
+    { tournamentId },
+  );
+
+  const noOrders = async () =>
+    await t.run(async (ctx) =>
+      ctx.db
+        .query("paymentOrders")
+        .withIndex("by_registrationId", (q) =>
+          q.eq("registrationId", registrationId),
+        )
+        .first(),
+    );
+  const entryStatus = async () =>
+    (await t.run(async (ctx) => ctx.db.get(registrationId)))?.entryStatus;
+
+  // Approval seats the comped applicant directly — no payment request.
+  await organizer.mutation(api.tournaments.registrations.approveRegistration, {
+    registrationId,
+  });
+  expect(await entryStatus()).toBe("confirmed");
+  expect(await noOrders()).toBeNull();
+
+  // A cancel-then-reinstate reseats the comped entry free the same way.
+  await organizer.mutation(api.tournaments.registrations.dropRegistration, {
+    registrationId,
+  });
+  await organizer.mutation(
+    api.tournaments.registrations.reinstateRegistration,
+    {
+      registrationId,
+    },
+  );
+  expect(await entryStatus()).toBe("confirmed");
+  expect(await noOrders()).toBeNull();
+
+  const auditEvents = await t.run(async (ctx) =>
+    ctx.db
+      .query("tournamentAuditEvents")
+      .withIndex("by_tournamentId", (q) => q.eq("tournamentId", tournamentId))
+      .take(32),
+  );
+  expect(auditEvents.map((row) => row.event)).toContainEqual(
+    expect.objectContaining({
+      type: "registration_approved",
+      compedByBadge: true,
+    }),
+  );
+  expect(auditEvents.map((row) => row.event)).toContainEqual(
+    expect.objectContaining({
+      type: "player_reinstated",
+      compedByBadge: true,
+    }),
+  );
+});
+
+test("a paid type stays editable when Stripe readiness regresses; a price change re-checks", async () => {
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  await makePayoutsReady(t, organizationId);
+  const { conventionId, startDate } = await seedLiveConvention(
+    t,
+    organizationId,
+  );
+  const paidId = await createTicketTypePreStart(t, startDate, {
+    conventionId,
+    name: "Weekend pass",
+    priceCents: 4000,
+  });
+
+  // Readiness regresses after the type went on sale.
+  await t.run(async (ctx) => {
+    const account = await ctx.db
+      .query("organizationStripeAccounts")
+      .withIndex("by_organizationId", (q) =>
+        q.eq("organizationId", organizationId),
+      )
+      .first();
+    await ctx.db.patch(account!._id, { payoutsReady: false });
+  });
+
+  const organizer = t.withIdentity(organizerIdentity);
+  // Editing the frozen-price type — stopping its sale included — must still
+  // work, or the organizer could not turn sales off.
+  await organizer.mutation(api.conventions.ticketTypes.updateTicketType, {
+    ticketTypeId: paidId,
+    name: "Weekend pass",
+    priceCents: 4000,
+    saleEndDate: Date.now() - 60_000,
+  });
+  // Changing the price is a fresh decision to charge, so it re-checks.
+  await expect(
+    organizer.mutation(api.conventions.ticketTypes.updateTicketType, {
+      ticketTypeId: paidId,
+      name: "Weekend pass",
+      priceCents: 5000,
+    }),
+  ).rejects.toThrow(/Stripe account/);
 });
 
 test("the badge gate requires the pass's admission window to cover the child event's date", async () => {
@@ -412,16 +620,13 @@ test("the badge gate requires the pass's admission window to cover the child eve
   await organizer.mutation(api.tournaments.lifecycle.publishTournament, {
     tournamentId,
   });
-  const todayPassId: Id<"conventionTicketTypes"> = await organizer.mutation(
-    api.conventions.ticketTypes.createTicketType,
-    {
-      conventionId,
-      name: "Today pass",
-      priceCents: 0,
-      admissionStartDate: startDate,
-      admissionEndDate: Date.now() + DAY / 2,
-    },
-  );
+  const todayPassId = await createTicketTypePreStart(t, startDate, {
+    conventionId,
+    name: "Today pass",
+    priceCents: 0,
+    admissionStartDate: startDate,
+    admissionEndDate: Date.now() + DAY / 2,
+  });
 
   await insertPlayerUser(t, 1);
   const player = t.withIdentity(playerIdentity(1));
@@ -439,10 +644,8 @@ test("the badge gate requires the pass's admission window to cover the child eve
 test("a ticket type with registrations cannot be deleted; an unused one can", async () => {
   const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
-  const { conventionId, defaultTicketTypeId } = await seedLiveConvention(
-    t,
-    organizationId,
-  );
+  const { conventionId, startDate, defaultTicketTypeId } =
+    await seedLiveConvention(t, organizationId);
   const organizer = t.withIdentity(organizerIdentity);
   await insertPlayerUser(t, 1);
   await t
@@ -458,10 +661,11 @@ test("a ticket type with registrations cannot be deleted; an unused one can", as
     }),
   ).rejects.toThrow(/end its sale/);
 
-  const unusedId: Id<"conventionTicketTypes"> = await organizer.mutation(
-    api.conventions.ticketTypes.createTicketType,
-    { conventionId, name: "Unused", priceCents: 0 },
-  );
+  const unusedId = await createTicketTypePreStart(t, startDate, {
+    conventionId,
+    name: "Unused",
+    priceCents: 0,
+  });
   await organizer.mutation(api.conventions.ticketTypes.deleteTicketType, {
     ticketTypeId: unusedId,
   });

@@ -68,6 +68,7 @@ type ConventionSummary = {
   publicCode: number
   badgeRequiredForChildEvents: boolean
   myBadgeStatus: Doc<'conventionRegistrations'>['entryStatus'] | null
+  myBadgeCompsThisEvent: boolean
 }
 
 export function TournamentPublicPageContent({
@@ -193,6 +194,7 @@ function TournamentDetails({
           tournament={tournament}
           spotsLeft={spotsLeft}
           inviteCode={inviteCode}
+          badgeCompsThisEvent={convention?.myBadgeCompsThisEvent ?? false}
         />
         {tournament.detailsMarkdown ? (
           <>
@@ -239,10 +241,15 @@ function RegistrationPanel({
   tournament,
   spotsLeft,
   inviteCode,
+  badgeCompsThisEvent,
 }: {
   tournament: Tournament
   spotsLeft: number
   inviteCode?: string
+  // The viewer's convention pass comps this paid event (ADR 0004): the
+  // server-computed flag from getPublicTournament, which routes them to free
+  // direct registration instead of Checkout.
+  badgeCompsThisEvent: boolean
 }) {
   const { user, loading, refreshAuth } = useAppAuth()
   // Held at `undefined` until Convex auth settles (see useMyRegistration), so
@@ -532,8 +539,14 @@ function RegistrationPanel({
   // Paid direct registration goes through Stripe Checkout: the seat is taken
   // by the payment webhook, never by a mutation from this page. Approval-mode
   // paid events still file the free application here — payment is requested
-  // when the organizer approves.
-  if (isPaid && !tournament.registrationRequiresApproval) {
+  // when the organizer approves. A viewer whose convention pass comps this
+  // event skips Checkout entirely (the server refuses a comped checkout) and
+  // registers directly through the free button below.
+  if (
+    isPaid &&
+    !tournament.registrationRequiresApproval &&
+    !badgeCompsThisEvent
+  ) {
     return (
       <div className="flex flex-wrap items-center gap-3">
         <Button
@@ -583,9 +596,11 @@ function RegistrationPanel({
       </Button>
       <p className="text-sm text-muted-foreground">
         {spotsLeft === 1 ? '1 spot left' : `${spotsLeft} spots left`}
-        {isPaid && feePreview
-          ? ` · ${formatCents(feePreview.totalCents)} due after approval`
-          : null}
+        {isPaid && badgeCompsThisEvent
+          ? ' · included with your convention badge'
+          : isPaid && feePreview
+            ? ` · ${formatCents(feePreview.totalCents)} due after approval`
+            : null}
       </p>
     </div>
   )

@@ -23,7 +23,11 @@ import {
 import { deleteConventionOperationalDataBatch } from "../model/deletion";
 import { requireEventPaymentsSettled } from "../model/payments";
 import { parsePublicCode } from "../model/publicCodes";
-import { conventionHasPaidTicketType } from "../model/ticketTypes";
+import {
+  conventionHasPaidTicketType,
+  listTicketTypes,
+  validTicketTypeInputs,
+} from "../model/ticketTypes";
 import { cleanName, validDetailsMarkdown } from "../model/tournaments";
 import { enforceRateLimit } from "../rateLimits";
 import { tournamentVisibilityValidator } from "../validators";
@@ -203,6 +207,22 @@ export const updateConventionSetup = mutation({
         args.startDate ?? convention.startDate,
         args.endDate ?? convention.endDate,
       );
+      // Ticket-type windows were validated against the dates in force when
+      // they were written (validTicketTypeInputs); the revised range must
+      // not invalidate them after the fact — a shortened convention could
+      // otherwise leave passes purchasable outside its own dates.
+      const ticketTypes = await listTicketTypes(ctx, args.conventionId);
+      for (const ticketType of ticketTypes) {
+        try {
+          validTicketTypeInputs({ ...convention, ...range }, ticketType);
+        } catch (error) {
+          throw new Error(
+            `These dates conflict with the "${ticketType.name}" ticket (${
+              error instanceof Error ? error.message : "invalid window"
+            }) — edit that ticket type first`,
+          );
+        }
+      }
       patch.startDate = range.startDate;
       patch.endDate = range.endDate;
     }

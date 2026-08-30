@@ -5,8 +5,8 @@ import type { Id } from "../_generated/dataModel";
 import { mutation, query } from "../_generated/server";
 import {
   attachTournamentToConvention,
+  canViewConvention,
   detachTournamentFromConvention,
-  isConventionPubliclyViewable,
   requireConvention,
   requireConventionOrganizerAccess,
 } from "../model/conventions";
@@ -58,9 +58,11 @@ export const listChildEvents = query({
 // The public convention page's child-event list: attached tournaments the
 // viewer could open themselves, paginated like the organizer list. Direct
 // tournament URLs and standalone discovery stay untouched — this is one
-// more way in, not the only one. Non-public children are filtered from
-// each page after the read, so a page may come back short; the cursor
-// still advances.
+// more way in, not the only one. Follows the convention page's own access
+// rule (canViewConvention), so the organizing team and badge holders keep
+// their child-event list on a private convention. Non-public children are
+// filtered from each page after the read, so a page may come back short;
+// the cursor still advances.
 export const listPublicChildEvents = query({
   args: {
     conventionId: v.id("conventions"),
@@ -68,7 +70,7 @@ export const listPublicChildEvents = query({
   },
   handler: async (ctx, args) => {
     const convention = await requireConvention(ctx, args.conventionId);
-    if (!isConventionPubliclyViewable(convention)) {
+    if (!(await canViewConvention(ctx, convention))) {
       return { page: [], isDone: true, continueCursor: "" };
     }
     const result = await ctx.db

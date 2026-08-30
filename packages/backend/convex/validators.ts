@@ -418,6 +418,10 @@ export const tournamentAuditEventValidator = v.union(
   v.object({
     type: v.literal("player_registered"),
     player: auditPlayerRefValidator,
+    // Set when a paid event admitted the player free because their
+    // convention pass comps it (ADR 0004) — the comped-entry audit trail.
+    // Absent on free events and ordinary paid registrations.
+    compedByBadge: v.optional(v.boolean()),
   }),
   v.object({
     // registerSelf under organizer approval: the player filed a "pending"
@@ -457,6 +461,10 @@ export const tournamentAuditEventValidator = v.union(
       v.literal("waitlisted"),
       v.literal("rejected"),
     ),
+    // Set when the approval seated the player free on a paid event because
+    // their convention pass comps it (ADR 0004) — instead of requesting the
+    // entry payment.
+    compedByBadge: v.optional(v.boolean()),
   }),
   v.object({
     type: v.literal("registration_rejected"),
@@ -484,6 +492,10 @@ export const tournamentAuditEventValidator = v.union(
   v.object({
     type: v.literal("player_reinstated"),
     player: auditPlayerRefValidator,
+    // Set when the restore reseated the player free on a paid event because
+    // their convention pass comps it (ADR 0004) — instead of requesting a
+    // new entry payment.
+    compedByBadge: v.optional(v.boolean()),
   }),
   v.object({ type: v.literal("tournament_published") }),
   v.object({

@@ -15,6 +15,9 @@ import type { MoneyRowOwner } from "../model/paidEventOwner";
 import {
   moneyRowOwnerArgs,
   moneyRowOwnerColumns,
+  ownerOrdersQuery,
+  ownerPayoutsQuery,
+  ownerRefundsQuery,
   parseMoneyRowOwner,
 } from "../model/paidEventOwner";
 import { orderTransferGroup } from "../model/payments";
@@ -71,45 +74,6 @@ async function payoutSourceEvent(
   return tournament;
 }
 
-async function payoutForOwner(ctx: MutationCtx, owner: MoneyRowOwner) {
-  if (owner.kind === "convention") {
-    return await ctx.db
-      .query("eventPayouts")
-      .withIndex("by_conventionId", (q) =>
-        q.eq("conventionId", owner.conventionId),
-      )
-      .unique();
-  }
-  return await ctx.db
-    .query("eventPayouts")
-    .withIndex("by_tournamentId", (q) =>
-      q.eq("tournamentId", owner.tournamentId),
-    )
-    .unique();
-}
-
-async function ownerRefundsWithStatus(
-  ctx: MutationCtx,
-  owner: MoneyRowOwner,
-  status: Doc<"paymentRefunds">["status"],
-  count: number,
-) {
-  if (owner.kind === "convention") {
-    return await ctx.db
-      .query("paymentRefunds")
-      .withIndex("by_conventionId_and_status", (q) =>
-        q.eq("conventionId", owner.conventionId).eq("status", status),
-      )
-      .take(count);
-  }
-  return await ctx.db
-    .query("paymentRefunds")
-    .withIndex("by_tournamentId_and_status", (q) =>
-      q.eq("tournamentId", owner.tournamentId).eq("status", status),
-    )
-    .take(count);
-}
-
 export const startPayoutSweep = internalMutation({
   args: moneyRowOwnerArgs,
   handler: async (ctx, args) => {
@@ -118,7 +82,7 @@ export const startPayoutSweep = internalMutation({
     if (!event) {
       return null;
     }
-    const existing = await payoutForOwner(ctx, owner);
+    const existing = await ownerPayoutsQuery(ctx, owner).unique();
     if (existing) {
       return null;
     }
@@ -148,10 +112,7 @@ export const startPayoutSweep = internalMutation({
 
     // The payout must not race an in-flight refund's amount out from under
     // it; a blocked payout is retried once refunds settle.
-    const pendingRefund = await ownerRefundsWithStatus(
-      ctx,
-      owner,
-      "pending",
+    const pendingRefund = await ownerRefundsQuery(ctx, owner, "pending").take(
       1,
     );
     if (pendingRefund.length > 0) {
@@ -214,19 +175,7 @@ export const sumAbsorbedFeesBatch = internalMutation({
       page: refunds,
       isDone,
       continueCursor,
-    } = owner.kind === "convention"
-      ? await ctx.db
-          .query("paymentRefunds")
-          .withIndex("by_conventionId_and_status", (q) =>
-            q.eq("conventionId", owner.conventionId).eq("status", "succeeded"),
-          )
-          .paginate(pagination)
-      : await ctx.db
-          .query("paymentRefunds")
-          .withIndex("by_tournamentId_and_status", (q) =>
-            q.eq("tournamentId", owner.tournamentId).eq("status", "succeeded"),
-          )
-          .paginate(pagination);
+    } = await ownerRefundsQuery(ctx, owner, "succeeded").paginate(pagination);
 
     const absorbedFeeCents =
       payout.absorbedFeeCents +
@@ -266,19 +215,7 @@ export const enumeratePayoutBatch = internalMutation({
       page: orders,
       isDone,
       continueCursor,
-    } = owner.kind === "convention"
-      ? await ctx.db
-          .query("paymentOrders")
-          .withIndex("by_conventionId_and_status", (q) =>
-            q.eq("conventionId", owner.conventionId).eq("status", "paid"),
-          )
-          .paginate(pagination)
-      : await ctx.db
-          .query("paymentOrders")
-          .withIndex("by_tournamentId_and_status", (q) =>
-            q.eq("tournamentId", owner.tournamentId).eq("status", "paid"),
-          )
-          .paginate(pagination);
+    } = await ownerOrdersQuery(ctx, owner, "paid").paginate(pagination);
 
     let { remainingDeductionCents, totalEntryCents } = payout;
     const now = Date.now();
@@ -624,7 +561,7 @@ export const beginPayoutRetry = internalMutation({
     }
     await requirePaymentsPermission(ctx, event.organizationId);
 
-    const payout = await payoutForOwner(ctx, owner);
+    const payout = await ownerPayoutsQuery(ctx, owner).unique();
     if (
       !payout ||
       (payout.status !== "blocked" && payout.status !== "failed")

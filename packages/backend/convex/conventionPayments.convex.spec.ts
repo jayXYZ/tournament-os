@@ -350,6 +350,38 @@ test("cancelling a paid badge refunds in full, and only the badge cost on a repe
   expect(gatewayState.refunds[1]!.amountCents).toBe(BADGE_FEE_CENTS);
 });
 
+test("the badge refund default anchors to the convention start: the panel promises what cancelling does", async () => {
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const { conventionId, ticketTypeId } = await seedPaidConvention(
+    t,
+    organizationId,
+  );
+  await buyBadge(t, conventionId, ticketTypeId, 1, "first");
+  const player = t.withIdentity(playerIdentity(1));
+
+  // Before the start, the window (refundDeadline ?? startDate) is open.
+  expect(
+    (await player.query(api.payments.queries.getMyBadgeOrder, {
+      conventionId,
+    }))!.cancelOutcome,
+  ).toBe("full_refund");
+
+  // Mid-con, the panel and the cancel mutation agree: no refund.
+  vi.setSystemTime(START + 60 * 60 * 1000);
+  expect(
+    (await player.query(api.payments.queries.getMyBadgeOrder, {
+      conventionId,
+    }))!.cancelOutcome,
+  ).toBe("no_refund");
+  await player.mutation(api.conventions.registrations.cancelMyBadge, {
+    conventionId,
+  });
+  await drainScheduler(t);
+  expect(gatewayState.refunds).toHaveLength(0);
+  expect((await latestBadgeOrder(t, conventionId, 1)).status).toBe("paid");
+});
+
 test("cancelling the convention makes every badge holder whole", async () => {
   const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);

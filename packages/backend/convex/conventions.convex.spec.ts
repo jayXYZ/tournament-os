@@ -3,7 +3,11 @@ import { expect, test } from "vitest";
 
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { organizerIdentity, seedOrganizer } from "./specHelpers";
+import {
+  organizerIdentity,
+  playerIdentity,
+  seedOrganizer,
+} from "./specHelpers";
 import { createConvexTest } from "./specHelpers.runtime";
 import type { TestConvex } from "convex-test";
 import type schema from "./schema";
@@ -327,6 +331,106 @@ test("completing a convention is an explicit organizer transition", async () => 
       conventionId,
     }),
   ).rejects.toThrow(/cannot be cancelled/);
+});
+
+test("date edits cannot invalidate existing ticket-type windows", async () => {
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const conventionId = await seedConvention(t, organizationId);
+  const organizer = t.withIdentity(organizerIdentity);
+  // A day pass for the final day.
+  await organizer.mutation(api.conventions.ticketTypes.createTicketType, {
+    conventionId,
+    name: "Sunday pass",
+    priceCents: 0,
+    admissionStartDate: END - 2 * 60 * 60 * 1000,
+    admissionEndDate: END,
+  });
+
+  // Shortening the convention out from under the pass's window is refused.
+  await expect(
+    organizer.mutation(api.conventions.lifecycle.updateConventionSetup, {
+      conventionId,
+      endDate: END - 24 * 60 * 60 * 1000,
+    }),
+  ).rejects.toThrow(/Sunday pass/);
+
+  // An edit that still covers every window goes through.
+  await organizer.mutation(api.conventions.lifecycle.updateConventionSetup, {
+    conventionId,
+    startDate: START + 60 * 60 * 1000,
+  });
+  expect(
+    (await t.run(async (ctx) => ctx.db.get(conventionId)))?.startDate,
+  ).toBe(START + 60 * 60 * 1000);
+});
+
+test("a private convention keeps its child-event list for the organizing team and badge holders", async () => {
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const conventionId = await seedConvention(t, organizationId);
+  const tournamentId = await seedStandaloneTournament(t, organizationId);
+  const organizer = t.withIdentity(organizerIdentity);
+  await organizer.mutation(api.conventions.events.attachTournament, {
+    conventionId,
+    tournamentId,
+  });
+  await organizer.mutation(api.tournaments.lifecycle.publishTournament, {
+    tournamentId,
+  });
+
+  // A badge holder registers while the convention is public, then it goes
+  // private.
+  const ticketTypes = await organizer.query(
+    api.conventions.ticketTypes.listTicketTypesForOrganizer,
+    { conventionId },
+  );
+  await t.run(async (ctx) => {
+    await ctx.db.insert("users", {
+      tokenIdentifier: playerIdentity(1).tokenIdentifier,
+      publicCode: 101,
+      email: playerIdentity(1).email,
+      name: playerIdentity(1).name,
+      updatedAt: Date.now(),
+    });
+  });
+  const holder = t.withIdentity(playerIdentity(1));
+  await holder.mutation(
+    api.conventions.registrations.registerSelfForConvention,
+    { conventionId, ticketTypeId: ticketTypes[0]!._id },
+  );
+  await organizer.mutation(
+    api.conventions.lifecycle.updateConventionVisibility,
+    { conventionId, visibility: "private" },
+  );
+
+  const paginationOpts = { numItems: 50, cursor: null };
+  // Anonymous viewers get nothing — but everyone the convention page itself
+  // admits (canViewConvention) keeps its schedule.
+  expect(
+    (
+      await t.query(api.conventions.events.listPublicChildEvents, {
+        conventionId,
+        paginationOpts,
+      })
+    ).page,
+  ).toEqual([]);
+  expect(
+    (
+      await organizer.query(api.conventions.events.listPublicChildEvents, {
+        conventionId,
+        paginationOpts,
+      })
+    ).page.map((child) => child._id),
+  ).toEqual([tournamentId]);
+  expect(
+    (
+      await holder.query(api.conventions.events.listPublicChildEvents, {
+        conventionId,
+        paginationOpts,
+      })
+    ).page.map((child) => child._id),
+  ).toEqual([tournamentId]);
 });
 
 test("a private parent convention never leaks through its public child's page", async () => {

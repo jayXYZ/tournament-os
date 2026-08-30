@@ -5,13 +5,14 @@ import {
   validateEntryFeeCents,
 } from "@tournament-os/shared/payment-fees";
 
-import { query } from "../_generated/server";
+import { query, type QueryCtx } from "../_generated/server";
 import { currentUserOrNull } from "../model/access";
 import { badgeForUser } from "../model/conventions";
+import type { AnyEntryRegistration, PaidEventRef } from "../model/payments";
 import {
   hasPriorPlayerCancelFullRefund,
-  ordersForRegistration,
-  refundWindowOpen,
+  latestOrderForRegistration,
+  paidEntryCancelOutcome,
 } from "../model/payments";
 import { registrationForUser } from "../model/registrations";
 import { feeConfigFromEnv } from "../stripe/config";
@@ -30,6 +31,33 @@ export const getFeePreview = query({
   },
 });
 
+// The registration's newest order shaped for the payment panels, with the
+// server-computed consequence of cancelling right now (the same rules
+// settleOrdersOnEntryExit applies — paidEntryCancelOutcome), so the cancel
+// button's warning can never drift from what confirming it does. Shared by
+// both entry kinds so tournament and badge behavior cannot diverge.
+async function entryOrderView(
+  ctx: QueryCtx,
+  owner: PaidEventRef,
+  registration: AnyEntryRegistration,
+) {
+  const order = await latestOrderForRegistration(ctx, registration._id);
+  if (!order) {
+    return null;
+  }
+  return {
+    status: order.status,
+    purpose: order.purpose,
+    amountBreakdown: order.amountBreakdown,
+    cancelOutcome: await paidEntryCancelOutcome(
+      ctx,
+      owner,
+      order,
+      registration.participantId,
+    ),
+  };
+}
+
 // The caller's latest entry order for a tournament — what the registration
 // panel and the payment return page render. Reactive: the webhook's write
 // flips this the moment fulfillment lands.
@@ -45,45 +73,17 @@ export const getMyEntryOrder = query({
       args.tournamentId,
       user._id,
     );
-    if (!registration) {
+    const tournament = registration
+      ? await ctx.db.get(args.tournamentId)
+      : null;
+    if (!registration || !tournament) {
       return null;
     }
-    const orders = await ordersForRegistration(ctx, registration._id);
-    const order = orders[0];
-    if (!order) {
-      return null;
-    }
-
-    // What cancelling would do to this payment right now — the same rules
-    // settleOrdersOnEntryExit applies (payments/refunds.ts), computed
-    // server-side so the cancel button's warning can never drift from what
-    // confirming it does.
-    let cancelOutcome:
-      | "full_refund"
-      | "entry_only_refund"
-      | "no_refund"
-      | null = null;
-    if (order.status === "paid") {
-      const tournament = await ctx.db.get(args.tournamentId);
-      if (tournament) {
-        cancelOutcome = !refundWindowOpen(tournament, Date.now())
-          ? "no_refund"
-          : (await hasPriorPlayerCancelFullRefund(
-                ctx,
-                { kind: "tournament", event: tournament },
-                registration.participantId,
-              ))
-            ? "entry_only_refund"
-            : "full_refund";
-      }
-    }
-
-    return {
-      status: order.status,
-      purpose: order.purpose,
-      amountBreakdown: order.amountBreakdown,
-      cancelOutcome,
-    };
+    return await entryOrderView(
+      ctx,
+      { kind: "tournament", event: tournament },
+      registration,
+    );
   },
 });
 
@@ -97,41 +97,15 @@ export const getMyBadgeOrder = query({
       return null;
     }
     const badge = await badgeForUser(ctx, args.conventionId, user._id);
-    if (!badge) {
+    const convention = badge ? await ctx.db.get(args.conventionId) : null;
+    if (!badge || !convention) {
       return null;
     }
-    const orders = await ordersForRegistration(ctx, badge._id);
-    const order = orders[0];
-    if (!order) {
-      return null;
-    }
-
-    let cancelOutcome:
-      | "full_refund"
-      | "entry_only_refund"
-      | "no_refund"
-      | null = null;
-    if (order.status === "paid") {
-      const convention = await ctx.db.get(args.conventionId);
-      if (convention) {
-        cancelOutcome = !refundWindowOpen(convention, Date.now())
-          ? "no_refund"
-          : (await hasPriorPlayerCancelFullRefund(
-                ctx,
-                { kind: "convention", event: convention },
-                badge.participantId,
-              ))
-            ? "entry_only_refund"
-            : "full_refund";
-      }
-    }
-
-    return {
-      status: order.status,
-      purpose: order.purpose,
-      amountBreakdown: order.amountBreakdown,
-      cancelOutcome,
-    };
+    return await entryOrderView(
+      ctx,
+      { kind: "convention", event: convention },
+      badge,
+    );
   },
 });
 
@@ -150,11 +124,10 @@ export const getMyRefundFlag = query({
       args.tournamentId,
       user._id,
     );
-    if (!registration) {
-      return { repeatDropFeesKept: false };
-    }
-    const tournament = await ctx.db.get(args.tournamentId);
-    if (!tournament) {
+    const tournament = registration
+      ? await ctx.db.get(args.tournamentId)
+      : null;
+    if (!registration || !tournament) {
       return { repeatDropFeesKept: false };
     }
     return {

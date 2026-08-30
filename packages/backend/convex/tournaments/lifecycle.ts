@@ -16,6 +16,7 @@ import {
 import { logAuditEvent } from "../model/auditLog";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
 import {
+  badgeCompsChildEvent,
   badgeForUser,
   isConventionPubliclyViewable,
 } from "../model/conventions";
@@ -206,6 +207,7 @@ export const getPublicTournament = query({
       publicCode: number;
       badgeRequiredForChildEvents: boolean;
       myBadgeStatus: Doc<"conventionRegistrations">["entryStatus"] | null;
+      myBadgeCompsThisEvent: boolean;
     } | null = null;
     if (tournament.conventionId !== undefined) {
       const owningConvention = await ctx.db.get(tournament.conventionId);
@@ -230,6 +232,13 @@ export const getPublicTournament = query({
             badgeRequiredForChildEvents:
               owningConvention.badgeRequiredForChildEvents,
             myBadgeStatus: badge?.entryStatus ?? null,
+            // Whether the viewer's confirmed badge comps this event (ADR
+            // 0004), so a paid event's page offers free direct registration
+            // instead of Checkout — registerSelf and beginEntryCheckout
+            // enforce the comp authoritatively; this only picks the button.
+            myBadgeCompsThisEvent:
+              user !== null &&
+              (await badgeCompsChildEvent(ctx, tournament, user._id)),
           };
         }
       }

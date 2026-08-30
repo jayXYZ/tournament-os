@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 
-import type { Id } from "../_generated/dataModel";
+import type { Doc, Id } from "../_generated/dataModel";
+import type { QueryCtx } from "../_generated/server";
 
 // The money tables (paymentOrders, paymentRefunds, eventPayouts,
 // payoutTransfers) store their owner as an optional tournamentId/conventionId
@@ -88,4 +89,86 @@ export function moneyRowOwnerColumns(owner: MoneyRowOwner): {
   return owner.kind === "tournament"
     ? { tournamentId: owner.tournamentId, conventionId: undefined }
     : { tournamentId: undefined, conventionId: owner.conventionId };
+}
+
+// The owner-indexed reads over the money tables. Each table keeps a per-side
+// index (by_tournamentId..., by_conventionId...); these adapters pick the
+// owner's side once and hand back the ranged query, so callers chain
+// .first()/.take()/.paginate() without re-branching on the kind at every
+// read site.
+
+export function ownerOrdersQuery(
+  ctx: QueryCtx,
+  owner: MoneyRowOwner,
+  status?: Doc<"paymentOrders">["status"],
+) {
+  return owner.kind === "tournament"
+    ? ctx.db
+        .query("paymentOrders")
+        .withIndex("by_tournamentId_and_status", (q) => {
+          const byOwner = q.eq("tournamentId", owner.tournamentId);
+          return status === undefined ? byOwner : byOwner.eq("status", status);
+        })
+    : ctx.db
+        .query("paymentOrders")
+        .withIndex("by_conventionId_and_status", (q) => {
+          const byOwner = q.eq("conventionId", owner.conventionId);
+          return status === undefined ? byOwner : byOwner.eq("status", status);
+        });
+}
+
+export function ownerRefundsQuery(
+  ctx: QueryCtx,
+  owner: MoneyRowOwner,
+  status?: Doc<"paymentRefunds">["status"],
+) {
+  return owner.kind === "tournament"
+    ? ctx.db
+        .query("paymentRefunds")
+        .withIndex("by_tournamentId_and_status", (q) => {
+          const byOwner = q.eq("tournamentId", owner.tournamentId);
+          return status === undefined ? byOwner : byOwner.eq("status", status);
+        })
+    : ctx.db
+        .query("paymentRefunds")
+        .withIndex("by_conventionId_and_status", (q) => {
+          const byOwner = q.eq("conventionId", owner.conventionId);
+          return status === undefined ? byOwner : byOwner.eq("status", status);
+        });
+}
+
+export function ownerRefundsForParticipantQuery(
+  ctx: QueryCtx,
+  owner: MoneyRowOwner,
+  participantId: Id<"participants">,
+) {
+  return owner.kind === "tournament"
+    ? ctx.db
+        .query("paymentRefunds")
+        .withIndex("by_tournamentId_and_participantId", (q) =>
+          q
+            .eq("tournamentId", owner.tournamentId)
+            .eq("participantId", participantId),
+        )
+    : ctx.db
+        .query("paymentRefunds")
+        .withIndex("by_conventionId_and_participantId", (q) =>
+          q
+            .eq("conventionId", owner.conventionId)
+            .eq("participantId", participantId),
+        );
+}
+
+export function ownerPayoutsQuery(ctx: QueryCtx, owner: MoneyRowOwner) {
+  return owner.kind === "tournament"
+    ? ctx.db
+        .query("eventPayouts")
+        .withIndex("by_tournamentId", (q) =>
+          q.eq("tournamentId", owner.tournamentId),
+        )
+    : ctx.db
+        .query("eventPayouts")
+        .withIndex("by_conventionId", (q) =>
+          q.eq("conventionId", owner.conventionId),
+        );
 }

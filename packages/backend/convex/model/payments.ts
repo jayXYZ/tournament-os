@@ -6,7 +6,14 @@ import {
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { feeConfigFromEnv } from "../stripe/config";
-import { moneyRowOwnerColumns } from "./paidEventOwner";
+import type { MoneyRowOwner } from "./paidEventOwner";
+import {
+  moneyRowOwnerColumns,
+  ownerOrdersQuery,
+  ownerPayoutsQuery,
+  ownerRefundsForParticipantQuery,
+  ownerRefundsQuery,
+} from "./paidEventOwner";
 import { stripeAccountForOrganization } from "./stripeAccounts";
 
 // Paid-event domain rules. Everything money-shaped hangs off order records
@@ -38,15 +45,19 @@ export type AnyEntryRegistrationId =
   | Id<"tournamentRegistrations">
   | Id<"conventionRegistrations">;
 
+// The PaidEventRef collapsed to its id-only owner shape, for the money-row
+// stamps and the owner-indexed query adapters (model/paidEventOwner.ts).
+export function paidEventMoneyRowOwner(ref: PaidEventRef): MoneyRowOwner {
+  return ref.kind === "tournament"
+    ? { kind: "tournament", tournamentId: ref.event._id }
+    : { kind: "convention", conventionId: ref.event._id };
+}
+
 // The owner-pair columns stamped onto money rows: exactly one id set,
 // matching the registrationId's table. Reads go back through the parsers in
 // model/paidEventOwner.ts.
 export function paidEventOwnerColumns(ref: PaidEventRef) {
-  return moneyRowOwnerColumns(
-    ref.kind === "tournament"
-      ? { kind: "tournament", tournamentId: ref.event._id }
-      : { kind: "convention", conventionId: ref.event._id },
-  );
+  return moneyRowOwnerColumns(paidEventMoneyRowOwner(ref));
 }
 
 // Tournaments only — a convention's paid-ness lives on its ticket types
@@ -219,24 +230,11 @@ export async function hasPriorPlayerCancelFullRefund(
   ref: PaidEventRef,
   participantId: Id<"participants">,
 ) {
-  const refunds =
-    ref.kind === "tournament"
-      ? await ctx.db
-          .query("paymentRefunds")
-          .withIndex("by_tournamentId_and_participantId", (q) =>
-            q
-              .eq("tournamentId", ref.event._id)
-              .eq("participantId", participantId),
-          )
-          .take(64)
-      : await ctx.db
-          .query("paymentRefunds")
-          .withIndex("by_conventionId_and_participantId", (q) =>
-            q
-              .eq("conventionId", ref.event._id)
-              .eq("participantId", participantId),
-          )
-          .take(64);
+  const refunds = await ownerRefundsForParticipantQuery(
+    ctx,
+    paidEventMoneyRowOwner(ref),
+    participantId,
+  ).take(64);
   return refunds.some(
     (refund) =>
       refund.reason === "player_cancel" &&
@@ -245,25 +243,38 @@ export async function hasPriorPlayerCancelFullRefund(
   );
 }
 
-// The paid orders for an event in one status, read through the owner's index.
+// What cancelling the entry right now would do to its paid order — the same
+// rules settleOrdersOnEntryExit applies (payments/refunds.ts), computed
+// server-side so a cancel button's warning can never drift from what
+// confirming it does. Null for an order not currently holding money.
+export async function paidEntryCancelOutcome(
+  ctx: QueryCtx,
+  owner: PaidEventRef,
+  order: Doc<"paymentOrders">,
+  participantId: Id<"participants">,
+): Promise<"full_refund" | "entry_only_refund" | "no_refund" | null> {
+  if (order.status !== "paid") {
+    return null;
+  }
+  if (!paidEntryRefundWindowOpen(owner, Date.now())) {
+    return "no_refund";
+  }
+  return (await hasPriorPlayerCancelFullRefund(ctx, owner, participantId))
+    ? "entry_only_refund"
+    : "full_refund";
+}
+
+// The event's first order in one status, read through the owner's index.
 async function firstOrderWithStatus(
   ctx: QueryCtx,
   ref: PaidEventRef,
   status: Doc<"paymentOrders">["status"],
 ) {
-  return ref.kind === "tournament"
-    ? await ctx.db
-        .query("paymentOrders")
-        .withIndex("by_tournamentId_and_status", (q) =>
-          q.eq("tournamentId", ref.event._id).eq("status", status),
-        )
-        .first()
-    : await ctx.db
-        .query("paymentOrders")
-        .withIndex("by_conventionId_and_status", (q) =>
-          q.eq("conventionId", ref.event._id).eq("status", status),
-        )
-        .first();
+  return await ownerOrdersQuery(
+    ctx,
+    paidEventMoneyRowOwner(ref),
+    status,
+  ).first();
 }
 
 // The hard-delete guard: an event that still holds player money cannot be
@@ -284,39 +295,14 @@ export async function requireEventPaymentsSettled(
       throw new Error(blockedMessage);
     }
   }
-  const pendingRefund =
-    ref.kind === "tournament"
-      ? await ctx.db
-          .query("paymentRefunds")
-          .withIndex("by_tournamentId_and_status", (q) =>
-            q.eq("tournamentId", ref.event._id).eq("status", "pending"),
-          )
-          .first()
-      : await ctx.db
-          .query("paymentRefunds")
-          .withIndex("by_conventionId_and_status", (q) =>
-            q.eq("conventionId", ref.event._id).eq("status", "pending"),
-          )
-          .first();
+  const owner = paidEventMoneyRowOwner(ref);
+  const pendingRefund = await ownerRefundsQuery(ctx, owner, "pending").first();
   if (pendingRefund) {
     throw new Error(blockedMessage);
   }
   const paidOrder = await firstOrderWithStatus(ctx, ref, "paid");
   if (paidOrder) {
-    const payout =
-      ref.kind === "tournament"
-        ? await ctx.db
-            .query("eventPayouts")
-            .withIndex("by_tournamentId", (q) =>
-              q.eq("tournamentId", ref.event._id),
-            )
-            .unique()
-        : await ctx.db
-            .query("eventPayouts")
-            .withIndex("by_conventionId", (q) =>
-              q.eq("conventionId", ref.event._id),
-            )
-            .unique();
+    const payout = await ownerPayoutsQuery(ctx, owner).unique();
     if (payout?.status !== "completed") {
       throw new Error(blockedMessage);
     }
@@ -375,6 +361,17 @@ export async function createEntryOrder(
 ) {
   if (args.pricing.kind !== args.owner.kind) {
     throw new Error("Order owner and pricing source disagree");
+  }
+  // The money-row invariant (model/paidEventOwner.ts): registrationId always
+  // names a row of the owner pair's own table and event. This insert is where
+  // the invariant is established, so it is enforced here — a registration
+  // from the wrong table or a different event must never take an order.
+  const registrationEventId =
+    "tournamentId" in args.registration
+      ? args.registration.tournamentId
+      : args.registration.conventionId;
+  if (registrationEventId !== args.owner.event._id) {
+    throw new Error("Order owner and registration disagree");
   }
   const entryFeeCents = args.pricing.entryFeeCents;
   if (entryFeeCents <= 0) {
