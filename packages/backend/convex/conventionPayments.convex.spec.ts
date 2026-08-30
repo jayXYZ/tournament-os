@@ -475,6 +475,114 @@ test("the ticket price freezes once any order exists", async () => {
   ).rejects.toThrow(/locked once a payment exists/);
 });
 
+test("a child event's entry payout and the parent's badge payout settle independently", async () => {
+  const ENTRY_FEE_CENTS = 1500;
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const { conventionId, ticketTypeId } = await seedPaidConvention(
+    t,
+    organizationId,
+  );
+  const organizer = t.withIdentity(organizerIdentity);
+
+  // A paid tournament attached as a child of the convention.
+  const tournamentId = await organizer.mutation(
+    api.conventions.events.createTournamentForConvention,
+    {
+      conventionId,
+      name: "Side Event Cup",
+      startDate: START,
+      playerCapacity: 16,
+      format: "modern",
+      phases: [{ phaseOrder: 1, phaseRoundMode: "dynamic" }],
+    },
+  );
+  await organizer.mutation(api.tournaments.lifecycle.updateTournamentSetup, {
+    tournamentId,
+    entryFeeCents: ENTRY_FEE_CENTS,
+  });
+  await organizer.mutation(api.tournaments.lifecycle.publishTournament, {
+    tournamentId,
+  });
+
+  // Player 1 buys a badge; player 2 pays entry into the child event. The
+  // entry order is owned by the tournament alone even though the
+  // tournament belongs to the convention (exactly-one-of owner pair).
+  await buyBadge(t, conventionId, ticketTypeId, 1, "badge");
+  await insertPlayerUser(t, 2);
+  await t
+    .withIdentity(playerIdentity(2))
+    .action(api.payments.checkout.createEntryCheckout, { tournamentId });
+  const entryOrder = await t.run(async (ctx) =>
+    (
+      await ctx.db
+        .query("paymentOrders")
+        .withIndex("by_tournamentId_and_status", (q) =>
+          q.eq("tournamentId", tournamentId).eq("status", "awaiting_payment"),
+        )
+        .take(1)
+    ).at(0),
+  );
+  expect(entryOrder?.conventionId).toBeUndefined();
+  await completePayment(t, entryOrder!, "entry");
+
+  // The tournament settles from its own completion sweep first...
+  await t.run(async (ctx) => {
+    await ctx.db.patch(tournamentId, {
+      lifecycle: "completed",
+      updatedAt: Date.now(),
+    });
+  });
+  await t.mutation(internal.payments.payouts.startPayoutSweep, {
+    tournamentId,
+  });
+  await drainScheduler(t);
+
+  // ...then the convention from completeConvention, independently.
+  await organizer.mutation(api.conventions.lifecycle.completeConvention, {
+    conventionId,
+  });
+  await drainScheduler(t);
+
+  // Two payout rows, one per owner, each covering only its own orders.
+  const tournamentPayout = await t.run(async (ctx) =>
+    ctx.db
+      .query("eventPayouts")
+      .withIndex("by_tournamentId", (q) => q.eq("tournamentId", tournamentId))
+      .unique(),
+  );
+  expect(tournamentPayout).toMatchObject({
+    status: "completed",
+    totalEntryCents: ENTRY_FEE_CENTS,
+    netCents: ENTRY_FEE_CENTS,
+  });
+  expect(tournamentPayout?.conventionId).toBeUndefined();
+  const conventionPayout = await t.run(async (ctx) =>
+    ctx.db
+      .query("eventPayouts")
+      .withIndex("by_conventionId", (q) => q.eq("conventionId", conventionId))
+      .unique(),
+  );
+  expect(conventionPayout).toMatchObject({
+    status: "completed",
+    totalEntryCents: BADGE_FEE_CENTS,
+    netCents: BADGE_FEE_CENTS,
+  });
+  expect(conventionPayout?.tournamentId).toBeUndefined();
+
+  // Each sweep transferred exactly its own charge — neither picked up the
+  // other owner's order.
+  expect(gatewayState.transfers).toHaveLength(2);
+  expect(gatewayState.transfers[0]).toMatchObject({
+    amountCents: ENTRY_FEE_CENTS,
+    sourceChargeId: "ch_entry",
+  });
+  expect(gatewayState.transfers[1]).toMatchObject({
+    amountCents: BADGE_FEE_CENTS,
+    sourceChargeId: "ch_badge",
+  });
+});
+
 test("completing straight from registration lapses open checkouts before the payout", async () => {
   const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
