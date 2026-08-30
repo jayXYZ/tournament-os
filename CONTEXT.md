@@ -5,6 +5,11 @@ progression. The Magic: The Gathering Tournament Rules (MTR) are the normative
 standard — where this glossary does not record a deliberate deviation, MTR
 behavior is the intended behavior.
 
+Scope: the competitive engine only. Payments, organizations, and decklists
+are separate domains — see `docs/payments.md` and the schema. Entries marked
+_Planned_ describe designed-but-unbuilt rules that currently have no writer
+in code; everything else describes shipped behavior.
+
 ## Language
 
 ### Scoring and tiebreakers
@@ -116,6 +121,13 @@ Pairing the final Swiss round of a phase within each match-point bracket in
 tiebreaker order instead of randomly. A deliberate MTR deviation; on by
 default.
 
+**Player Meeting**:
+An optional seated gathering an organizer holds before pairing a phase's
+first round: the phase's player pool is seated in alphabetical display-name
+order, and players see their seat only while the meeting is live. Pairing the
+first round completes the meeting; rewinding that round supersedes the seat
+snapshot (the cut boundary is re-drawn rather than read from the seats).
+
 ### Participation
 
 **Participant**:
@@ -125,9 +137,10 @@ an account is a Guest.
 _Avoid_: player identity, competitor record
 
 **Guest**:
-A Participant with no linked user account, enrolled by an organizer with a
-display name and optional contact email. Guests hold registrations like any
-Participant but have no profile page and take no self-serve actions.
+A Participant with no linked user account, enrolled with a display name and
+optional contact email. Guests hold registrations like any Participant but
+have no profile page and take no self-serve actions. (The organizer guest
+enrollment surface is planned; today Guests come from test-player seeding.)
 
 **Claim**:
 The automatic merge, at sign-in, of every Guest whose contact email matches
@@ -168,22 +181,22 @@ records the concession immediately — a player who actually finished their
 match reports the real result before dropping, and an organizer override
 fixes it afterwards otherwise.
 
-**Forfeit**:
+**Forfeit** (_Planned_ — lands with judge adjudication, TODO.md §5):
 An organizer-recorded match loss awarded against a player without play; the
 opponent wins the match as an Awarded Result.
 
-**No-Show**:
+**No-Show** (_Planned_ — lands with judge adjudication, TODO.md §5):
 A Forfeit recorded against an absent player. By default it also drops the
 player (the organizer can keep them in); both players absent is a double
 match loss.
 
-**Late Entry**:
+**Late Entry** (_Planned_ — TODO.md §1):
 An organizer-only override admitting a player while the first phase is in
 progress; players never self-join a started tournament, and capacity still
 applies. The player receives a Missed Round loss for every round already
 generated (including the open one) and is paired from the next round.
 
-**Missed Round**:
+**Missed Round** (_Planned_ — TODO.md §1):
 The opponent-less Awarded Result loss (zero game wins, the required game wins
 against) a Late Entry player receives for each round they were absent. It
 counts toward the player's own Match Points and Game-Win Percentage but, like
@@ -198,7 +211,8 @@ never revived into a bracket slot, and walkovers may chain. The departed
 player keeps the placement of the seat they reached.
 _Avoid_: loser revival, loser advancement
 
-**Disqualification (DQ)**:
+**Disqualification (DQ)** (_Planned_ — the `disqualified` status is reserved
+with no writer; lands with judge adjudication, TODO.md §5):
 Removal from the tournament and from the standings entirely: every
 lower-ranked player advances one place. A DQ after a cut advances standings
 placements only — nobody is added to the bracket in the DQ'd player's place.

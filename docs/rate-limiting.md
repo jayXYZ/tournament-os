@@ -19,13 +19,21 @@ treated as a scarcity gate because any account can mint its own organization.
 | `updateProfileSettings`               | `users.updateMyProfileSettings`                                          |
 | `registerSelf` / `cancelRegistration` | registration churn pair                                                  |
 | `dropSelf`                            | `tournaments.player.dropSelf`                                            |
-| `reportResult`                        | `reportMyMatchResult` + `confirmMatchResult`                             |
+| `reportResult`                        | `tournaments.player.reportMyMatchResult`                                 |
 | `submitDecklist`                      | `tournaments.decklists.submitMyDecklist`                                 |
 | `createOrganization`                  | `organizations.createOrganizerOrganization` (strictest: 3 burst, 12/day) |
 | `inviteMember`                        | `inviteMember` + `revokeInvitation` (future email budget)                |
 | `profileImageUpload`                  | upload-URL minting + image swap (storage abuse)                          |
 | `createTournament`                    | `createTournament`, `createTournamentWithPhases`, `createTestTournament` |
-| `seedTestPlayers`                     | dummy user/registration row growth                                       |
+| `seedTestPlayers`                     | guest participant/registration row growth                                |
+| `stripeOnboarding`                    | Stripe Connect onboarding-link minting (strict: 8 burst, 24/day)         |
+| `refreshStripeStatus`                 | manual Stripe account-status refresh                                     |
+| `createCheckout`                      | Stripe Checkout session creation                                         |
+
+The three Stripe buckets are debited inside `internalMutation`s fronted by
+public **actions** (`payments/connect.ts`, `payments/checkout.ts` explain
+why), a deliberate exception to the "first line of the mutation handler"
+pattern above.
 
 Keys are the identity's `tokenIdentifier`, so one abusive account cannot
 starve anyone else, and the key exists before the `users` row does. The

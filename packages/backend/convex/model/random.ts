@@ -30,12 +30,14 @@ export function pairingSeed(
 
 // The per-player random tiebreaker that settles otherwise-perfect standings
 // ties (see CONTEXT.md "Tiebreakers"): a 32-bit hash of the tournament seed
-// and the registration id, so it is fixed for the whole tournament by
-// construction — recomputation can never reorder it — and needs no storage.
-export function tiebreakRandom(seed: number, registrationId: string): number {
+// and the player's stable identity — the user's publicCode for real
+// registrations, the player number for seeded test players. Stored on the
+// registration at creation (see schema.ts "tiebreakRandom"), so it is fixed
+// for the whole tournament and reproducible across reseeds.
+export function tiebreakRandom(seed: number, stableKey: string): number {
   let hash = Math.trunc(seed) ^ 0x9e3779b9;
-  for (let index = 0; index < registrationId.length; index += 1) {
-    hash = Math.imul(hash ^ registrationId.charCodeAt(index), 2654435761);
+  for (let index = 0; index < stableKey.length; index += 1) {
+    hash = Math.imul(hash ^ stableKey.charCodeAt(index), 2654435761);
     hash = (hash << 13) | (hash >>> 19);
   }
   hash = Math.imul(hash ^ (hash >>> 16), 2246822507);
