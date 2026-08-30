@@ -11,10 +11,10 @@ import {
 } from "../_generated/server";
 import type { AuditActorRole } from "../model/auditLog";
 import { logEntryPaymentAudit } from "../model/auditLog";
-import type { MoneyRowOwner } from "../model/paidEventOwner";
 import {
   moneyRowOwnerArgs,
   moneyRowOwnerColumns,
+  ownerOrdersQuery,
   parseMoneyRowOwner,
 } from "../model/paidEventOwner";
 import type {
@@ -189,53 +189,6 @@ export async function settleOrdersOnEntryExit(
 
 const SWEEP_BATCH = 32;
 
-// One status page of an owner's orders, through the matching owner index.
-// Two shapes because Convex allows at most one .paginate() per function:
-// the close sweep takes fixed pages, the cancel sweep paginates by cursor.
-async function ownerOrdersTake(
-  ctx: MutationCtx,
-  owner: MoneyRowOwner,
-  status: Doc<"paymentOrders">["status"],
-  count: number,
-) {
-  if (owner.kind === "convention") {
-    return await ctx.db
-      .query("paymentOrders")
-      .withIndex("by_conventionId_and_status", (q) =>
-        q.eq("conventionId", owner.conventionId).eq("status", status),
-      )
-      .take(count);
-  }
-  return await ctx.db
-    .query("paymentOrders")
-    .withIndex("by_tournamentId_and_status", (q) =>
-      q.eq("tournamentId", owner.tournamentId).eq("status", status),
-    )
-    .take(count);
-}
-
-async function ownerOrdersPage(
-  ctx: MutationCtx,
-  owner: MoneyRowOwner,
-  status: Doc<"paymentOrders">["status"],
-  pagination: { numItems: number; cursor: string | null },
-) {
-  if (owner.kind === "convention") {
-    return await ctx.db
-      .query("paymentOrders")
-      .withIndex("by_conventionId_and_status", (q) =>
-        q.eq("conventionId", owner.conventionId).eq("status", status),
-      )
-      .paginate(pagination);
-  }
-  return await ctx.db
-    .query("paymentOrders")
-    .withIndex("by_tournamentId_and_status", (q) =>
-      q.eq("tournamentId", owner.tournamentId).eq("status", status),
-    )
-    .paginate(pagination);
-}
-
 // Closes every open (unpaid) order for an event — scheduled when it starts
 // (unpaid approvals lapse; they never seat) and as the first stage of the
 // cancellation sweep. Terminates because closed orders leave the queried
@@ -246,7 +199,9 @@ export const closeOpenOrdersSweep = internalMutation({
     const owner = parseMoneyRowOwner(args);
     let sawFullPage = false;
     for (const status of OPEN_ORDER_STATUSES) {
-      const orders = await ownerOrdersTake(ctx, owner, status, SWEEP_BATCH);
+      const orders = await ownerOrdersQuery(ctx, owner, status).take(
+        SWEEP_BATCH,
+      );
       sawFullPage ||= orders.length === SWEEP_BATCH;
       for (const order of orders) {
         await ctx.db.patch(order._id, {
@@ -298,12 +253,11 @@ export const cancelEventPaymentsSweep = internalMutation({
       owner.kind === "convention"
         ? ("convention_cancelled" as const)
         : ("tournament_cancelled" as const);
-    const { page, isDone, continueCursor } = await ownerOrdersPage(
+    const { page, isDone, continueCursor } = await ownerOrdersQuery(
       ctx,
       owner,
       status,
-      { numItems: SWEEP_BATCH, cursor: args.cursor ?? null },
-    );
+    ).paginate({ numItems: SWEEP_BATCH, cursor: args.cursor ?? null });
 
     for (const order of page) {
       const refunds = await ctx.db

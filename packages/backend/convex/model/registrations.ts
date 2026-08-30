@@ -453,19 +453,21 @@ export function requireCapacityAvailable(tournament: Doc<"tournaments">) {
   }
 }
 
+// Structural like hasCapacityAvailable above: tournaments and conventions
+// keep the same clamped seat counter, so one writer adjusts both.
 export async function adjustConfirmedRegistrationCount(
   ctx: MutationCtx,
-  tournament: Doc<"tournaments">,
+  event: Doc<"tournaments"> | Doc<"conventions">,
   delta: number,
   now = Date.now(),
 ) {
   if (delta === 0) {
     return;
   }
-  await ctx.db.patch(tournament._id, {
+  await ctx.db.patch(event._id, {
     confirmedRegistrationCount: Math.max(
       0,
-      tournament.confirmedRegistrationCount + delta,
+      event.confirmedRegistrationCount + delta,
     ),
     updatedAt: now,
   });

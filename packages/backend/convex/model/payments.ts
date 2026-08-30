@@ -332,35 +332,43 @@ export async function requireEntryFeeEditable(
   }
 }
 
-// What an order charges for, resolved by the caller from the owner's price
-// source: a tournament's entryFeeCents, or the chosen ticket type's
-// priceCents. The ticketTypeId travels with a convention price so the order
-// can be stamped with it (the per-type freeze and delete guard read the
-// stamp) — createEntryOrder enforces the pairing the same way the owner
-// pair is enforced.
+// The PaidEventRef extended with each kind's price source — ADR 0004's
+// pricing seam. A tournament prices from its own entryFeeCents; a
+// convention order charges for a chosen ticket type, so the type travels
+// inside the convention arm and can never accompany a tournament.
 export type EntryOrderPricing =
-  | { kind: "tournament"; entryFeeCents: number }
+  | { kind: "tournament"; event: Doc<"tournaments"> }
   | {
       kind: "convention";
-      entryFeeCents: number;
-      ticketTypeId: Id<"conventionTicketTypes">;
+      event: Doc<"conventions">;
+      ticketType: Doc<"conventionTicketTypes">;
     };
 
 // Inserts a fresh payable order for the registration, snapshotting the
-// breakdown from the resolved price and the deployment's fee config. The
-// payer must be the registration's linked account — paid entry is self-serve
-// only, so a Guest registration cannot take an order.
+// breakdown from the owner's price source — a tournament's entryFeeCents,
+// or the chosen ticket type's priceCents. A convention order is stamped
+// with its ticket type's id (the per-type freeze and delete guard read the
+// stamp). The payer must be the registration's linked account — paid entry
+// is self-serve only, so a Guest registration cannot take an order.
 export async function createEntryOrder(
   ctx: MutationCtx,
   args: {
-    owner: PaidEventRef;
+    owner: EntryOrderPricing;
     registration: AnyEntryRegistration;
     purpose: Doc<"paymentOrders">["purpose"];
-    pricing: EntryOrderPricing;
   },
 ) {
-  if (args.pricing.kind !== args.owner.kind) {
-    throw new Error("Order owner and pricing source disagree");
+  let entryFeeCents: number;
+  let ticketTypeId: Id<"conventionTicketTypes"> | undefined;
+  if (args.owner.kind === "convention") {
+    if (args.owner.ticketType.conventionId !== args.owner.event._id) {
+      throw new Error("Order ticket type belongs to a different convention");
+    }
+    entryFeeCents = args.owner.ticketType.priceCents;
+    ticketTypeId = args.owner.ticketType._id;
+  } else {
+    entryFeeCents = args.owner.event.entryFeeCents ?? 0;
+    ticketTypeId = undefined;
   }
   // The money-row invariant (model/paidEventOwner.ts): registrationId always
   // names a row of the owner pair's own table and event. This insert is where
@@ -373,7 +381,6 @@ export async function createEntryOrder(
   if (registrationEventId !== args.owner.event._id) {
     throw new Error("Order owner and registration disagree");
   }
-  const entryFeeCents = args.pricing.entryFeeCents;
   if (entryFeeCents <= 0) {
     throw new Error("This event has no entry fee");
   }
@@ -387,10 +394,7 @@ export async function createEntryOrder(
     organizationId: args.owner.event.organizationId,
     registrationId: args.registration._id,
     participantId: args.registration.participantId,
-    ticketTypeId:
-      args.pricing.kind === "convention"
-        ? args.pricing.ticketTypeId
-        : undefined,
+    ticketTypeId,
     userId: participant.userId,
     purpose: args.purpose,
     amountBreakdown: computeOrderBreakdown(entryFeeCents, feeConfigFromEnv()),
@@ -417,9 +421,5 @@ export async function ensurePostApprovalOrder(
     owner: { kind: "tournament", event: args.tournament },
     registration: args.registration,
     purpose: "post_approval",
-    pricing: {
-      kind: "tournament",
-      entryFeeCents: args.tournament.entryFeeCents ?? 0,
-    },
   });
 }

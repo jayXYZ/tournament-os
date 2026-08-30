@@ -43,6 +43,24 @@ export type PaymentReturnCopy = {
   notCompletedDescription: string
 }
 
+// The server-computed consequence of cancelling right now (see
+// getMyEntryOrder), so page copy can never promise something the cancel
+// mutation won't do. Only the partial-refund line differs per entry kind
+// (repeat drop vs repeat cancellation), so callers supply it.
+export function cancelOutcomeNote(
+  outcome: 'full_refund' | 'entry_only_refund' | 'no_refund',
+  entryOnlyNote: string,
+) {
+  switch (outcome) {
+    case 'full_refund':
+      return 'Cancelling refunds your payment in full.'
+    case 'entry_only_refund':
+      return entryOnlyNote
+    case 'no_refund':
+      return 'The refund deadline has passed, so cancelling will not refund your payment.'
+  }
+}
+
 export function PaymentPendingCard({
   title,
   children,

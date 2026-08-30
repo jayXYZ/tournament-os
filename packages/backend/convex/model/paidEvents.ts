@@ -6,10 +6,7 @@ import {
   logAuditEvent,
   logConventionAuditEvent,
 } from "./auditLog";
-import {
-  adjustConventionConfirmedCount,
-  setBadgeEntryStatus,
-} from "./conventions";
+import { setBadgeEntryStatus } from "./conventions";
 import { parseMoneyRowEntry, parseMoneyRowOwner } from "./paidEventOwner";
 import { setRegistrationState } from "./participation";
 import type { PaidEventRef } from "./payments";
@@ -132,7 +129,7 @@ export async function confirmPaidEntry(
       entryStatus: "confirmed",
       updatedAt: args.now,
     });
-    await adjustConventionConfirmedCount(ctx, args.owner.event, 1, args.now);
+    await adjustConfirmedRegistrationCount(ctx, args.owner.event, 1, args.now);
     // The type's counter moves with the convention's — the isEntrySeatable
     // check just proved the type still had room.
     const ticketType = await ctx.db.get(args.entry.registration.ticketTypeId);

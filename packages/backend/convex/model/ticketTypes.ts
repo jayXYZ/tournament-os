@@ -146,6 +146,20 @@ export async function adjustTicketTypeConfirmedCount(
   });
 }
 
+// The order-existence probe behind the price freeze, the delete guard, and
+// the UI's priceLocked flag — one query so the three can never diverge on
+// what counts as evidence (any order, terminal ones included).
+export async function ticketTypeHasOrders(
+  ctx: QueryCtx,
+  ticketTypeId: Id<"conventionTicketTypes">,
+) {
+  const order = await ctx.db
+    .query("paymentOrders")
+    .withIndex("by_ticketTypeId", (q) => q.eq("ticketTypeId", ticketTypeId))
+    .first();
+  return order !== null;
+}
+
 // The per-type twin of the event-level fee freeze (model/payments.ts
 // requireEntryFeeEditable): once ANY order references the type — terminal
 // ones included — its price is locked, because stored breakdowns must never
@@ -155,11 +169,7 @@ export async function requireTicketTypePriceEditable(
   ctx: QueryCtx,
   ticketTypeId: Id<"conventionTicketTypes">,
 ) {
-  const order = await ctx.db
-    .query("paymentOrders")
-    .withIndex("by_ticketTypeId", (q) => q.eq("ticketTypeId", ticketTypeId))
-    .first();
-  if (order) {
+  if (await ticketTypeHasOrders(ctx, ticketTypeId)) {
     throw new Error(
       "Ticket price settings are locked once a payment exists for this ticket type",
     );
@@ -174,17 +184,14 @@ export async function requireTicketTypeDeletable(
   ctx: QueryCtx,
   ticketTypeId: Id<"conventionTicketTypes">,
 ) {
-  const order = await ctx.db
-    .query("paymentOrders")
-    .withIndex("by_ticketTypeId", (q) => q.eq("ticketTypeId", ticketTypeId))
-    .first();
-  const badge = order
+  const hasOrders = await ticketTypeHasOrders(ctx, ticketTypeId);
+  const badge = hasOrders
     ? null
     : await ctx.db
         .query("conventionRegistrations")
         .withIndex("by_ticketTypeId", (q) => q.eq("ticketTypeId", ticketTypeId))
         .first();
-  if (order || badge) {
+  if (hasOrders || badge) {
     throw new Error(
       "This ticket type has registrations — end its sale instead of deleting it",
     );
@@ -281,8 +288,10 @@ export async function validIncludedTournamentIds(
     );
   }
   const unique = [...new Set(includedTournamentIds)];
-  for (const tournamentId of unique) {
-    const tournament = await ctx.db.get(tournamentId);
+  const tournaments = await Promise.all(
+    unique.map((tournamentId) => ctx.db.get(tournamentId)),
+  );
+  for (const tournament of tournaments) {
     if (!tournament || tournament.conventionId !== convention._id) {
       throw new Error("Included events must belong to this convention");
     }

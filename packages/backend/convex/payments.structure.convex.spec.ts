@@ -105,8 +105,8 @@ test("self-serve child-event entry points enforce the badge gate", () => {
     new URL("./payments/checkout.ts", import.meta.url),
     "utf8",
   );
-  expect(registrationsSource).toMatch(/requireBadgeForChildEvent/);
-  expect(checkoutSource).toMatch(/requireBadgeForChildEvent/);
+  expect(registrationsSource).toMatch(/resolveChildEventAdmission/);
+  expect(checkoutSource).toMatch(/resolveChildEventAdmission/);
 });
 
 const progressionSource = readFileSync(

@@ -1,11 +1,5 @@
-// Dollars/cents helpers for the paid-event settings cards.
-
-export function formatCents(cents: number) {
-  return (cents / 100).toLocaleString('en-US', {
-    style: 'currency',
-    currency: 'USD',
-  })
-}
+// Dollars/cents input helpers for the paid-event settings cards. Display
+// formatting lives in @/lib/money.
 
 // Dollars string for the input from stored cents, and back. An empty input
 // means "free event" and clears the fee server-side (entryFeeCents: 0).

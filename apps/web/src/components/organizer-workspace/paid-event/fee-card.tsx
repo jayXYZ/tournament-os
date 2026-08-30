@@ -1,14 +1,14 @@
 import { useState } from 'react'
-import { Link } from '@tanstack/react-router'
 import { useQuery } from 'convex/react'
 import { toast } from 'sonner'
 
 import { api } from '@tournament-os/backend/convex/_generated/api'
 import {
-  MIN_ENTRY_FEE_CENTS,
-  validateEntryFeeCents,
-} from '@tournament-os/shared/payment-fees'
-import { formatCents, parseDollarsToCents, toDollarsValue } from './money'
+  FeePreviewPanel,
+  StripeOnboardingNotice,
+  useFeePreview,
+} from './fee-preview'
+import { parseDollarsToCents, toDollarsValue } from './money'
 import type { FormEvent } from 'react'
 import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
 import { toDatetimeLocalValue } from '@/components/tournaments'
@@ -96,13 +96,7 @@ export function PaidEventFeeCard({
   const disabled = locked || busy
 
   const draftCents = parseDollarsToCents(fee)
-  const previewArgs =
-    Number.isInteger(draftCents) &&
-    draftCents >= MIN_ENTRY_FEE_CENTS &&
-    validateEntryFeeCents(draftCents) === null
-      ? { entryFeeCents: draftCents }
-      : ('skip' as const)
-  const preview = useQuery(api.payments.queries.getFeePreview, previewArgs)
+  const preview = useFeePreview(draftCents)
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -170,29 +164,17 @@ export function PaidEventFeeCard({
             </div>
 
             {paymentSettings !== undefined && !payoutsReady && !locked ? (
-              <p className="text-sm text-muted-foreground">
-                {paymentSettings.connection
-                  ? `Finish the organization’s Stripe onboarding before charging ${copy.feePhrase}.`
-                  : `Connect the organization’s Stripe account before charging ${copy.feePhrase}.`}{' '}
-                <Link to="/admin/organization" className="underline">
-                  Manage payments
-                </Link>
-              </p>
+              <StripeOnboardingNotice
+                hasConnection={Boolean(paymentSettings.connection)}
+                chargingPhrase={copy.feePhrase}
+              />
             ) : null}
 
-            {preview ? (
-              <div className="rounded-md border bg-muted/50 px-4 py-3 text-sm">
-                <p className="font-medium">
-                  {copy.payersLabel} pay {formatCents(preview.totalCents)}
-                </p>
-                <p className="text-muted-foreground">
-                  {formatCents(preview.entryFeeCents)} {copy.paidOutLabel} (paid
-                  out to you) + {formatCents(preview.platformFeeCents)} platform
-                  fee + {formatCents(preview.processingFeeCents)} estimated
-                  payment processing
-                </p>
-              </div>
-            ) : null}
+            <FeePreviewPanel
+              preview={preview}
+              payersLabel={copy.payersLabel}
+              paidOutLabel={copy.paidOutLabel}
+            />
 
             <div className="flex justify-end">
               <Button type="submit" disabled={disabled || !feeEditable}>

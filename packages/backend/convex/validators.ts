@@ -189,6 +189,29 @@ export const tournamentPhaseCutoffValidator = v.union(
   v.null(),
 );
 
+// The creation-shape args shared by the standalone create mutation
+// (tournaments/lifecycle.ts createTournamentWithPhases) and the
+// convention-child one (conventions/events.ts createTournamentForConvention)
+// — one list, so a new creation option reaches both paths.
+export const tournamentCreationArgs = {
+  name: v.string(),
+  startDate: v.number(),
+  playerCapacity: v.number(),
+  format: tournamentFormatValidator,
+  decklistRequired: v.optional(v.boolean()),
+  phases: v.array(
+    v.object({
+      phaseOrder: v.number(),
+      phaseType: v.optional(tournamentPhaseTypeValidator),
+      phaseRoundMode: tournamentPhaseRoundModeValidator,
+      phaseTotalRounds: v.optional(v.number()),
+      bestOf: v.optional(tournamentPhaseBestOfValidator),
+      phaseCutoff: v.optional(tournamentPhaseCutoffValidator),
+      playerMeeting: v.optional(v.boolean()),
+    }),
+  ),
+};
+
 // Lifecycle of a phase's player meeting. Absent on the phase = not started;
 // "in_progress" is the only state in which seats are shown to players.
 //

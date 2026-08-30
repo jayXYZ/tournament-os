@@ -110,29 +110,26 @@ export async function logEntryPaymentAudit(
     ...args.owner,
     registrationId: args.registration._id,
   });
+  // One construction for both logs; generic over the per-table
+  // registrationId each log's player ref demands.
+  const eventWithPlayer = <RegistrationId>(registrationId: RegistrationId) => ({
+    ...args.event,
+    player: {
+      registrationId,
+      playerName: args.registration.playerName ?? null,
+    },
+  });
   if (entry.kind === "convention") {
     await logConventionAuditEvent(ctx, {
       conventionId: entry.conventionId,
-      event: {
-        ...args.event,
-        player: {
-          registrationId: entry.registrationId,
-          playerName: args.registration.playerName ?? null,
-        },
-      },
+      event: eventWithPlayer(entry.registrationId),
       ...actorArgs,
     });
     return;
   }
   await logAuditEvent(ctx, {
     tournamentId: entry.tournamentId,
-    event: {
-      ...args.event,
-      player: {
-        registrationId: entry.registrationId,
-        playerName: args.registration.playerName ?? null,
-      },
-    },
+    event: eventWithPlayer(entry.registrationId),
     ...actorArgs,
   });
 }

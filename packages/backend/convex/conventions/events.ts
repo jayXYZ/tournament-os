@@ -16,13 +16,7 @@ import {
   requireTournament,
 } from "../model/tournaments";
 import { enforceRateLimit } from "../rateLimits";
-import {
-  tournamentFormatValidator,
-  tournamentPhaseBestOfValidator,
-  tournamentPhaseCutoffValidator,
-  tournamentPhaseRoundModeValidator,
-  tournamentPhaseTypeValidator,
-} from "../validators";
+import { tournamentCreationArgs } from "../validators";
 
 // The parent-child surface: which tournaments a convention holds, and the
 // attach/detach/create verbs that change it. The rules live in
@@ -91,6 +85,23 @@ export const listPublicChildEvents = query({
           registeredCount: tournament.confirmedRegistrationCount,
         })),
     };
+  },
+});
+
+// The overview page's stat: how many events the convention holds, capped
+// honestly ("200+") — one integer over the wire instead of a 200-row live
+// page subscribed just to be counted.
+export const countChildEvents = query({
+  args: { conventionId: v.id("conventions") },
+  handler: async (ctx, args) => {
+    await requireConventionOrganizerAccess(ctx, args.conventionId);
+    const rows = await ctx.db
+      .query("tournaments")
+      .withIndex("by_conventionId_and_startDate", (q) =>
+        q.eq("conventionId", args.conventionId),
+      )
+      .take(201);
+    return { count: Math.min(rows.length, 200), hasMore: rows.length > 200 };
   },
 });
 
@@ -176,22 +187,7 @@ export const detachTournament = mutation({
 export const createTournamentForConvention = mutation({
   args: {
     conventionId: v.id("conventions"),
-    name: v.string(),
-    startDate: v.number(),
-    playerCapacity: v.number(),
-    format: tournamentFormatValidator,
-    decklistRequired: v.optional(v.boolean()),
-    phases: v.array(
-      v.object({
-        phaseOrder: v.number(),
-        phaseType: v.optional(tournamentPhaseTypeValidator),
-        phaseRoundMode: tournamentPhaseRoundModeValidator,
-        phaseTotalRounds: v.optional(v.number()),
-        bestOf: v.optional(tournamentPhaseBestOfValidator),
-        phaseCutoff: v.optional(tournamentPhaseCutoffValidator),
-        playerMeeting: v.optional(v.boolean()),
-      }),
-    ),
+    ...tournamentCreationArgs,
   },
   handler: async (ctx, args): Promise<Id<"tournaments">> => {
     await enforceRateLimit(ctx, "createTournament");

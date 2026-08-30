@@ -11,12 +11,11 @@ import {
 } from "../_generated/server";
 import {
   badgeBlocksRegistration,
-  badgeCompsChildEvent,
   badgeForUser,
   isConventionRegistrationOpen,
   requireBadgeCapacityAvailable,
-  requireBadgeForChildEvent,
   requireConvention,
+  resolveChildEventAdmission,
   setBadgeEntryStatus,
   upsertBadgeRow,
 } from "../model/conventions";
@@ -112,10 +111,14 @@ export const beginEntryCheckout = internalMutation({
     }
     // A badge-gated child event admits paid self-registration only with a
     // confirmed convention badge, same as registerSelf.
-    await requireBadgeForChildEvent(ctx, tournament, user._id);
+    const admission = await resolveChildEventAdmission(
+      ctx,
+      tournament,
+      user._id,
+    );
     // A pass that comps this event registers free through registerSelf —
     // never through a paid checkout.
-    if (await badgeCompsChildEvent(ctx, tournament, user._id)) {
+    if (admission.compedByBadge) {
       throw new Error(
         "Your convention badge includes this event — register directly instead of paying",
       );
@@ -195,10 +198,6 @@ export const beginEntryCheckout = internalMutation({
       owner: { kind: "tournament", event: tournament },
       registration,
       purpose: "registration",
-      pricing: {
-        kind: "tournament",
-        entryFeeCents: tournament.entryFeeCents ?? 0,
-      },
     });
 
     const { checkoutAttempt, existingSessionId } = await bumpCheckoutAttempt(
@@ -337,14 +336,9 @@ export const beginBadgeCheckout = internalMutation({
     }
 
     order ??= await createEntryOrder(ctx, {
-      owner: { kind: "convention", event: convention },
+      owner: { kind: "convention", event: convention, ticketType },
       registration: badge,
       purpose: "registration",
-      pricing: {
-        kind: "convention",
-        entryFeeCents: ticketType.priceCents,
-        ticketTypeId: ticketType._id,
-      },
     });
 
     const { checkoutAttempt, existingSessionId } = await bumpCheckoutAttempt(

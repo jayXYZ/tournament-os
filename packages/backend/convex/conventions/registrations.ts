@@ -34,9 +34,19 @@ async function badgeRows(
   ctx: QueryCtx,
   badges: Array<Doc<"conventionRegistrations">>,
 ) {
-  // Ticket-type names for the roster, joined per page through a tiny cache
-  // (a page rarely spans more than a handful of types).
-  const typeNames = new Map<string, string | null>();
+  // Ticket-type names for the roster: the rows map concurrently, so the
+  // distinct types are prefetched up front (a page rarely spans more than
+  // a handful) rather than cached lazily per row.
+  const typeIds = [...new Set(badges.map((badge) => badge.ticketTypeId))];
+  const typeNames = new Map(
+    (
+      await Promise.all(
+        typeIds.map(
+          async (typeId) => [typeId, await ctx.db.get(typeId)] as const,
+        ),
+      )
+    ).map(([typeId, ticketType]) => [typeId, ticketType?.name ?? null]),
+  );
   return await mapAsyncInBatches(
     badges,
     DATABASE_IO_BATCH_SIZE,
@@ -49,15 +59,10 @@ async function badgeRows(
             undefined)
           : undefined;
       }
-      let ticketTypeName = typeNames.get(badge.ticketTypeId);
-      if (ticketTypeName === undefined) {
-        ticketTypeName = (await ctx.db.get(badge.ticketTypeId))?.name ?? null;
-        typeNames.set(badge.ticketTypeId, ticketTypeName);
-      }
       return {
         registration: badge,
         playerName,
-        ticketTypeName,
+        ticketTypeName: typeNames.get(badge.ticketTypeId) ?? null,
         // A free badge simply has no orders; no per-event paid flag needed.
         paymentStatus:
           (await latestOrderForRegistration(ctx, badge._id))?.status ?? null,

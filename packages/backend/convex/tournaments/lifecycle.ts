@@ -15,11 +15,7 @@ import {
 } from "../model/access";
 import { logAuditEvent } from "../model/auditLog";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
-import {
-  badgeCompsChildEvent,
-  badgeForUser,
-  isConventionPubliclyViewable,
-} from "../model/conventions";
+import { badgeCompsChildEvent, badgeForUser } from "../model/conventions";
 import { deleteTournamentOperationalDataBatch } from "../model/deletion";
 import { inviteCodeGrantsAccess } from "../model/invites";
 import {
@@ -52,6 +48,7 @@ import {
   validStartDate,
 } from "../model/tournaments";
 import {
+  tournamentCreationArgs,
   tournamentFormatValidator,
   tournamentPhaseBestOfValidator,
   tournamentPhaseCutoffValidator,
@@ -217,7 +214,7 @@ export const getPublicTournament = query({
           ? await badgeForUser(ctx, owningConvention._id, user._id)
           : null;
         const parentVisible =
-          isConventionPubliclyViewable(owningConvention) ||
+          isPubliclyViewable(owningConvention) ||
           badge !== null ||
           (user !== null &&
             (await getActiveMembership(
@@ -236,9 +233,11 @@ export const getPublicTournament = query({
             // 0004), so a paid event's page offers free direct registration
             // instead of Checkout — registerSelf and beginEntryCheckout
             // enforce the comp authoritatively; this only picks the button.
-            myBadgeCompsThisEvent:
-              user !== null &&
-              (await badgeCompsChildEvent(ctx, tournament, user._id)),
+            myBadgeCompsThisEvent: await badgeCompsChildEvent(
+              ctx,
+              tournament,
+              badge,
+            ),
           };
         }
       }
@@ -315,23 +314,8 @@ export const createTournament = mutation({
 export const createTournamentWithPhases = mutation({
   args: {
     organizationId: v.id("organizations"),
-    name: v.string(),
-    startDate: v.number(),
-    playerCapacity: v.number(),
-    format: tournamentFormatValidator,
     isTestEvent: v.optional(v.boolean()),
-    decklistRequired: v.optional(v.boolean()),
-    phases: v.array(
-      v.object({
-        phaseOrder: v.number(),
-        phaseType: v.optional(tournamentPhaseTypeValidator),
-        phaseRoundMode: tournamentPhaseRoundModeValidator,
-        phaseTotalRounds: v.optional(v.number()),
-        bestOf: v.optional(tournamentPhaseBestOfValidator),
-        phaseCutoff: v.optional(tournamentPhaseCutoffValidator),
-        playerMeeting: v.optional(v.boolean()),
-      }),
-    ),
+    ...tournamentCreationArgs,
   },
   handler: async (ctx, args): Promise<Id<"tournaments">> => {
     await enforceRateLimit(ctx, "createTournament");

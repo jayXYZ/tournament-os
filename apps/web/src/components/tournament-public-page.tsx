@@ -5,10 +5,13 @@ import { useAction, useMutation, useQuery } from 'convex/react'
 import { Building2, CalendarDays, LogIn, Swords, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@tournament-os/backend/convex/_generated/api'
+import type { FunctionReturnType } from 'convex/server'
 import type { Doc } from '@tournament-os/backend/convex/_generated/dataModel'
+import { DetailLine } from '@/components/shared/detail-line'
 import { LoadingCard } from '@/components/shared/loading-card'
 import { MarkdownContent } from '@/components/shared/markdown-content'
 import { PageNotFound } from '@/components/shared/page-not-found'
+import { cancelOutcomeNote } from '@/components/shared/payment-return'
 import { RoundTimerIndicator } from '@/components/shared/round-timer-indicator'
 import { SiteShell, SiteShellBackLink } from '@/components/shared/site-shell'
 import {
@@ -30,7 +33,7 @@ import {
 } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { Spinner } from '@/components/ui/spinner'
-import { cn } from '@/lib/utils'
+import { formatCents } from '@/lib/money'
 
 type Tournament = Doc<'tournaments'>
 
@@ -62,14 +65,13 @@ export function TournamentPublicPage({
 // event the viewer can already see, so nothing here branches on it.
 // The owning convention's summary shipped alongside the tournament (see
 // getPublicTournament): enough for the "part of" link and the badge-gate
-// notice without another query.
-type ConventionSummary = {
-  name: string
-  publicCode: number
-  badgeRequiredForChildEvents: boolean
-  myBadgeStatus: Doc<'conventionRegistrations'>['entryStatus'] | null
-  myBadgeCompsThisEvent: boolean
-}
+// notice without another query. Derived from the server's return type so
+// the two can never drift.
+type ConventionSummary = NonNullable<
+  NonNullable<
+    FunctionReturnType<typeof api.tournaments.lifecycle.getPublicTournament>
+  >['convention']
+>
 
 export function TournamentPublicPageContent({
   publicCode,
@@ -212,31 +214,6 @@ function TournamentDetails({
   )
 }
 
-function DetailLine({
-  icon: Icon,
-  label,
-  value,
-  capitalize = false,
-}: {
-  icon: typeof CalendarDays
-  label: string
-  value: string
-  capitalize?: boolean
-}) {
-  return (
-    <div className="flex items-center gap-2">
-      <Icon
-        className="size-4 shrink-0 text-muted-foreground"
-        aria-hidden="true"
-      />
-      <span className="text-muted-foreground">{label}:</span>
-      <span className={cn('font-medium', capitalize && 'capitalize')}>
-        {value}
-      </span>
-    </div>
-  )
-}
-
 function RegistrationPanel({
   tournament,
   spotsLeft,
@@ -331,7 +308,10 @@ function RegistrationPanel({
   // release a seat (refund issued, or fees kept under the repeat-drop rule).
   const cancelNote = myOrder?.cancelOutcome ? (
     <p className="w-full text-sm text-muted-foreground">
-      {cancelOutcomeNote(myOrder.cancelOutcome)}
+      {cancelOutcomeNote(
+        myOrder.cancelOutcome,
+        'Cancelling refunds the entry cost only — fees are not refunded on a repeat drop.',
+      )}
     </p>
   ) : null
   const cancelButton = (label: string, successMessage: string) => (
@@ -604,27 +584,4 @@ function RegistrationPanel({
       </p>
     </div>
   )
-}
-
-function formatCents(cents: number) {
-  return (cents / 100).toLocaleString('en-US', {
-    style: 'currency',
-    currency: 'USD',
-  })
-}
-
-// The server-computed consequence of cancelling right now (see
-// getMyEntryOrder), so this copy can never promise something the cancel
-// mutation won't do.
-function cancelOutcomeNote(
-  outcome: 'full_refund' | 'entry_only_refund' | 'no_refund',
-) {
-  switch (outcome) {
-    case 'full_refund':
-      return 'Cancelling refunds your payment in full.'
-    case 'entry_only_refund':
-      return 'Cancelling refunds the entry cost only — fees are not refunded on a repeat drop.'
-    case 'no_refund':
-      return 'The refund deadline has passed, so cancelling will not refund your payment.'
-  }
 }

@@ -1,8 +1,5 @@
-import type { Doc } from '@tournament-os/backend/convex/_generated/dataModel'
-
 // Conventions share the tournament lifecycle/visibility vocabulary, so their
 // badges come straight from components/tournaments/tournament-display.
-export type ConventionLifecycle = Doc<'conventions'>['lifecycle']
 
 const dayFormatter = new Intl.DateTimeFormat('en-US', {
   month: 'short',

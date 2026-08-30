@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { usePaginatedQuery, useQuery } from 'convex/react'
+import { useQuery } from 'convex/react'
 import { ArrowRight, CalendarDays, Ticket, Trophy } from 'lucide-react'
 
 import { api } from '@tournament-os/backend/convex/_generated/api'
@@ -20,13 +20,7 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
-
-function formatCents(cents: number) {
-  return (cents / 100).toLocaleString('en-US', {
-    style: 'currency',
-    currency: 'USD',
-  })
-}
+import { formatCents } from '@/lib/money'
 
 // One line summarizing the pass lineup (ADR 0004: pricing lives on ticket
 // types): "Free badge", "$20.00 badge", or a count with the price range.
@@ -88,15 +82,15 @@ export function ConventionOverviewView() {
   const managed = useQuery(api.conventions.lifecycle.getManagedConvention, {
     publicCode,
   })
-  // Stat only — the events tab paginates the full list. "200+" is honest
-  // when a convention holds more events than the first page.
-  const { results: children, status: childrenStatus } = usePaginatedQuery(
-    api.conventions.events.listChildEvents,
-    { conventionId },
-    { initialNumItems: 200 },
-  )
+  // Stat only — the events tab paginates the full list; the count query
+  // ships one integer ("200+" past its cap) instead of the docs.
+  const childEvents = useQuery(api.conventions.events.countChildEvents, {
+    conventionId,
+  })
+  // The public listing carries the name/price pair the summary line needs
+  // without the organizer listing's per-type payment-lock probes.
   const ticketTypes = useQuery(
-    api.conventions.ticketTypes.listTicketTypesForOrganizer,
+    api.conventions.ticketTypes.listPublicTicketTypes,
     { conventionId },
   )
 
@@ -159,11 +153,11 @@ export function ConventionOverviewView() {
           icon={<Trophy className="size-4" />}
           label="Events"
           value={
-            childrenStatus === 'LoadingFirstPage'
+            childEvents === undefined
               ? '…'
-              : childrenStatus === 'Exhausted'
-                ? children.length
-                : `${children.length}+`
+              : childEvents.hasMore
+                ? `${childEvents.count}+`
+                : childEvents.count
           }
           detail={
             <Link

@@ -481,7 +481,7 @@ export const sendTransfers = internalAction({
 });
 
 // Shapes a payout row into the organizer-facing summary.
-function payoutSummary(payout: Doc<"eventPayouts">, isPaidEvent: boolean) {
+function payoutSummary(payout: Doc<"eventPayouts">) {
   return {
     status: payout.status,
     totalEntryCents: payout.totalEntryCents,
@@ -489,7 +489,6 @@ function payoutSummary(payout: Doc<"eventPayouts">, isPaidEvent: boolean) {
     netCents: payout.netCents,
     error: payout.error ?? null,
     updatedAt: payout.updatedAt,
-    isPaidTournament: isPaidEvent,
   };
 }
 
@@ -497,16 +496,14 @@ function payoutSummary(payout: Doc<"eventPayouts">, isPaidEvent: boolean) {
 export const getTournamentPayout = query({
   args: { tournamentId: v.id("tournaments") },
   handler: async (ctx, args) => {
-    const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
+    await requireOrganizerAccess(ctx, args.tournamentId);
     const payout = await ctx.db
       .query("eventPayouts")
       .withIndex("by_tournamentId", (q) =>
         q.eq("tournamentId", args.tournamentId),
       )
       .unique();
-    return payout
-      ? payoutSummary(payout, (tournament.entryFeeCents ?? 0) > 0)
-      : null;
+    return payout ? payoutSummary(payout) : null;
   },
 });
 
@@ -514,22 +511,14 @@ export const getTournamentPayout = query({
 export const getConventionPayout = query({
   args: { conventionId: v.id("conventions") },
   handler: async (ctx, args) => {
-    const { convention } = await requireConventionOrganizerAccess(
-      ctx,
-      args.conventionId,
-    );
+    await requireConventionOrganizerAccess(ctx, args.conventionId);
     const payout = await ctx.db
       .query("eventPayouts")
       .withIndex("by_conventionId", (q) =>
         q.eq("conventionId", args.conventionId),
       )
       .unique();
-    return payout
-      ? payoutSummary(
-          payout,
-          await conventionHasPaidTicketType(ctx, convention._id),
-        )
-      : null;
+    return payout ? payoutSummary(payout) : null;
   },
 });
 

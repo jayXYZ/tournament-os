@@ -1,5 +1,7 @@
 import { v } from "convex/values";
 
+import { computeOrderBreakdown } from "@tournament-os/shared/payment-fees";
+
 import type { Doc } from "../_generated/dataModel";
 import { mutation, query, type MutationCtx } from "../_generated/server";
 import {
@@ -9,6 +11,7 @@ import {
   requireConventionOrganizerAccess,
 } from "../model/conventions";
 import { requirePayoutsReadyOrganization } from "../model/payments";
+import { feeConfigFromEnv } from "../stripe/config";
 import {
   MAX_TICKET_TYPES_PER_CONVENTION,
   effectiveSaleEnd,
@@ -16,11 +19,13 @@ import {
   isPaidTicketType,
   isTicketTypeOnSale,
   listTicketTypes,
+  requireTicketType,
   requireTicketTypeDeletable,
-  requireTicketTypeForConvention,
   requireTicketTypePriceEditable,
+  ticketTypeHasOrders,
   validIncludedTournamentIds,
   validTicketTypeInputs,
+  type TicketTypeInputs,
 } from "../model/ticketTypes";
 
 // The ticket-type surface (ADR 0004): the organizer's CRUD over a
@@ -51,12 +56,19 @@ export const listPublicTicketTypes = query({
       return [];
     }
     const now = Date.now();
+    const feeConfig = feeConfigFromEnv();
     const ticketTypes = await listTicketTypes(ctx, args.conventionId);
     return ticketTypes.map((ticketType) => ({
       ticketTypeId: ticketType._id,
       name: ticketType.name,
       description: ticketType.description ?? null,
       priceCents: ticketType.priceCents,
+      // What the buyer pays with fees, from the same shared math the order
+      // writer snapshots — one listing subscription instead of a fee-preview
+      // query per row.
+      totalWithFeesCents: isPaidTicketType(ticketType)
+        ? computeOrderBreakdown(ticketType.priceCents, feeConfig).totalCents
+        : null,
       sortOrder: ticketType.sortOrder,
       admissionStartDate: ticketType.admissionStartDate ?? null,
       admissionEndDate: ticketType.admissionEndDate ?? null,
@@ -81,20 +93,12 @@ export const listTicketTypesForOrganizer = query({
     const now = Date.now();
     const ticketTypes = await listTicketTypes(ctx, args.conventionId);
     return await Promise.all(
-      ticketTypes.map(async (ticketType) => {
-        const order = await ctx.db
-          .query("paymentOrders")
-          .withIndex("by_ticketTypeId", (q) =>
-            q.eq("ticketTypeId", ticketType._id),
-          )
-          .first();
-        return {
-          ...ticketType,
-          effectiveSaleEndDate: effectiveSaleEnd(ticketType, convention),
-          onSale: isTicketTypeOnSale(convention, ticketType, now),
-          priceLocked: order !== null,
-        };
-      }),
+      ticketTypes.map(async (ticketType) => ({
+        ...ticketType,
+        effectiveSaleEndDate: effectiveSaleEnd(ticketType, convention),
+        onSale: isTicketTypeOnSale(convention, ticketType, now),
+        priceLocked: await ticketTypeHasOrders(ctx, ticketType._id),
+      })),
     );
   },
 });
@@ -102,15 +106,7 @@ export const listTicketTypesForOrganizer = query({
 async function validatedInputs(
   ctx: MutationCtx,
   convention: Doc<"conventions">,
-  args: {
-    name: string;
-    description?: string;
-    priceCents: number;
-    capacity?: number;
-    admissionStartDate?: number;
-    admissionEndDate?: number;
-    saleStartDate?: number;
-    saleEndDate?: number;
+  args: TicketTypeInputs & {
     includedTournamentIds?: Array<Doc<"tournaments">["_id"]>;
   },
 ) {
@@ -203,16 +199,12 @@ export const updateTicketType = mutation({
     ...ticketTypeInputArgs,
   },
   handler: async (ctx, args) => {
-    const ticketType = await ctx.db.get(args.ticketTypeId);
-    if (!ticketType) {
-      throw new Error("Ticket type not found");
-    }
+    const ticketType = await requireTicketType(ctx, args.ticketTypeId);
     const { convention } = await requireConventionOrganizerAccess(
       ctx,
       ticketType.conventionId,
     );
     requireConventionEditable(convention);
-    await requireTicketTypeForConvention(ctx, convention, args.ticketTypeId);
     const { inputs, includedTournamentIds } = await validatedInputs(
       ctx,
       convention,
@@ -251,10 +243,7 @@ export const updateTicketType = mutation({
 export const deleteTicketType = mutation({
   args: { ticketTypeId: v.id("conventionTicketTypes") },
   handler: async (ctx, args) => {
-    const ticketType = await ctx.db.get(args.ticketTypeId);
-    if (!ticketType) {
-      throw new Error("Ticket type not found");
-    }
+    const ticketType = await requireTicketType(ctx, args.ticketTypeId);
     const { convention } = await requireConventionOrganizerAccess(
       ctx,
       ticketType.conventionId,

@@ -232,6 +232,7 @@ async function closeUnpaidSession(
   }
 
   const now = Date.now();
+  const entry = await registrationForOrder(ctx, order);
   if (order.purpose === "post_approval") {
     await ctx.db.patch(order._id, {
       status: "requires_payment",
@@ -243,13 +244,11 @@ async function closeUnpaidSession(
       status: args.closedStatus,
       updatedAt: now,
     });
-    const entry = await registrationForOrder(ctx, order);
     if (entry) {
       await withdrawPendingEntry(ctx, entry, now);
     }
   }
 
-  const entry = await registrationForOrder(ctx, order);
   if (entry) {
     await logEntryPaymentAudit(ctx, {
       owner: order,

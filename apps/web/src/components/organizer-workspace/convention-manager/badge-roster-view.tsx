@@ -8,6 +8,10 @@ import type {
   Doc,
   Id,
 } from '@tournament-os/backend/convex/_generated/dataModel'
+import {
+  entryStatusBadgeVariant,
+  paymentBadge,
+} from '@/components/organizer-workspace/paid-event/roster-badges'
 import { ConfirmActionDialog } from '@/components/shared/confirm-action-dialog'
 import { LoadMoreButton } from '@/components/shared/load-more-button'
 import { TableEmptyState } from '@/components/shared/table-empty-state'
@@ -38,17 +42,6 @@ type BadgeRow = {
   registration: Doc<'conventionRegistrations'>
   playerName: string | undefined
   paymentStatus: Doc<'paymentOrders'>['status'] | null
-}
-
-const entryStatusBadgeVariant: Record<
-  Doc<'conventionRegistrations'>['entryStatus'],
-  'default' | 'secondary' | 'destructive' | 'outline'
-> = {
-  confirmed: 'default',
-  pending: 'outline',
-  waitlisted: 'outline',
-  cancelled: 'secondary',
-  rejected: 'destructive',
 }
 
 export function BadgeRosterView({
@@ -171,8 +164,14 @@ function BadgeRosterRow({
         </Badge>
       </TableCell>
       {showPaymentColumn ? (
-        <TableCell className="text-muted-foreground">
-          {row.paymentStatus ?? '—'}
+        <TableCell>
+          {row.paymentStatus ? (
+            <Badge variant={paymentBadge[row.paymentStatus].variant}>
+              {paymentBadge[row.paymentStatus].label}
+            </Badge>
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          )}
         </TableCell>
       ) : null}
       <TableCell className="text-right">

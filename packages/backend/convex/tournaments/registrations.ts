@@ -19,10 +19,7 @@ import {
   participantForUser,
 } from "../model/participants";
 import { setRegistrationState } from "../model/participation";
-import {
-  badgeCompsChildEvent,
-  requireBadgeForChildEvent,
-} from "../model/conventions";
+import { resolveChildEventAdmission } from "../model/conventions";
 import { isPaidEvent, latestOrderForRegistration } from "../model/payments";
 import { tiebreakRandom } from "../model/random";
 import {
@@ -165,7 +162,11 @@ export const registerSelf = mutation({
     // A badge-gated child event admits self-registration only with a
     // confirmed convention badge (model/conventions.ts). Organizer verbs
     // (approve, guest enroll) bypass the gate by never routing here.
-    await requireBadgeForChildEvent(ctx, tournament, user._id);
+    const childAdmission = await resolveChildEventAdmission(
+      ctx,
+      tournament,
+      user._id,
+    );
     // Direct registration on a paid event goes through the Checkout action
     // (payments/checkout.ts), which files the pending row itself; the seat
     // is only ever taken by the payment webhook. Approval-mode paid events
@@ -176,7 +177,7 @@ export const registerSelf = mutation({
     const compedByBadge =
       isPaidEvent(tournament) &&
       !tournament.registrationRequiresApproval &&
-      (await badgeCompsChildEvent(ctx, tournament, user._id));
+      childAdmission.compedByBadge;
     if (
       isPaidEvent(tournament) &&
       !tournament.registrationRequiresApproval &&

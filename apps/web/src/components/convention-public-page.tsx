@@ -15,10 +15,12 @@ import type {
   Id,
 } from '@tournament-os/backend/convex/_generated/dataModel'
 import { formatConventionDateRange } from '@/components/conventions/convention-display'
+import { DetailLine } from '@/components/shared/detail-line'
 import { LoadMoreButton } from '@/components/shared/load-more-button'
 import { LoadingCard } from '@/components/shared/loading-card'
 import { MarkdownContent } from '@/components/shared/markdown-content'
 import { PageNotFound } from '@/components/shared/page-not-found'
+import { cancelOutcomeNote } from '@/components/shared/payment-return'
 import { SiteShell, SiteShellBackLink } from '@/components/shared/site-shell'
 import {
   TournamentLifecycleBadge,
@@ -37,7 +39,7 @@ import {
 } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { Spinner } from '@/components/ui/spinner'
-import { cn } from '@/lib/utils'
+import { formatCents } from '@/lib/money'
 
 const EVENTS_PAGE_SIZE = 50
 
@@ -55,11 +57,7 @@ export function ConventionPublicPage({ publicCode }: { publicCode: string }) {
   )
 }
 
-export function ConventionPublicPageContent({
-  publicCode,
-}: {
-  publicCode: string
-}) {
+function ConventionPublicPageContent({ publicCode }: { publicCode: string }) {
   const result = useQuery(api.conventions.lifecycle.getPublicConvention, {
     publicCode,
   })
@@ -181,31 +179,6 @@ function ConventionDetails({
   )
 }
 
-function DetailLine({
-  icon: Icon,
-  label,
-  value,
-  capitalize = false,
-}: {
-  icon: typeof CalendarDays
-  label: string
-  value: string
-  capitalize?: boolean
-}) {
-  return (
-    <div className="flex items-center gap-2">
-      <Icon
-        className="size-4 shrink-0 text-muted-foreground"
-        aria-hidden="true"
-      />
-      <span className="text-muted-foreground">{label}:</span>
-      <span className={cn('font-medium', capitalize && 'capitalize')}>
-        {value}
-      </span>
-    </div>
-  )
-}
-
 // The badge counterpart of the tournament page's RegistrationPanel, much
 // simpler: badges have no approval mode, waitlist, or competitive states.
 // The convention sells ticket types (ADR 0004) — the panel lists each pass
@@ -266,7 +239,10 @@ function BadgePanel({
   )
   const cancelNote = myOrder?.cancelOutcome ? (
     <p className="w-full text-sm text-muted-foreground">
-      {cancelOutcomeNote(myOrder.cancelOutcome)}
+      {cancelOutcomeNote(
+        myOrder.cancelOutcome,
+        'Cancelling refunds the badge cost only — fees are not refunded on a repeat cancellation.',
+      )}
     </p>
   ) : null
 
@@ -466,10 +442,6 @@ function TicketTypeRow({
   )
   const { busy, run } = useBusyAction()
   const isPaid = ticketType.priceCents > 0
-  const feePreview = useQuery(
-    api.payments.queries.getFeePreview,
-    isPaid ? { entryFeeCents: ticketType.priceCents } : 'skip',
-  )
   const now = Date.now()
   const saleNotStarted =
     ticketType.saleStartDate !== null && now < ticketType.saleStartDate
@@ -498,9 +470,9 @@ function TicketTypeRow({
             )}
           </p>
         ) : null}
-        {isPaid && feePreview ? (
+        {ticketType.totalWithFeesCents !== null ? (
           <p className="text-sm text-muted-foreground">
-            {formatCents(feePreview.totalCents)} total with fees
+            {formatCents(ticketType.totalWithFeesCents)} total with fees
           </p>
         ) : null}
       </div>
@@ -537,24 +509,4 @@ function TicketTypeRow({
       )}
     </div>
   )
-}
-
-function formatCents(cents: number) {
-  return (cents / 100).toLocaleString('en-US', {
-    style: 'currency',
-    currency: 'USD',
-  })
-}
-
-function cancelOutcomeNote(
-  outcome: 'full_refund' | 'entry_only_refund' | 'no_refund',
-) {
-  switch (outcome) {
-    case 'full_refund':
-      return 'Cancelling refunds your payment in full.'
-    case 'entry_only_refund':
-      return 'Cancelling refunds the badge cost only — fees are not refunded on a repeat cancellation.'
-    case 'no_refund':
-      return 'The refund deadline has passed, so cancelling will not refund your payment.'
-  }
 }

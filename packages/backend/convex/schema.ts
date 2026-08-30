@@ -316,7 +316,7 @@ export default defineSchema({
     playerCapacity: v.number(),
     isTestEvent: v.boolean(),
     // When true, self-serve registration for a child tournament requires a
-    // confirmed badge (model/conventions.ts requireBadgeForChildEvent).
+    // confirmed badge (model/conventions.ts resolveChildEventAdmission).
     // Admission gate only: cancelling a badge never revokes child
     // registrations already made, and organizer verbs bypass it.
     badgeRequiredForChildEvents: v.boolean(),
@@ -339,11 +339,7 @@ export default defineSchema({
       "lifecycle",
       "startDate",
     ])
-    .index("by_organizationId_and_lifecycle_and_startDate", [
-      "organizationId",
-      "lifecycle",
-      "startDate",
-    ]),
+    .index("by_organizationId_and_startDate", ["organizationId", "startDate"]),
 
   // A purchasable pass for a convention (ADR 0004). A type composes four
   // orthogonal fields — price, per-type capacity, admission window, and

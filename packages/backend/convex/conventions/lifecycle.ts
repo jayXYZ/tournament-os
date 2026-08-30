@@ -67,26 +67,15 @@ export const listForOrganization = query({
   handler: async (ctx, args) => {
     await requireActiveMembership(ctx, args.organizationId);
 
-    // The composite index requires a lifecycle bound; union the arms and
-    // merge-sort so the list covers every state, newest start first.
-    const rows = (
-      await Promise.all(
-        (["setup", "registration", "completed", "cancelled"] as const).map(
-          (lifecycle) =>
-            ctx.db
-              .query("conventions")
-              .withIndex("by_organizationId_and_lifecycle_and_startDate", (q) =>
-                q
-                  .eq("organizationId", args.organizationId)
-                  .eq("lifecycle", lifecycle),
-              )
-              .order("desc")
-              .take(100),
-        ),
+    // Every state, newest start first.
+    const rows = await ctx.db
+      .query("conventions")
+      .withIndex("by_organizationId_and_startDate", (q) =>
+        q.eq("organizationId", args.organizationId),
       )
-    ).flat();
-    rows.sort((left, right) => right.startDate - left.startDate);
-    return rows.slice(0, 100).map((convention) => ({
+      .order("desc")
+      .take(100);
+    return rows.map((convention) => ({
       ...convention,
       registeredCount: convention.confirmedRegistrationCount,
     }));

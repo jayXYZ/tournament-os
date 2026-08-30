@@ -130,50 +130,15 @@ function TournamentBreadcrumb({
   const managed = useQuery(api.tournaments.lifecycle.getManagedTournament, {
     publicCode,
   })
-  const name = managed?.tournament.name
-  const pageLabel = segment ? tournamentPageLabels[segment] : undefined
-  const base = `/admin/tournaments/${publicCode}`
-
   return (
-    <Breadcrumb>
-      <BreadcrumbList>
-        <BreadcrumbItem>
-          <OrganizationSwitcher />
-        </BreadcrumbItem>
-        <BreadcrumbSeparator />
-        <BreadcrumbItem>
-          <BreadcrumbLink asChild>
-            <Link to="/admin">Tournaments</Link>
-          </BreadcrumbLink>
-        </BreadcrumbItem>
-        <BreadcrumbSeparator />
-        <BreadcrumbItem>
-          {managed === undefined ? (
-            <Skeleton className="h-4 w-28" />
-          ) : name === undefined ? (
-            <BreadcrumbPage>Not found</BreadcrumbPage>
-          ) : pageLabel ? (
-            <BreadcrumbLink asChild>
-              <Link to={base} className="max-w-48 truncate">
-                {name}
-              </Link>
-            </BreadcrumbLink>
-          ) : (
-            <BreadcrumbPage className="max-w-48 truncate">
-              {name}
-            </BreadcrumbPage>
-          )}
-        </BreadcrumbItem>
-        {pageLabel && (
-          <>
-            <BreadcrumbSeparator />
-            <BreadcrumbItem>
-              <BreadcrumbPage>{pageLabel}</BreadcrumbPage>
-            </BreadcrumbItem>
-          </>
-        )}
-      </BreadcrumbList>
-    </Breadcrumb>
+    <ManagedEventBreadcrumb
+      listTo="/admin"
+      listLabel="Tournaments"
+      loading={managed === undefined}
+      name={managed?.tournament.name}
+      base={`/admin/tournaments/${publicCode}`}
+      pageLabel={segment ? tournamentPageLabels[segment] : undefined}
+    />
   )
 }
 
@@ -187,10 +152,36 @@ function ConventionBreadcrumb({
   const managed = useQuery(api.conventions.lifecycle.getManagedConvention, {
     publicCode,
   })
-  const name = managed?.convention.name
-  const pageLabel = segment ? conventionPageLabels[segment] : undefined
-  const base = `/admin/conventions/${publicCode}`
+  return (
+    <ManagedEventBreadcrumb
+      listTo="/admin/conventions"
+      listLabel="Conventions"
+      loading={managed === undefined}
+      name={managed?.convention.name}
+      base={`/admin/conventions/${publicCode}`}
+      pageLabel={segment ? conventionPageLabels[segment] : undefined}
+    />
+  )
+}
 
+// The trail both managed-event breadcrumbs share: switcher, list link, then
+// the event name (skeleton while loading, "Not found", a link when a page
+// label follows, or the current page), then the optional page label.
+function ManagedEventBreadcrumb({
+  listTo,
+  listLabel,
+  loading,
+  name,
+  base,
+  pageLabel,
+}: {
+  listTo: string
+  listLabel: string
+  loading: boolean
+  name: string | undefined
+  base: string
+  pageLabel?: string
+}) {
   return (
     <Breadcrumb>
       <BreadcrumbList>
@@ -200,12 +191,12 @@ function ConventionBreadcrumb({
         <BreadcrumbSeparator />
         <BreadcrumbItem>
           <BreadcrumbLink asChild>
-            <Link to="/admin/conventions">Conventions</Link>
+            <Link to={listTo}>{listLabel}</Link>
           </BreadcrumbLink>
         </BreadcrumbItem>
         <BreadcrumbSeparator />
         <BreadcrumbItem>
-          {managed === undefined ? (
+          {loading ? (
             <Skeleton className="h-4 w-28" />
           ) : name === undefined ? (
             <BreadcrumbPage>Not found</BreadcrumbPage>

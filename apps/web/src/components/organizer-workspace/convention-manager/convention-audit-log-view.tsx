@@ -20,6 +20,7 @@ import {
   EmptyTitle,
 } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
+import { formatCents } from '@/lib/money'
 
 type ConventionAuditRow = FunctionReturnType<
   typeof api.conventions.auditLog.listAuditEvents
@@ -33,13 +34,6 @@ const timeFormatter = new Intl.DateTimeFormat('en-US', {
   hour: 'numeric',
   minute: '2-digit',
 })
-
-function formatCents(cents: number) {
-  return (cents / 100).toLocaleString('en-US', {
-    style: 'currency',
-    currency: 'USD',
-  })
-}
 
 // One line per event kind, denormalized names included — the convention log
 // has far fewer shapes than the tournament one, so a sentence each reads

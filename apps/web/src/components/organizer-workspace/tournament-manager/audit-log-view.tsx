@@ -22,6 +22,7 @@ import {
   EmptyTitle,
 } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
+import { formatCents } from '@/lib/money'
 
 type AuditEventRow = FunctionReturnType<
   typeof api.tournaments.auditLog.listAuditEvents
@@ -206,19 +207,19 @@ function describeEvent(row: AuditEventRow): string {
     case 'tournament_cancelled':
       return 'Cancelled the tournament'
     case 'payment_completed':
-      return `${displayPlayerName(event.player.playerName)}'s entry payment of ${formatAuditCents(event.totalCents)} completed`
+      return `${displayPlayerName(event.player.playerName)}'s entry payment of ${formatCents(event.totalCents)} completed`
     case 'payment_failed':
       return `${displayPlayerName(event.player.playerName)}'s entry payment failed`
     case 'payment_expired':
       return `${displayPlayerName(event.player.playerName)}'s checkout expired unpaid`
     case 'payment_requested':
-      return `Approved ${displayPlayerName(event.player.playerName)}'s application and requested the ${formatAuditCents(event.totalCents)} entry payment`
+      return `Approved ${displayPlayerName(event.player.playerName)}'s application and requested the ${formatCents(event.totalCents)} entry payment`
     case 'refund_issued':
-      return `Refunded ${formatAuditCents(event.amountCents)} to ${displayPlayerName(event.player.playerName)} (${describeRefundReason(event.reason)}${event.kind === 'entry_only' ? ', entry cost only' : ''})`
+      return `Refunded ${formatCents(event.amountCents)} to ${displayPlayerName(event.player.playerName)} (${describeRefundReason(event.reason)}${event.kind === 'entry_only' ? ', entry cost only' : ''})`
     case 'refund_failed':
-      return `Refund of ${formatAuditCents(event.amountCents)} to ${displayPlayerName(event.player.playerName)} failed — needs attention`
+      return `Refund of ${formatCents(event.amountCents)} to ${displayPlayerName(event.player.playerName)} failed — needs attention`
     case 'payout_sent':
-      return `Paid out ${formatAuditCents(event.netCents)} in entry fees to the organization`
+      return `Paid out ${formatCents(event.netCents)} in entry fees to the organization`
     case 'payout_failed':
       return 'The entry-fee payout failed — needs attention'
     case 'order_disputed':
@@ -248,13 +249,6 @@ function describeRefundReason(
     case 'seat_unavailable':
       return 'no seat available'
   }
-}
-
-function formatAuditCents(cents: number) {
-  return (cents / 100).toLocaleString('en-US', {
-    style: 'currency',
-    currency: 'USD',
-  })
 }
 
 // The comped-entry marker on admission events: a paid event seated this

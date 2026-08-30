@@ -1,14 +1,9 @@
 import { useState } from 'react'
-import { Link } from '@tanstack/react-router'
 import { useMutation, usePaginatedQuery, useQuery } from 'convex/react'
 import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { api } from '@tournament-os/backend/convex/_generated/api'
-import {
-  MIN_ENTRY_FEE_CENTS,
-  validateEntryFeeCents,
-} from '@tournament-os/shared/payment-fees'
 import { isConventionLocked } from './is-convention-locked'
 import type { FormEvent } from 'react'
 import type { FunctionReturnType } from 'convex/server'
@@ -17,7 +12,11 @@ import type {
   Id,
 } from '@tournament-os/backend/convex/_generated/dataModel'
 import {
-  formatCents,
+  FeePreviewPanel,
+  StripeOnboardingNotice,
+  useFeePreview,
+} from '@/components/organizer-workspace/paid-event/fee-preview'
+import {
   parseDollarsToCents,
   toDollarsValue,
 } from '@/components/organizer-workspace/paid-event/money'
@@ -51,6 +50,7 @@ import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
 import { useBusyAction } from '@/hooks/use-busy-action'
+import { formatCents } from '@/lib/money'
 
 type OrganizerTicketType = FunctionReturnType<
   typeof api.conventions.ticketTypes.listTicketTypesForOrganizer
@@ -249,13 +249,7 @@ function TicketTypeDialog({
   const payoutsReady = paymentSettings?.connection?.payoutsReady ?? false
   const priceLocked = ticketType?.priceLocked ?? false
   const draftCents = parseDollarsToCents(price)
-  const previewArgs =
-    Number.isInteger(draftCents) &&
-    draftCents >= MIN_ENTRY_FEE_CENTS &&
-    validateEntryFeeCents(draftCents) === null
-      ? { entryFeeCents: draftCents }
-      : ('skip' as const)
-  const preview = useQuery(api.payments.queries.getFeePreview, previewArgs)
+  const preview = useFeePreview(draftCents)
 
   function parseOptionalDate(value: string, label: string) {
     if (value === '') {
@@ -462,29 +456,17 @@ function TicketTypeDialog({
             !payoutsReady &&
             draftCents > 0 &&
             !priceLocked ? (
-              <p className="text-sm text-muted-foreground">
-                {paymentSettings.connection
-                  ? 'Finish the organization’s Stripe onboarding before charging for tickets.'
-                  : 'Connect the organization’s Stripe account before charging for tickets.'}{' '}
-                <Link to="/admin/organization" className="underline">
-                  Manage payments
-                </Link>
-              </p>
+              <StripeOnboardingNotice
+                hasConnection={Boolean(paymentSettings.connection)}
+                chargingPhrase="for tickets"
+              />
             ) : null}
 
-            {preview ? (
-              <div className="rounded-md border bg-muted/50 px-4 py-3 text-sm">
-                <p className="font-medium">
-                  Attendees pay {formatCents(preview.totalCents)}
-                </p>
-                <p className="text-muted-foreground">
-                  {formatCents(preview.entryFeeCents)} ticket (paid out to you)
-                  + {formatCents(preview.platformFeeCents)} platform fee +{' '}
-                  {formatCents(preview.processingFeeCents)} estimated payment
-                  processing
-                </p>
-              </div>
-            ) : null}
+            <FeePreviewPanel
+              preview={preview}
+              payersLabel="Attendees"
+              paidOutLabel="ticket"
+            />
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={onClose}>

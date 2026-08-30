@@ -10,7 +10,11 @@ import type { AuditActorRole } from "./auditLog";
 import { conventionAuditPlayerRef, logConventionAuditEvent } from "./auditLog";
 import { ensureParticipantForUser, participantForUser } from "./participants";
 import { nextPublicCode } from "./publicCodes";
-import { hasCapacityAvailable, playerDisplayName } from "./registrations";
+import {
+  adjustConfirmedRegistrationCount,
+  hasCapacityAvailable,
+  playerDisplayName,
+} from "./registrations";
 import {
   adjustTicketTypeConfirmedCount,
   createDefaultTicketType,
@@ -18,7 +22,7 @@ import {
   requireTicketTypeCapacityAvailable,
   requireTicketTypeOnSale,
 } from "./ticketTypes";
-import { cleanName, validStartDate } from "./tournaments";
+import { cleanName, isPubliclyViewable, validStartDate } from "./tournaments";
 
 // The convention entity module (CONTEXT.md "Convention"): a first-class
 // umbrella event that holds child tournaments and sells its own
@@ -85,14 +89,6 @@ export function isConventionRegistrationOpen(convention: Doc<"conventions">) {
   return convention.lifecycle === "registration";
 }
 
-// Same rule as tournaments: published and not private. Unlisted conventions
-// are reachable by code but never listed.
-export function isConventionPubliclyViewable(convention: Doc<"conventions">) {
-  return (
-    convention.visibility !== "private" && convention.lifecycle !== "setup"
-  );
-}
-
 // Whether the caller may see the convention at all — the public page's
 // access rule, shared by every public read hanging off it (ticket types
 // included, ADR 0004: a hidden convention exposes no types, prices, or
@@ -103,7 +99,7 @@ export async function canViewConvention(
   ctx: QueryCtx,
   convention: Doc<"conventions">,
 ) {
-  if (isConventionPubliclyViewable(convention)) {
+  if (isPubliclyViewable(convention)) {
     return true;
   }
   const user = await currentUserOrNull(ctx);
@@ -205,24 +201,6 @@ export async function createConvention(
   // the box; the organizer renames, prices, or replaces it.
   await createDefaultTicketType(ctx, conventionId, now);
   return conventionId;
-}
-
-export async function adjustConventionConfirmedCount(
-  ctx: MutationCtx,
-  convention: Doc<"conventions">,
-  delta: number,
-  now = Date.now(),
-) {
-  if (delta === 0) {
-    return;
-  }
-  await ctx.db.patch(convention._id, {
-    confirmedRegistrationCount: Math.max(
-      0,
-      convention.confirmedRegistrationCount + delta,
-    ),
-    updatedAt: now,
-  });
 }
 
 export function requireBadgeCapacityAvailable(convention: Doc<"conventions">) {
@@ -379,7 +357,7 @@ export async function registerBadge(
     user: args.user,
     entryStatus: "confirmed",
   });
-  await adjustConventionConfirmedCount(ctx, args.convention, 1);
+  await adjustConfirmedRegistrationCount(ctx, args.convention, 1);
   await adjustTicketTypeConfirmedCount(ctx, args.ticketType, 1);
   await logConventionAuditEvent(ctx, {
     conventionId: args.convention._id,
@@ -415,7 +393,7 @@ async function exitBadge(
     updatedAt: now,
   });
   if (heldSeat) {
-    await adjustConventionConfirmedCount(ctx, args.convention, -1, now);
+    await adjustConfirmedRegistrationCount(ctx, args.convention, -1, now);
     // A confirmed badge held a seat in its type's capacity too.
     const ticketType = await ctx.db.get(args.badge.ticketTypeId);
     if (ticketType) {
@@ -498,52 +476,88 @@ export async function removeBadge(
   });
 }
 
-// The badge gate for child events (CONTEXT.md "Badge"): when the owning
-// convention requires badges, self-serve registration for a child tournament
-// needs a confirmed one whose pass admits the event's day (a day pass does
-// not gate into an event outside its admission window). An admission gate
-// only — cancelling a badge never revokes child registrations already made,
-// and organizer verbs (approve, guest enroll) bypass this by simply not
-// calling it. Called from the two self-serve entry points: registerSelf and
-// beginEntryCheckout.
-export async function requireBadgeForChildEvent(
+// Whether a pass comps the child event (ADR 0004): its
+// includedTournamentIds names the event, and the event still belongs to
+// the pass's convention (a detach leaves stale ids behind; re-checking
+// membership keeps them inert). Comped players enter a paid event free —
+// no order is ever created for them.
+function ticketTypeCompsChildEvent(
+  tournament: Doc<"tournaments">,
+  ticketType: Doc<"conventionTicketTypes"> | null,
+) {
+  return (
+    ticketType !== null &&
+    ticketType.conventionId === tournament.conventionId &&
+    ticketType.includedTournamentIds.includes(tournament._id)
+  );
+}
+
+// The badge gate and the pass comp for a child event, resolved together
+// (CONTEXT.md "Badge", ADR 0004). When the owning convention requires
+// badges, self-serve entry needs a confirmed badge whose pass admits the
+// event's day (a day pass does not gate into an event outside its
+// admission window) — an admission gate only: cancelling a badge never
+// revokes child registrations already made, and organizer verbs (approve,
+// guest enroll) bypass it by simply not calling this. The comp verdict
+// rides along because both answers come from the same convention → badge →
+// ticket type chain — resolving them together keeps the two self-serve
+// entry points (registerSelf, beginEntryCheckout) from re-fetching the
+// chain per question, or checking gate and comp against different rows.
+export async function resolveChildEventAdmission(
   ctx: QueryCtx,
   tournament: Doc<"tournaments">,
   userId: Id<"users">,
-) {
+): Promise<{ compedByBadge: boolean }> {
   if (tournament.conventionId === undefined) {
-    return;
+    return { compedByBadge: false };
   }
   const convention = await ctx.db.get(tournament.conventionId);
-  if (!convention || !convention.badgeRequiredForChildEvents) {
-    return;
+  if (!convention) {
+    return { compedByBadge: false };
   }
   const badge = await badgeForUser(ctx, convention._id, userId);
-  if (badge?.entryStatus !== "confirmed") {
-    throw new Error(
-      `This event requires a ${convention.name} badge — register for the convention first`,
-    );
+  const confirmedBadge = badge?.entryStatus === "confirmed" ? badge : null;
+  const ticketType = confirmedBadge
+    ? await ctx.db.get(confirmedBadge.ticketTypeId)
+    : null;
+  if (convention.badgeRequiredForChildEvents) {
+    if (!confirmedBadge) {
+      throw new Error(
+        `This event requires a ${convention.name} badge — register for the convention first`,
+      );
+    }
+    if (
+      ticketType &&
+      ((ticketType.admissionStartDate !== undefined &&
+        tournament.startDate < ticketType.admissionStartDate) ||
+        (ticketType.admissionEndDate !== undefined &&
+          tournament.startDate > ticketType.admissionEndDate))
+    ) {
+      throw new Error(
+        `Your ${ticketType.name} does not cover this event's date — upgrade your ${convention.name} badge first`,
+      );
+    }
   }
-  const ticketType = await ctx.db.get(badge.ticketTypeId);
-  if (
-    ticketType &&
-    ((ticketType.admissionStartDate !== undefined &&
-      tournament.startDate < ticketType.admissionStartDate) ||
-      (ticketType.admissionEndDate !== undefined &&
-        tournament.startDate > ticketType.admissionEndDate))
-  ) {
-    throw new Error(
-      `Your ${ticketType.name} does not cover this event's date — upgrade your ${convention.name} badge first`,
-    );
-  }
+  return { compedByBadge: ticketTypeCompsChildEvent(tournament, ticketType) };
 }
 
-// Whether the participant's confirmed badge comps this child tournament
-// (ADR 0004): the pass's includedTournamentIds names it, and the event
-// still belongs to the badge's convention (a detach leaves stale ids
-// behind; re-checking membership here keeps them inert). registerSelf and
-// the approval verbs read this to let a comped player into a paid event
-// free — no order is ever created.
+// The comp verdict from a badge row already in hand — getPublicTournament
+// resolves the viewer's badge for display anyway, so it must not re-walk
+// user → participant → badge just to answer this.
+export async function badgeCompsChildEvent(
+  ctx: QueryCtx,
+  tournament: Doc<"tournaments">,
+  badge: Doc<"conventionRegistrations"> | null,
+) {
+  if (badge?.entryStatus !== "confirmed") {
+    return false;
+  }
+  const ticketType = await ctx.db.get(badge.ticketTypeId);
+  return ticketTypeCompsChildEvent(tournament, ticketType);
+}
+
+// The participant shape of the comp check, for the approval verbs
+// (model/roster.ts) that decide entries by participant rather than user.
 export async function participantBadgeCompsChildEvent(
   ctx: QueryCtx,
   tournament: Doc<"tournaments">,
@@ -557,33 +571,7 @@ export async function participantBadgeCompsChildEvent(
     tournament.conventionId,
     participantId,
   );
-  if (badge?.entryStatus !== "confirmed") {
-    return false;
-  }
-  const ticketType = await ctx.db.get(badge.ticketTypeId);
-  return (
-    ticketType !== null &&
-    ticketType.conventionId === tournament.conventionId &&
-    ticketType.includedTournamentIds.includes(tournament._id)
-  );
-}
-
-// The account-holder shape of the comp check, for the self-serve entry
-// points that know a user rather than a participant.
-export async function badgeCompsChildEvent(
-  ctx: QueryCtx,
-  tournament: Doc<"tournaments">,
-  userId: Id<"users">,
-) {
-  const participant = await participantForUser(ctx, userId);
-  if (!participant) {
-    return false;
-  }
-  return await participantBadgeCompsChildEvent(
-    ctx,
-    tournament,
-    participant._id,
-  );
+  return await badgeCompsChildEvent(ctx, tournament, badge);
 }
 
 // Attach/detach rules. Both directions require organizer access to the
