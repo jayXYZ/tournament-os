@@ -492,6 +492,20 @@ function ticketTypeCompsChildEvent(
   );
 }
 
+// Whether a pass's admission window admits the event's day — an unset bound
+// is open-ended on that side.
+function ticketTypeAdmitsChildEventDate(
+  tournament: Doc<"tournaments">,
+  ticketType: Doc<"conventionTicketTypes">,
+) {
+  return (
+    (ticketType.admissionStartDate === undefined ||
+      tournament.startDate >= ticketType.admissionStartDate) &&
+    (ticketType.admissionEndDate === undefined ||
+      tournament.startDate <= ticketType.admissionEndDate)
+  );
+}
+
 // The badge gate and the pass comp for a child event, resolved together
 // (CONTEXT.md "Badge", ADR 0004). When the owning convention requires
 // badges, self-serve entry needs a confirmed badge whose pass admits the
@@ -526,13 +540,7 @@ export async function resolveChildEventAdmission(
         `This event requires a ${convention.name} badge — register for the convention first`,
       );
     }
-    if (
-      ticketType &&
-      ((ticketType.admissionStartDate !== undefined &&
-        tournament.startDate < ticketType.admissionStartDate) ||
-        (ticketType.admissionEndDate !== undefined &&
-          tournament.startDate > ticketType.admissionEndDate))
-    ) {
+    if (ticketType && !ticketTypeAdmitsChildEventDate(tournament, ticketType)) {
       throw new Error(
         `Your ${ticketType.name} does not cover this event's date — upgrade your ${convention.name} badge first`,
       );
@@ -541,19 +549,27 @@ export async function resolveChildEventAdmission(
   return { compedByBadge: ticketTypeCompsChildEvent(tournament, ticketType) };
 }
 
-// The comp verdict from a badge row already in hand — getPublicTournament
-// resolves the viewer's badge for display anyway, so it must not re-walk
-// user → participant → badge just to answer this.
-export async function badgeCompsChildEvent(
+// The comp and date-cover verdicts from a badge row already in hand —
+// getPublicTournament resolves the viewer's badge for display anyway, so it
+// must not re-walk user → participant → badge, and both answers come from
+// the same ticket-type row.
+export async function badgeChildEventAdmission(
   ctx: QueryCtx,
   tournament: Doc<"tournaments">,
   badge: Doc<"conventionRegistrations"> | null,
-) {
+): Promise<{ compsThisEvent: boolean; coversThisEvent: boolean }> {
   if (badge?.entryStatus !== "confirmed") {
-    return false;
+    return { compsThisEvent: false, coversThisEvent: false };
   }
   const ticketType = await ctx.db.get(badge.ticketTypeId);
-  return ticketTypeCompsChildEvent(tournament, ticketType);
+  return {
+    compsThisEvent: ticketTypeCompsChildEvent(tournament, ticketType),
+    // Mirrors the gate in resolveChildEventAdmission, which does not refuse
+    // when the ticket-type row is gone.
+    coversThisEvent:
+      ticketType === null ||
+      ticketTypeAdmitsChildEventDate(tournament, ticketType),
+  };
 }
 
 // The participant shape of the comp check, for the approval verbs
@@ -571,7 +587,8 @@ export async function participantBadgeCompsChildEvent(
     tournament.conventionId,
     participantId,
   );
-  return await badgeCompsChildEvent(ctx, tournament, badge);
+  return (await badgeChildEventAdmission(ctx, tournament, badge))
+    .compsThisEvent;
 }
 
 // Attach/detach rules. Both directions require organizer access to the

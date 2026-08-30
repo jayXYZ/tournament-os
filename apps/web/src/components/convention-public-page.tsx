@@ -402,7 +402,7 @@ function BadgePanel({
         {ticketTypes.map((ticketType) => (
           <TicketTypeRow
             key={ticketType.ticketTypeId}
-            conventionId={convention._id}
+            convention={convention}
             ticketType={ticketType}
             pending={pending}
             onBuy={() => void startCheckout(ticketType.ticketTypeId)}
@@ -427,12 +427,12 @@ type PublicTicketType = FunctionReturnType<
 // One purchasable pass: name, dates it admits, price with the fee breakdown
 // (the same shared math the checkout snapshots), and its availability.
 function TicketTypeRow({
-  conventionId,
+  convention,
   ticketType,
   pending,
   onBuy,
 }: {
-  conventionId: Id<'conventions'>
+  convention: Convention
   ticketType: PublicTicketType
   pending: boolean
   onBuy: () => void
@@ -465,8 +465,10 @@ function TicketTypeRow({
           <p className="text-sm text-muted-foreground">
             Admits{' '}
             {formatConventionDateRange(
-              ticketType.admissionStartDate ?? ticketType.admissionEndDate!,
-              ticketType.admissionEndDate ?? ticketType.admissionStartDate!,
+              // An unset bound is open-ended, matching the server gate: it
+              // admits from the convention's start / through its end.
+              ticketType.admissionStartDate ?? convention.startDate,
+              ticketType.admissionEndDate ?? convention.endDate,
             )}
           </p>
         ) : null}
@@ -496,7 +498,7 @@ function TicketTypeRow({
           onClick={() =>
             void run(async () => {
               await registerSelf({
-                conventionId,
+                conventionId: convention._id,
                 ticketTypeId: ticketType.ticketTypeId,
               })
               toast.success("You're registered. See you at the convention!")

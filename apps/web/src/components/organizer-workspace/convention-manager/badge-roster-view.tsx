@@ -41,6 +41,7 @@ const BADGE_PAGE_SIZE = 25
 type BadgeRow = {
   registration: Doc<'conventionRegistrations'>
   playerName: string | undefined
+  ticketTypeName: string | null
   paymentStatus: Doc<'paymentOrders'>['status'] | null
 }
 
@@ -108,6 +109,7 @@ export function BadgeRosterView({
               <TableHeader>
                 <TableRow>
                   <TableHead>Attendee</TableHead>
+                  <TableHead>Ticket</TableHead>
                   <TableHead>Status</TableHead>
                   {showPaymentColumn ? <TableHead>Payment</TableHead> : null}
                   <TableHead className="w-0" />
@@ -157,6 +159,9 @@ function BadgeRosterRow({
     <TableRow>
       <TableCell className="font-medium">
         {row.playerName ?? 'Unknown player'}
+      </TableCell>
+      <TableCell>
+        {row.ticketTypeName ?? <span className="text-muted-foreground">—</span>}
       </TableCell>
       <TableCell>
         <Badge variant={entryStatusBadgeVariant[registration.entryStatus]}>

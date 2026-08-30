@@ -596,10 +596,8 @@ test("a paid type stays editable when Stripe readiness regresses; a price change
 test("the badge gate requires the pass's admission window to cover the child event's date", async () => {
   const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
-  const { conventionId, startDate, endDate } = await seedLiveConvention(
-    t,
-    organizationId,
-  );
+  const { conventionId, startDate, endDate, defaultTicketTypeId } =
+    await seedLiveConvention(t, organizationId);
   const organizer = t.withIdentity(organizerIdentity);
   await organizer.mutation(api.conventions.lifecycle.updateConventionSetup, {
     conventionId,
@@ -639,6 +637,30 @@ test("the badge gate requires the pass's admission window to cover the child eve
       tournamentId,
     }),
   ).rejects.toThrow(/does not cover/);
+
+  // The public page's flag warns the wrong-day pass holder before they
+  // click Register; an unrestricted pass covers the event.
+  const publicCode = String(
+    (await t.run(async (ctx) => ctx.db.get(tournamentId)))!.publicCode,
+  );
+  const playerView = (await player.query(
+    api.tournaments.lifecycle.getPublicTournament,
+    { publicCode },
+  ))!.convention!;
+  expect(playerView.myBadgeStatus).toBe("confirmed");
+  expect(playerView.myBadgeCoversThisEvent).toBe(false);
+
+  await insertPlayerUser(t, 2);
+  const weekender = t.withIdentity(playerIdentity(2));
+  await weekender.mutation(
+    api.conventions.registrations.registerSelfForConvention,
+    { conventionId, ticketTypeId: defaultTicketTypeId },
+  );
+  expect(
+    (await weekender.query(api.tournaments.lifecycle.getPublicTournament, {
+      publicCode,
+    }))!.convention!.myBadgeCoversThisEvent,
+  ).toBe(true);
 });
 
 test("a ticket type with registrations cannot be deleted; an unused one can", async () => {

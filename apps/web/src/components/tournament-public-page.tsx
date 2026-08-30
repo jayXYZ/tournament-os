@@ -178,18 +178,36 @@ function TournamentDetails({
         </div>
         <Separator />
         {convention?.badgeRequiredForChildEvents &&
-        convention.myBadgeStatus !== 'confirmed' &&
+        (convention.myBadgeStatus !== 'confirmed' ||
+          !convention.myBadgeCoversThisEvent) &&
         tournament.lifecycle === 'registration' ? (
           <p className="rounded-md border bg-muted/50 px-4 py-3 text-sm text-muted-foreground">
-            This event requires a confirmed {convention.name} badge —{' '}
-            <Link
-              to="/conventions/$conventionId"
-              params={{ conventionId: String(convention.publicCode) }}
-              className="underline underline-offset-4"
-            >
-              register for the convention
-            </Link>{' '}
-            first.
+            {convention.myBadgeStatus !== 'confirmed' ? (
+              <>
+                This event requires a confirmed {convention.name} badge —{' '}
+                <Link
+                  to="/conventions/$conventionId"
+                  params={{ conventionId: String(convention.publicCode) }}
+                  className="underline underline-offset-4"
+                >
+                  register for the convention
+                </Link>{' '}
+                first.
+              </>
+            ) : (
+              <>
+                Your {convention.name} badge does not cover this event&apos;s
+                date —{' '}
+                <Link
+                  to="/conventions/$conventionId"
+                  params={{ conventionId: String(convention.publicCode) }}
+                  className="underline underline-offset-4"
+                >
+                  upgrade your badge
+                </Link>{' '}
+                first.
+              </>
+            )}
           </p>
         ) : null}
         <RegistrationPanel

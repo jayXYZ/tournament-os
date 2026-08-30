@@ -15,7 +15,7 @@ import {
 } from "../model/access";
 import { logAuditEvent } from "../model/auditLog";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
-import { badgeCompsChildEvent, badgeForUser } from "../model/conventions";
+import { badgeChildEventAdmission, badgeForUser } from "../model/conventions";
 import { deleteTournamentOperationalDataBatch } from "../model/deletion";
 import { inviteCodeGrantsAccess } from "../model/invites";
 import {
@@ -205,6 +205,7 @@ export const getPublicTournament = query({
       badgeRequiredForChildEvents: boolean;
       myBadgeStatus: Doc<"conventionRegistrations">["entryStatus"] | null;
       myBadgeCompsThisEvent: boolean;
+      myBadgeCoversThisEvent: boolean;
     } | null = null;
     if (tournament.conventionId !== undefined) {
       const owningConvention = await ctx.db.get(tournament.conventionId);
@@ -223,21 +224,25 @@ export const getPublicTournament = query({
               user._id,
             )) !== null);
         if (parentVisible) {
+          // Whether the viewer's confirmed badge comps this event (ADR
+          // 0004), so a paid event's page offers free direct registration
+          // instead of Checkout, and whether its pass admits the event's
+          // day, so a badge-gated page can warn a wrong-day pass holder
+          // before they click Register — registerSelf and beginEntryCheckout
+          // enforce both authoritatively; these only pick the UI.
+          const badgeAdmission = await badgeChildEventAdmission(
+            ctx,
+            tournament,
+            badge,
+          );
           convention = {
             name: owningConvention.name,
             publicCode: owningConvention.publicCode,
             badgeRequiredForChildEvents:
               owningConvention.badgeRequiredForChildEvents,
             myBadgeStatus: badge?.entryStatus ?? null,
-            // Whether the viewer's confirmed badge comps this event (ADR
-            // 0004), so a paid event's page offers free direct registration
-            // instead of Checkout — registerSelf and beginEntryCheckout
-            // enforce the comp authoritatively; this only picks the button.
-            myBadgeCompsThisEvent: await badgeCompsChildEvent(
-              ctx,
-              tournament,
-              badge,
-            ),
+            myBadgeCompsThisEvent: badgeAdmission.compsThisEvent,
+            myBadgeCoversThisEvent: badgeAdmission.coversThisEvent,
           };
         }
       }
