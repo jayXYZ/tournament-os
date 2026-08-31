@@ -17,8 +17,12 @@ import { Badge } from '@/components/ui/badge'
 import { DataTable, DataTableColumnHeader } from '@/components/ui/data-table'
 
 // Built per render because the manage cell needs the round's phase match
-// structure to bound result entry.
-function buildPairingColumns(bestOf: BestOf): Array<ColumnDef<PairingRow>> {
+// structure to bound result entry, and whether the round's pairings are
+// still organizer-editable.
+function buildPairingColumns(
+  bestOf: BestOf,
+  canEditPairings: boolean,
+): Array<ColumnDef<PairingRow>> {
   return [
     {
       id: 'table',
@@ -61,7 +65,13 @@ function buildPairingColumns(bestOf: BestOf): Array<ColumnDef<PairingRow>> {
       header: 'Manage',
       enableSorting: false,
       meta: { className: 'text-right' },
-      cell: ({ row }) => <ManageMatchMenu row={row.original} bestOf={bestOf} />,
+      cell: ({ row }) => (
+        <ManageMatchMenu
+          row={row.original}
+          bestOf={bestOf}
+          canEditPairings={canEditPairings}
+        />
+      ),
     },
   ]
 }
@@ -69,14 +79,19 @@ function buildPairingColumns(bestOf: BestOf): Array<ColumnDef<PairingRow>> {
 export function PairingsTable({
   roundId,
   bestOf,
+  canEditPairings,
 }: {
   roundId: Id<'tournamentRounds'>
   bestOf: BestOf
+  canEditPairings: boolean
 }) {
   const pairings = useQuery(api.tournaments.rounds.listRoundPairings, {
     roundId,
   })
-  const columns = useMemo(() => buildPairingColumns(bestOf), [bestOf])
+  const columns = useMemo(
+    () => buildPairingColumns(bestOf, canEditPairings),
+    [bestOf, canEditPairings],
+  )
 
   if (pairings === undefined) {
     return <TableLoadingSkeleton />

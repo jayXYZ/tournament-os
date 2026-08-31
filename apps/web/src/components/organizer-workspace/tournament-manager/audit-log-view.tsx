@@ -192,6 +192,14 @@ function describeEvent(row: AuditEventRow): string {
       return `Started the tournament with ${event.playerCount} players and paired round 1`
     case 'round_started':
       return `Paired round ${event.roundNumber} with ${event.playerCount} players`
+    case 'pairing_broken':
+      return event.wasBye
+        ? `Broke ${displayPlayerName(event.players.at(0)?.playerName)}'s bye ${matchLocation({ roundNumber: event.roundNumber, tableNumber: event.tableNumber })}`
+        : `Broke the ${formatPairingPlayers(event.players)} pairing ${matchLocation({ roundNumber: event.roundNumber, tableNumber: event.tableNumber })}`
+    case 'pairing_created':
+      return event.isBye
+        ? `Awarded ${displayPlayerName(event.players.at(0)?.playerName)} a bye ${matchLocation({ roundNumber: event.roundNumber, tableNumber: event.tableNumber })}`
+        : `Paired ${formatPairingPlayers(event.players)} ${matchLocation({ roundNumber: event.roundNumber, tableNumber: event.tableNumber })}`
     case 'round_completed':
       return `Completed round ${event.roundNumber} and posted standings`
     case 'round_rewound':
@@ -247,6 +255,12 @@ function formatAuditCents(cents: number) {
     style: 'currency',
     currency: 'USD',
   })
+}
+
+function formatPairingPlayers(players: Array<{ playerName: string | null }>) {
+  return players
+    .map((player) => displayPlayerName(player.playerName))
+    .join(' vs. ')
 }
 
 function matchLocation(event: {
