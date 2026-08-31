@@ -14,22 +14,8 @@ import { ConvexProviderWithClerk } from 'convex/react-clerk'
 import type { ConvexQueryClient } from '@convex-dev/react-query'
 import type { ConvexReactClient } from 'convex/react'
 import type { QueryClient } from '@tanstack/react-query'
-import { THEME_STORAGE_KEY, ThemeProvider } from '@/components/theme-provider'
+import { ThemeProvider } from '@/components/theme-provider'
 import appCss from '@/styles/app.css?url'
-
-// Applies the stored (or system) theme class before first paint so a dark
-// preference never flashes light. Runs ahead of hydration; the ThemeProvider
-// takes over from there with the same storage key.
-const themeInitScript = `(function () {
-  try {
-    var theme = localStorage.getItem(${JSON.stringify(THEME_STORAGE_KEY)})
-    var dark =
-      theme === 'dark' ||
-      ((!theme || theme === 'system') &&
-        window.matchMedia('(prefers-color-scheme: dark)').matches)
-    if (dark) document.documentElement.classList.add('dark')
-  } catch (e) {}
-})()`
 
 const fetchClerkAuth = createServerFn({ method: 'GET' }).handler(async () => {
   const { getToken, userId } = await auth()
@@ -87,7 +73,6 @@ export const Route = createRootRouteWithContext<{
       { rel: 'manifest', href: '/site.webmanifest' },
       { rel: 'icon', href: '/favicon.ico' },
     ],
-    scripts: [{ children: themeInitScript }],
   }),
   beforeLoad: async (ctx) => {
     const clerkAuth = await fetchClerkAuth()
@@ -111,11 +96,9 @@ function RootComponent() {
   return (
     <ClerkProvider>
       <ConvexProviderWithClerk client={context.convexClient} useAuth={useAuth}>
-        <ThemeProvider>
-          <RootDocument>
-            <Outlet />
-          </RootDocument>
-        </ThemeProvider>
+        <RootDocument>
+          <Outlet />
+        </RootDocument>
       </ConvexProviderWithClerk>
     </ClerkProvider>
   )
@@ -123,9 +106,9 @@ function RootComponent() {
 
 function RootDocument({ children }: { children: React.ReactNode }) {
   return (
-    // suppressHydrationWarning: the theme init script adds the `dark` class
-    // before hydration, so the html class attribute legitimately differs from
-    // the server-rendered markup.
+    // suppressHydrationWarning: the ThemeProvider's pre-hydration script adds
+    // the theme class before React hydrates, so the html class attribute
+    // legitimately differs from the server-rendered markup.
     <html
       lang="en"
       className="h-full antialiased font-sans"
@@ -135,7 +118,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         <HeadContent />
       </head>
       <body className="min-h-full flex flex-col">
-        {children}
+        <ThemeProvider>{children}</ThemeProvider>
         <TanStackRouterDevtools position="bottom-right" />
         <Scripts />
       </body>
