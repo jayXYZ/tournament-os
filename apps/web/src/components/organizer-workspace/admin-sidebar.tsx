@@ -10,6 +10,7 @@ import {
 import { AdminBreadcrumb, viewFromPathname } from './admin-breadcrumb'
 import { useAppAuth } from '@/lib/use-app-auth'
 
+import { ModeToggle } from '@/components/mode-toggle'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -115,11 +116,14 @@ export function AdminHeader() {
         />
         <AdminBreadcrumb />
       </div>
-      <UserMenu
-        email={user?.email ?? undefined}
-        name={user?.firstName ?? undefined}
-        onSignOut={() => void signOut()}
-      />
+      <div className="flex items-center gap-2">
+        <ModeToggle />
+        <UserMenu
+          email={user?.email ?? undefined}
+          name={user?.firstName ?? undefined}
+          onSignOut={() => void signOut()}
+        />
+      </div>
     </header>
   )
 }

@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 
+import { ModeToggle } from '@/components/mode-toggle'
 import { BrandMark } from '@/components/shared/brand-mark'
 import { cn } from '@/lib/utils'
 
@@ -35,9 +36,10 @@ export function PublicSiteHeader({
             <p className="mt-1 text-xs text-muted-foreground">{subtitle}</p>
           </div>
         </div>
-        {actions ? (
-          <div className="flex items-center gap-2">{actions}</div>
-        ) : null}
+        <div className="flex items-center gap-2">
+          {actions}
+          <ModeToggle />
+        </div>
       </div>
     </header>
   )
