@@ -1,5 +1,5 @@
 import type { FunctionReturnType } from 'convex/server'
-import type { api } from '@tournament-os/backend/convex/_generated/api'
+import type { api } from '@paper-pairings/backend/convex/_generated/api'
 
 export type PairingsBoard = FunctionReturnType<
   typeof api.tournaments.rounds.getPairingsBoard

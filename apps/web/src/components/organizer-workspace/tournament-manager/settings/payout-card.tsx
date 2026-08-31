@@ -1,7 +1,7 @@
 import { useAction, useQuery } from 'convex/react'
 
-import { api } from '@tournament-os/backend/convex/_generated/api'
-import type { Doc } from '@tournament-os/backend/convex/_generated/dataModel'
+import { api } from '@paper-pairings/backend/convex/_generated/api'
+import type { Doc } from '@paper-pairings/backend/convex/_generated/dataModel'
 import type { PaidEventPayoutCopy } from '@/components/organizer-workspace/paid-event/payout-card'
 import { PaidEventPayoutCard } from '@/components/organizer-workspace/paid-event/payout-card'
 

@@ -2,9 +2,9 @@ import { Suspense, lazy, useState } from 'react'
 import { useMutation } from 'convex/react'
 import { toast } from 'sonner'
 
-import { api } from '@tournament-os/backend/convex/_generated/api'
+import { api } from '@paper-pairings/backend/convex/_generated/api'
 import type { FormEvent } from 'react'
-import type { Doc } from '@tournament-os/backend/convex/_generated/dataModel'
+import type { Doc } from '@paper-pairings/backend/convex/_generated/dataModel'
 import { Button } from '@/components/ui/button'
 import {
   Card,

@@ -2,13 +2,13 @@ import { useState } from 'react'
 import { useMutation } from 'convex/react'
 import { toast } from 'sonner'
 
-import { api } from '@tournament-os/backend/convex/_generated/api'
-import { displayPlayerName } from '@tournament-os/core'
+import { api } from '@paper-pairings/backend/convex/_generated/api'
+import { displayPlayerName } from '@paper-pairings/core'
 import {
   MAX_GAME_DRAWS,
   requiredGameWins,
-} from '@tournament-os/shared/match-structure'
-import type { BestOf } from '@tournament-os/shared/match-structure'
+} from '@paper-pairings/shared/match-structure'
+import type { BestOf } from '@paper-pairings/shared/match-structure'
 import type { FormEvent } from 'react'
 import type { PairingRow } from './pairing-row'
 import { Button } from '@/components/ui/button'

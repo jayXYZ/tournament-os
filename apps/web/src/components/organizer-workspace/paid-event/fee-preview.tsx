@@ -1,11 +1,11 @@
 import { Link } from '@tanstack/react-router'
 import { useQuery } from 'convex/react'
 
-import { api } from '@tournament-os/backend/convex/_generated/api'
+import { api } from '@paper-pairings/backend/convex/_generated/api'
 import {
   MIN_ENTRY_FEE_CENTS,
   validateEntryFeeCents,
-} from '@tournament-os/shared/payment-fees'
+} from '@paper-pairings/shared/payment-fees'
 import { formatCents } from '@/lib/money'
 
 // Live fee preview for a draft price: subscribes only once the draft parses

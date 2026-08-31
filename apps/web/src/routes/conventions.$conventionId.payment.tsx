@@ -1,9 +1,9 @@
 import { Link, createFileRoute } from '@tanstack/react-router'
 import { useQuery } from 'convex/react'
 import { SearchX } from 'lucide-react'
-import { api } from '@tournament-os/backend/convex/_generated/api'
+import { api } from '@paper-pairings/backend/convex/_generated/api'
 import type { ReactNode } from 'react'
-import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
+import type { Id } from '@paper-pairings/backend/convex/_generated/dataModel'
 import type { PaymentReturnCopy } from '@/components/shared/payment-return'
 import {
   PaymentOutcomeCard,

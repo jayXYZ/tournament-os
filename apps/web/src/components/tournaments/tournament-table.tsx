@@ -12,7 +12,7 @@ import {
   formatTournamentDateShort,
 } from './tournament-display'
 import type { ColumnDef } from '@tanstack/react-table'
-import type { Doc } from '@tournament-os/backend/convex/_generated/dataModel'
+import type { Doc } from '@paper-pairings/backend/convex/_generated/dataModel'
 
 import { TableEmptyState } from '@/components/shared/table-empty-state'
 import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'

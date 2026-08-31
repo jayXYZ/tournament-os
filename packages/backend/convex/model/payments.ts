@@ -1,7 +1,7 @@
 import {
   computeOrderBreakdown,
   validateEntryFeeCents,
-} from "@tournament-os/shared/payment-fees";
+} from "@paper-pairings/shared/payment-fees";
 
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";

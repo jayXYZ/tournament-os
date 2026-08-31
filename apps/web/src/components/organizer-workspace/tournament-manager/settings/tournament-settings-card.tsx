@@ -2,14 +2,14 @@ import { useState } from 'react'
 import { useMutation } from 'convex/react'
 import { toast } from 'sonner'
 
-import { api } from '@tournament-os/backend/convex/_generated/api'
-import { tournamentFormats } from '@tournament-os/shared/tournament-creation-utils'
+import { api } from '@paper-pairings/backend/convex/_generated/api'
+import { tournamentFormats } from '@paper-pairings/shared/tournament-creation-utils'
 import { isPreStartLocked } from './is-pre-start-locked'
 import { PublishTournamentButton } from './publish-tournament-button'
 import { VisibilitySelect } from './visibility-select'
 import type { FormEvent } from 'react'
-import type { TournamentFormat } from '@tournament-os/shared/tournament-creation-utils'
-import type { Doc } from '@tournament-os/backend/convex/_generated/dataModel'
+import type { TournamentFormat } from '@paper-pairings/shared/tournament-creation-utils'
+import type { Doc } from '@paper-pairings/backend/convex/_generated/dataModel'
 import type { TournamentBasicsValue } from '@/components/tournaments'
 import {
   TournamentBasicsFields,

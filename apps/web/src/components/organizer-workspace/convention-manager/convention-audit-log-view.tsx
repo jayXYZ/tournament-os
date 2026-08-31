@@ -1,9 +1,9 @@
 import { usePaginatedQuery } from 'convex/react'
 import { ScrollText } from 'lucide-react'
 
-import { api } from '@tournament-os/backend/convex/_generated/api'
+import { api } from '@paper-pairings/backend/convex/_generated/api'
 import type { FunctionReturnType } from 'convex/server'
-import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
+import type { Id } from '@paper-pairings/backend/convex/_generated/dataModel'
 import { LoadMoreButton } from '@/components/shared/load-more-button'
 import {
   Card,

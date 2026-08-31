@@ -4,7 +4,7 @@ import {
   formatTimer,
   timerSnapshot,
   type TimerSnapshot,
-} from "@tournament-os/shared/timer-utils";
+} from "@paper-pairings/shared/timer-utils";
 
 import type { RoundTimer } from "./types";
 

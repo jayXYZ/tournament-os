@@ -2,11 +2,11 @@
 
 ## Context for the agent
 
-You are working in `tournament-os`; the backend is Convex in
+You are working in `paper-pairings`; the backend is Convex in
 `packages/backend` with a vitest + convex-test suite (~309 tests, glob
 `convex/**/*.convex.spec.ts`). **Read
 `packages/backend/convex/_generated/ai/guidelines.md` first.**
-Pre-production. Run with `pnpm --filter @tournament-os/backend test`.
+Pre-production. Run with `pnpm --filter @paper-pairings/backend test`.
 
 This is a test-only refactor: production code must not change (with one
 possible exception noted below).

@@ -1,6 +1,6 @@
 import { useQuery } from 'convex/react'
 
-import { api } from '@tournament-os/backend/convex/_generated/api'
+import { api } from '@paper-pairings/backend/convex/_generated/api'
 import { useManagedConvention } from '../convention-manager-context'
 import { BadgeGatingCard } from './badge-gating-card'
 import { ConventionDangerZoneCard } from './convention-danger-zone-card'

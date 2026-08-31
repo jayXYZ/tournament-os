@@ -1,6 +1,6 @@
 import { CancelTournamentButton } from './cancel-tournament-button'
 import { DeleteTournamentButton } from './delete-tournament-button'
-import type { Doc } from '@tournament-os/backend/convex/_generated/dataModel'
+import type { Doc } from '@paper-pairings/backend/convex/_generated/dataModel'
 import { isTournamentEnded } from '@/components/tournaments'
 import {
   Card,

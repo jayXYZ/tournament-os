@@ -1,7 +1,7 @@
 import { Link, Navigate, createFileRoute } from '@tanstack/react-router'
 import { useQuery } from 'convex/react'
 import { SearchX } from 'lucide-react'
-import { api } from '@tournament-os/backend/convex/_generated/api'
+import { api } from '@paper-pairings/backend/convex/_generated/api'
 import { SiteShell } from '@/components/shared/site-shell'
 import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'
 import { Button } from '@/components/ui/button'

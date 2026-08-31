@@ -1,19 +1,19 @@
 {
   "expo": {
     "name": "Paper Pairings",
-    "slug": "tournament-os-native",
+    "slug": "paper-pairings-native",
     "version": "0.1.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "tournamentos",
+    "scheme": "paperpairings",
     "userInterfaceStyle": "dark",
     "backgroundColor": "#171514",
     "ios": {
       "icon": "./assets/expo.icon",
-      "bundleIdentifier": "com.tournamentos.app"
+      "bundleIdentifier": "com.paperpairings.app"
     },
     "android": {
-      "package": "com.tournamentos.app",
+      "package": "com.paperpairings.app",
       "adaptiveIcon": {
         "backgroundColor": "#EDE9E0",
         "foregroundImage": "./assets/images/android-icon-foreground.png",

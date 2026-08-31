@@ -2,7 +2,7 @@
 
 ## Context for the agent
 
-You are working in `tournament-os`; the organizer web UI lives in
+You are working in `paper-pairings`; the organizer web UI lives in
 `apps/web/src/components/organizer-workspace/tournament-manager/`. The data
 source is the Convex query `getPairingsBoard` (whose `nextStep` field comes
 from `packages/backend/convex/model/nextStep.ts`, a deliberately deep module —

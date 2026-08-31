@@ -2,7 +2,7 @@
 
 // Match Structure (best-of-X per phase): configuration through the phase
 // mutations, and the result-entry and bye behavior it drives. See CONTEXT.md
-// "Match Structure" and @tournament-os/shared/match-structure.
+// "Match Structure" and @paper-pairings/shared/match-structure.
 import { expect, test } from "vitest";
 
 import { api } from "./_generated/api";

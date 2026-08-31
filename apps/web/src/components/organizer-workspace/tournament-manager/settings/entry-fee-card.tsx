@@ -1,8 +1,8 @@
 import { useMutation } from 'convex/react'
 
-import { api } from '@tournament-os/backend/convex/_generated/api'
+import { api } from '@paper-pairings/backend/convex/_generated/api'
 import { isPreStartLocked } from './is-pre-start-locked'
-import type { Doc } from '@tournament-os/backend/convex/_generated/dataModel'
+import type { Doc } from '@paper-pairings/backend/convex/_generated/dataModel'
 import type { PaidEventFeeCopy } from '@/components/organizer-workspace/paid-event/fee-card'
 import { PaidEventFeeCard } from '@/components/organizer-workspace/paid-event/fee-card'
 

@@ -5,7 +5,7 @@ import {
   useQuery,
 } from 'convex/react'
 import { LogIn, RotateCcw } from 'lucide-react'
-import { api } from '@tournament-os/backend/convex/_generated/api'
+import { api } from '@paper-pairings/backend/convex/_generated/api'
 
 import { ProfilePrivacyCard } from '@/components/settings/profile-privacy-card'
 import { LoadingCard } from '@/components/shared/loading-card'

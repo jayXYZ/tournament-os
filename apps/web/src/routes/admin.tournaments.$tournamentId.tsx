@@ -1,7 +1,7 @@
 import { Outlet, createFileRoute } from '@tanstack/react-router'
 import { useQuery } from 'convex/react'
 
-import { api } from '@tournament-os/backend/convex/_generated/api'
+import { api } from '@paper-pairings/backend/convex/_generated/api'
 import { AdminViewsLayout } from '@/components/organizer-workspace/admin-views-layout'
 import { ManagedTournamentProvider } from '@/components/organizer-workspace/tournament-manager/tournament-manager-context'
 import { TournamentManagerSubnav } from '@/components/organizer-workspace/tournament-manager/tournament-manager-subnav'

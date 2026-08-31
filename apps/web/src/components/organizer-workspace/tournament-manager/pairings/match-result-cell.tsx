@@ -2,7 +2,7 @@ import {
   displayPlayerName,
   formatGameScoreline,
   matchResultKindLabel,
-} from '@tournament-os/core'
+} from '@paper-pairings/core'
 import type { PairingRow } from './pairing-row'
 import { Badge } from '@/components/ui/badge'
 

@@ -1,8 +1,8 @@
-# @tournament-os/native
+# @paper-pairings/native
 
 The Expo (React Native) mobile app players use during tournaments. It shares the
-Convex backend (`@tournament-os/backend`) and platform-agnostic player hooks
-(`@tournament-os/core`) with the web app, and authenticates against the same
+Convex backend (`@paper-pairings/backend`) and platform-agnostic player hooks
+(`@paper-pairings/core`) with the web app, and authenticates against the same
 Clerk instance.
 
 ## Stack
@@ -12,7 +12,7 @@ Clerk instance.
   (`<AuthView />`, `<UserButton />`) and a `SecureStore` token cache
 - **Convex** (`ConvexProviderWithClerk`) for realtime data
 - **Sentry** wired into the app (`_layout.tsx`) and Metro (`getSentryExpoConfig`)
-- Shared workspace packages: `@tournament-os/backend`, `@tournament-os/core`
+- Shared workspace packages: `@paper-pairings/backend`, `@paper-pairings/core`
 
 > ⚠️ `@clerk/expo` is pinned **exactly** at `3.4.6` behind a Swift 6 pnpm patch
 > (`patches/@clerk__expo.patch`, version-qualified in `pnpm-workspace.yaml` so a
@@ -26,9 +26,9 @@ Go**. You need to compile a development build once:
 
 ```sh
 pnpm install
-pnpm --filter @tournament-os/native ios       # expo run:ios  (builds + installs the dev client)
+pnpm --filter @paper-pairings/native ios       # expo run:ios  (builds + installs the dev client)
 # or
-pnpm --filter @tournament-os/native android    # expo run:android
+pnpm --filter @paper-pairings/native android    # expo run:android
 ```
 
 `expo run:ios` prebuilds the native `ios/` project and compiles it — the first

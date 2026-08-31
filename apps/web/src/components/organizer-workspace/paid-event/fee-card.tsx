@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQuery } from 'convex/react'
 import { toast } from 'sonner'
 
-import { api } from '@tournament-os/backend/convex/_generated/api'
+import { api } from '@paper-pairings/backend/convex/_generated/api'
 import {
   FeePreviewPanel,
   StripeOnboardingNotice,
@@ -10,7 +10,7 @@ import {
 } from './fee-preview'
 import { parseDollarsToCents, toDollarsValue } from './money'
 import type { FormEvent } from 'react'
-import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
+import type { Id } from '@paper-pairings/backend/convex/_generated/dataModel'
 import { toDatetimeLocalValue } from '@/components/tournaments'
 import { Button } from '@/components/ui/button'
 import {

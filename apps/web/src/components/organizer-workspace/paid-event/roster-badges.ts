@@ -1,4 +1,4 @@
-import type { Doc } from '@tournament-os/backend/convex/_generated/dataModel'
+import type { Doc } from '@paper-pairings/backend/convex/_generated/dataModel'
 
 type RosterBadgeVariant = 'default' | 'secondary' | 'destructive' | 'outline'
 

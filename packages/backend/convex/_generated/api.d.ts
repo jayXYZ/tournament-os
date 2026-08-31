@@ -24,6 +24,7 @@ import type * as model_cutoffs from "../model/cutoffs.js";
 import type * as model_decklists from "../model/decklists.js";
 import type * as model_deletion from "../model/deletion.js";
 import type * as model_invites from "../model/invites.js";
+import type * as model_manualPairing from "../model/manualPairing.js";
 import type * as model_matchResults from "../model/matchResults.js";
 import type * as model_nextStep from "../model/nextStep.js";
 import type * as model_pagination from "../model/pagination.js";
@@ -96,6 +97,7 @@ declare const fullApi: ApiFromModules<{
   "model/decklists": typeof model_decklists;
   "model/deletion": typeof model_deletion;
   "model/invites": typeof model_invites;
+  "model/manualPairing": typeof model_manualPairing;
   "model/matchResults": typeof model_matchResults;
   "model/nextStep": typeof model_nextStep;
   "model/pagination": typeof model_pagination;

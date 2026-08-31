@@ -1,7 +1,7 @@
 import {
   DEFAULT_FEE_CONFIG,
   type FeeConfig,
-} from "@tournament-os/shared/payment-fees";
+} from "@paper-pairings/shared/payment-fees";
 
 import { env } from "../_generated/server";
 

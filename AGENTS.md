@@ -9,7 +9,7 @@ override what you may have learned about Convex from training data.
 
 That file is gitignored, so it may be missing on a fresh clone — regenerate it
 (and the Convex agent skills) with
-`pnpm --filter @tournament-os/backend exec convex ai-files install`.
+`pnpm --filter @paper-pairings/backend exec convex ai-files install`.
 npm/npx/yarn/bun are denied in this repo; always use pnpm.
 
 <!-- convex-ai-end -->
@@ -23,7 +23,7 @@ npm/npx/yarn/bun are denied in this repo; always use pnpm.
 - `docs/` — environment contract, payments architecture, rate limiting, error
   monitoring, ADRs (`docs/adr/`), and the refactor backlog (`docs/refactors/`).
 - Verification gate: `pnpm check` (format + typecheck + lint + test — what CI
-  runs). Backend tests alone: `pnpm --filter @tournament-os/backend test`.
+  runs). Backend tests alone: `pnpm --filter @paper-pairings/backend test`.
 - Conventions: backend domain logic lives in `packages/backend/convex/model/`
   with thin public function adapters beside it; backend specs are
   `*.convex.spec.ts` seeded through `specHelpers.ts`.

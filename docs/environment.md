@@ -33,7 +33,7 @@ Release builds: set in the EAS build environment.
 ## Convex deployment (`packages/backend`)
 
 These live on the Convex deployment itself, not in a local file: set them with
-`pnpm --filter @tournament-os/backend exec convex env set <NAME> <value>` from
+`pnpm --filter @paper-pairings/backend exec convex env set <NAME> <value>` from
 the repo root (or in the Convex dashboard). They are declared with types in `convex/convex.config.ts` via
 `defineApp({ env })`, so a deploy fails fast if a required variable is missing,
 and functions read them through the typed `env` object from
@@ -46,7 +46,7 @@ and functions read them through the typed `env` object from
 | `STRIPE_SECRET_KEY`          | payments   | Stripe API key for the platform account — use a [restricted key](https://docs.stripe.com/keys/restricted-api-keys) (`rk_…`) scoped to Connect accounts, Checkout Sessions, PaymentIntents (read), Refunds, and Transfers. Payment functions refuse with "Payments are not configured" when unset. |
 | `STRIPE_WEBHOOK_SECRET`      | payments   | Signing secret for the Stripe webhook endpoint (`<deployment>.convex.site/stripe/events`). Dev: from `stripe listen --forward-to <dev-deployment>.convex.site/stripe/events`. Production: from the endpoint registered in the Stripe dashboard.                                                   |
 | `WEB_APP_ORIGIN`             | payments   | Web app origin (e.g. `https://example.com`) used to build Stripe redirect URLs — Connect onboarding return/refresh and Checkout success/cancel. Stripe requires HTTPS for Account Link URLs even in test mode, so local onboarding needs an HTTPS tunnel or a deployed preview.                   |
-| `PLATFORM_FEE_PERCENT`       | no         | Platform's cut as a percentage of the entry fee (default `5`). Feeds the fee math in `@tournament-os/shared/payment-fees`; orders snapshot their breakdown at creation, so changes never reprice open orders.                                                                                     |
+| `PLATFORM_FEE_PERCENT`       | no         | Platform's cut as a percentage of the entry fee (default `5`). Feeds the fee math in `@paper-pairings/shared/payment-fees`; orders snapshot their breakdown at creation, so changes never reprice open orders.                                                                                    |
 | `STRIPE_FEE_PERCENT`         | no         | Estimated Stripe processing fee as a percentage (default `2.9`); part of the same snapshotted fee math.                                                                                                                                                                                           |
 | `STRIPE_FEE_FIXED_CENTS`     | no         | Estimated Stripe fixed fee per charge, in cents (default `30`); part of the same snapshotted fee math.                                                                                                                                                                                            |
 

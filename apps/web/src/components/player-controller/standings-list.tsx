@@ -5,11 +5,11 @@ import {
   formatRecord,
   standingStatusLabel,
   useLatestStandings,
-} from '@tournament-os/core'
+} from '@paper-pairings/core'
 import { ListOrdered } from 'lucide-react'
-import type { StandingRow } from '@tournament-os/core'
+import type { StandingRow } from '@paper-pairings/core'
 
-import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
+import type { Id } from '@paper-pairings/backend/convex/_generated/dataModel'
 import {
   Card,
   CardContent,

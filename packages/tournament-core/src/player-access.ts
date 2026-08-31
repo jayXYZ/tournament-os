@@ -1,7 +1,7 @@
 import { useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 
-import { api } from "@tournament-os/backend/convex/_generated/api";
+import { api } from "@paper-pairings/backend/convex/_generated/api";
 
 import { useConvexAuthReadiness } from "./auth-readiness";
 import { useMyRegistration } from "./hooks";

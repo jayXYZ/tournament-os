@@ -2,7 +2,7 @@
 
 Read `_generated/ai/guidelines.md` before touching this directory — it is the
 authority on Convex API usage and is gitignored, so regenerate it with
-`pnpm --filter @tournament-os/backend exec convex ai-files install` if it is
+`pnpm --filter @paper-pairings/backend exec convex ai-files install` if it is
 missing.
 
 Layout:
@@ -19,8 +19,8 @@ Layout:
   the repo root is the prose glossary it mirrors.
 - `schema.ts` — the whole database schema.
 - `*.convex.spec.ts` — the test suite (vitest + convex-test), seeded through
-  `specHelpers.ts`. Run with `pnpm --filter @tournament-os/backend test`.
+  `specHelpers.ts`. Run with `pnpm --filter @paper-pairings/backend test`.
 
 The CLI runs through the workspace: `pnpm dev:backend` from the repo root, or
-`pnpm --filter @tournament-os/backend exec convex <cmd>` (npm/npx are denied
+`pnpm --filter @paper-pairings/backend exec convex <cmd>` (npm/npx are denied
 in this repo).

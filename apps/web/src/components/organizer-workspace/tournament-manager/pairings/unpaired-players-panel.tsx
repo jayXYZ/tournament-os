@@ -3,10 +3,10 @@ import { useMutation, useQuery } from 'convex/react'
 import { UserPlus } from 'lucide-react'
 import { toast } from 'sonner'
 
-import { api } from '@tournament-os/backend/convex/_generated/api'
-import { displayPlayerName } from '@tournament-os/core'
+import { api } from '@paper-pairings/backend/convex/_generated/api'
+import { displayPlayerName } from '@paper-pairings/core'
 import type { FunctionReturnType } from 'convex/server'
-import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
+import type { Id } from '@paper-pairings/backend/convex/_generated/dataModel'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,

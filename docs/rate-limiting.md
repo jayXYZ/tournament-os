@@ -71,7 +71,7 @@ legitimate play. Tune them in `rateLimits.ts`; nothing else needs to change.
 `data: { kind: "RateLimited", name, retryAfter }`. `ConvexError` data
 survives production error redaction, so clients can branch on it. Both
 clients do so through one helper: `mutationErrorMessage(error, fallback)`
-in `@tournament-os/core` turns a rate-limited rejection into a retry-later
+in `@paper-pairings/core` turns a rate-limited rejection into a retry-later
 message sized from `retryAfter` ("try again in about 2 minutes") and
 returns the error's own message otherwise. Every web mutation-error toast
 routes through it (via `useBusyAction` or directly); native mutation flows

@@ -1,4 +1,4 @@
-import type { Doc } from '@tournament-os/backend/convex/_generated/dataModel'
+import type { Doc } from '@paper-pairings/backend/convex/_generated/dataModel'
 
 // Settings are locked once the convention is over (ADR 0004: there is no
 // in_progress phase, so "registration" is the whole live run and stays

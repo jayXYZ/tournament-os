@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react'
 import { toast } from 'sonner'
 
-import { mutationErrorMessage } from '@tournament-os/core'
+import { mutationErrorMessage } from '@paper-pairings/core'
 
 /**
  * Shared busy state for async actions (usually Convex mutations): `run` sets

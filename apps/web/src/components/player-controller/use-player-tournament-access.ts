@@ -1,14 +1,14 @@
-import { usePlayerTournamentAccess as useSharedPlayerTournamentAccess } from '@tournament-os/core'
-import type { PlayerTournamentAccess } from '@tournament-os/core'
+import { usePlayerTournamentAccess as useSharedPlayerTournamentAccess } from '@paper-pairings/core'
+import type { PlayerTournamentAccess } from '@paper-pairings/core'
 import { useAppAuth } from '@/lib/use-app-auth'
 
 export type {
   PlayerRegistration,
   PlayerTournamentAccess,
   PlayerTournamentEvent,
-} from '@tournament-os/core'
+} from '@paper-pairings/core'
 
-// Web's binding of the shared access ladder (see @tournament-os/core
+// Web's binding of the shared access ladder (see @paper-pairings/core
 // player-access.ts) to its auth provider. The /play and /decklist pages keep
 // importing from this file so only the binding lives here.
 export function usePlayerTournamentAccess(

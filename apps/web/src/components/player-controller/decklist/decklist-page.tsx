@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
-import { useMyDecklist } from '@tournament-os/core'
+import { useMyDecklist } from '@paper-pairings/core'
 import { ChevronLeft, ScrollText } from 'lucide-react'
 
 import {

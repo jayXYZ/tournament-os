@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
 
-import { mutationErrorMessage } from '@tournament-os/core'
-import { canManageOrganizationPayments } from '@tournament-os/shared/organizer-utils'
+import { mutationErrorMessage } from '@paper-pairings/core'
+import { canManageOrganizationPayments } from '@paper-pairings/shared/organizer-utils'
 import type { FunctionReturnType } from 'convex/server'
-import type { api } from '@tournament-os/backend/convex/_generated/api'
+import type { api } from '@paper-pairings/backend/convex/_generated/api'
 import { formatCents } from '@/lib/money'
 import { useOrganization } from '@/components/organizer-workspace/organization-context'
 import { Badge } from '@/components/ui/badge'
