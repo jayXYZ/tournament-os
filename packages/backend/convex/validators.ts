@@ -477,6 +477,29 @@ export const tournamentAuditEventValidator = v.union(
     playerCount: v.number(),
   }),
   v.object({
+    // An organizer broke a pairing before the round's pairings were
+    // published, freeing its players for manual re-pairing
+    // (model/manualPairing.ts).
+    type: v.literal("pairing_broken"),
+    roundId: v.id("tournamentRounds"),
+    roundNumber: v.number(),
+    tableNumber: v.union(v.number(), v.null()),
+    // One entry per freed seat: two for a contested pairing, one for a bye.
+    players: v.array(auditPlayerRefValidator),
+    wasBye: v.boolean(),
+  }),
+  v.object({
+    // An organizer manually paired unpaired players before the round's
+    // pairings were published: two players against each other, or one
+    // awarded a bye (isBye, with a single players entry and no table).
+    type: v.literal("pairing_created"),
+    roundId: v.id("tournamentRounds"),
+    roundNumber: v.number(),
+    tableNumber: v.union(v.number(), v.null()),
+    players: v.array(auditPlayerRefValidator),
+    isBye: v.boolean(),
+  }),
+  v.object({
     type: v.literal("round_completed"),
     roundId: v.id("tournamentRounds"),
     roundNumber: v.number(),

@@ -4,6 +4,12 @@ import type { Id } from "../_generated/dataModel";
 import { mutation, query } from "../_generated/server";
 import type { MutationCtx } from "../_generated/server";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
+import {
+  assignByeManually,
+  breakPairing as breakPairingTransition,
+  pairPlayersManually,
+  unpairedActiveRegistrations,
+} from "../model/manualPairing";
 import { applyMatchResult } from "../model/matchResults";
 import {
   phaseTimelines,
@@ -57,6 +63,91 @@ export const publishPairings = mutation({
     const round = await requireRound(ctx, args.roundId);
     await requireOrganizerAccess(ctx, round.tournamentId);
     return await publishPairingsTransition(ctx, args.roundId);
+  },
+});
+
+// Organizer pairing edits (model/manualPairing.ts): breaking a generated
+// pairing and re-pairing the freed players by hand. Only available while the
+// round's pairings are still organizer-only; the model owns the gates.
+
+export const breakPairing = mutation({
+  args: { matchId: v.id("tournamentMatches") },
+  handler: async (ctx, args): Promise<Id<"tournamentRounds">> => {
+    const match = await requireMatch(ctx, args.matchId);
+    const { tournament, user } = await requireOrganizerAccess(
+      ctx,
+      match.tournamentId,
+    );
+    return await breakPairingTransition(ctx, { tournament, user, match });
+  },
+});
+
+export const pairPlayers = mutation({
+  args: {
+    roundId: v.id("tournamentRounds"),
+    playerOneRegistrationId: v.id("tournamentRegistrations"),
+    playerTwoRegistrationId: v.id("tournamentRegistrations"),
+  },
+  handler: async (ctx, args): Promise<Id<"tournamentMatches">> => {
+    const round = await requireRound(ctx, args.roundId);
+    const { tournament, user } = await requireOrganizerAccess(
+      ctx,
+      round.tournamentId,
+    );
+    return await pairPlayersManually(ctx, {
+      tournament,
+      user,
+      round,
+      playerOneRegistrationId: args.playerOneRegistrationId,
+      playerTwoRegistrationId: args.playerTwoRegistrationId,
+    });
+  },
+});
+
+export const assignBye = mutation({
+  args: {
+    roundId: v.id("tournamentRounds"),
+    registrationId: v.id("tournamentRegistrations"),
+  },
+  handler: async (ctx, args): Promise<Id<"tournamentMatches">> => {
+    const round = await requireRound(ctx, args.roundId);
+    const { tournament, user } = await requireOrganizerAccess(
+      ctx,
+      round.tournamentId,
+    );
+    return await assignByeManually(ctx, {
+      tournament,
+      user,
+      round,
+      registrationId: args.registrationId,
+    });
+  },
+});
+
+// The active players holding no pairing in the round — the pool the manual
+// pairing picker offers, and the players the publish gate is waiting on.
+export const listUnpairedPlayers = query({
+  args: { roundId: v.id("tournamentRounds") },
+  handler: async (ctx, args) => {
+    const round = await requireRound(ctx, args.roundId);
+    await requireOrganizerAccess(ctx, round.tournamentId);
+    const unpaired = await unpairedActiveRegistrations(
+      ctx,
+      round.tournamentId,
+      args.roundId,
+    );
+    return await mapAsyncInBatches(
+      unpaired,
+      DATABASE_IO_BATCH_SIZE,
+      async (registration) => ({
+        registrationId: registration._id,
+        playerName: await resolveRegistrationDisplayName(
+          ctx,
+          registration.playerName,
+          registration._id,
+        ),
+      }),
+    );
   },
 });
 

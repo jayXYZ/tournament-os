@@ -91,10 +91,17 @@ export function pairingsNextStep(
   }
 
   if (!isPairingsVisibleToPlayers(round)) {
+    // Broken pairings (model/manualPairing.ts) can leave active players
+    // without an opponent; publishing waits until every one is re-paired or
+    // given a bye. Same fact the publishPairings mutation enforces.
+    const unpairedCount = facts.unpairedActiveCount ?? 0;
     return {
       kind: "publishPairings",
-      ready: true,
-      reason: null,
+      ready: unpairedCount === 0,
+      reason:
+        unpairedCount === 0
+          ? null
+          : `${unpairedCount} ${unpairedCount === 1 ? "player needs" : "players need"} an opponent or a bye`,
       roundId: round._id,
     };
   }

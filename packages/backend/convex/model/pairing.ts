@@ -168,9 +168,10 @@ export async function createSingleEliminationRoundWithPairings(
 }
 
 // Inserts one contested match and its two pairing rows — the shared write for
-// Swiss and bracket rounds. Byes never reach here (materializeAwardedByeMatch
+// Swiss and bracket rounds, and for organizer manual pairings
+// (model/manualPairing.ts). Byes never reach here (materializeAwardedByeMatch
 // owns awarded results).
-async function insertPairedMatch(
+export async function insertPairedMatch(
   ctx: MutationCtx,
   args: {
     tournament: Doc<"tournaments">;
