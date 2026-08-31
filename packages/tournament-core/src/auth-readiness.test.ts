@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getFunctionName } from "convex/server";
 
-import type { Id } from "@tournament-os/backend/convex/_generated/dataModel";
+import type { Id } from "@paper-pairings/backend/convex/_generated/dataModel";
 
 const mocks = vi.hoisted(() => ({
   useConvexAuth: vi.fn(),

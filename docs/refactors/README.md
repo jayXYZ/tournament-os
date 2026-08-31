@@ -21,9 +21,9 @@ All three are independent of each other.
 - Pre-production: no data migrations, no backward compatibility; reset the DB
   if a schema change would otherwise need a migration (see `AGENTS.md`).
 - Read `packages/backend/convex/_generated/ai/guidelines.md` before touching
-  Convex code (regenerate with `pnpm --filter @tournament-os/backend exec convex ai-files install`
+  Convex code (regenerate with `pnpm --filter @paper-pairings/backend exec convex ai-files install`
   if missing — it is gitignored).
-- Backend verification: `pnpm --filter @tournament-os/backend test`.
+- Backend verification: `pnpm --filter @paper-pairings/backend test`.
 - Do **not** break up these verified-deep modules — reuse them as internals:
   `model/nextStep.ts`, `model/pairing.ts`, `model/cutoffs.ts`,
   `model/standings.ts`, `setRegistrationState`'s transition typing (now in

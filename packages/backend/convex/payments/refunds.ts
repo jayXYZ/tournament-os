@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 
-import { refundAmountCents } from "@tournament-os/shared/payment-fees";
+import { refundAmountCents } from "@paper-pairings/shared/payment-fees";
 
 import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";

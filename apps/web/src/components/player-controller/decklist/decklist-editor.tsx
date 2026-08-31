@@ -10,9 +10,9 @@ import {
   Trash2,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { api } from '@tournament-os/backend/convex/_generated/api'
-import { mutationErrorMessage } from '@tournament-os/core'
-import { MAX_DECK_NAME_LENGTH } from '@tournament-os/shared/decklist-limits'
+import { api } from '@paper-pairings/backend/convex/_generated/api'
+import { mutationErrorMessage } from '@paper-pairings/core'
+import { MAX_DECK_NAME_LENGTH } from '@paper-pairings/shared/decklist-limits'
 import { PlayerPageEmpty } from '../player-access-shell'
 import { CardSearchInput } from './card-search-input'
 import {
@@ -29,7 +29,7 @@ import type { ReactNode } from 'react'
 import type { FunctionReturnType } from 'convex/server'
 
 import type { BoardId, DecklistDraft, DraftEntry } from './decklist-draft'
-import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
+import type { Id } from '@paper-pairings/backend/convex/_generated/dataModel'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,

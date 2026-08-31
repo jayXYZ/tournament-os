@@ -1,6 +1,6 @@
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react'
 
-import { bestOfOptions } from '@tournament-os/shared/match-structure'
+import { bestOfOptions } from '@paper-pairings/shared/match-structure'
 import {
   MAX_TOURNAMENT_PHASES,
   addTournamentCreationPhase,
@@ -11,9 +11,9 @@ import {
   removeTournamentCreationPhase,
   setTournamentCreationPhaseType,
   tournamentCreationPhaseCutoffFeedsPlayoff,
-} from '@tournament-os/shared/tournament-creation-utils'
+} from '@paper-pairings/shared/tournament-creation-utils'
 import { RoundConfigurationFields } from './tournament-fields'
-import type { TournamentCreationPhaseForm } from '@tournament-os/shared/tournament-creation-utils'
+import type { TournamentCreationPhaseForm } from '@paper-pairings/shared/tournament-creation-utils'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'

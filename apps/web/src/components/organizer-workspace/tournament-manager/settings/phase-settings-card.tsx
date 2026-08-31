@@ -2,18 +2,18 @@ import { useState } from 'react'
 import { useMutation } from 'convex/react'
 import { toast } from 'sonner'
 
-import { api } from '@tournament-os/backend/convex/_generated/api'
+import { api } from '@paper-pairings/backend/convex/_generated/api'
 import {
   DEFAULT_PLAYOFF_CUT_PLAYER_COUNT,
   toTournamentCreationPhasePayload,
-} from '@tournament-os/shared/tournament-creation-utils'
+} from '@paper-pairings/shared/tournament-creation-utils'
 import { isPreStartLocked } from './is-pre-start-locked'
 import type { FormEvent } from 'react'
-import type { TournamentCreationPhaseForm } from '@tournament-os/shared/tournament-creation-utils'
+import type { TournamentCreationPhaseForm } from '@paper-pairings/shared/tournament-creation-utils'
 import type {
   Doc,
   Id,
-} from '@tournament-os/backend/convex/_generated/dataModel'
+} from '@paper-pairings/backend/convex/_generated/dataModel'
 import { TournamentPhaseEditor } from '@/components/tournaments/tournament-phase-editor'
 import { Button } from '@/components/ui/button'
 import {

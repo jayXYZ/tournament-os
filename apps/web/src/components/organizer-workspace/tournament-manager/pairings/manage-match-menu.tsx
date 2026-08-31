@@ -3,10 +3,10 @@ import { useMutation } from 'convex/react'
 import { ClipboardPen, MoreHorizontal, Unlink } from 'lucide-react'
 import { toast } from 'sonner'
 
-import { api } from '@tournament-os/backend/convex/_generated/api'
-import { mutationErrorMessage } from '@tournament-os/core'
+import { api } from '@paper-pairings/backend/convex/_generated/api'
+import { mutationErrorMessage } from '@paper-pairings/core'
 import { EnterResultDialog } from './enter-result-dialog'
-import type { BestOf } from '@tournament-os/shared/match-structure'
+import type { BestOf } from '@paper-pairings/shared/match-structure'
 import type { PairingRow } from './pairing-row'
 import { Button } from '@/components/ui/button'
 import {

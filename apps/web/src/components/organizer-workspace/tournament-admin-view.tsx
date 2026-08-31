@@ -1,6 +1,6 @@
 import { useQuery } from 'convex/react'
 
-import { api } from '@tournament-os/backend/convex/_generated/api'
+import { api } from '@paper-pairings/backend/convex/_generated/api'
 import { CreateTournamentDialog } from './create-tournament-dialog'
 import { useOrganization } from './organization-context'
 import { WorkspacePageHeader } from '@/components/shared/workspace-page-header'

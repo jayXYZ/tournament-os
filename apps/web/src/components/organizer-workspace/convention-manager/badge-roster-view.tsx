@@ -3,11 +3,11 @@ import { useMutation, usePaginatedQuery, useQuery } from 'convex/react'
 import { Ticket, UserRoundX } from 'lucide-react'
 import { toast } from 'sonner'
 
-import { api } from '@tournament-os/backend/convex/_generated/api'
+import { api } from '@paper-pairings/backend/convex/_generated/api'
 import type {
   Doc,
   Id,
-} from '@tournament-os/backend/convex/_generated/dataModel'
+} from '@paper-pairings/backend/convex/_generated/dataModel'
 import {
   entryStatusBadgeVariant,
   paymentBadge,

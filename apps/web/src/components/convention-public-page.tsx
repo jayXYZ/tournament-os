@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { mutationErrorMessage } from '@tournament-os/core'
+import { mutationErrorMessage } from '@paper-pairings/core'
 import {
   useAction,
   useMutation,
@@ -8,12 +8,12 @@ import {
 } from 'convex/react'
 import { Building2, CalendarDays, LogIn, Ticket, Users } from 'lucide-react'
 import { toast } from 'sonner'
-import { api } from '@tournament-os/backend/convex/_generated/api'
+import { api } from '@paper-pairings/backend/convex/_generated/api'
 import type { FunctionReturnType } from 'convex/server'
 import type {
   Doc,
   Id,
-} from '@tournament-os/backend/convex/_generated/dataModel'
+} from '@paper-pairings/backend/convex/_generated/dataModel'
 import { formatConventionDateRange } from '@/components/conventions/convention-display'
 import { DetailLine } from '@/components/shared/detail-line'
 import { LoadMoreButton } from '@/components/shared/load-more-button'

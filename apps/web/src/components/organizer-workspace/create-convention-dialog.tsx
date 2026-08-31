@@ -4,7 +4,7 @@ import { useMutation } from 'convex/react'
 import { Plus } from 'lucide-react'
 import { toast } from 'sonner'
 
-import { api } from '@tournament-os/backend/convex/_generated/api'
+import { api } from '@paper-pairings/backend/convex/_generated/api'
 import { useOrganization } from './organization-context'
 import type { FormEvent } from 'react'
 import { Button } from '@/components/ui/button'

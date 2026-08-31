@@ -58,15 +58,15 @@ importers:
       '@clerk/expo':
         specifier: 3.4.6
         version: 3.4.6(patch_hash=bb8d4052d686bb7b3382e38c7a00bf6bf5c56bbd30beb46416dea2fb4d9878bf)(b7ce96951b236489404b3bedf9abf22c)
+      '@paper-pairings/backend':
+        specifier: workspace:*
+        version: link:../../packages/backend
+      '@paper-pairings/core':
+        specifier: workspace:*
+        version: link:../../packages/tournament-core
       '@sentry/react-native':
         specifier: ~7.11.0
         version: 7.11.0(expo@56.0.21)(react-native@0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7)(bufferutil@4.1.0)(utf-8-validate@6.0.6))(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)
-      '@tournament-os/backend':
-        specifier: workspace:*
-        version: link:../../packages/backend
-      '@tournament-os/core':
-        specifier: workspace:*
-        version: link:../../packages/tournament-core
       convex:
         specifier: 'catalog:'
         version: 1.42.0(@clerk/clerk-react@5.61.8(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(@clerk/react@6.10.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6)
@@ -182,6 +182,15 @@ importers:
       '@fontsource-variable/inter':
         specifier: ^5.2.8
         version: 5.2.8
+      '@paper-pairings/backend':
+        specifier: workspace:*
+        version: link:../../packages/backend
+      '@paper-pairings/core':
+        specifier: workspace:*
+        version: link:../../packages/tournament-core
+      '@paper-pairings/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       '@sentry/tanstackstart-react':
         specifier: ^10.69.0
         version: 10.69.0(@opentelemetry/core@2.10.0(@opentelemetry/api@1.9.1))(react@19.2.3)
@@ -221,15 +230,6 @@ importers:
       '@tiptap/starter-kit':
         specifier: ^3.27.2
         version: 3.27.2
-      '@tournament-os/backend':
-        specifier: workspace:*
-        version: link:../../packages/backend
-      '@tournament-os/core':
-        specifier: workspace:*
-        version: link:../../packages/tournament-core
-      '@tournament-os/shared':
-        specifier: workspace:*
-        version: link:../../packages/shared
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -333,7 +333,7 @@ importers:
       '@convex-dev/rate-limiter':
         specifier: ^0.3.2
         version: 0.3.2(convex@1.42.0(@clerk/clerk-react@5.61.8(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(@clerk/react@6.10.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(bufferutil@4.1.0)(react@19.2.3)(utf-8-validate@6.0.6))(react@19.2.3)
-      '@tournament-os/shared':
+      '@paper-pairings/shared':
         specifier: workspace:*
         version: link:../shared
       convex:
@@ -382,10 +382,10 @@ importers:
 
   packages/tournament-core:
     dependencies:
-      '@tournament-os/backend':
+      '@paper-pairings/backend':
         specifier: workspace:*
         version: link:../backend
-      '@tournament-os/shared':
+      '@paper-pairings/shared':
         specifier: workspace:*
         version: link:../shared
       convex:

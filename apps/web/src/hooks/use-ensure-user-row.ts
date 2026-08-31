@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useMutation } from 'convex/react'
 
-import { api } from '@tournament-os/backend/convex/_generated/api'
+import { api } from '@paper-pairings/backend/convex/_generated/api'
 
 /**
  * A Clerk session can exist before its users row does (first visit), so

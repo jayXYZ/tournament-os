@@ -176,7 +176,7 @@ export function getStripeGateway(secretKey: string): StripeGateway {
           cancel_url: args.cancelUrl,
           metadata: { orderId: args.orderId },
           client_reference_id: args.orderId,
-          integration_identifier: "tournament_os_entry_kqzvwhtd",
+          integration_identifier: "paper_pairings_entry_kqzvwhtd",
         },
         { idempotencyKey: args.idempotencyKey },
       );

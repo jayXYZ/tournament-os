@@ -2,7 +2,7 @@ import { Link } from '@tanstack/react-router'
 import { useQuery } from 'convex/react'
 import { ArrowRight, CalendarDays, Ticket, Trophy } from 'lucide-react'
 
-import { api } from '@tournament-os/backend/convex/_generated/api'
+import { api } from '@paper-pairings/backend/convex/_generated/api'
 import { useManagedConvention } from './convention-manager-context'
 import type { ReactNode } from 'react'
 import { formatConventionDateRange } from '@/components/conventions/convention-display'
