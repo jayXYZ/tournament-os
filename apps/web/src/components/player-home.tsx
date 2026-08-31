@@ -1,8 +1,8 @@
 import { Link } from '@tanstack/react-router'
-import { useMyTournaments } from '@tournament-os/core'
+import { useMyTournaments } from '@paper-pairings/core'
 import { useQuery } from 'convex/react'
 import { CalendarDays, LogIn, Settings, ShieldCheck, Users } from 'lucide-react'
-import { api } from '@tournament-os/backend/convex/_generated/api'
+import { api } from '@paper-pairings/backend/convex/_generated/api'
 
 import { SiteShell } from '@/components/shared/site-shell'
 import { TournamentTable } from '@/components/tournaments'

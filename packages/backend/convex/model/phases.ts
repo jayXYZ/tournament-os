@@ -3,11 +3,11 @@ import {
   gameWinsEntryError,
   isBestOf,
   type BestOf,
-} from "@tournament-os/shared/match-structure";
+} from "@paper-pairings/shared/match-structure";
 import {
   DEFAULT_PLAYOFF_CUT_PLAYER_COUNT,
   MAX_TOURNAMENT_PHASES,
-} from "@tournament-os/shared/tournament-creation-utils";
+} from "@paper-pairings/shared/tournament-creation-utils";
 
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";

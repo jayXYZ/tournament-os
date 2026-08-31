@@ -1,6 +1,6 @@
 import { useQuery } from 'convex/react'
 
-import { api } from '@tournament-os/backend/convex/_generated/api'
+import { api } from '@paper-pairings/backend/convex/_generated/api'
 import { DangerZoneCard } from './danger-zone-card'
 import { EntryFeeCard } from './entry-fee-card'
 import { EventDetailsCard } from './event-details-card'
@@ -11,7 +11,7 @@ import { PayoutCard } from './payout-card'
 import { PhaseSettingsCard } from './phase-settings-card'
 import { SettingsSkeleton } from './settings-skeleton'
 import { TournamentSettingsCard } from './tournament-settings-card'
-import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
+import type { Id } from '@paper-pairings/backend/convex/_generated/dataModel'
 import {
   TournamentLifecycleBadge,
   TournamentVisibilityBadge,

@@ -1,8 +1,8 @@
 import { useMutation } from 'convex/react'
 import { toast } from 'sonner'
 
-import { api } from '@tournament-os/backend/convex/_generated/api'
-import type { Doc } from '@tournament-os/backend/convex/_generated/dataModel'
+import { api } from '@paper-pairings/backend/convex/_generated/api'
+import type { Doc } from '@paper-pairings/backend/convex/_generated/dataModel'
 import type { TournamentVisibility } from '@/components/tournaments'
 import { tournamentVisibilities } from '@/components/tournaments'
 import {

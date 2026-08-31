@@ -51,8 +51,8 @@ jobs:
           node-version-file: ".nvmrc"
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @tournament-os/native exec expo install --check
-      - run: pnpm --filter @tournament-os/native run build
+      - run: pnpm --filter @paper-pairings/native exec expo install --check
+      - run: pnpm --filter @paper-pairings/native run build
 
   # Duplicate versions of one package split React context between module
   # copies (e.g. convex/react during SSR); fail fast when the lockfile can be

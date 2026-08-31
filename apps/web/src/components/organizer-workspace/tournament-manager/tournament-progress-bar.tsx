@@ -16,11 +16,11 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 
-import { api } from '@tournament-os/backend/convex/_generated/api'
-import { mutationErrorMessage } from '@tournament-os/core'
+import { api } from '@paper-pairings/backend/convex/_generated/api'
+import { mutationErrorMessage } from '@paper-pairings/core'
 import { inProgressRound } from './pairings-board'
 import { RoundTimerChip } from './round-timer-chip'
-import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
+import type { Id } from '@paper-pairings/backend/convex/_generated/dataModel'
 import type { PairingsBoard } from './pairings-board'
 import {
   parseRoundSelectionSearch,

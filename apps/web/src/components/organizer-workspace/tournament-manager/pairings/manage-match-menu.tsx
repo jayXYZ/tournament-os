@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { ClipboardPen, MoreHorizontal } from 'lucide-react'
 
 import { EnterResultDialog } from './enter-result-dialog'
-import type { BestOf } from '@tournament-os/shared/match-structure'
+import type { BestOf } from '@paper-pairings/shared/match-structure'
 import type { PairingRow } from './pairing-row'
 import { Button } from '@/components/ui/button'
 import {

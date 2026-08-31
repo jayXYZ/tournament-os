@@ -1,6 +1,6 @@
 import { createContext, useContext } from 'react'
 
-import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
+import type { Id } from '@paper-pairings/backend/convex/_generated/dataModel'
 
 // The admin URL carries the public tournament code, but data queries need the
 // Convex id. The manager layout resolves the code once and shares both here so

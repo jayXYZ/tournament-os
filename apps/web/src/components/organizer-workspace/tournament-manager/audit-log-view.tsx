@@ -1,10 +1,10 @@
 import { usePaginatedQuery } from 'convex/react'
 import { ScrollText } from 'lucide-react'
 
-import { api } from '@tournament-os/backend/convex/_generated/api'
-import { displayPlayerName, formatGameScoreline } from '@tournament-os/core'
+import { api } from '@paper-pairings/backend/convex/_generated/api'
+import { displayPlayerName, formatGameScoreline } from '@paper-pairings/core'
 import type { FunctionReturnType } from 'convex/server'
-import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
+import type { Id } from '@paper-pairings/backend/convex/_generated/dataModel'
 import { LoadMoreButton } from '@/components/shared/load-more-button'
 import { Badge } from '@/components/ui/badge'
 import {

@@ -2,14 +2,14 @@ import { Link } from '@tanstack/react-router'
 import { useQuery } from 'convex/react'
 import { ChevronDown, ChevronUp, Trophy } from 'lucide-react'
 import { useState } from 'react'
-import { api } from '@tournament-os/backend/convex/_generated/api'
+import { api } from '@paper-pairings/backend/convex/_generated/api'
 import {
   displayPlayerName,
   formatGameScoreline,
   formatRecord,
-} from '@tournament-os/core'
+} from '@paper-pairings/core'
 import type { FunctionReturnType } from 'convex/server'
-import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
+import type { Id } from '@paper-pairings/backend/convex/_generated/dataModel'
 
 import { ResultBadge } from '@/components/shared/result-badge'
 import { formatTournamentDateShort } from '@/components/tournaments'

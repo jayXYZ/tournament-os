@@ -1,7 +1,7 @@
 import {
   MAX_CARD_NAME_LENGTH,
   MAX_DECK_NAME_LENGTH,
-} from "@tournament-os/shared/decklist-limits";
+} from "@paper-pairings/shared/decklist-limits";
 import type { Infer } from "convex/values";
 
 import type { Doc, Id } from "../_generated/dataModel";
@@ -14,7 +14,7 @@ export type DecklistCardEntry = Infer<typeof decklistCardEntryValidator>;
 // deck (even 240-card novelty builds) while keeping a hostile client from
 // writing near-1MB documents. Format rules (60-card minimums, 4-of caps) are
 // a human deck-check concern — see decklistCardEntryValidator. The two
-// name-length caps live in @tournament-os/shared (re-exported here) so client
+// name-length caps live in @paper-pairings/shared (re-exported here) so client
 // inputs cap entry at exactly the limit enforced below.
 export const MAX_BOARD_ENTRIES = 500;
 export const MAX_BOARD_CARDS = 5000;

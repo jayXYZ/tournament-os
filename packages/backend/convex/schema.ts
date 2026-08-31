@@ -280,7 +280,7 @@ export default defineSchema({
     // once any payment order exists (see model/payments.ts). Per paid player
     // the organizer is paid out exactly this amount; the player additionally
     // absorbs the platform fee and estimated processing fee
-    // (@tournament-os/shared/payment-fees).
+    // (@paper-pairings/shared/payment-fees).
     entryFeeCents: v.optional(v.number()),
     // Optional organizer-set cutoff (epoch ms, at or before startDate) after
     // which a player cancellation no longer triggers the automatic full

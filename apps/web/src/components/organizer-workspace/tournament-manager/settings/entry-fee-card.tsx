@@ -3,14 +3,14 @@ import { Link } from '@tanstack/react-router'
 import { useMutation, useQuery } from 'convex/react'
 import { toast } from 'sonner'
 
-import { api } from '@tournament-os/backend/convex/_generated/api'
+import { api } from '@paper-pairings/backend/convex/_generated/api'
 import {
   MIN_ENTRY_FEE_CENTS,
   validateEntryFeeCents,
-} from '@tournament-os/shared/payment-fees'
+} from '@paper-pairings/shared/payment-fees'
 import { isPreStartLocked } from './is-pre-start-locked'
 import type { FormEvent } from 'react'
-import type { Doc } from '@tournament-os/backend/convex/_generated/dataModel'
+import type { Doc } from '@paper-pairings/backend/convex/_generated/dataModel'
 import { toDatetimeLocalValue } from '@/components/tournaments'
 import { Button } from '@/components/ui/button'
 import {

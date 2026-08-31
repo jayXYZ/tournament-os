@@ -1,12 +1,12 @@
 import { useQuery } from 'convex/react'
 
-import { api } from '@tournament-os/backend/convex/_generated/api'
-import { displayPlayerName } from '@tournament-os/core'
+import { api } from '@paper-pairings/backend/convex/_generated/api'
+import { displayPlayerName } from '@paper-pairings/core'
 import type { FunctionReturnType } from 'convex/server'
 import type {
   Doc,
   Id,
-} from '@tournament-os/backend/convex/_generated/dataModel'
+} from '@paper-pairings/backend/convex/_generated/dataModel'
 import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'
 import { Badge } from '@/components/ui/badge'
 import {

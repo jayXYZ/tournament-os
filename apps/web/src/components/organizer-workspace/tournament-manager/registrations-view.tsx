@@ -11,18 +11,18 @@ import {
   UserX,
 } from 'lucide-react'
 
-import { api } from '@tournament-os/backend/convex/_generated/api'
-import { displayPlayerName } from '@tournament-os/core'
+import { api } from '@paper-pairings/backend/convex/_generated/api'
+import { displayPlayerName } from '@paper-pairings/core'
 import {
   MALFORMED_REGISTRATION_STATUS,
   effectiveRegistrationStatus,
-} from '@tournament-os/shared/registration-status'
+} from '@paper-pairings/shared/registration-status'
 import { toast } from 'sonner'
 import type { ColumnDef } from '@tanstack/react-table'
 import type {
   Doc,
   Id,
-} from '@tournament-os/backend/convex/_generated/dataModel'
+} from '@paper-pairings/backend/convex/_generated/dataModel'
 import { ConfirmActionDialog } from '@/components/shared/confirm-action-dialog'
 import { LoadMoreButton } from '@/components/shared/load-more-button'
 import { TableEmptyState } from '@/components/shared/table-empty-state'

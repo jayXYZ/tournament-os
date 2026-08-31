@@ -6,8 +6,8 @@ import {
   organizationStatuses,
   organizerInviteRoles,
   organizerRoles,
-} from "@tournament-os/shared/organizer-utils";
-import { tournamentFormats } from "@tournament-os/shared/tournament-creation-utils";
+} from "@paper-pairings/shared/organizer-utils";
+import { tournamentFormats } from "@paper-pairings/shared/tournament-creation-utils";
 
 export {
   canInviteMembers,
@@ -15,7 +15,7 @@ export {
   canManageOrganizationProfile,
   normalizeInviteEmail as normalizeEmail,
   slugifyOrganizationName,
-} from "@tournament-os/shared/organizer-utils";
+} from "@paper-pairings/shared/organizer-utils";
 
 export const userProfileVisibilityValidator = v.union(
   v.literal("public"),
@@ -145,7 +145,7 @@ export const tournamentPhaseRoundModeValidator = v.union(
 
 // A phase's Match Structure: best-of-1, -3, or -5, meaning first to ⌈X/2⌉
 // game wins (see CONTEXT.md "Match Structure" and
-// @tournament-os/shared/match-structure for the derived rules).
+// @paper-pairings/shared/match-structure for the derived rules).
 export const tournamentPhaseBestOfValidator = v.union(
   v.literal(1),
   v.literal(3),
@@ -254,7 +254,7 @@ export const paymentOrderPurposeValidator = v.union(
 );
 
 // The amount breakdown snapshotted onto an order at creation (see
-// @tournament-os/shared/payment-fees); never recomputed afterwards.
+// @paper-pairings/shared/payment-fees); never recomputed afterwards.
 export const orderAmountBreakdownValidator = v.object({
   entryFeeCents: v.number(),
   platformFeeCents: v.number(),
@@ -547,7 +547,7 @@ export const tournamentAuditEventValidator = v.union(
 // The tournament's single live round timer. Server-side writes happen only on
 // organizer actions; clients derive the ticking countdown (and overtime, which
 // is never stored) from these anchors locally. Mirrored structurally by
-// RoundTimerState in @tournament-os/shared/timer-utils.
+// RoundTimerState in @paper-pairings/shared/timer-utils.
 export const tournamentRoundTimerValidator = v.union(
   v.object({
     kind: v.literal("running"),

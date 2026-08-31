@@ -1,5 +1,5 @@
 import { AuthView, UserButton } from "@clerk/expo/native";
-import { useConvexAuthReadiness, useMyTournaments } from "@tournament-os/core";
+import { useConvexAuthReadiness, useMyTournaments } from "@paper-pairings/core";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {

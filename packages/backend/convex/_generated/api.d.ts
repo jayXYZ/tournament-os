@@ -50,6 +50,7 @@ import type * as rateLimits from "../rateLimits.js";
 import type * as specHelpers from "../specHelpers.js";
 import type * as stripe_client from "../stripe/client.js";
 import type * as stripe_config from "../stripe/config.js";
+import type * as stripe_errors from "../stripe/errors.js";
 import type * as tournaments_auditLog from "../tournaments/auditLog.js";
 import type * as tournaments_decklists from "../tournaments/decklists.js";
 import type * as tournaments_invites from "../tournaments/invites.js";
@@ -112,6 +113,7 @@ declare const fullApi: ApiFromModules<{
   specHelpers: typeof specHelpers;
   "stripe/client": typeof stripe_client;
   "stripe/config": typeof stripe_config;
+  "stripe/errors": typeof stripe_errors;
   "tournaments/auditLog": typeof tournaments_auditLog;
   "tournaments/decklists": typeof tournaments_decklists;
   "tournaments/invites": typeof tournaments_invites;

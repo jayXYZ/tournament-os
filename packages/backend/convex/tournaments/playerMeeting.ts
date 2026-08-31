@@ -3,7 +3,7 @@ import { v } from "convex/values";
 import {
   DELETED_REGISTRATION_STATUS,
   effectiveRegistrationStatus,
-} from "@tournament-os/shared/registration-status";
+} from "@paper-pairings/shared/registration-status";
 
 import { mutation, query } from "../_generated/server";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";

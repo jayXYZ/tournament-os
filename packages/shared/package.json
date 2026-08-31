@@ -1,5 +1,5 @@
 {
-  "name": "@tournament-os/shared",
+  "name": "@paper-pairings/shared",
   "version": "0.1.0",
   "private": true,
   "description": "Dependency-free tournament domain utilities, validation, and constants shared by the backend, web, and mobile apps.",

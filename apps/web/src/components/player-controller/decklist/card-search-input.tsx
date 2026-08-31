@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { Plus } from 'lucide-react'
-import { MAX_CARD_NAME_LENGTH } from '@tournament-os/shared/decklist-limits'
+import { MAX_CARD_NAME_LENGTH } from '@paper-pairings/shared/decklist-limits'
 
 import { parseCardInput } from './decklist-draft'
 import { useCardAutocomplete } from './use-card-autocomplete'

@@ -48,7 +48,7 @@ no-shows, and disqualifications without each workflow inventing its own rules.
       editable — see CONTEXT.md "Match Structure"): `bestOf` on
       `tournamentPhases` (required field — reset the dev DB), a Match
       structure selector in the phase editor, and shared rules in
-      `@tournament-os/shared/match-structure`
+      `@paper-pairings/shared/match-structure`
   - [x] Configure Best-of-X / match structure per phase
   - [x] Derive valid result entry from the phase policy instead of hardcoding
         0–2 game wins: `requireValidMatchResult` in the one result writer
@@ -494,7 +494,7 @@ push, analytics, and monitoring should be independent consumers.
 - [ ] Complete native player-controller parity
   - [x] Show current match, player meetings, live timer, and standings
   - [ ] Report a result (surface mutation errors via
-        `mutationErrorMessage` from `@tournament-os/core` so rate-limited
+        `mutationErrorMessage` from `@paper-pairings/core` so rate-limited
         rejections get the retry-later treatment)
   - [ ] Drop from the event
   - [ ] Show match history
@@ -526,7 +526,7 @@ favor of these explicit v2 dimensions) with separate charges and transfers:
 players pay the platform via Stripe-hosted Checkout, funds hold through the
 refund window, and entry fees transfer to the organization when the
 tournament completes. Players absorb the platform fee (default 5%) plus a
-grossed-up processing estimate (`@tournament-os/shared/payment-fees`); the
+grossed-up processing estimate (`@paper-pairings/shared/payment-fees`); the
 organizer is paid exactly the entry cost per paid seat.
 
 - [x] Decide platform versus marketplace payment architecture

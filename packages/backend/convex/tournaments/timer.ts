@@ -4,7 +4,7 @@ import {
   DEFAULT_ROUND_DURATION_MS,
   MAX_TIMER_ADJUST_MS,
   isValidRoundDurationMs,
-} from "@tournament-os/shared/timer-utils";
+} from "@paper-pairings/shared/timer-utils";
 
 import type { Doc } from "../_generated/dataModel";
 import { mutation } from "../_generated/server";

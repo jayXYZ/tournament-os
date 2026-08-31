@@ -1,14 +1,14 @@
 import { useState } from 'react'
-import { formatGameScoreline, useReportResult } from '@tournament-os/core'
+import { formatGameScoreline, useReportResult } from '@paper-pairings/core'
 import {
   MAX_GAME_DRAWS,
   requiredGameWins,
-} from '@tournament-os/shared/match-structure'
+} from '@paper-pairings/shared/match-structure'
 import { Minus, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 
-import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
-import type { BestOf } from '@tournament-os/shared/match-structure'
+import type { Id } from '@paper-pairings/backend/convex/_generated/dataModel'
+import type { BestOf } from '@paper-pairings/shared/match-structure'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,

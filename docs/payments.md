@@ -22,7 +22,7 @@ suites are `paymentsConnect` / `entryFeeSettings` / `paymentsCheckout` /
   set: fees are transfer math. Entry fees transfer when the tournament
   **completes**, so pre-start refunds are plain `refunds.create` and
   cancelling an event never needs clawbacks.
-- **Fee economics** — `@tournament-os/shared/payment-fees`. The organizer is
+- **Fee economics** — `@paper-pairings/shared/payment-fees`. The organizer is
   paid exactly the entry cost per paid seat; the player additionally absorbs
   the platform fee (`PLATFORM_FEE_PERCENT`, default 5% of entry) and a
   grossed-up estimate of Stripe's processing fee (`STRIPE_FEE_PERCENT` /
@@ -92,7 +92,7 @@ optionally the three fee overrides.
 
 - Forward webhooks:
   `stripe listen --forward-to <dev-deployment>.convex.site/stripe/events`,
-  then `pnpm --filter @tournament-os/backend exec convex env set STRIPE_WEBHOOK_SECRET <whsec_… from listen>`.
+  then `pnpm --filter @paper-pairings/backend exec convex env set STRIPE_WEBHOOK_SECRET <whsec_… from listen>`.
 - Pay with [test cards](https://docs.stripe.com/testing) (`4242 4242 4242
 4242` succeeds).
 - Stripe requires HTTPS for Account Link return/refresh URLs even in test

@@ -3,7 +3,7 @@ import { v } from "convex/values";
 import {
   computeOrderBreakdown,
   validateEntryFeeCents,
-} from "@tournament-os/shared/payment-fees";
+} from "@paper-pairings/shared/payment-fees";
 
 import { query } from "../_generated/server";
 import { currentUserOrNull } from "../model/access";

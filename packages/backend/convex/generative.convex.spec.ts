@@ -7,7 +7,7 @@
 
 import { expect, test } from "vitest";
 
-import type { BestOf } from "@tournament-os/shared/match-structure";
+import type { BestOf } from "@paper-pairings/shared/match-structure";
 
 import { api } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";

@@ -5,7 +5,7 @@ import {
   useMyCurrentMatch,
   useMyDecklist,
   useRoundTimer,
-} from '@tournament-os/core'
+} from '@paper-pairings/core'
 import {
   ChevronRight,
   ListOrdered,
@@ -19,7 +19,7 @@ import { PlayerAccessShell, playerShellWidth } from './player-access-shell'
 import { StandingsList } from './standings-list'
 import { usePlayerTournamentAccess } from './use-player-tournament-access'
 import type { ReactNode } from 'react'
-import type { MyCurrentMatch, RoundTimer } from '@tournament-os/core'
+import type { MyCurrentMatch, RoundTimer } from '@paper-pairings/core'
 import type { PlayerTournamentEvent } from './use-player-tournament-access'
 import { RoundTimerPill } from '@/components/shared/round-timer-indicator'
 import { SiteShell, SiteShellBackLink } from '@/components/shared/site-shell'

@@ -1,7 +1,7 @@
 import {
   requiredGameWins,
   type BestOf,
-} from "@tournament-os/shared/match-structure";
+} from "@paper-pairings/shared/match-structure";
 
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";

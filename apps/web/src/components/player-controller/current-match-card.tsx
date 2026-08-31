@@ -1,12 +1,12 @@
 import { useState } from 'react'
-import { describeCurrentMatch } from '@tournament-os/core'
+import { describeCurrentMatch } from '@paper-pairings/core'
 import { Hourglass, Swords } from 'lucide-react'
 
 import { ReportResultDialog } from './report-result-dialog'
 import type {
   CurrentMatchDescription,
   MyCurrentMatch,
-} from '@tournament-os/core'
+} from '@paper-pairings/core'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -25,7 +25,7 @@ import {
 } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
 
-// Renders the shared Player View description (see @tournament-os/core
+// Renders the shared Player View description (see @paper-pairings/core
 // player-view.ts) — state branching and copy live in the presenter, this
 // file owns only the web styling and the report dialog wiring.
 export function CurrentMatchCard({

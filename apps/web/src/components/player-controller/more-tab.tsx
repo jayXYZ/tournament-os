@@ -5,13 +5,13 @@ import {
   formatGameScoreline,
   useDropSelf,
   useMyMatchHistory,
-} from '@tournament-os/core'
+} from '@paper-pairings/core'
 import { toast } from 'sonner'
-import type { api } from '@tournament-os/backend/convex/_generated/api'
+import type { api } from '@paper-pairings/backend/convex/_generated/api'
 import type { FunctionReturnType } from 'convex/server'
-import type { MyCurrentMatch } from '@tournament-os/core'
+import type { MyCurrentMatch } from '@paper-pairings/core'
 
-import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
+import type { Id } from '@paper-pairings/backend/convex/_generated/dataModel'
 import { boardCount } from '@/components/player-controller/decklist/decklist-draft'
 import { ConfirmActionDialog } from '@/components/shared/confirm-action-dialog'
 import { ResultBadge } from '@/components/shared/result-badge'
