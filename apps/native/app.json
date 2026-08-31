@@ -1,13 +1,13 @@
 {
   "expo": {
-    "name": "Tournament OS",
+    "name": "Paper Pairings",
     "slug": "tournament-os-native",
     "version": "0.1.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "tournamentos",
     "userInterfaceStyle": "dark",
-    "backgroundColor": "#0b0b0f",
+    "backgroundColor": "#171514",
     "ios": {
       "icon": "./assets/expo.icon",
       "bundleIdentifier": "com.tournamentos.app"
@@ -15,7 +15,7 @@
     "android": {
       "package": "com.tournamentos.app",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#EDE9E0",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
@@ -31,7 +31,7 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
+          "backgroundColor": "#171514",
           "android": {
             "image": "./assets/images/splash-icon.png",
             "imageWidth": 76

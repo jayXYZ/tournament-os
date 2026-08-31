@@ -259,7 +259,7 @@ function Standings({
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0b0b0f" },
+  container: { flex: 1, backgroundColor: "#171514" },
   content: { padding: 20, gap: 12 },
   centered: { flex: 1, alignItems: "center", justifyContent: "center" },
   signedOut: {
@@ -268,7 +268,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     gap: 12,
   },
-  signedOutTitle: { color: "#fff", fontSize: 22, fontWeight: "700" },
+  signedOutTitle: { color: "#EDE9E0", fontSize: 22, fontWeight: "700" },
   button: {
     backgroundColor: "#5b6bff",
     borderRadius: 12,
@@ -276,14 +276,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: 12,
   },
-  buttonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
+  buttonText: { color: "#EDE9E0", fontSize: 16, fontWeight: "600" },
   sectionHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
   sectionTitle: {
-    color: "#8b8b96",
+    color: "#B8B2A6",
     fontSize: 13,
     fontWeight: "700",
     textTransform: "uppercase",
@@ -291,19 +291,19 @@ const styles = StyleSheet.create({
   },
   sectionGap: { marginTop: 12 },
   headerBadge: { color: "#7c8cff", fontSize: 13, fontWeight: "600" },
-  muted: { color: "#8b8b96", fontSize: 15 },
-  card: { backgroundColor: "#16161d", borderRadius: 14, padding: 16, gap: 6 },
+  muted: { color: "#B8B2A6", fontSize: 15 },
+  card: { backgroundColor: "#262321", borderRadius: 14, padding: 16, gap: 6 },
   cardLabel: { color: "#7c8cff", fontSize: 13, fontWeight: "600" },
-  cardTitle: { color: "#fff", fontSize: 20, fontWeight: "700" },
-  cardSubtitle: { color: "#8b8b96", fontSize: 16 },
+  cardTitle: { color: "#EDE9E0", fontSize: 20, fontWeight: "700" },
+  cardSubtitle: { color: "#B8B2A6", fontSize: 16 },
   resultRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
   },
-  scoreline: { color: "#fff", fontSize: 17, fontWeight: "600" },
-  resultBadge: { color: "#8b8b96", fontSize: 13, fontWeight: "600" },
+  scoreline: { color: "#EDE9E0", fontSize: 17, fontWeight: "600" },
+  resultBadge: { color: "#B8B2A6", fontSize: 13, fontWeight: "600" },
   row: {
     flexDirection: "row",
     alignItems: "center",
@@ -311,20 +311,20 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   rowMe: {
-    backgroundColor: "#1f2030",
+    backgroundColor: "#403D39",
     borderRadius: 8,
     paddingHorizontal: 8,
     marginHorizontal: -8,
   },
   countdown: {
-    color: "#cfcfd6",
+    color: "#D4D1CA",
     fontSize: 17,
     fontWeight: "600",
     fontVariant: ["tabular-nums"],
   },
   countdownOvertime: { color: "#ff6b6b" },
-  rank: { color: "#8b8b96", fontSize: 15, width: 28 },
-  name: { color: "#fff", fontSize: 15, flex: 1 },
-  playoffStatus: { color: "#8b8b96", fontSize: 12 },
-  record: { color: "#cfcfd6", fontSize: 15, fontVariant: ["tabular-nums"] },
+  rank: { color: "#B8B2A6", fontSize: 15, width: 28 },
+  name: { color: "#EDE9E0", fontSize: 15, flex: 1 },
+  playoffStatus: { color: "#B8B2A6", fontSize: 12 },
+  record: { color: "#D4D1CA", fontSize: 15, fontVariant: ["tabular-nums"] },
 });

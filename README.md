@@ -1,6 +1,6 @@
-# Tournament OS
+# Paper Pairings
 
-Monorepo for Tournament OS — organizer workspaces and event operations for Magic tournaments.
+Monorepo for Paper Pairings — organizer workspaces and event operations for Magic tournaments.
 
 ## Workspaces
 
