@@ -19,7 +19,7 @@ if (sentryDsn) {
   });
 }
 
-const APP_BACKGROUND = "#0b0b0f";
+const APP_BACKGROUND = "#171514";
 
 // react-native-screens paints each native screen container with the navigation
 // theme's `colors.background`. expo-router defaults to the light theme (white),
@@ -78,7 +78,7 @@ function RootLayout() {
                 headerShown: true,
                 title: "Tournament",
                 headerStyle: { backgroundColor: APP_BACKGROUND },
-                headerTintColor: "#fff",
+                headerTintColor: "#EDE9E0",
               }}
             />
           </Stack>

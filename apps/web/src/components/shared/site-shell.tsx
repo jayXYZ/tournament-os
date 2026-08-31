@@ -1,7 +1,8 @@
 import { createLink } from '@tanstack/react-router'
-import { ArrowLeft, Swords } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
 import type { ComponentPropsWithRef, ReactNode } from 'react'
 
+import { BrandMark } from '@/components/shared/brand-mark'
 import {
   PublicSiteHeader,
   maxWidthClasses,
@@ -102,9 +103,7 @@ export function SiteShell({
             <div className="mx-auto max-w-md px-4 py-3 sm:max-w-2xl sm:px-6">
               {appBar === true ? (
                 <div className="flex items-center gap-3">
-                  <div className="flex size-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
-                    <Swords className="size-4" aria-hidden="true" />
-                  </div>
+                  <BrandMark className="size-8" />
                   <p className="text-sm font-semibold">{subtitle}</p>
                 </div>
               ) : (
