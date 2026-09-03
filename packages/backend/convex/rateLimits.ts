@@ -102,8 +102,9 @@ const limits = {
     period: HOUR,
     capacity: 20,
   },
-  // Each call inserts up to a tournament-capacity's worth of user and
-  // registration rows, so it gets its own budget on top of createTournament's.
+  // Each call inserts up to a tournament-capacity's worth of guest
+  // participant and registration rows, so it gets its own budget on top of
+  // createTournament's.
   seedTestPlayers: {
     kind: "token bucket",
     rate: 60,

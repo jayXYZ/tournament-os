@@ -7,10 +7,26 @@ When working on Convex code, **always read
 how to correctly use Convex APIs and patterns. The file contains rules that
 override what you may have learned about Convex from training data.
 
-Convex agent skills for common tasks can be installed by running
-`npx convex ai-files install`.
+That file is gitignored, so it may be missing on a fresh clone — regenerate it
+(and the Convex agent skills) with
+`pnpm --filter @tournament-os/backend exec convex ai-files install`.
+npm/npx/yarn/bun are denied in this repo; always use pnpm.
 
 <!-- convex-ai-end -->
+
+## Orientation
+
+- `CONTEXT.md` — the competitive-engine domain glossary. Code comments cite it
+  by entry name; it is the source of truth for pairing/scoring/standings
+  vocabulary.
+- `TODO.md` — the audited roadmap: what is done, open, and blocked.
+- `docs/` — environment contract, payments architecture, rate limiting, error
+  monitoring, ADRs (`docs/adr/`), and the refactor backlog (`docs/refactors/`).
+- Verification gate: `pnpm check` (format + typecheck + lint + test — what CI
+  runs). Backend tests alone: `pnpm --filter @tournament-os/backend test`.
+- Conventions: backend domain logic lives in `packages/backend/convex/model/`
+  with thin public function adapters beside it; backend specs are
+  `*.convex.spec.ts` seeded through `specHelpers.ts`.
 
 ## Project status: pre-production
 

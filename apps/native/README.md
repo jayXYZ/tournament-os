@@ -11,7 +11,12 @@ Clerk instance.
 - **Clerk** (`@clerk/expo`) for auth, using the **prebuilt native components**
   (`<AuthView />`, `<UserButton />`) and a `SecureStore` token cache
 - **Convex** (`ConvexProviderWithClerk`) for realtime data
+- **Sentry** wired into the app (`_layout.tsx`) and Metro (`getSentryExpoConfig`)
 - Shared workspace packages: `@tournament-os/backend`, `@tournament-os/core`
+
+> ⚠️ `@clerk/expo` is pinned **exactly** at `3.4.6` behind a Swift 6 pnpm patch
+> (`patches/@clerk__expo.patch`, version-qualified in `pnpm-workspace.yaml` so a
+> bump fails loudly). Don't bump it without redoing the patch.
 
 ## ⚠️ Requires a development build (not Expo Go)
 
@@ -63,20 +68,22 @@ src/
     _layout.tsx          # Clerk + Convex providers, root Stack
     index.tsx            # Auth gate: <AuthView> modal when signed out,
                          #   <UserButton> + the player's active tournaments when in
-    tournament/[id].tsx  # Current match + live standings (shared core hooks)
+    tournament/[code].tsx # Current match + live standings, keyed by the
+                          #   tournament's public code (shared core hooks)
   lib/
     convex.ts            # ConvexReactClient singleton
 ```
 
 ## Monorepo notes
 
-- The repo uses `node-linker=hoisted` (root `.npmrc`) — Expo/Metro's
-  recommended pnpm layout.
-- `metro.config.js` watches the workspace root and resolves modules from both
-  the app and root `node_modules`.
+- The repo uses `nodeLinker: hoisted` (set in `pnpm-workspace.yaml`) —
+  Expo/Metro's recommended pnpm layout.
+- `metro.config.js` just wraps `getSentryExpoConfig`; Expo's default config
+  detects the monorepo on its own.
 
 ## Next steps
 
-Reporting/confirming results and dropping are already available as shared hooks
-(`useReportResult`, `useConfirmResult`, `useDropSelf`) — wire them into
-`tournament/[id].tsx` to let players submit match results from their phone.
+Reporting results and dropping are already available as shared hooks
+(`useReportResult`, `useDropSelf` — there is no confirmation step by design;
+see `CONTEXT.md`) — wire them into `tournament/[code].tsx` to let players
+submit match results from their phone.

@@ -106,7 +106,7 @@ optionally the three fee overrides.
 
 - Forward webhooks:
   `stripe listen --forward-to <dev-deployment>.convex.site/stripe/events`,
-  then `npx convex env set STRIPE_WEBHOOK_SECRET <whsec_… from listen>`.
+  then `pnpm --filter @tournament-os/backend exec convex env set STRIPE_WEBHOOK_SECRET <whsec_… from listen>`.
 - Pay with [test cards](https://docs.stripe.com/testing) (`4242 4242 4242
 4242` succeeds).
 - Stripe requires HTTPS for Account Link return/refresh URLs even in test

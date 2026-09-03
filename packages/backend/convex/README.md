@@ -1,90 +1,26 @@
-# Welcome to your Convex functions directory!
+# Convex backend
 
-Write your Convex functions here.
-See https://docs.convex.dev/functions for more.
+Read `_generated/ai/guidelines.md` before touching this directory — it is the
+authority on Convex API usage and is gitignored, so regenerate it with
+`pnpm --filter @tournament-os/backend exec convex ai-files install` if it is
+missing.
 
-A query function that takes two arguments looks like:
+Layout:
 
-```ts
-// convex/myFunctions.ts
-import { query } from "./_generated/server";
-import { v } from "convex/values";
+- `model/` — the internal layer. All domain logic and multi-table writes live
+  here as plain functions over `ctx`; public functions call into it. Deep
+  modules (`progression.ts`, `pairing.ts`, `standings.ts`, `nextStep.ts`,
+  `matchResults.ts`, `cutoffs.ts`, …) should be reused, not broken up.
+- `tournaments/`, `payments/`, `stripe/`, plus top-level files
+  (`organizations.ts`, `users.ts`, …) — the public function surface: thin
+  auth + validation adapters over `model/`.
+- `validators.ts` — shared value unions (statuses, result kinds, the audit
+  event validator). Domain vocabulary is defined once here; `CONTEXT.md` at
+  the repo root is the prose glossary it mirrors.
+- `schema.ts` — the whole database schema.
+- `*.convex.spec.ts` — the test suite (vitest + convex-test), seeded through
+  `specHelpers.ts`. Run with `pnpm --filter @tournament-os/backend test`.
 
-export const myQueryFunction = query({
-  // Validators for arguments.
-  args: {
-    first: v.number(),
-    second: v.string(),
-  },
-
-  // Function implementation.
-  handler: async (ctx, args) => {
-    // Read the database as many times as you need here.
-    // See https://docs.convex.dev/database/reading-data.
-    const documents = await ctx.db.query("tablename").collect();
-
-    // Arguments passed from the client are properties of the args object.
-    console.log(args.first, args.second);
-
-    // Write arbitrary JavaScript here: filter, aggregate, build derived data,
-    // remove non-public properties, or create new objects.
-    return documents;
-  },
-});
-```
-
-Using this query function in a React component looks like:
-
-```ts
-const data = useQuery(api.myFunctions.myQueryFunction, {
-  first: 10,
-  second: "hello",
-});
-```
-
-A mutation function looks like:
-
-```ts
-// convex/myFunctions.ts
-import { mutation } from "./_generated/server";
-import { v } from "convex/values";
-
-export const myMutationFunction = mutation({
-  // Validators for arguments.
-  args: {
-    first: v.string(),
-    second: v.string(),
-  },
-
-  // Function implementation.
-  handler: async (ctx, args) => {
-    // Insert or modify documents in the database here.
-    // Mutations can also read from the database like queries.
-    // See https://docs.convex.dev/database/writing-data.
-    const message = { body: args.first, author: args.second };
-    const id = await ctx.db.insert("messages", message);
-
-    // Optionally, return a value from your mutation.
-    return await ctx.db.get("messages", id);
-  },
-});
-```
-
-Using this mutation function in a React component looks like:
-
-```ts
-const mutation = useMutation(api.myFunctions.myMutationFunction);
-function handleButtonPress() {
-  // fire and forget, the most common way to use mutations
-  mutation({ first: "Hello!", second: "me" });
-  // OR
-  // use the result once the mutation has completed
-  mutation({ first: "Hello!", second: "me" }).then((result) =>
-    console.log(result),
-  );
-}
-```
-
-Use the Convex CLI to push your functions to a deployment. See everything
-the Convex CLI can do by running `npx convex -h` in your project root
-directory. To learn more, launch the docs with `npx convex docs`.
+The CLI runs through the workspace: `pnpm dev:backend` from the repo root, or
+`pnpm --filter @tournament-os/backend exec convex <cmd>` (npm/npx are denied
+in this repo).

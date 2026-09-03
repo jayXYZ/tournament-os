@@ -345,8 +345,9 @@ export function buildSwissPairings(
   rankedRegistrations: RankedRegistration[],
   options: PairingOptions,
 ): Pairing[] {
-  // Standings order is used for the bye choice (MTR ranks the bye by standings,
-  // not randomly), then handed to orderForPairing for the within-bracket shuffle.
+  // Standings order is used for the bye choice (our rule — the MTR is silent
+  // on bye assignment; see CONTEXT.md "Bye"), then handed to orderForPairing
+  // for the within-bracket shuffle.
   const standingsSorted = [...rankedRegistrations].sort(compareStandingRows);
   const pairings: Pairing[] = [];
 
