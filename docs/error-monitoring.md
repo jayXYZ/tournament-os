@@ -32,7 +32,7 @@ Enabled by `EXPO_PUBLIC_SENTRY_DSN`.
   the layout export is wrapped with `Sentry.wrap` when a DSN is present.
 - `metro.config.js` — built on `getSentryExpoConfig` (a superset of Expo's
   default config) so bundles carry the debug IDs symbolication needs.
-- `app.json` — the `@sentry/react-native` config plugin handles native-build
+- `app.config.ts` — the `@sentry/react-native` config plugin handles native-build
   source-map/dSYM upload, reading `SENTRY_ORG` / `SENTRY_PROJECT` /
   `SENTRY_AUTH_TOKEN` from the build environment. Native-crash capture
   requires a dev build (`expo run:ios|android`) or EAS build — Expo Go

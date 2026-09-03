@@ -1,11 +1,9 @@
-import { AuthView, UserButton } from "@clerk/expo/native";
+import { UserButton } from "@clerk/expo/native";
 import { useConvexAuthReadiness, useMyTournaments } from "@paper-pairings/core";
 import { useRouter } from "expo-router";
-import { useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
-  Modal,
   Pressable,
   StyleSheet,
   Text,
@@ -13,10 +11,14 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { Badge } from "@/components/badge";
+import { BrandMark } from "@/components/brand-mark";
+import { SignInButton } from "@/components/sign-in-button";
+import { palette } from "@/lib/palette";
+
 export default function HomeScreen() {
   const auth = useConvexAuthReadiness();
   const router = useRouter();
-  const [authOpen, setAuthOpen] = useState(false);
 
   // Player's active tournaments. `undefined` while loading (Convex convention);
   // stays `undefined` until Convex auth is ready, so the token-lag window can
@@ -26,35 +28,24 @@ export default function HomeScreen() {
   if (auth === "pending") {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator />
+        <ActivityIndicator color={palette.mutedForeground} />
       </View>
     );
   }
 
-  // Signed out. Convex also treats Clerk sessions with pending tasks (e.g.
-  // MFA) as signed out; AuthView completes those tasks too, so this branch
-  // is the path back to a working session rather than a dead end.
+  // Signed out, or a Clerk session with pending tasks, which Convex treats
+  // the same way (see SignInButton).
   if (auth !== "ready") {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.signedOut}>
+          <BrandMark size={72} />
           <Text style={styles.brand}>Paper Pairings</Text>
           <Text style={styles.tagline}>
             Sign in to follow your matches and standings live.
           </Text>
-          <Pressable style={styles.button} onPress={() => setAuthOpen(true)}>
-            <Text style={styles.buttonText}>Sign in</Text>
-          </Pressable>
+          <SignInButton />
         </View>
-
-        <Modal
-          visible={authOpen}
-          presentationStyle="pageSheet"
-          animationType="slide"
-          onRequestClose={() => setAuthOpen(false)}
-        >
-          <AuthView onDismiss={() => setAuthOpen(false)} />
-        </Modal>
       </SafeAreaView>
     );
   }
@@ -62,6 +53,7 @@ export default function HomeScreen() {
   return (
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
       <View style={styles.header}>
+        <BrandMark size={36} />
         <View style={styles.headerText}>
           <Text style={styles.greeting}>Your tournaments</Text>
           <Text style={styles.subtitle}>
@@ -73,7 +65,7 @@ export default function HomeScreen() {
 
       {tournaments === undefined ? (
         <View style={styles.centered}>
-          <ActivityIndicator />
+          <ActivityIndicator color={palette.mutedForeground} />
         </View>
       ) : (
         <FlatList
@@ -90,7 +82,7 @@ export default function HomeScreen() {
           }
           renderItem={({ item }) => (
             <Pressable
-              style={styles.card}
+              style={({ pressed }) => [styles.card, pressed && styles.pressed]}
               onPress={() =>
                 // Routes carry the public code, not the Convex id, so links
                 // are interchangeable with the web app's player pages.
@@ -104,11 +96,11 @@ export default function HomeScreen() {
               {item.organizationName ? (
                 <Text style={styles.cardOrg}>{item.organizationName}</Text>
               ) : null}
-              <Text style={styles.cardStatus}>
+              <Badge tone="outline" style={styles.cardStatus}>
                 {item.tournament.lifecycle === "in_progress"
                   ? "In progress"
                   : "Upcoming"}
-              </Text>
+              </Badge>
             </Pressable>
           )}
         />
@@ -120,13 +112,13 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#171514",
+    backgroundColor: palette.background,
   },
   centered: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#171514",
+    backgroundColor: palette.background,
   },
   signedOut: {
     flex: 1,
@@ -135,26 +127,21 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   brand: {
-    color: "#EDE9E0",
+    color: palette.foreground,
     fontSize: 34,
     fontWeight: "800",
   },
   tagline: {
-    color: "#B8B2A6",
+    color: palette.mutedForeground,
     fontSize: 16,
     marginBottom: 12,
   },
-  button: {
-    backgroundColor: "#5b6bff",
-    borderRadius: 12,
-    paddingVertical: 15,
-    alignItems: "center",
-  },
-  buttonText: { color: "#EDE9E0", fontSize: 16, fontWeight: "600" },
+  pressed: { opacity: 0.8 },
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    gap: 12,
     paddingHorizontal: 20,
     paddingTop: 12,
     paddingBottom: 16,
@@ -163,12 +150,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   greeting: {
-    color: "#EDE9E0",
+    color: palette.foreground,
     fontSize: 24,
     fontWeight: "700",
   },
   subtitle: {
-    color: "#B8B2A6",
+    color: palette.mutedForeground,
     fontSize: 14,
     marginTop: 2,
   },
@@ -178,26 +165,21 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   card: {
-    backgroundColor: "#262321",
+    backgroundColor: palette.card,
     borderRadius: 14,
     padding: 16,
     gap: 4,
   },
   cardTitle: {
-    color: "#EDE9E0",
+    color: palette.foreground,
     fontSize: 17,
     fontWeight: "600",
   },
   cardOrg: {
-    color: "#B8B2A6",
+    color: palette.mutedForeground,
     fontSize: 14,
   },
-  cardStatus: {
-    color: "#7c8cff",
-    fontSize: 13,
-    marginTop: 4,
-    fontWeight: "600",
-  },
+  cardStatus: { marginTop: 6 },
   empty: {
     alignItems: "center",
     paddingTop: 80,
@@ -205,12 +187,12 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   emptyTitle: {
-    color: "#EDE9E0",
+    color: palette.foreground,
     fontSize: 18,
     fontWeight: "600",
   },
   emptyBody: {
-    color: "#B8B2A6",
+    color: palette.mutedForeground,
     fontSize: 14,
     textAlign: "center",
   },
