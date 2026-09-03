@@ -1,5 +1,4 @@
 import { useUser } from "@clerk/expo";
-import { AuthView } from "@clerk/expo/native";
 import {
   describeCurrentMatch,
   describeHeaderBadge,
@@ -17,17 +16,19 @@ import type {
   RoundTimer,
 } from "@paper-pairings/core";
 import { useLocalSearchParams, useNavigation } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import {
   ActivityIndicator,
-  Modal,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+
+import { Badge } from "@/components/badge";
+import { SignInButton } from "@/components/sign-in-button";
+import { palette } from "@/lib/palette";
 
 export default function TournamentScreen() {
   const { code } = useLocalSearchParams<{ code: string }>();
@@ -39,7 +40,6 @@ export default function TournamentScreen() {
     user: user ?? null,
     loading: !isLoaded,
   });
-  const [authOpen, setAuthOpen] = useState(false);
 
   // Update the header title once the event resolves. Done via setOptions
   // (not a <Stack.Screen> rendered inside the route) — rendering a navigator
@@ -60,7 +60,7 @@ export default function TournamentScreen() {
     return (
       <SafeAreaView style={styles.container} edges={["bottom"]}>
         <View style={styles.centered}>
-          <ActivityIndicator />
+          <ActivityIndicator color={palette.mutedForeground} />
         </View>
       </SafeAreaView>
     );
@@ -76,9 +76,7 @@ export default function TournamentScreen() {
     );
   }
 
-  // Signed out (a deep link can land here without a session). Note Convex
-  // also treats Clerk sessions with pending tasks (e.g. MFA) as signed out;
-  // AuthView completes those tasks too.
+  // Signed out (a deep link can land here without a session).
   if (access.state === "signedOut") {
     return (
       <SafeAreaView style={styles.container} edges={["bottom"]}>
@@ -87,19 +85,8 @@ export default function TournamentScreen() {
           <Text style={styles.muted}>
             Sign in to see your pairings and standings for this tournament.
           </Text>
-          <Pressable style={styles.button} onPress={() => setAuthOpen(true)}>
-            <Text style={styles.buttonText}>Sign in</Text>
-          </Pressable>
+          <SignInButton style={styles.signInButton} />
         </View>
-
-        <Modal
-          visible={authOpen}
-          presentationStyle="pageSheet"
-          animationType="slide"
-          onRequestClose={() => setAuthOpen(false)}
-        >
-          <AuthView onDismiss={() => setAuthOpen(false)} />
-        </Modal>
       </SafeAreaView>
     );
   }
@@ -132,7 +119,7 @@ function TournamentContent({ event }: { event: PlayerTournamentEvent }) {
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Current round</Text>
-          {badge ? <Text style={styles.headerBadge}>{badge.label}</Text> : null}
+          {badge ? <Badge tone={badge.tone}>{badge.label}</Badge> : null}
         </View>
         <RoundCountdown timer={event.tournament.roundTimer} />
         <CurrentMatch current={current} />
@@ -208,7 +195,9 @@ function DescriptionCard({
         <View style={styles.resultRow}>
           <Text style={styles.scoreline}>{description.scoreline}</Text>
           {description.badge ? (
-            <Text style={styles.resultBadge}>{description.badge.label}</Text>
+            <Badge tone={description.badge.tone}>
+              {description.badge.label}
+            </Badge>
           ) : null}
         </View>
       ) : null}
@@ -259,7 +248,7 @@ function Standings({
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#171514" },
+  container: { flex: 1, backgroundColor: palette.background },
   content: { padding: 20, gap: 12 },
   centered: { flex: 1, alignItems: "center", justifyContent: "center" },
   signedOut: {
@@ -268,42 +257,47 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     gap: 12,
   },
-  signedOutTitle: { color: "#EDE9E0", fontSize: 22, fontWeight: "700" },
-  button: {
-    backgroundColor: "#5b6bff",
-    borderRadius: 12,
-    paddingVertical: 15,
-    alignItems: "center",
-    marginTop: 12,
+  signedOutTitle: {
+    color: palette.foreground,
+    fontSize: 22,
+    fontWeight: "700",
   },
-  buttonText: { color: "#EDE9E0", fontSize: 16, fontWeight: "600" },
+  signInButton: { marginTop: 12 },
   sectionHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
   sectionTitle: {
-    color: "#B8B2A6",
+    color: palette.mutedForeground,
     fontSize: 13,
     fontWeight: "700",
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
   sectionGap: { marginTop: 12 },
-  headerBadge: { color: "#7c8cff", fontSize: 13, fontWeight: "600" },
-  muted: { color: "#B8B2A6", fontSize: 15 },
-  card: { backgroundColor: "#262321", borderRadius: 14, padding: 16, gap: 6 },
-  cardLabel: { color: "#7c8cff", fontSize: 13, fontWeight: "600" },
-  cardTitle: { color: "#EDE9E0", fontSize: 20, fontWeight: "700" },
-  cardSubtitle: { color: "#B8B2A6", fontSize: 16 },
+  muted: { color: palette.mutedForeground, fontSize: 15 },
+  card: {
+    backgroundColor: palette.card,
+    borderRadius: 14,
+    padding: 16,
+    gap: 6,
+  },
+  // The card eyebrow; web renders it as CardDescription (muted text).
+  cardLabel: {
+    color: palette.mutedForeground,
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  cardTitle: { color: palette.foreground, fontSize: 20, fontWeight: "700" },
+  cardSubtitle: { color: palette.mutedForeground, fontSize: 16 },
   resultRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
   },
-  scoreline: { color: "#EDE9E0", fontSize: 17, fontWeight: "600" },
-  resultBadge: { color: "#B8B2A6", fontSize: 13, fontWeight: "600" },
+  scoreline: { color: palette.foreground, fontSize: 17, fontWeight: "600" },
   row: {
     flexDirection: "row",
     alignItems: "center",
@@ -311,20 +305,24 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   rowMe: {
-    backgroundColor: "#403D39",
+    backgroundColor: palette.secondary,
     borderRadius: 8,
     paddingHorizontal: 8,
     marginHorizontal: -8,
   },
   countdown: {
-    color: "#D4D1CA",
+    color: palette.foreground,
     fontSize: 17,
     fontWeight: "600",
     fontVariant: ["tabular-nums"],
   },
-  countdownOvertime: { color: "#ff6b6b" },
-  rank: { color: "#B8B2A6", fontSize: 15, width: 28 },
-  name: { color: "#EDE9E0", fontSize: 15, flex: 1 },
-  playoffStatus: { color: "#B8B2A6", fontSize: 12 },
-  record: { color: "#D4D1CA", fontSize: 15, fontVariant: ["tabular-nums"] },
+  countdownOvertime: { color: palette.destructive },
+  rank: { color: palette.mutedForeground, fontSize: 15, width: 28 },
+  name: { color: palette.foreground, fontSize: 15, flex: 1 },
+  playoffStatus: { color: palette.mutedForeground, fontSize: 12 },
+  record: {
+    color: palette.foreground,
+    fontSize: 15,
+    fontVariant: ["tabular-nums"],
+  },
 });
