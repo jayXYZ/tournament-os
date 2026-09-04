@@ -10,7 +10,11 @@ import {
   cutoffPartitionForNextPhase,
   cutoffQualifiers,
 } from "./cutoffs";
-import { filterUnpaired, unpairedActiveRegistrations } from "./manualPairing";
+import {
+  filterUnpaired,
+  manualPairingApplies,
+  unpairedActiveRegistrations,
+} from "./manualPairing";
 import { type PairingsNextStep, pairingsNextStep } from "./nextStep";
 import {
   buildSingleEliminationPairings,
@@ -133,10 +137,11 @@ export type ProgressionFacts = {
   unreportedMatchCount: number;
   currentRoundHasRecordedResult: boolean;
   // Active players holding no pairing in the current round. Computed only
-  // while the round's pairings are still organizer-only — the window where
-  // breaking a pairing (model/manualPairing.ts) can leave a player without
-  // an opponent — and null everywhere else. Publishing pairings and
-  // completing the round both require it to be zero.
+  // while a Swiss round's pairings are still organizer-only — the window
+  // where breaking a pairing (model/manualPairing.ts) can leave a player
+  // without an opponent — and null everywhere else, bracket rounds
+  // included. Publishing pairings and completing the round both require it
+  // to be zero.
   unpairedActiveCount: number | null;
   // Loaded only in the states whose rules read the roster: pre-start, and
   // between rounds when a later phase could start.
@@ -286,20 +291,26 @@ export async function analyzeProgression(
     : [];
   const nextUpcomingPhase = laterUpcomingPhases.at(0) ?? null;
 
-  // The roster is also loaded while the current round's pairings are still
+  // The roster is also loaded while a Swiss round's pairings are still
   // organizer-only: that is the only window where an active player can be
-  // unpaired (breaking a pairing requires it, and publishing closes it), so
-  // it is the only state whose rules need the unpaired count.
-  const pairingsUnpublished =
-    round?.roundStatus === "in_progress" && !isPairingsVisibleToPlayers(round);
+  // left unpaired by a pairing edit (breaking a pairing requires it, and
+  // publishing closes it), so it is the only state whose rules need the
+  // unpaired count. Bracket rounds never enter it — their pairings are not
+  // editable, and a player reinstated into one is walked over rather than
+  // re-paired (model/manualPairing.ts manualPairingApplies).
+  const pairingsEditable =
+    round?.roundStatus === "in_progress" &&
+    !isPairingsVisibleToPlayers(round) &&
+    phase !== null &&
+    manualPairingApplies(phase);
   const registrations =
     tournament.lifecycle === "registration" ||
-    pairingsUnpublished ||
+    pairingsEditable ||
     (round?.roundStatus === "completed" && nextUpcomingPhase !== null)
       ? await activeRegistrations(ctx, tournament._id)
       : null;
   const unpairedActiveCount =
-    pairingsUnpublished && registrations !== null
+    pairingsEditable && registrations !== null
       ? filterUnpaired(registrations, matchesWithPlayers ?? []).length
       : null;
 
@@ -674,15 +685,20 @@ export async function publishPairings(
     return round._id;
   }
   // Publishing is what makes the pairings the round's record for players, so
-  // every active player must hold a pairing — an opponent or a bye. Only a
-  // broken pairing (or a mid-round reinstatement) can leave one without.
-  const unpaired = await unpairedActiveRegistrations(
-    ctx,
-    round.tournamentId,
-    round._id,
-  );
-  if (unpaired.length > 0) {
-    throw new Error(ALL_PLAYERS_MUST_BE_PAIRED);
+  // in an editable (Swiss) round every active player must hold a pairing —
+  // an opponent or a bye. Only a broken pairing (or a mid-round
+  // reinstatement) can leave one without. A bracket round is exempt: its
+  // pairings cannot be edited, so a player reinstated into it has no way
+  // back in and is walked over instead (model/manualPairing.ts).
+  if (manualPairingApplies(phase)) {
+    const unpaired = await unpairedActiveRegistrations(
+      ctx,
+      round.tournamentId,
+      round._id,
+    );
+    if (unpaired.length > 0) {
+      throw new Error(ALL_PLAYERS_MUST_BE_PAIRED);
+    }
   }
   const now = Date.now();
   await ctx.db.patch(round._id, {

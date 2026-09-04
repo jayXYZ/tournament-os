@@ -56,10 +56,21 @@ export async function requireEditablePairings(
   ) {
     throw new Error(PAIRINGS_EDITABLE_ONLY_IN_ACTIVE_ROUND);
   }
-  if (phase.phaseType !== SWISS_FORMAT) {
+  if (!manualPairingApplies(phase)) {
     throw new Error(BRACKET_PAIRINGS_NOT_EDITABLE);
   }
   return phase;
+}
+
+// Whether a phase's pairings are organizer-editable at all: only Swiss
+// pairings are. The same predicate scopes the all-players-paired publish
+// gate (model/progression.ts): the gate exists to catch a pairing left
+// broken, and a bracket round — where nothing can be broken — must not be
+// held by it. Otherwise a player reinstated into an unpublished bracket
+// round could never be re-paired and the round could never be published;
+// the walkover machinery covers them instead (CONTEXT.md "Bracket").
+export function manualPairingApplies(phase: Doc<"tournamentPhases">) {
+  return phase.phaseType === SWISS_FORMAT;
 }
 
 // Deletes one pairing — match, pairing rows, and result revisions — freeing

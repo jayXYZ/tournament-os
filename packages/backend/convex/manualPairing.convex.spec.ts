@@ -10,7 +10,12 @@ import { expect, test } from "vitest";
 
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { organizerIdentity, seedTournamentWithPlayers } from "./specHelpers";
+import {
+  organizerIdentity,
+  playOutCurrentRound,
+  playerIdentity,
+  seedTournamentWithPlayers,
+} from "./specHelpers";
 import { createConvexTest } from "./specHelpers.runtime";
 
 type Test = ReturnType<typeof createConvexTest>;
@@ -386,4 +391,116 @@ test("bracket pairings cannot be edited", async () => {
       matchId: pairing.match._id,
     }),
   ).rejects.toThrow("Bracket pairings are set by seeding");
+});
+
+test("pairing edits and the unpaired picker are organizer-only", async () => {
+  const t = createConvexTest();
+  const { organizer, roundId } = await seedUnpublishedRoundOne(t);
+
+  const [broken] = await pairings(organizer, roundId);
+  await organizer.mutation(api.tournaments.rounds.breakPairing, {
+    matchId: broken.match._id,
+  });
+  const [freedOne, freedTwo] = broken.players;
+  const [kept] = await pairings(organizer, roundId);
+
+  // A registered player holds no organization membership, so every edit
+  // refuses at the access check — even with arguments the organizer could
+  // act on — and the picker query is closed to them too.
+  const player = t.withIdentity(playerIdentity(1));
+  await expect(
+    player.query(api.tournaments.rounds.listUnpairedPlayers, { roundId }),
+  ).rejects.toThrow("Unauthorized");
+  await expect(
+    player.mutation(api.tournaments.rounds.pairPlayers, {
+      roundId,
+      playerOneRegistrationId: freedOne.playerId,
+      playerTwoRegistrationId: freedTwo.playerId,
+    }),
+  ).rejects.toThrow("Unauthorized");
+  await expect(
+    player.mutation(api.tournaments.rounds.assignBye, {
+      roundId,
+      registrationId: freedOne.playerId,
+    }),
+  ).rejects.toThrow("Unauthorized");
+  await expect(
+    player.mutation(api.tournaments.rounds.breakPairing, {
+      matchId: kept.match._id,
+    }),
+  ).rejects.toThrow("Unauthorized");
+
+  // Nothing moved: the freed players are still unpaired and the kept
+  // pairing still stands.
+  expect(
+    await organizer.query(api.tournaments.rounds.listUnpairedPlayers, {
+      roundId,
+    }),
+  ).toHaveLength(2);
+  expect(await pairings(organizer, roundId)).toHaveLength(1);
+});
+
+test("a player reinstated into an unpublished bracket round is walked over, not a publish blocker", async () => {
+  const t = createConvexTest();
+  const { tournamentId } = await seedTournamentWithPlayers(t, {
+    name: "Bracket Reinstatement",
+    playerCount: 4,
+    autoPublishPairings: false,
+    phases: [
+      {
+        phaseOrder: 1,
+        phaseType: "single_elimination",
+        phaseRoundMode: "dynamic",
+      },
+    ],
+  });
+  const organizer = t.withIdentity(organizerIdentity);
+  const semifinalId = await organizer.mutation(
+    api.tournaments.rounds.startTournament,
+    { tournamentId },
+  );
+  await organizer.mutation(api.tournaments.rounds.publishPairings, {
+    roundId: semifinalId,
+  });
+  const semifinals = await pairings(organizer, semifinalId);
+  // playOutCurrentRound awards each match to its first-listed player.
+  const departed = semifinals[0].players[0].playerId;
+  await playOutCurrentRound(t, tournamentId);
+
+  // A semifinal winner drops before the final is paired, so their scheduled
+  // opponent takes the final by walkover (ADR 0001).
+  await organizer.mutation(api.tournaments.registrations.dropRegistration, {
+    registrationId: departed,
+  });
+  const finalId = await organizer.mutation(
+    api.tournaments.rounds.generateNextRound,
+    { tournamentId },
+  );
+  const final = await pairings(organizer, finalId);
+  expect(final).toHaveLength(1);
+  expect(final[0].players.some((player) => player.isBye)).toBe(true);
+
+  // Reinstating them while the final is still organizer-only makes them an
+  // active player with no pairing. A bracket round cannot be edited, so the
+  // all-players-paired gate must not hold it: the board stays publishable
+  // and the walkover stands.
+  await organizer.mutation(
+    api.tournaments.registrations.reinstateRegistration,
+    { registrationId: departed },
+  );
+  const board = await organizer.query(api.tournaments.rounds.getPairingsBoard, {
+    tournamentId,
+  });
+  expect(board.nextStep).toEqual({
+    kind: "publishPairings",
+    ready: true,
+    reason: null,
+    roundId: finalId,
+  });
+  await organizer.mutation(api.tournaments.rounds.publishPairings, {
+    roundId: finalId,
+  });
+  await organizer.mutation(api.tournaments.rounds.completeRound, {
+    roundId: finalId,
+  });
 });

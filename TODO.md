@@ -148,7 +148,9 @@ no-shows, and disqualifications without each workflow inventing its own rules.
       freed player against any other unpaired active player or award them a
       bye. Publishing pairings — and completing an unpublished round, which
       publishes them — is blocked while any active player lacks an opponent
-      or a bye. Bracket rounds are excluded (pairings are structural).
+      or a bye. Bracket rounds are excluded from both the edits and the
+      gate (pairings are structural; a player reinstated into an
+      unpublished bracket round is walked over, not re-paired).
 - [x] Expand tournament-engine invariant tests
   - [x] Cover rematch avoidance and unavoidable-rematch behavior with deterministic cases
   - [x] Cover distinct byes, max-capacity Swiss standings, drops, cutoffs, and bracket rewinds
