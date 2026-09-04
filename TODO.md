@@ -141,6 +141,14 @@ no-shows, and disqualifications without each workflow inventing its own rules.
         wins against) for every already-generated round, counting toward the
         player's own match points and GWP but excluded when their percentages
         feed opponents' tiebreakers (see CONTEXT.md "Missed Round")
+- [x] Let organizers break and manually re-pair pairings before they are
+      published to players (`model/manualPairing.ts`): break a generated
+      pairing (deleting automatic bye/concession results with it — the same
+      rule as Rewind — while entered results refuse the break), then pair a
+      freed player against any other unpaired active player or award them a
+      bye. Publishing pairings — and completing an unpublished round, which
+      publishes them — is blocked while any active player lacks an opponent
+      or a bye. Bracket rounds are excluded (pairings are structural).
 - [x] Expand tournament-engine invariant tests
   - [x] Cover rematch avoidance and unavoidable-rematch behavior with deterministic cases
   - [x] Cover distinct byes, max-capacity Swiss standings, drops, cutoffs, and bracket rewinds

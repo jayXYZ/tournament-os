@@ -42,10 +42,14 @@ export type TournamentRoundNavigationPhase = {
     | 'phaseOrder'
     | 'phaseStatus'
     | 'phaseTotalRounds'
+    | 'phaseType'
     | 'playerMeetingStatus'
   >
   rounds: Array<
-    Pick<Doc<'tournamentRounds'>, '_id' | 'roundNumber' | 'roundStatus'>
+    Pick<
+      Doc<'tournamentRounds'>,
+      '_id' | 'pairingsPublishedAt' | 'roundNumber' | 'roundStatus'
+    >
   >
 }
 
