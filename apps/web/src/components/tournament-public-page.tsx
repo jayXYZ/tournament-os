@@ -73,6 +73,12 @@ type ConventionSummary = NonNullable<
   >['convention']
 >
 
+// Why a badge-gated child event refuses the viewer's self-serve entry
+// (model/conventions.ts resolveChildEventAdmission): no confirmed badge, or
+// a pass that does not admit the event's day. Null when nothing stands in
+// the way.
+type BadgeGate = 'missing' | 'wrong_day' | null
+
 export function TournamentPublicPageContent({
   publicCode,
   inviteCode,
@@ -120,6 +126,17 @@ function TournamentDetails({
   inviteCode?: string
 }) {
   const spotsLeft = Math.max(tournament.playerCapacity - registeredCount, 0)
+  // Resolved once here so the notice and the registration panel can never
+  // disagree: registerSelf and beginEntryCheckout both reject a gated
+  // viewer, so the panel must not offer a button that reaches them.
+  const badgeGate: BadgeGate =
+    convention === null || !convention.badgeRequiredForChildEvents
+      ? null
+      : convention.myBadgeStatus !== 'confirmed'
+        ? 'missing'
+        : convention.myBadgeCoversThisEvent
+          ? null
+          : 'wrong_day'
 
   return (
     <Card>
@@ -177,12 +194,11 @@ function TournamentDetails({
           ) : null}
         </div>
         <Separator />
-        {convention?.badgeRequiredForChildEvents &&
-        (convention.myBadgeStatus !== 'confirmed' ||
-          !convention.myBadgeCoversThisEvent) &&
+        {convention &&
+        badgeGate !== null &&
         tournament.lifecycle === 'registration' ? (
           <p className="rounded-md border bg-muted/50 px-4 py-3 text-sm text-muted-foreground">
-            {convention.myBadgeStatus !== 'confirmed' ? (
+            {badgeGate === 'missing' ? (
               <>
                 This event requires a confirmed {convention.name} badge —{' '}
                 <Link
@@ -215,6 +231,7 @@ function TournamentDetails({
           spotsLeft={spotsLeft}
           inviteCode={inviteCode}
           badgeCompsThisEvent={convention?.myBadgeCompsThisEvent ?? false}
+          badgeGate={badgeGate}
         />
         {tournament.detailsMarkdown ? (
           <>
@@ -237,6 +254,7 @@ function RegistrationPanel({
   spotsLeft,
   inviteCode,
   badgeCompsThisEvent,
+  badgeGate,
 }: {
   tournament: Tournament
   spotsLeft: number
@@ -245,6 +263,11 @@ function RegistrationPanel({
   // server-computed flag from getPublicTournament, which routes them to free
   // direct registration instead of Checkout.
   badgeCompsThisEvent: boolean
+  // Why the badge gate refuses this viewer (see TournamentDetails), or null
+  // when it doesn't. Every button below that reaches registerSelf or the
+  // checkout is withheld while it is set; the notice above the panel says
+  // what to do about it.
+  badgeGate: BadgeGate
 }) {
   const { user, loading, refreshAuth } = useAppAuth()
   // Held at `undefined` until Convex auth settles (see useMyRegistration), so
@@ -297,6 +320,13 @@ function RegistrationPanel({
     <p className="text-sm text-muted-foreground">
       The event has started, so registration changes are locked.
     </p>
+  )
+  const badgeGateButton = (
+    <Button type="button" variant="outline" disabled className="w-fit">
+      {badgeGate === 'wrong_day'
+        ? 'Your badge does not cover this date'
+        : 'Convention badge required'}
+    </Button>
   )
   const spotsLeftNote = (
     <p className="text-sm text-muted-foreground">
@@ -495,16 +525,20 @@ function RegistrationPanel({
               : 'Registration pending organizer approval'}
         </Badge>
         {paymentDue && tournament.lifecycle === 'registration' ? (
-          <Button
-            type="button"
-            disabled={pending}
-            onClick={() => void startCheckout()}
-          >
-            {pending ? <Spinner /> : null}
-            {totalPrice
-              ? `Complete payment — ${totalPrice}`
-              : 'Complete payment'}
-          </Button>
+          badgeGate !== null ? (
+            badgeGateButton
+          ) : (
+            <Button
+              type="button"
+              disabled={pending}
+              onClick={() => void startCheckout()}
+            >
+              {pending ? <Spinner /> : null}
+              {totalPrice
+                ? `Complete payment — ${totalPrice}`
+                : 'Complete payment'}
+            </Button>
+          )
         ) : null}
         {tournament.lifecycle === 'registration'
           ? cancelButton(
@@ -531,6 +565,18 @@ function RegistrationPanel({
       <Button type="button" variant="outline" disabled className="w-fit">
         Tournament is full
       </Button>
+    )
+  }
+
+  // A badge-gated child event: the server refuses both direct registration
+  // and the checkout without a confirmed, date-covering badge, so offer
+  // neither. The notice above links to the convention page.
+  if (badgeGate !== null) {
+    return (
+      <div className="flex flex-wrap items-center gap-3">
+        {badgeGateButton}
+        {spotsLeftNote}
+      </div>
     )
   }
 

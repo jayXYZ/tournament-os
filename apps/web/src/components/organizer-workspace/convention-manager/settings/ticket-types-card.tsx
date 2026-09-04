@@ -65,6 +65,12 @@ export function TicketTypesCard({
   convention: Doc<'conventions'>
 }) {
   const locked = isConventionLocked(convention)
+  // New types are only mintable before the convention starts
+  // (createTicketType, ADR 0004); editing existing ones — sale windows
+  // included — stays open for the whole live run, so only the add button
+  // goes away. The server stays authoritative; this keeps the card from
+  // offering a dialog whose submit it would refuse.
+  const started = Date.now() >= convention.startDate
   const ticketTypes = useQuery(
     api.conventions.ticketTypes.listTicketTypesForOrganizer,
     { conventionId: convention._id },
@@ -162,7 +168,12 @@ export function TicketTypesCard({
             </div>
           ))
         )}
-        {locked ? null : (
+        {locked ? null : started ? (
+          <p className="text-sm text-muted-foreground">
+            New ticket types can’t be added once the convention has started.
+            Existing tickets stay editable.
+          </p>
+        ) : (
           <div>
             <Button
               type="button"
