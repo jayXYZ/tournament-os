@@ -96,8 +96,17 @@ test("checkout sessions follow the separate-charges shape", () => {
 });
 
 test("registerSelf routes direct paid registration to checkout", () => {
-  expect(registrationsSource).toMatch(/isPaidTournament\(tournament\)/);
+  expect(registrationsSource).toMatch(/isPaidEvent\(tournament\)/);
   expect(registrationsSource).toMatch(/register through the payment checkout/);
+});
+
+test("self-serve child-event entry points enforce the badge gate", () => {
+  const checkoutSource = readFileSync(
+    new URL("./payments/checkout.ts", import.meta.url),
+    "utf8",
+  );
+  expect(registrationsSource).toMatch(/resolveChildEventAdmission/);
+  expect(checkoutSource).toMatch(/resolveChildEventAdmission/);
 });
 
 const progressionSource = readFileSync(

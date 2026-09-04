@@ -1,53 +1,88 @@
 import { v } from "convex/values";
 
 import { internal } from "../_generated/api";
-import type { Id } from "../_generated/dataModel";
+import type { Doc, Id } from "../_generated/dataModel";
 import {
   action,
   internalAction,
   internalMutation,
   query,
+  type MutationCtx,
 } from "../_generated/server";
-import { logAuditEvent } from "../model/auditLog";
+import { logEventPayoutAudit } from "../model/auditLog";
+import { requireConventionOrganizerAccess } from "../model/conventions";
+import type { MoneyRowOwner } from "../model/paidEventOwner";
+import {
+  moneyRowOwnerArgs,
+  moneyRowOwnerColumns,
+  ownerOrdersQuery,
+  ownerPayoutsQuery,
+  ownerRefundsQuery,
+  parseMoneyRowOwner,
+} from "../model/paidEventOwner";
 import { orderTransferGroup } from "../model/payments";
 import { requirePaymentsPermission } from "../model/stripeAccounts";
+import { conventionHasPaidTicketType } from "../model/ticketTypes";
 import { requireOrganizerAccess } from "../model/tournaments";
 import { getStripeGateway } from "../stripe/client";
 import { requireStripeSecretKey } from "../stripe/config";
 
-// The tournament payout sweep, scheduled when a paid tournament completes:
-// one transfer per paid order (source_transaction = the order's charge,
-// amount = entry fee) minus a greedy deduction of the organizer-absorbed
-// refund fees. Enumeration is a batched mutation continuation; the send
-// action re-checks the live transfers capability before moving money and
-// every transfer carries a per-row idempotency key, so retries never
-// double-pay.
+// The event payout sweep, scheduled when a paid tournament or convention
+// completes: one transfer per paid order (source_transaction = the order's
+// charge, amount = entry fee) minus a greedy deduction of the
+// organizer-absorbed refund fees. Enumeration is a batched mutation
+// continuation; the send action re-checks the live transfers capability
+// before moving money and every transfer carries a per-row idempotency key,
+// so retries never double-pay.
 
 const ENUMERATION_BATCH = 64;
 const SEND_BATCH = 16;
 const MAX_TRANSFER_ATTEMPTS = 5;
 const RETRY_DELAY_MS = 60_000;
-// Refund rows are bounded by orders, which are bounded by registrations and
-// the rate limiter; this bounds the absorbed-fee sum read.
-const MAX_REFUND_ROWS = 4096;
+// Page size for the batched absorbed-fee summation over succeeded refunds.
+// Batched (not a single .take) because a convention admits up to 10,000
+// badges and every one can leave an absorbed-fee refund row; a capped read
+// would silently under-deduct and overpay the organizer.
+const SUMMING_BATCH = 256;
 
-export const startPayoutSweep = internalMutation({
-  args: { tournamentId: v.id("tournaments") },
-  handler: async (ctx, args) => {
-    const tournament = await ctx.db.get(args.tournamentId);
+// The completed paid event a payout belongs to, or null when the sweep has
+// nothing to do (not completed, free, or gone). "Paid" is the tournament's
+// entryFeeCents or, for conventions, any paid ticket type (ADR 0004).
+async function payoutSourceEvent(
+  ctx: MutationCtx,
+  owner: MoneyRowOwner,
+): Promise<Doc<"tournaments"> | Doc<"conventions"> | null> {
+  if (owner.kind === "convention") {
+    const convention = await ctx.db.get(owner.conventionId);
     if (
-      !tournament ||
-      tournament.lifecycle !== "completed" ||
-      (tournament.entryFeeCents ?? 0) <= 0
+      !convention ||
+      convention.lifecycle !== "completed" ||
+      !(await conventionHasPaidTicketType(ctx, convention._id))
     ) {
       return null;
     }
-    const existing = await ctx.db
-      .query("tournamentPayouts")
-      .withIndex("by_tournamentId", (q) =>
-        q.eq("tournamentId", args.tournamentId),
-      )
-      .unique();
+    return convention;
+  }
+  const tournament = await ctx.db.get(owner.tournamentId);
+  if (
+    !tournament ||
+    tournament.lifecycle !== "completed" ||
+    (tournament.entryFeeCents ?? 0) <= 0
+  ) {
+    return null;
+  }
+  return tournament;
+}
+
+export const startPayoutSweep = internalMutation({
+  args: moneyRowOwnerArgs,
+  handler: async (ctx, args) => {
+    const owner = parseMoneyRowOwner(args);
+    const event = await payoutSourceEvent(ctx, owner);
+    if (!event) {
+      return null;
+    }
+    const existing = await ownerPayoutsQuery(ctx, owner).unique();
     if (existing) {
       return null;
     }
@@ -55,14 +90,14 @@ export const startPayoutSweep = internalMutation({
     const account = await ctx.db
       .query("organizationStripeAccounts")
       .withIndex("by_organizationId", (q) =>
-        q.eq("organizationId", tournament.organizationId),
+        q.eq("organizationId", event.organizationId),
       )
       .unique();
     const now = Date.now();
     if (!account) {
-      await ctx.db.insert("tournamentPayouts", {
-        tournamentId: tournament._id,
-        organizationId: tournament.organizationId,
+      await ctx.db.insert("eventPayouts", {
+        ...moneyRowOwnerColumns(owner),
+        organizationId: event.organizationId,
         stripeAccountId: "",
         status: "blocked",
         totalEntryCents: 0,
@@ -77,16 +112,13 @@ export const startPayoutSweep = internalMutation({
 
     // The payout must not race an in-flight refund's amount out from under
     // it; a blocked payout is retried once refunds settle.
-    const pendingRefund = await ctx.db
-      .query("paymentRefunds")
-      .withIndex("by_tournamentId_and_status", (q) =>
-        q.eq("tournamentId", args.tournamentId).eq("status", "pending"),
-      )
-      .first();
-    if (pendingRefund) {
-      await ctx.db.insert("tournamentPayouts", {
-        tournamentId: tournament._id,
-        organizationId: tournament.organizationId,
+    const pendingRefund = await ownerRefundsQuery(ctx, owner, "pending").take(
+      1,
+    );
+    if (pendingRefund.length > 0) {
+      await ctx.db.insert("eventPayouts", {
+        ...moneyRowOwnerColumns(owner),
+        organizationId: event.organizationId,
         stripeAccountId: account.stripeAccountId,
         status: "blocked",
         totalEntryCents: 0,
@@ -99,58 +131,91 @@ export const startPayoutSweep = internalMutation({
       return null;
     }
 
-    const succeededRefunds = await ctx.db
-      .query("paymentRefunds")
-      .withIndex("by_tournamentId_and_status", (q) =>
-        q.eq("tournamentId", args.tournamentId).eq("status", "succeeded"),
-      )
-      .take(MAX_REFUND_ROWS);
-    const absorbedFeeCents = succeededRefunds.reduce(
-      (sum, refund) => sum + refund.absorbedFeeCents,
-      0,
-    );
-
-    const payoutId = await ctx.db.insert("tournamentPayouts", {
-      tournamentId: tournament._id,
-      organizationId: tournament.organizationId,
+    // The absorbed-fee deduction is summed in its own batched stage: the
+    // refund count is bounded only by the badge/entry count, so a one-shot
+    // capped read could truncate the sum and overpay the organizer.
+    const payoutId = await ctx.db.insert("eventPayouts", {
+      ...moneyRowOwnerColumns(owner),
+      organizationId: event.organizationId,
       stripeAccountId: account.stripeAccountId,
-      status: "enumerating",
+      status: "summing",
       totalEntryCents: 0,
-      absorbedFeeCents,
+      absorbedFeeCents: 0,
       netCents: 0,
-      remainingDeductionCents: absorbedFeeCents,
+      remainingDeductionCents: 0,
       updatedAt: now,
     });
     await ctx.scheduler.runAfter(
       0,
-      internal.payments.payouts.enumeratePayoutBatch,
+      internal.payments.payouts.sumAbsorbedFeesBatch,
       { payoutId },
     );
     return null;
   },
 });
 
+// Accumulates the organizer-absorbed refund fees one page at a time onto
+// the payout row (the enumeration cursor is reused between stages; it is
+// cleared when summing hands off). No refund can change the sum underneath
+// the pagination: the sweep starts only after the pending-refund guard
+// passes, and a completed event mints no new refunds.
+export const sumAbsorbedFeesBatch = internalMutation({
+  args: { payoutId: v.id("eventPayouts") },
+  handler: async (ctx, args) => {
+    const payout = await ctx.db.get(args.payoutId);
+    if (!payout || payout.status !== "summing") {
+      return null;
+    }
+    const owner = parseMoneyRowOwner(payout);
+    const pagination = {
+      numItems: SUMMING_BATCH,
+      cursor: payout.enumerationCursor ?? null,
+    };
+    const {
+      page: refunds,
+      isDone,
+      continueCursor,
+    } = await ownerRefundsQuery(ctx, owner, "succeeded").paginate(pagination);
+
+    const absorbedFeeCents =
+      payout.absorbedFeeCents +
+      refunds.reduce((sum, refund) => sum + refund.absorbedFeeCents, 0);
+    await ctx.db.patch(payout._id, {
+      absorbedFeeCents,
+      remainingDeductionCents: absorbedFeeCents,
+      enumerationCursor: isDone ? undefined : continueCursor,
+      status: isDone ? "enumerating" : "summing",
+      updatedAt: Date.now(),
+    });
+    await ctx.scheduler.runAfter(
+      0,
+      isDone
+        ? internal.payments.payouts.enumeratePayoutBatch
+        : internal.payments.payouts.sumAbsorbedFeesBatch,
+      { payoutId: payout._id },
+    );
+    return null;
+  },
+});
+
 export const enumeratePayoutBatch = internalMutation({
-  args: { payoutId: v.id("tournamentPayouts") },
+  args: { payoutId: v.id("eventPayouts") },
   handler: async (ctx, args) => {
     const payout = await ctx.db.get(args.payoutId);
     if (!payout || payout.status !== "enumerating") {
       return null;
     }
 
+    const owner = parseMoneyRowOwner(payout);
+    const pagination = {
+      numItems: ENUMERATION_BATCH,
+      cursor: payout.enumerationCursor ?? null,
+    };
     const {
       page: orders,
       isDone,
       continueCursor,
-    } = await ctx.db
-      .query("paymentOrders")
-      .withIndex("by_tournamentId_and_status", (q) =>
-        q.eq("tournamentId", payout.tournamentId).eq("status", "paid"),
-      )
-      .paginate({
-        numItems: ENUMERATION_BATCH,
-        cursor: payout.enumerationCursor ?? null,
-      });
+    } = await ownerOrdersQuery(ctx, owner, "paid").paginate(pagination);
 
     let { remainingDeductionCents, totalEntryCents } = payout;
     const now = Date.now();
@@ -171,7 +236,7 @@ export const enumeratePayoutBatch = internalMutation({
         // a row without one cannot transfer; skip it visibly.
         await ctx.db.insert("payoutTransfers", {
           payoutId: payout._id,
-          tournamentId: payout.tournamentId,
+          ...moneyRowOwnerColumns(owner),
           orderId: order._id,
           stripeChargeId: "",
           amountCents: 0,
@@ -189,7 +254,7 @@ export const enumeratePayoutBatch = internalMutation({
       totalEntryCents += entryCents;
       await ctx.db.insert("payoutTransfers", {
         payoutId: payout._id,
-        tournamentId: payout.tournamentId,
+        ...moneyRowOwnerColumns(owner),
         orderId: order._id,
         stripeChargeId: order.stripeChargeId,
         amountCents,
@@ -220,7 +285,7 @@ export const enumeratePayoutBatch = internalMutation({
 });
 
 export const beginSendTransfers = internalMutation({
-  args: { payoutId: v.id("tournamentPayouts") },
+  args: { payoutId: v.id("eventPayouts") },
   handler: async (ctx, args) => {
     const payout = await ctx.db.get(args.payoutId);
     if (!payout || payout.status !== "sending") {
@@ -231,7 +296,7 @@ export const beginSendTransfers = internalMutation({
 });
 
 export const takeQueuedTransfers = internalMutation({
-  args: { payoutId: v.id("tournamentPayouts") },
+  args: { payoutId: v.id("eventPayouts") },
   handler: async (ctx, args) => {
     const rows = await ctx.db
       .query("payoutTransfers")
@@ -272,7 +337,7 @@ export const markTransferResult = internalMutation({
 });
 
 export const finalizePayout = internalMutation({
-  args: { payoutId: v.id("tournamentPayouts") },
+  args: { payoutId: v.id("eventPayouts") },
   handler: async (ctx, args) => {
     const payout = await ctx.db.get(args.payoutId);
     if (!payout || payout.status !== "sending") {
@@ -308,9 +373,8 @@ export const finalizePayout = internalMutation({
         error: failed[0]!.lastError ?? "Transfer failed",
         updatedAt: now,
       });
-      await logAuditEvent(ctx, {
-        tournamentId: payout.tournamentId,
-        actorRole: "system",
+      await logEventPayoutAudit(ctx, {
+        owner: payout,
         event: { type: "payout_failed" },
       });
       return null;
@@ -322,9 +386,8 @@ export const finalizePayout = internalMutation({
       updatedAt: now,
     });
     if (payout.netCents > 0) {
-      await logAuditEvent(ctx, {
-        tournamentId: payout.tournamentId,
-        actorRole: "system",
+      await logEventPayoutAudit(ctx, {
+        owner: payout,
         event: { type: "payout_sent", netCents: payout.netCents },
       });
     }
@@ -333,7 +396,7 @@ export const finalizePayout = internalMutation({
 });
 
 export const markPayoutBlocked = internalMutation({
-  args: { payoutId: v.id("tournamentPayouts"), error: v.string() },
+  args: { payoutId: v.id("eventPayouts"), error: v.string() },
   handler: async (ctx, args) => {
     const payout = await ctx.db.get(args.payoutId);
     if (!payout || payout.status !== "sending") {
@@ -349,7 +412,7 @@ export const markPayoutBlocked = internalMutation({
 });
 
 export const sendTransfers = internalAction({
-  args: { payoutId: v.id("tournamentPayouts") },
+  args: { payoutId: v.id("eventPayouts") },
   handler: async (ctx, args) => {
     const begin: { stripeAccountId: string } | null = await ctx.runMutation(
       internal.payments.payouts.beginSendTransfers,
@@ -417,60 +480,77 @@ export const sendTransfers = internalAction({
   },
 });
 
+// Shapes a payout row into the organizer-facing summary.
+function payoutSummary(payout: Doc<"eventPayouts">) {
+  return {
+    status: payout.status,
+    totalEntryCents: payout.totalEntryCents,
+    absorbedFeeCents: payout.absorbedFeeCents,
+    netCents: payout.netCents,
+    error: payout.error ?? null,
+    updatedAt: payout.updatedAt,
+  };
+}
+
 // The organizer-facing payout summary for a completed paid tournament.
 export const getTournamentPayout = query({
   args: { tournamentId: v.id("tournaments") },
   handler: async (ctx, args) => {
-    const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
+    await requireOrganizerAccess(ctx, args.tournamentId);
     const payout = await ctx.db
-      .query("tournamentPayouts")
+      .query("eventPayouts")
       .withIndex("by_tournamentId", (q) =>
         q.eq("tournamentId", args.tournamentId),
       )
       .unique();
-    if (!payout) {
-      return null;
-    }
-    return {
-      status: payout.status,
-      totalEntryCents: payout.totalEntryCents,
-      absorbedFeeCents: payout.absorbedFeeCents,
-      netCents: payout.netCents,
-      error: payout.error ?? null,
-      updatedAt: payout.updatedAt,
-      isPaidTournament: (tournament.entryFeeCents ?? 0) > 0,
-    };
+    return payout ? payoutSummary(payout) : null;
+  },
+});
+
+// The convention twin: the badge-fee payout summary.
+export const getConventionPayout = query({
+  args: { conventionId: v.id("conventions") },
+  handler: async (ctx, args) => {
+    await requireConventionOrganizerAccess(ctx, args.conventionId);
+    const payout = await ctx.db
+      .query("eventPayouts")
+      .withIndex("by_conventionId", (q) =>
+        q.eq("conventionId", args.conventionId),
+      )
+      .unique();
+    return payout ? payoutSummary(payout) : null;
   },
 });
 
 // Owner-triggered retry for a blocked or failed payout: an early block
 // (no transfer rows yet) restarts the sweep from scratch, a send-stage
-// block/failure re-queues the failed rows and resumes sending.
+// block/failure re-queues the failed rows and resumes sending. Takes
+// exactly one of the owner pair.
 export const retryPayout = action({
-  args: { tournamentId: v.id("tournaments") },
+  args: moneyRowOwnerArgs,
   handler: async (ctx, args): Promise<null> => {
     await (ctx.runMutation(internal.payments.payouts.beginPayoutRetry, {
       tournamentId: args.tournamentId,
+      conventionId: args.conventionId,
     }) satisfies Promise<null>);
     return null;
   },
 });
 
 export const beginPayoutRetry = internalMutation({
-  args: { tournamentId: v.id("tournaments") },
+  args: moneyRowOwnerArgs,
   handler: async (ctx, args) => {
-    const tournament = await ctx.db.get(args.tournamentId);
-    if (!tournament) {
-      throw new Error("Tournament not found");
+    const owner = parseMoneyRowOwner(args);
+    const event =
+      owner.kind === "convention"
+        ? await ctx.db.get(owner.conventionId)
+        : await ctx.db.get(owner.tournamentId);
+    if (!event) {
+      throw new Error("Event not found");
     }
-    await requirePaymentsPermission(ctx, tournament.organizationId);
+    await requirePaymentsPermission(ctx, event.organizationId);
 
-    const payout = await ctx.db
-      .query("tournamentPayouts")
-      .withIndex("by_tournamentId", (q) =>
-        q.eq("tournamentId", args.tournamentId),
-      )
-      .unique();
+    const payout = await ownerPayoutsQuery(ctx, owner).unique();
     if (
       !payout ||
       (payout.status !== "blocked" && payout.status !== "failed")
@@ -490,7 +570,7 @@ export const beginPayoutRetry = internalMutation({
       await ctx.scheduler.runAfter(
         0,
         internal.payments.payouts.startPayoutSweep,
-        { tournamentId: args.tournamentId },
+        moneyRowOwnerColumns(owner),
       );
       return null;
     }

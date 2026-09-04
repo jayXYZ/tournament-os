@@ -438,8 +438,13 @@ export async function nonActiveParticipationStatuses(
   return byRegistrationId;
 }
 
-export function hasCapacityAvailable(tournament: Doc<"tournaments">) {
-  return tournament.confirmedRegistrationCount < tournament.playerCapacity;
+// Structural over tournaments and conventions — both carry the same
+// capacity/counter pair (see the conventions table comment in schema.ts).
+export function hasCapacityAvailable(event: {
+  confirmedRegistrationCount: number;
+  playerCapacity: number;
+}) {
+  return event.confirmedRegistrationCount < event.playerCapacity;
 }
 
 export function requireCapacityAvailable(tournament: Doc<"tournaments">) {
@@ -448,19 +453,21 @@ export function requireCapacityAvailable(tournament: Doc<"tournaments">) {
   }
 }
 
+// Structural like hasCapacityAvailable above: tournaments and conventions
+// keep the same clamped seat counter, so one writer adjusts both.
 export async function adjustConfirmedRegistrationCount(
   ctx: MutationCtx,
-  tournament: Doc<"tournaments">,
+  event: Doc<"tournaments"> | Doc<"conventions">,
   delta: number,
   now = Date.now(),
 ) {
   if (delta === 0) {
     return;
   }
-  await ctx.db.patch(tournament._id, {
+  await ctx.db.patch(event._id, {
     confirmedRegistrationCount: Math.max(
       0,
-      tournament.confirmedRegistrationCount + delta,
+      event.confirmedRegistrationCount + delta,
     ),
     updatedAt: now,
   });

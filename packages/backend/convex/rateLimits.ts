@@ -90,6 +90,18 @@ const limits = {
     period: HOUR,
     capacity: 20,
   },
+  // Conventions are rarer than tournaments but each is a root for badge
+  // sales and child events, so minting them gets its own tournament-sized
+  // budget. Badge register/cancel and badge checkout deliberately share the
+  // registerSelf/cancelRegistration/createCheckout buckets — the abuse case
+  // (per-identity write churn) is identical, and one account churning both
+  // surfaces should drain one budget, not two.
+  createConvention: {
+    kind: "token bucket",
+    rate: 60,
+    period: HOUR,
+    capacity: 20,
+  },
   // Each call inserts up to a tournament-capacity's worth of guest
   // participant and registration rows, so it gets its own budget on top of
   // createTournament's.

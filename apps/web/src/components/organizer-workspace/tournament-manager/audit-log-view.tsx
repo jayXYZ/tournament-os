@@ -22,6 +22,7 @@ import {
   EmptyTitle,
 } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
+import { formatCents } from '@/lib/money'
 
 type AuditEventRow = FunctionReturnType<
   typeof api.tournaments.auditLog.listAuditEvents
@@ -153,7 +154,7 @@ function describeEvent(row: AuditEventRow): string {
     case 'match_conceded':
       return `${displayPlayerName(event.player.playerName)} conceded by dropping: ${formatScoreline(event.result)} ${matchLocation(event)}`
     case 'player_registered':
-      return `${displayPlayerName(event.player.playerName)} registered for the event`
+      return `${displayPlayerName(event.player.playerName)} registered for the event${compedSuffix(event)}`
     case 'registration_requested':
       return `${displayPlayerName(event.player.playerName)} requested to register for the event`
     case 'decklist_submitted':
@@ -165,11 +166,14 @@ function describeEvent(row: AuditEventRow): string {
     case 'registration_approved':
       // previousEntryStatus says which decision the approval was — see the
       // audit event validator.
-      return event.previousEntryStatus === 'waitlisted'
-        ? `Promoted ${displayPlayerName(event.player.playerName)} from the waitlist`
-        : event.previousEntryStatus === 'rejected'
-          ? `Reversed ${displayPlayerName(event.player.playerName)}'s rejection and confirmed their registration`
-          : `Approved ${displayPlayerName(event.player.playerName)}'s registration`
+      return (
+        (event.previousEntryStatus === 'waitlisted'
+          ? `Promoted ${displayPlayerName(event.player.playerName)} from the waitlist`
+          : event.previousEntryStatus === 'rejected'
+            ? `Reversed ${displayPlayerName(event.player.playerName)}'s rejection and confirmed their registration`
+            : `Approved ${displayPlayerName(event.player.playerName)}'s registration`) +
+        compedSuffix(event)
+      )
     case 'registration_rejected':
       return event.previousEntryStatus === 'confirmed'
         ? `Removed ${displayPlayerName(event.player.playerName)} from the event and barred re-entry`
@@ -183,7 +187,7 @@ function describeEvent(row: AuditEventRow): string {
         ? `Dropped ${displayPlayerName(event.player.playerName)} from the event`
         : `${displayPlayerName(event.player.playerName)} dropped from the event`
     case 'player_reinstated':
-      return `Reinstated ${displayPlayerName(event.player.playerName)}`
+      return `Reinstated ${displayPlayerName(event.player.playerName)}${compedSuffix(event)}`
     case 'tournament_published':
       return 'Published the tournament and opened registration'
     case 'player_meeting_started':
@@ -203,19 +207,19 @@ function describeEvent(row: AuditEventRow): string {
     case 'tournament_cancelled':
       return 'Cancelled the tournament'
     case 'payment_completed':
-      return `${displayPlayerName(event.player.playerName)}'s entry payment of ${formatAuditCents(event.totalCents)} completed`
+      return `${displayPlayerName(event.player.playerName)}'s entry payment of ${formatCents(event.totalCents)} completed`
     case 'payment_failed':
       return `${displayPlayerName(event.player.playerName)}'s entry payment failed`
     case 'payment_expired':
       return `${displayPlayerName(event.player.playerName)}'s checkout expired unpaid`
     case 'payment_requested':
-      return `Approved ${displayPlayerName(event.player.playerName)}'s application and requested the ${formatAuditCents(event.totalCents)} entry payment`
+      return `Approved ${displayPlayerName(event.player.playerName)}'s application and requested the ${formatCents(event.totalCents)} entry payment`
     case 'refund_issued':
-      return `Refunded ${formatAuditCents(event.amountCents)} to ${displayPlayerName(event.player.playerName)} (${describeRefundReason(event.reason)}${event.kind === 'entry_only' ? ', entry cost only' : ''})`
+      return `Refunded ${formatCents(event.amountCents)} to ${displayPlayerName(event.player.playerName)} (${describeRefundReason(event.reason)}${event.kind === 'entry_only' ? ', entry cost only' : ''})`
     case 'refund_failed':
-      return `Refund of ${formatAuditCents(event.amountCents)} to ${displayPlayerName(event.player.playerName)} failed — needs attention`
+      return `Refund of ${formatCents(event.amountCents)} to ${displayPlayerName(event.player.playerName)} failed — needs attention`
     case 'payout_sent':
-      return `Paid out ${formatAuditCents(event.netCents)} in entry fees to the organization`
+      return `Paid out ${formatCents(event.netCents)} in entry fees to the organization`
     case 'payout_failed':
       return 'The entry-fee payout failed — needs attention'
     case 'order_disputed':
@@ -228,6 +232,7 @@ function describeRefundReason(
     | 'player_cancel'
     | 'organizer_remove'
     | 'tournament_cancelled'
+    | 'convention_cancelled'
     | 'seat_unavailable',
 ) {
   switch (reason) {
@@ -237,16 +242,19 @@ function describeRefundReason(
       return 'removed by organizer'
     case 'tournament_cancelled':
       return 'tournament cancelled'
+    // Never emitted into a tournament's log (the reason belongs to badge
+    // refunds), but the shared validator admits it, so describe it honestly.
+    case 'convention_cancelled':
+      return 'convention cancelled'
     case 'seat_unavailable':
       return 'no seat available'
   }
 }
 
-function formatAuditCents(cents: number) {
-  return (cents / 100).toLocaleString('en-US', {
-    style: 'currency',
-    currency: 'USD',
-  })
+// The comped-entry marker on admission events: a paid event seated this
+// player free because their convention pass comps it (ADR 0004).
+function compedSuffix(event: { compedByBadge?: boolean }) {
+  return event.compedByBadge ? ' — comped by their convention badge' : ''
 }
 
 function matchLocation(event: {

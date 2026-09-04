@@ -23,6 +23,10 @@ import type {
   Doc,
   Id,
 } from '@tournament-os/backend/convex/_generated/dataModel'
+import {
+  entryStatusBadgeVariant,
+  paymentBadge,
+} from '@/components/organizer-workspace/paid-event/roster-badges'
 import { ConfirmActionDialog } from '@/components/shared/confirm-action-dialog'
 import { LoadMoreButton } from '@/components/shared/load-more-button'
 import { TableEmptyState } from '@/components/shared/table-empty-state'
@@ -72,24 +76,6 @@ type RegistrationRow = {
   paymentStatus: Doc<'paymentOrders'>['status'] | null
 }
 
-const paymentBadge: Record<
-  NonNullable<RegistrationRow['paymentStatus']>,
-  {
-    label: string
-    variant: 'default' | 'secondary' | 'destructive' | 'outline'
-  }
-> = {
-  requires_payment: { label: 'Payment due', variant: 'outline' },
-  awaiting_payment: { label: 'In checkout', variant: 'outline' },
-  paid: { label: 'Paid', variant: 'default' },
-  expired: { label: 'Unpaid', variant: 'secondary' },
-  failed: { label: 'Failed', variant: 'destructive' },
-  canceled: { label: 'Unpaid', variant: 'secondary' },
-  refunded: { label: 'Refunded', variant: 'secondary' },
-  partially_refunded: { label: 'Entry refunded', variant: 'secondary' },
-  disputed: { label: 'Disputed', variant: 'destructive' },
-}
-
 type RegistrationStatus =
   | Doc<'tournamentRegistrations'>['entryStatus']
   | NonNullable<Doc<'tournamentRegistrations'>['participationStatus']>
@@ -101,12 +87,10 @@ const statusBadgeVariant: Record<
   RegistrationStatus,
   'default' | 'secondary' | 'destructive' | 'outline'
 > = {
+  // The entry statuses come from the shared roster map; the participation
+  // statuses below are tournament-only.
+  ...entryStatusBadgeVariant,
   active: 'default',
-  pending: 'outline',
-  waitlisted: 'outline',
-  confirmed: 'default',
-  cancelled: 'secondary',
-  rejected: 'destructive',
   eliminated: 'secondary',
   dropped: 'destructive',
   disqualified: 'destructive',

@@ -94,6 +94,22 @@ export const tournamentLifecycleValidator = v.union(
   v.literal("cancelled"),
 );
 
+// Conventions have no "in_progress" stage (ADR 0004): "registration" spans
+// the whole live run — publish opens it, and the organizer's explicit
+// completeConvention (a convention has no rounds to derive completion from)
+// or cancelConvention ends it. Whether a given ticket type is purchasable
+// inside that span is the type's own sale window
+// (model/ticketTypes.ts isTicketTypeOnSale), which is what makes door sales
+// possible. The "registration" literal deliberately matches the tournament
+// value so the payment engine's structural lifecycle reads
+// (isEntrySeatable, model/paidEvents.ts) serve both entities.
+export const conventionLifecycleValidator = v.union(
+  v.literal("setup"),
+  v.literal("registration"),
+  v.literal("completed"),
+  v.literal("cancelled"),
+);
+
 // Overall admission workflow for an event entry. Only "confirmed" entries
 // occupy capacity and become tournament participants; the remaining states
 // never contribute to standings or public history.
@@ -172,6 +188,29 @@ export const tournamentPhaseCutoffValidator = v.union(
   pointsCutoffValidator,
   v.null(),
 );
+
+// The creation-shape args shared by the standalone create mutation
+// (tournaments/lifecycle.ts createTournamentWithPhases) and the
+// convention-child one (conventions/events.ts createTournamentForConvention)
+// — one list, so a new creation option reaches both paths.
+export const tournamentCreationArgs = {
+  name: v.string(),
+  startDate: v.number(),
+  playerCapacity: v.number(),
+  format: tournamentFormatValidator,
+  decklistRequired: v.optional(v.boolean()),
+  phases: v.array(
+    v.object({
+      phaseOrder: v.number(),
+      phaseType: v.optional(tournamentPhaseTypeValidator),
+      phaseRoundMode: tournamentPhaseRoundModeValidator,
+      phaseTotalRounds: v.optional(v.number()),
+      bestOf: v.optional(tournamentPhaseBestOfValidator),
+      phaseCutoff: v.optional(tournamentPhaseCutoffValidator),
+      playerMeeting: v.optional(v.boolean()),
+    }),
+  ),
+};
 
 // Lifecycle of a phase's player meeting. Absent on the phase = not started;
 // "in_progress" is the only state in which seats are shown to players.
@@ -274,10 +313,13 @@ export const paymentRefundKindValidator = v.union(
 // repeat-drop fee rule; "seat_unavailable" is the automatic refund when a
 // completed payment can no longer seat its player (capacity filled during
 // checkout, or the registration closed meanwhile).
+// "tournament_cancelled"/"convention_cancelled" are the cancel sweep's
+// reason for its owning event kind.
 export const paymentRefundReasonValidator = v.union(
   v.literal("player_cancel"),
   v.literal("organizer_remove"),
   v.literal("tournament_cancelled"),
+  v.literal("convention_cancelled"),
   v.literal("seat_unavailable"),
 );
 
@@ -287,11 +329,14 @@ export const paymentRefundStatusValidator = v.union(
   v.literal("failed"),
 );
 
-// The tournament payout's lifecycle: enumerating (transfer rows still being
-// written by the batched sweep), sending (Stripe transfers in flight),
-// completed, failed (a transfer exhausted its retries), or blocked (the
-// account is not payouts-ready or refunds are still settling — retriable).
-export const tournamentPayoutStatusValidator = v.union(
+// The event payout's lifecycle (one payout per completed paid tournament or
+// convention): summing (the batched absorbed-fee summation over succeeded
+// refunds), enumerating (transfer rows still being written by the batched
+// sweep), sending (Stripe transfers in flight), completed, failed (a
+// transfer exhausted its retries), or blocked (the account is not
+// payouts-ready or refunds are still settling — retriable).
+export const eventPayoutStatusValidator = v.union(
+  v.literal("summing"),
   v.literal("enumerating"),
   v.literal("sending"),
   v.literal("completed"),
@@ -396,6 +441,10 @@ export const tournamentAuditEventValidator = v.union(
   v.object({
     type: v.literal("player_registered"),
     player: auditPlayerRefValidator,
+    // Set when a paid event admitted the player free because their
+    // convention pass comps it (ADR 0004) — the comped-entry audit trail.
+    // Absent on free events and ordinary paid registrations.
+    compedByBadge: v.optional(v.boolean()),
   }),
   v.object({
     // registerSelf under organizer approval: the player filed a "pending"
@@ -435,6 +484,10 @@ export const tournamentAuditEventValidator = v.union(
       v.literal("waitlisted"),
       v.literal("rejected"),
     ),
+    // Set when the approval seated the player free on a paid event because
+    // their convention pass comps it (ADR 0004) — instead of requesting the
+    // entry payment.
+    compedByBadge: v.optional(v.boolean()),
   }),
   v.object({
     type: v.literal("registration_rejected"),
@@ -462,6 +515,10 @@ export const tournamentAuditEventValidator = v.union(
   v.object({
     type: v.literal("player_reinstated"),
     player: auditPlayerRefValidator,
+    // Set when the restore reseated the player free on a paid event because
+    // their convention pass comps it (ADR 0004) — instead of requesting a
+    // new entry payment.
+    compedByBadge: v.optional(v.boolean()),
   }),
   v.object({ type: v.literal("tournament_published") }),
   v.object({
@@ -541,6 +598,88 @@ export const tournamentAuditEventValidator = v.union(
     // order is excluded from the payout while it stands.
     type: v.literal("order_disputed"),
     player: auditPlayerRefValidator,
+  }),
+);
+
+// A badge holder referenced by a convention audit event. Mirrors
+// auditPlayerRefValidator with the convention registration id.
+const conventionAuditPlayerRefValidator = v.object({
+  registrationId: v.id("conventionRegistrations"),
+  playerName: v.union(v.string(), v.null()),
+});
+
+// What happened at the convention level. Deliberately a parallel union to
+// tournamentAuditEventValidator rather than a generalization of it: the two
+// logs share payment/refund/payout shapes but diverge everywhere else, and a
+// shared union would couple every tournament log render to convention-only
+// arms (and vice versa).
+export const conventionAuditEventValidator = v.union(
+  v.object({
+    type: v.literal("badge_registered"),
+    player: conventionAuditPlayerRefValidator,
+  }),
+  v.object({
+    type: v.literal("badge_cancelled"),
+    player: conventionAuditPlayerRefValidator,
+  }),
+  v.object({
+    // Organizer removed a confirmed badge (the convention counterpart of
+    // removing a confirmed player).
+    type: v.literal("badge_removed"),
+    player: conventionAuditPlayerRefValidator,
+  }),
+  v.object({
+    type: v.literal("tournament_attached"),
+    tournamentId: v.id("tournaments"),
+    // Denormalized so the log stays readable after a detach or delete.
+    tournamentName: v.string(),
+  }),
+  v.object({
+    type: v.literal("tournament_detached"),
+    tournamentId: v.id("tournaments"),
+    tournamentName: v.string(),
+  }),
+  v.object({ type: v.literal("convention_published") }),
+  v.object({ type: v.literal("convention_completed") }),
+  v.object({ type: v.literal("convention_cancelled") }),
+  // The payment/refund/payout arms mirror the tournament log's shapes so the
+  // shared payment engine can emit either through one seam
+  // (model/paidEvents.ts).
+  v.object({
+    type: v.literal("payment_completed"),
+    player: conventionAuditPlayerRefValidator,
+    totalCents: v.number(),
+  }),
+  v.object({
+    type: v.literal("payment_failed"),
+    player: conventionAuditPlayerRefValidator,
+  }),
+  v.object({
+    type: v.literal("payment_expired"),
+    player: conventionAuditPlayerRefValidator,
+  }),
+  v.object({
+    type: v.literal("refund_issued"),
+    player: conventionAuditPlayerRefValidator,
+    kind: paymentRefundKindValidator,
+    reason: paymentRefundReasonValidator,
+    amountCents: v.number(),
+  }),
+  v.object({
+    type: v.literal("refund_failed"),
+    player: conventionAuditPlayerRefValidator,
+    amountCents: v.number(),
+  }),
+  v.object({
+    type: v.literal("payout_sent"),
+    netCents: v.number(),
+  }),
+  v.object({
+    type: v.literal("payout_failed"),
+  }),
+  v.object({
+    type: v.literal("order_disputed"),
+    player: conventionAuditPlayerRefValidator,
   }),
 );
 

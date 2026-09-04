@@ -9,11 +9,17 @@
  */
 
 import type * as auth from "../auth.js";
+import type * as conventions_auditLog from "../conventions/auditLog.js";
+import type * as conventions_events from "../conventions/events.js";
+import type * as conventions_lifecycle from "../conventions/lifecycle.js";
+import type * as conventions_registrations from "../conventions/registrations.js";
+import type * as conventions_ticketTypes from "../conventions/ticketTypes.js";
 import type * as http from "../http.js";
 import type * as maintenance from "../maintenance.js";
 import type * as model_access from "../model/access.js";
 import type * as model_auditLog from "../model/auditLog.js";
 import type * as model_batching from "../model/batching.js";
+import type * as model_conventions from "../model/conventions.js";
 import type * as model_cutoffs from "../model/cutoffs.js";
 import type * as model_decklists from "../model/decklists.js";
 import type * as model_deletion from "../model/deletion.js";
@@ -21,6 +27,8 @@ import type * as model_invites from "../model/invites.js";
 import type * as model_matchResults from "../model/matchResults.js";
 import type * as model_nextStep from "../model/nextStep.js";
 import type * as model_pagination from "../model/pagination.js";
+import type * as model_paidEventOwner from "../model/paidEventOwner.js";
+import type * as model_paidEvents from "../model/paidEvents.js";
 import type * as model_pairing from "../model/pairing.js";
 import type * as model_participants from "../model/participants.js";
 import type * as model_participation from "../model/participation.js";
@@ -37,6 +45,7 @@ import type * as model_singleElimination from "../model/singleElimination.js";
 import type * as model_standings from "../model/standings.js";
 import type * as model_stripeAccounts from "../model/stripeAccounts.js";
 import type * as model_testing from "../model/testing.js";
+import type * as model_ticketTypes from "../model/ticketTypes.js";
 import type * as model_tournaments from "../model/tournaments.js";
 import type * as model_users from "../model/users.js";
 import type * as organizations from "../organizations.js";
@@ -50,6 +59,7 @@ import type * as rateLimits from "../rateLimits.js";
 import type * as specHelpers from "../specHelpers.js";
 import type * as stripe_client from "../stripe/client.js";
 import type * as stripe_config from "../stripe/config.js";
+import type * as stripe_errors from "../stripe/errors.js";
 import type * as tournaments_auditLog from "../tournaments/auditLog.js";
 import type * as tournaments_decklists from "../tournaments/decklists.js";
 import type * as tournaments_invites from "../tournaments/invites.js";
@@ -71,11 +81,17 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
+  "conventions/auditLog": typeof conventions_auditLog;
+  "conventions/events": typeof conventions_events;
+  "conventions/lifecycle": typeof conventions_lifecycle;
+  "conventions/registrations": typeof conventions_registrations;
+  "conventions/ticketTypes": typeof conventions_ticketTypes;
   http: typeof http;
   maintenance: typeof maintenance;
   "model/access": typeof model_access;
   "model/auditLog": typeof model_auditLog;
   "model/batching": typeof model_batching;
+  "model/conventions": typeof model_conventions;
   "model/cutoffs": typeof model_cutoffs;
   "model/decklists": typeof model_decklists;
   "model/deletion": typeof model_deletion;
@@ -83,6 +99,8 @@ declare const fullApi: ApiFromModules<{
   "model/matchResults": typeof model_matchResults;
   "model/nextStep": typeof model_nextStep;
   "model/pagination": typeof model_pagination;
+  "model/paidEventOwner": typeof model_paidEventOwner;
+  "model/paidEvents": typeof model_paidEvents;
   "model/pairing": typeof model_pairing;
   "model/participants": typeof model_participants;
   "model/participation": typeof model_participation;
@@ -99,6 +117,7 @@ declare const fullApi: ApiFromModules<{
   "model/standings": typeof model_standings;
   "model/stripeAccounts": typeof model_stripeAccounts;
   "model/testing": typeof model_testing;
+  "model/ticketTypes": typeof model_ticketTypes;
   "model/tournaments": typeof model_tournaments;
   "model/users": typeof model_users;
   organizations: typeof organizations;
@@ -112,6 +131,7 @@ declare const fullApi: ApiFromModules<{
   specHelpers: typeof specHelpers;
   "stripe/client": typeof stripe_client;
   "stripe/config": typeof stripe_config;
+  "stripe/errors": typeof stripe_errors;
   "tournaments/auditLog": typeof tournaments_auditLog;
   "tournaments/decklists": typeof tournaments_decklists;
   "tournaments/invites": typeof tournaments_invites;

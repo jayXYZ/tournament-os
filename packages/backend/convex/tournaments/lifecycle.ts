@@ -15,6 +15,7 @@ import {
 } from "../model/access";
 import { logAuditEvent } from "../model/auditLog";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
+import { badgeChildEventAdmission, badgeForUser } from "../model/conventions";
 import { deleteTournamentOperationalDataBatch } from "../model/deletion";
 import { inviteCodeGrantsAccess } from "../model/invites";
 import {
@@ -24,8 +25,8 @@ import {
 } from "../model/phases";
 import {
   requireEntryFeeEditable,
+  requireEventPaymentsSettled,
   requirePayoutsReadyOrganization,
-  requireTournamentPaymentsSettled,
   requireValidEntryFee,
 } from "../model/payments";
 import { parsePublicCode } from "../model/publicCodes";
@@ -47,6 +48,7 @@ import {
   validStartDate,
 } from "../model/tournaments";
 import {
+  tournamentCreationArgs,
   tournamentFormatValidator,
   tournamentPhaseBestOfValidator,
   tournamentPhaseCutoffValidator,
@@ -187,10 +189,70 @@ export const getPublicTournament = query({
     }
 
     const organization = await ctx.db.get(tournament.organizationId);
+
+    // The owning convention's summary plus the viewer's own badge status,
+    // so the public page can show "Part of {Convention}" and — on a
+    // badge-gated child event — say up front whether registering will be
+    // refused (registerSelf/beginEntryCheckout enforce the gate
+    // authoritatively; this is the honest warning, not the gate). Included
+    // only for viewers who could open the convention page themselves
+    // (getPublicConvention's rule: publicly viewable, organizing team, or a
+    // badge holder) — a private or unpublished parent must not leak its
+    // name and code through a public child event.
+    let convention: {
+      name: string;
+      publicCode: number;
+      badgeRequiredForChildEvents: boolean;
+      myBadgeStatus: Doc<"conventionRegistrations">["entryStatus"] | null;
+      myBadgeCompsThisEvent: boolean;
+      myBadgeCoversThisEvent: boolean;
+    } | null = null;
+    if (tournament.conventionId !== undefined) {
+      const owningConvention = await ctx.db.get(tournament.conventionId);
+      if (owningConvention) {
+        const user = await currentUserOrNull(ctx);
+        const badge = user
+          ? await badgeForUser(ctx, owningConvention._id, user._id)
+          : null;
+        const parentVisible =
+          isPubliclyViewable(owningConvention) ||
+          badge !== null ||
+          (user !== null &&
+            (await getActiveMembership(
+              ctx,
+              owningConvention.organizationId,
+              user._id,
+            )) !== null);
+        if (parentVisible) {
+          // Whether the viewer's confirmed badge comps this event (ADR
+          // 0004), so a paid event's page offers free direct registration
+          // instead of Checkout, and whether its pass admits the event's
+          // day, so a badge-gated page can warn a wrong-day pass holder
+          // before they click Register — registerSelf and beginEntryCheckout
+          // enforce both authoritatively; these only pick the UI.
+          const badgeAdmission = await badgeChildEventAdmission(
+            ctx,
+            tournament,
+            badge,
+          );
+          convention = {
+            name: owningConvention.name,
+            publicCode: owningConvention.publicCode,
+            badgeRequiredForChildEvents:
+              owningConvention.badgeRequiredForChildEvents,
+            myBadgeStatus: badge?.entryStatus ?? null,
+            myBadgeCompsThisEvent: badgeAdmission.compsThisEvent,
+            myBadgeCoversThisEvent: badgeAdmission.coversThisEvent,
+          };
+        }
+      }
+    }
+
     return {
       tournament,
       organizationName: organization?.name ?? null,
       registeredCount: tournament.confirmedRegistrationCount,
+      convention,
     };
   },
 });
@@ -257,23 +319,8 @@ export const createTournament = mutation({
 export const createTournamentWithPhases = mutation({
   args: {
     organizationId: v.id("organizations"),
-    name: v.string(),
-    startDate: v.number(),
-    playerCapacity: v.number(),
-    format: tournamentFormatValidator,
     isTestEvent: v.optional(v.boolean()),
-    decklistRequired: v.optional(v.boolean()),
-    phases: v.array(
-      v.object({
-        phaseOrder: v.number(),
-        phaseType: v.optional(tournamentPhaseTypeValidator),
-        phaseRoundMode: tournamentPhaseRoundModeValidator,
-        phaseTotalRounds: v.optional(v.number()),
-        bestOf: v.optional(tournamentPhaseBestOfValidator),
-        phaseCutoff: v.optional(tournamentPhaseCutoffValidator),
-        playerMeeting: v.optional(v.boolean()),
-      }),
-    ),
+    ...tournamentCreationArgs,
   },
   handler: async (ctx, args): Promise<Id<"tournaments">> => {
     await enforceRateLimit(ctx, "createTournament");
@@ -381,7 +428,7 @@ export const updateTournamentSetup = mutation({
         (args.refundDeadline ?? undefined) !== tournament.refundDeadline) ||
       (clearingFee && tournament.refundDeadline !== undefined);
     if (wantsFeeChange || wantsDeadlineChange) {
-      await requireEntryFeeEditable(ctx, tournament._id);
+      await requireEntryFeeEditable(ctx, tournament);
     }
     if (args.entryFeeCents !== undefined) {
       if (clearingFee) {
@@ -613,7 +660,7 @@ export const cancelTournament = mutation({
       );
       await ctx.scheduler.runAfter(
         0,
-        internal.payments.refunds.cancelTournamentPaymentsSweep,
+        internal.payments.refunds.cancelEventPaymentsSweep,
         { tournamentId: args.tournamentId },
       );
     }
@@ -630,10 +677,13 @@ export const cancelTournament = mutation({
 export const deleteTournament = mutation({
   args: { tournamentId: v.id("tournaments") },
   handler: async (ctx, args) => {
-    await requireOrganizerAccess(ctx, args.tournamentId);
+    const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
     // Hard deletion destroys the payment records, so it is refused while any
     // player money is unsettled (model/payments.ts).
-    await requireTournamentPaymentsSettled(ctx, args.tournamentId);
+    await requireEventPaymentsSettled(ctx, {
+      kind: "tournament",
+      event: tournament,
+    });
     await ctx.db.patch(args.tournamentId, {
       lifecycle: "cancelled",
       visibility: "private",

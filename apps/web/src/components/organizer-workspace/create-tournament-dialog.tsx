@@ -14,6 +14,7 @@ import type {
   TournamentCreationPhaseForm,
   TournamentFormat,
 } from '@tournament-os/shared/tournament-creation-utils'
+import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
 import type { FormEvent } from 'react'
 import type { TournamentBasicsValue } from '@/components/tournaments'
 import { TournamentBasicsFields } from '@/components/tournaments'
@@ -53,10 +54,21 @@ const initialBasics: TournamentBasicsValue = {
   startDateTime: '',
 }
 
-export function CreateTournamentDialog() {
+// With a `conventionId`, the dialog creates the tournament as a child of
+// that convention (api.conventions.events.createTournamentForConvention):
+// the organization comes from the convention, and the test-event flag
+// follows the convention's own, so the checkbox is hidden.
+export function CreateTournamentDialog({
+  conventionId,
+}: {
+  conventionId?: Id<'conventions'>
+}) {
   const { selectedOrganizationId } = useOrganization()
   const createTournament = useMutation(
     api.tournaments.lifecycle.createTournamentWithPhases,
+  )
+  const createForConvention = useMutation(
+    api.conventions.events.createTournamentForConvention,
   )
 
   const [open, setOpen] = useState(false)
@@ -69,7 +81,8 @@ export function CreateTournamentDialog() {
     createDefaultTournamentCreationPhase('phase-1'),
   ])
 
-  const disabled = !selectedOrganizationId || busy
+  const disabled =
+    (conventionId === undefined && !selectedOrganizationId) || busy
 
   function resetForm() {
     setBasics(initialBasics)
@@ -81,21 +94,28 @@ export function CreateTournamentDialog() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!selectedOrganizationId) {
+    if (conventionId === undefined && !selectedOrganizationId) {
       return
     }
 
     await run(async () => {
-      await createTournament({
-        organizationId: selectedOrganizationId,
+      const shared = {
         name: basics.name,
         startDate: new Date(basics.startDateTime).getTime(),
         playerCapacity: Number.parseInt(basics.playerCapacity, 10),
         format,
         decklistRequired,
-        isTestEvent,
         phases: toTournamentCreationPhasePayload(phases),
-      })
+      }
+      if (conventionId !== undefined) {
+        await createForConvention({ conventionId, ...shared })
+      } else {
+        await createTournament({
+          organizationId: selectedOrganizationId!,
+          isTestEvent,
+          ...shared,
+        })
+      }
       resetForm()
       setOpen(false)
       toast.success('Tournament created.')
@@ -105,9 +125,14 @@ export function CreateTournamentDialog() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button type="button" disabled={!selectedOrganizationId}>
+        <Button
+          type="button"
+          disabled={conventionId === undefined && !selectedOrganizationId}
+        >
           <Plus data-icon="inline-start" />
-          Create new tournament
+          {conventionId !== undefined
+            ? 'Create event'
+            : 'Create new tournament'}
         </Button>
       </DialogTrigger>
       <DialogContent className="max-h-[calc(100svh-2rem)] overflow-y-auto sm:max-w-2xl">
@@ -177,22 +202,26 @@ export function CreateTournamentDialog() {
               </FieldContent>
             </Field>
 
-            <Field orientation="horizontal" data-disabled={disabled}>
-              <Checkbox
-                id="tournament-test-event"
-                checked={isTestEvent}
-                onCheckedChange={(checked) => setIsTestEvent(checked === true)}
-                disabled={disabled}
-              />
-              <FieldContent>
-                <FieldLabel htmlFor="tournament-test-event">
-                  Mark as test event
-                </FieldLabel>
-                <FieldDescription>
-                  Use this for practice or setup testing.
-                </FieldDescription>
-              </FieldContent>
-            </Field>
+            {conventionId === undefined ? (
+              <Field orientation="horizontal" data-disabled={disabled}>
+                <Checkbox
+                  id="tournament-test-event"
+                  checked={isTestEvent}
+                  onCheckedChange={(checked) =>
+                    setIsTestEvent(checked === true)
+                  }
+                  disabled={disabled}
+                />
+                <FieldContent>
+                  <FieldLabel htmlFor="tournament-test-event">
+                    Mark as test event
+                  </FieldLabel>
+                  <FieldDescription>
+                    Use this for practice or setup testing.
+                  </FieldDescription>
+                </FieldContent>
+              </Field>
+            ) : null}
 
             <TournamentPhaseEditor
               disabled={disabled}
@@ -200,7 +229,7 @@ export function CreateTournamentDialog() {
               onChange={setPhases}
             />
 
-            {!selectedOrganizationId && (
+            {conventionId === undefined && !selectedOrganizationId && (
               <FieldDescription>
                 Create or select an organization before creating tournaments.
               </FieldDescription>

@@ -189,11 +189,11 @@ async function markCompleted(
 async function payoutDoc(
   t: TestConvex<typeof schema>,
   tournamentId: Id<"tournaments">,
-): Promise<Doc<"tournamentPayouts">> {
+): Promise<Doc<"eventPayouts">> {
   return await t.run(
     async (ctx) =>
       (await ctx.db
-        .query("tournamentPayouts")
+        .query("eventPayouts")
         .withIndex("by_tournamentId", (q) => q.eq("tournamentId", tournamentId))
         .unique())!,
   );
@@ -346,4 +346,100 @@ test("persistent transfer failures exhaust their retries and fail the payout", a
     ).map((row) => row.event.type),
   );
   expect(auditTypes).toContain("payout_failed");
+});
+
+test("the absorbed-fee deduction sums past a single summing page", async () => {
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const tournamentId = await seedPaidTournament(t, organizationId);
+  const orderId = await payAsPlayer(t, tournamentId, 1);
+  await payAsPlayer(t, tournamentId, 2);
+
+  // 300 succeeded absorbed-fee refunds — more than one SUMMING_BATCH page
+  // (256) — so a one-shot capped read would truncate the deduction and
+  // overpay the organizer.
+  await t.run(async (ctx) => {
+    const order = (await ctx.db.get(orderId))!;
+    const now = Date.now();
+    for (let i = 0; i < 300; i++) {
+      await ctx.db.insert("paymentRefunds", {
+        orderId,
+        tournamentId,
+        registrationId: order.registrationId,
+        participantId: order.participantId,
+        kind: "full",
+        reason: "organizer_remove",
+        amountCents: 0,
+        absorbedFeeCents: 1,
+        status: "succeeded",
+        updatedAt: now,
+      });
+    }
+  });
+
+  await markCompleted(t, tournamentId);
+  await t.mutation(internal.payments.payouts.startPayoutSweep, {
+    tournamentId,
+  });
+  await drainScheduler(t);
+
+  const payout = await payoutDoc(t, tournamentId);
+  expect(payout).toMatchObject({
+    status: "completed",
+    totalEntryCents: 4000,
+    absorbedFeeCents: 300,
+    netCents: 3700,
+  });
+  expect(
+    gatewayState.transfers.map((transfer) => transfer.amountCents),
+  ).toEqual([1700, 2000]);
+});
+
+test("payout sweeps and retries reject an owner pair naming both entities", async () => {
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const tournamentId = await seedPaidTournament(t, organizationId);
+  const conventionId = await t.run(async (ctx) => {
+    const membership = await ctx.db
+      .query("organizationMemberships")
+      .withIndex("by_organizationId", (q) =>
+        q.eq("organizationId", organizationId),
+      )
+      .first();
+    return await ctx.db.insert("conventions", {
+      name: "Other Owner",
+      publicCode: 999_001,
+      organizationId,
+      createdBy: membership!.userId,
+      visibility: "public",
+      lifecycle: "registration",
+      startDate: START_DATE,
+      endDate: START_DATE + 86_400_000,
+      playerCapacity: 10,
+      isTestEvent: false,
+      badgeRequiredForChildEvents: false,
+      confirmedRegistrationCount: 0,
+      updatedAt: Date.now(),
+    });
+  });
+
+  // A both-owner call must throw before any write: a payout row carrying
+  // both ids would occupy both owner indexes and suppress the other
+  // event's real payout.
+  await expect(
+    t.mutation(internal.payments.payouts.startPayoutSweep, {
+      tournamentId,
+      conventionId,
+    }),
+  ).rejects.toThrow(/both a tournamentId and a conventionId/);
+  await expect(
+    t.mutation(internal.payments.payouts.beginPayoutRetry, {
+      tournamentId,
+      conventionId,
+    }),
+  ).rejects.toThrow(/both a tournamentId and a conventionId/);
+  const payouts = await t.run(async (ctx) =>
+    ctx.db.query("eventPayouts").take(8),
+  );
+  expect(payouts).toEqual([]);
 });

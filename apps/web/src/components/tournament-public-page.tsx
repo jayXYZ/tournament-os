@@ -5,10 +5,13 @@ import { useAction, useMutation, useQuery } from 'convex/react'
 import { Building2, CalendarDays, LogIn, Swords, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@tournament-os/backend/convex/_generated/api'
+import type { FunctionReturnType } from 'convex/server'
 import type { Doc } from '@tournament-os/backend/convex/_generated/dataModel'
+import { DetailLine } from '@/components/shared/detail-line'
 import { LoadingCard } from '@/components/shared/loading-card'
 import { MarkdownContent } from '@/components/shared/markdown-content'
 import { PageNotFound } from '@/components/shared/page-not-found'
+import { cancelOutcomeNote } from '@/components/shared/payment-return'
 import { RoundTimerIndicator } from '@/components/shared/round-timer-indicator'
 import { SiteShell, SiteShellBackLink } from '@/components/shared/site-shell'
 import {
@@ -30,7 +33,7 @@ import {
 } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { Spinner } from '@/components/ui/spinner'
-import { cn } from '@/lib/utils'
+import { formatCents } from '@/lib/money'
 
 type Tournament = Doc<'tournaments'>
 
@@ -60,6 +63,22 @@ export function TournamentPublicPage({
 // optional invite code (from a /join link's ?invite param) opens a private
 // event's page and rides along on the register call; it is meaningless on an
 // event the viewer can already see, so nothing here branches on it.
+// The owning convention's summary shipped alongside the tournament (see
+// getPublicTournament): enough for the "part of" link and the badge-gate
+// notice without another query. Derived from the server's return type so
+// the two can never drift.
+type ConventionSummary = NonNullable<
+  NonNullable<
+    FunctionReturnType<typeof api.tournaments.lifecycle.getPublicTournament>
+  >['convention']
+>
+
+// Why a badge-gated child event refuses the viewer's self-serve entry
+// (model/conventions.ts resolveChildEventAdmission): no confirmed badge, or
+// a pass that does not admit the event's day. Null when nothing stands in
+// the way.
+type BadgeGate = 'missing' | 'wrong_day' | null
+
 export function TournamentPublicPageContent({
   publicCode,
   inviteCode,
@@ -87,6 +106,7 @@ export function TournamentPublicPageContent({
       tournament={event.tournament}
       organizationName={event.organizationName}
       registeredCount={event.registeredCount}
+      convention={event.convention}
       inviteCode={inviteCode}
     />
   )
@@ -96,14 +116,27 @@ function TournamentDetails({
   tournament,
   organizationName,
   registeredCount,
+  convention,
   inviteCode,
 }: {
   tournament: Tournament
   organizationName: string | null
   registeredCount: number
+  convention: ConventionSummary | null
   inviteCode?: string
 }) {
   const spotsLeft = Math.max(tournament.playerCapacity - registeredCount, 0)
+  // Resolved once here so the notice and the registration panel can never
+  // disagree: registerSelf and beginEntryCheckout both reject a gated
+  // viewer, so the panel must not offer a button that reaches them.
+  const badgeGate: BadgeGate =
+    convention === null || !convention.badgeRequiredForChildEvents
+      ? null
+      : convention.myBadgeStatus !== 'confirmed'
+        ? 'missing'
+        : convention.myBadgeCoversThisEvent
+          ? null
+          : 'wrong_day'
 
   return (
     <Card>
@@ -120,6 +153,18 @@ function TournamentDetails({
               ? 'Private event'
               : 'Public event'}
           {organizationName ? ` hosted by ${organizationName}` : ''}
+          {convention ? (
+            <>
+              {' · part of '}
+              <Link
+                to="/conventions/$conventionId"
+                params={{ conventionId: String(convention.publicCode) }}
+                className="underline underline-offset-4"
+              >
+                {convention.name}
+              </Link>
+            </>
+          ) : null}
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4">
@@ -149,10 +194,44 @@ function TournamentDetails({
           ) : null}
         </div>
         <Separator />
+        {convention &&
+        badgeGate !== null &&
+        tournament.lifecycle === 'registration' ? (
+          <p className="rounded-md border bg-muted/50 px-4 py-3 text-sm text-muted-foreground">
+            {badgeGate === 'missing' ? (
+              <>
+                This event requires a confirmed {convention.name} badge —{' '}
+                <Link
+                  to="/conventions/$conventionId"
+                  params={{ conventionId: String(convention.publicCode) }}
+                  className="underline underline-offset-4"
+                >
+                  register for the convention
+                </Link>{' '}
+                first.
+              </>
+            ) : (
+              <>
+                Your {convention.name} badge does not cover this event&apos;s
+                date —{' '}
+                <Link
+                  to="/conventions/$conventionId"
+                  params={{ conventionId: String(convention.publicCode) }}
+                  className="underline underline-offset-4"
+                >
+                  upgrade your badge
+                </Link>{' '}
+                first.
+              </>
+            )}
+          </p>
+        ) : null}
         <RegistrationPanel
           tournament={tournament}
           spotsLeft={spotsLeft}
           inviteCode={inviteCode}
+          badgeCompsThisEvent={convention?.myBadgeCompsThisEvent ?? false}
+          badgeGate={badgeGate}
         />
         {tournament.detailsMarkdown ? (
           <>
@@ -170,39 +249,25 @@ function TournamentDetails({
   )
 }
 
-function DetailLine({
-  icon: Icon,
-  label,
-  value,
-  capitalize = false,
-}: {
-  icon: typeof CalendarDays
-  label: string
-  value: string
-  capitalize?: boolean
-}) {
-  return (
-    <div className="flex items-center gap-2">
-      <Icon
-        className="size-4 shrink-0 text-muted-foreground"
-        aria-hidden="true"
-      />
-      <span className="text-muted-foreground">{label}:</span>
-      <span className={cn('font-medium', capitalize && 'capitalize')}>
-        {value}
-      </span>
-    </div>
-  )
-}
-
 function RegistrationPanel({
   tournament,
   spotsLeft,
   inviteCode,
+  badgeCompsThisEvent,
+  badgeGate,
 }: {
   tournament: Tournament
   spotsLeft: number
   inviteCode?: string
+  // The viewer's convention pass comps this paid event (ADR 0004): the
+  // server-computed flag from getPublicTournament, which routes them to free
+  // direct registration instead of Checkout.
+  badgeCompsThisEvent: boolean
+  // Why the badge gate refuses this viewer (see TournamentDetails), or null
+  // when it doesn't. Every button below that reaches registerSelf or the
+  // checkout is withheld while it is set; the notice above the panel says
+  // what to do about it.
+  badgeGate: BadgeGate
 }) {
   const { user, loading, refreshAuth } = useAppAuth()
   // Held at `undefined` until Convex auth settles (see useMyRegistration), so
@@ -256,6 +321,13 @@ function RegistrationPanel({
       The event has started, so registration changes are locked.
     </p>
   )
+  const badgeGateButton = (
+    <Button type="button" variant="outline" disabled className="w-fit">
+      {badgeGate === 'wrong_day'
+        ? 'Your badge does not cover this date'
+        : 'Convention badge required'}
+    </Button>
+  )
   const spotsLeftNote = (
     <p className="text-sm text-muted-foreground">
       {spotsLeft === 1 ? '1 spot left' : `${spotsLeft} spots left`}
@@ -284,7 +356,10 @@ function RegistrationPanel({
   // release a seat (refund issued, or fees kept under the repeat-drop rule).
   const cancelNote = myOrder?.cancelOutcome ? (
     <p className="w-full text-sm text-muted-foreground">
-      {cancelOutcomeNote(myOrder.cancelOutcome)}
+      {cancelOutcomeNote(
+        myOrder.cancelOutcome,
+        'Cancelling refunds the entry cost only — fees are not refunded on a repeat drop.',
+      )}
     </p>
   ) : null
   const cancelButton = (label: string, successMessage: string) => (
@@ -450,16 +525,20 @@ function RegistrationPanel({
               : 'Registration pending organizer approval'}
         </Badge>
         {paymentDue && tournament.lifecycle === 'registration' ? (
-          <Button
-            type="button"
-            disabled={pending}
-            onClick={() => void startCheckout()}
-          >
-            {pending ? <Spinner /> : null}
-            {totalPrice
-              ? `Complete payment — ${totalPrice}`
-              : 'Complete payment'}
-          </Button>
+          badgeGate !== null ? (
+            badgeGateButton
+          ) : (
+            <Button
+              type="button"
+              disabled={pending}
+              onClick={() => void startCheckout()}
+            >
+              {pending ? <Spinner /> : null}
+              {totalPrice
+                ? `Complete payment — ${totalPrice}`
+                : 'Complete payment'}
+            </Button>
+          )
         ) : null}
         {tournament.lifecycle === 'registration'
           ? cancelButton(
@@ -489,11 +568,29 @@ function RegistrationPanel({
     )
   }
 
+  // A badge-gated child event: the server refuses both direct registration
+  // and the checkout without a confirmed, date-covering badge, so offer
+  // neither. The notice above links to the convention page.
+  if (badgeGate !== null) {
+    return (
+      <div className="flex flex-wrap items-center gap-3">
+        {badgeGateButton}
+        {spotsLeftNote}
+      </div>
+    )
+  }
+
   // Paid direct registration goes through Stripe Checkout: the seat is taken
   // by the payment webhook, never by a mutation from this page. Approval-mode
   // paid events still file the free application here — payment is requested
-  // when the organizer approves.
-  if (isPaid && !tournament.registrationRequiresApproval) {
+  // when the organizer approves. A viewer whose convention pass comps this
+  // event skips Checkout entirely (the server refuses a comped checkout) and
+  // registers directly through the free button below.
+  if (
+    isPaid &&
+    !tournament.registrationRequiresApproval &&
+    !badgeCompsThisEvent
+  ) {
     return (
       <div className="flex flex-wrap items-center gap-3">
         <Button
@@ -543,33 +640,12 @@ function RegistrationPanel({
       </Button>
       <p className="text-sm text-muted-foreground">
         {spotsLeft === 1 ? '1 spot left' : `${spotsLeft} spots left`}
-        {isPaid && feePreview
-          ? ` · ${formatCents(feePreview.totalCents)} due after approval`
-          : null}
+        {isPaid && badgeCompsThisEvent
+          ? ' · included with your convention badge'
+          : isPaid && feePreview
+            ? ` · ${formatCents(feePreview.totalCents)} due after approval`
+            : null}
       </p>
     </div>
   )
-}
-
-function formatCents(cents: number) {
-  return (cents / 100).toLocaleString('en-US', {
-    style: 'currency',
-    currency: 'USD',
-  })
-}
-
-// The server-computed consequence of cancelling right now (see
-// getMyEntryOrder), so this copy can never promise something the cancel
-// mutation won't do.
-function cancelOutcomeNote(
-  outcome: 'full_refund' | 'entry_only_refund' | 'no_refund',
-) {
-  switch (outcome) {
-    case 'full_refund':
-      return 'Cancelling refunds your payment in full.'
-    case 'entry_only_refund':
-      return 'Cancelling refunds the entry cost only — fees are not refunded on a repeat drop.'
-    case 'no_refund':
-      return 'The refund deadline has passed, so cancelling will not refund your payment.'
-  }
 }

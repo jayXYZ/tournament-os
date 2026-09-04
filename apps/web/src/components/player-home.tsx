@@ -4,6 +4,7 @@ import { useQuery } from 'convex/react'
 import { CalendarDays, LogIn, Settings, ShieldCheck, Users } from 'lucide-react'
 import { api } from '@tournament-os/backend/convex/_generated/api'
 
+import { ConventionTable } from '@/components/conventions/convention-table'
 import { SiteShell } from '@/components/shared/site-shell'
 import { TournamentTable } from '@/components/tournaments'
 import { Button } from '@/components/ui/button'
@@ -14,6 +15,7 @@ import { useAppAuth } from '@/lib/use-app-auth'
 export function PlayerHome() {
   const { user, loading, refreshAuth, signOut } = useAppAuth()
   const tournaments = useQuery(api.tournaments.lifecycle.listUpcomingPublic)
+  const conventions = useQuery(api.conventions.lifecycle.listUpcomingPublic)
   const myTournaments = useMyTournaments()
 
   const publicItems = tournaments?.map((tournament) => ({
@@ -21,6 +23,12 @@ export function PlayerHome() {
     organizationName: tournament.organizationName,
     registeredCount: tournament.registeredCount,
     tournament,
+  }))
+  const conventionItems = conventions?.map((convention) => ({
+    key: convention._id,
+    organizationName: convention.organizationName,
+    registeredCount: convention.registeredCount,
+    convention,
   }))
   const registeredItems = myTournaments?.map((entry) => ({
     key: entry.registration._id,
@@ -77,6 +85,13 @@ export function PlayerHome() {
       <Separator />
 
       <TournamentTable variant="public" items={publicItems} />
+
+      {/* Conventions get their own listing; their child events also appear
+          above as standalone tournaments (TODO §4: standalone discovery is
+          preserved). Hidden entirely until any exist. */}
+      {conventionItems !== undefined && conventionItems.length > 0 ? (
+        <ConventionTable variant="public" items={conventionItems} />
+      ) : null}
     </SiteShell>
   )
 }

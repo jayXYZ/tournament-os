@@ -2,13 +2,15 @@ import { v } from "convex/values";
 
 import type { Doc } from "../_generated/dataModel";
 import { internalMutation, type MutationCtx } from "../_generated/server";
-import { auditPlayerRef, logAuditEvent } from "../model/auditLog";
-import { setRegistrationState } from "../model/participation";
-import { isOpenOrderStatus } from "../model/payments";
+import { logEntryPaymentAudit } from "../model/auditLog";
 import {
-  adjustConfirmedRegistrationCount,
-  hasCapacityAvailable,
-} from "../model/registrations";
+  confirmPaidEntry,
+  isEntrySeatable,
+  paidEventForOrder,
+  registrationForOrder,
+  withdrawPendingEntry,
+} from "../model/paidEvents";
+import { isOpenOrderStatus } from "../model/payments";
 import { queueRefund } from "./refunds";
 
 // Stripe webhook fulfillment (invoked from http.ts). Each handler performs
@@ -163,50 +165,29 @@ export const handleCheckoutCompleted = internalMutation({
     });
     const paidOrder = (await ctx.db.get(order._id))!;
 
-    const registration = await ctx.db.get(order.registrationId);
-    const tournament = await ctx.db.get(order.tournamentId);
-    if (!registration || !tournament) {
+    const entry = await registrationForOrder(ctx, order);
+    const owner = await paidEventForOrder(ctx, order);
+    if (!entry || !owner) {
       return null;
     }
 
-    await logAuditEvent(ctx, {
-      tournamentId: tournament._id,
+    await logEntryPaymentAudit(ctx, {
+      owner: order,
+      registration: entry.registration,
       actorRole: "system",
       event: {
         type: "payment_completed",
-        player: auditPlayerRef(registration),
         totalCents: order.amountBreakdown.totalCents,
       },
     });
 
     // The seat decision, made at payment time: the pre-checkout capacity
     // check is not a hold, so two payers can race past it and the loser is
-    // made whole here instead of overfilling the field.
-    const seatable =
-      !lateSuccess &&
-      tournament.lifecycle === "registration" &&
-      registration.entryStatus === "pending" &&
-      hasCapacityAvailable(tournament);
-
-    if (seatable) {
-      await setRegistrationState(ctx, registration._id, {
-        entryStatus: "confirmed",
-        participationStatus: "active",
-        tournamentStartDate: tournament.startDate,
-        updatedAt: now,
-      });
-      await adjustConfirmedRegistrationCount(ctx, tournament, 1, now);
+    // made whole here instead of overfilling the field (a badge's ticket
+    // type selling out counts the same as the whole convention).
+    if (!lateSuccess && (await isEntrySeatable(ctx, owner, entry))) {
       const payer = await ctx.db.get(order.userId);
-      await logAuditEvent(ctx, {
-        tournamentId: tournament._id,
-        ...(payer
-          ? { actor: payer, actorRole: "player" as const }
-          : { actorRole: "system" as const }),
-        event: {
-          type: "player_registered",
-          player: auditPlayerRef(registration),
-        },
-      });
+      await confirmPaidEntry(ctx, { owner, entry, payer, now });
       return null;
     }
 
@@ -214,15 +195,12 @@ export const handleCheckoutCompleted = internalMutation({
     // order was already closed and whatever closed it settled the entry then;
     // a row pending NOW belongs to a newer checkout (a cancel-and-retry, a
     // re-approval) that this stale payment must not withdraw.
-    if (!lateSuccess && registration.entryStatus === "pending") {
-      await setRegistrationState(ctx, registration._id, {
-        entryStatus: "cancelled",
-        updatedAt: now,
-      });
+    if (!lateSuccess) {
+      await withdrawPendingEntry(ctx, entry, now);
     }
     await queueRefund(ctx, {
       order: paidOrder,
-      registration,
+      registration: entry.registration,
       kind: "full",
       reason: "seat_unavailable",
       absorbedFeeCents: 0,
@@ -254,6 +232,7 @@ async function closeUnpaidSession(
   }
 
   const now = Date.now();
+  const entry = await registrationForOrder(ctx, order);
   if (order.purpose === "post_approval") {
     await ctx.db.patch(order._id, {
       status: "requires_payment",
@@ -265,24 +244,17 @@ async function closeUnpaidSession(
       status: args.closedStatus,
       updatedAt: now,
     });
-    const registration = await ctx.db.get(order.registrationId);
-    if (registration?.entryStatus === "pending") {
-      await setRegistrationState(ctx, registration._id, {
-        entryStatus: "cancelled",
-        updatedAt: now,
-      });
+    if (entry) {
+      await withdrawPendingEntry(ctx, entry, now);
     }
   }
 
-  const registration = await ctx.db.get(order.registrationId);
-  if (registration) {
-    await logAuditEvent(ctx, {
-      tournamentId: order.tournamentId,
+  if (entry) {
+    await logEntryPaymentAudit(ctx, {
+      owner: order,
+      registration: entry.registration,
       actorRole: "system",
-      event: {
-        type: args.auditType,
-        player: auditPlayerRef(registration),
-      },
+      event: { type: args.auditType },
     });
   }
 }
@@ -318,15 +290,13 @@ export const handleDisputeCreated = internalMutation({
       status: "disputed",
       updatedAt: Date.now(),
     });
-    const registration = await ctx.db.get(order.registrationId);
-    if (registration) {
-      await logAuditEvent(ctx, {
-        tournamentId: order.tournamentId,
+    const entry = await registrationForOrder(ctx, order);
+    if (entry) {
+      await logEntryPaymentAudit(ctx, {
+        owner: order,
+        registration: entry.registration,
         actorRole: "system",
-        event: {
-          type: "order_disputed",
-          player: auditPlayerRef(registration),
-        },
+        event: { type: "order_disputed" },
       });
     }
     return null;

@@ -540,7 +540,7 @@ test("waitlisting a pending paid application closes its open order and expires t
     await t
       .withIdentity(organizerIdentity)
       .mutation(api.tournaments.registrations.waitlistRegistration, {
-        registrationId: order.registrationId,
+        registrationId: order.registrationId as Id<"tournamentRegistrations">,
       });
 
     const closed = await latestOrder(t, tournamentId);

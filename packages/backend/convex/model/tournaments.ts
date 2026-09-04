@@ -236,13 +236,16 @@ export function requirePreStartEditable(tournament: Doc<"tournaments">) {
   }
 }
 
-// A tournament is publicly viewable (by public code) once it has been
+// An event is publicly viewable (by public code) once it has been
 // published, unless the organizer has made it private. Unlisted events pass:
 // they are link-only but still viewable by anyone who has the code.
-export function isPubliclyViewable(tournament: Doc<"tournaments">) {
-  return (
-    tournament.visibility !== "private" && tournament.lifecycle !== "setup"
-  );
+// Structural over tournaments and conventions — both share the
+// visibility/lifecycle gate.
+export function isPubliclyViewable(event: {
+  visibility: Doc<"tournaments">["visibility"];
+  lifecycle: Doc<"tournaments">["lifecycle"] | Doc<"conventions">["lifecycle"];
+}) {
+  return event.visibility !== "private" && event.lifecycle !== "setup";
 }
 
 export function requireTestTournament(tournament: Doc<"tournaments">) {

@@ -6,11 +6,12 @@ import {
   closeOpenOrdersForRegistration,
   settleOrdersOnEntryExit,
 } from "../payments/refunds";
+import { participantBadgeCompsChildEvent } from "./conventions";
 import { concedeUnfinishedMatchOnDrop } from "./matchResults";
 import { setRegistrationState } from "./participation";
 import {
   ensurePostApprovalOrder,
-  isPaidTournament,
+  isPaidEvent,
   registrationHoldsPaidOrder,
 } from "./payments";
 import {
@@ -198,7 +199,7 @@ export async function cancelEntry(
   // Money follows the entry out: open orders close, and a paid one refunds
   // by whose decision this was (payments/refunds.ts).
   await settleOrdersOnEntryExit(ctx, {
-    tournament,
+    owner: { kind: "tournament", event: tournament },
     registration,
     actor,
     actorRole,
@@ -225,10 +226,21 @@ export async function restoreEntry(
   }
   requireCapacityAvailable(tournament);
   const now = Date.now();
-  if (
-    isPaidTournament(tournament) &&
-    !(await registrationHoldsPaidOrder(ctx, registration._id))
-  ) {
+  const holdsPaidOrder =
+    isPaidEvent(tournament) &&
+    (await registrationHoldsPaidOrder(ctx, registration._id));
+  // A pass that comps this event reseats the entry free (ADR 0004), audited
+  // as a comped entry; an entry whose own paid order still stands is a paid
+  // reseat, not a comp.
+  const compedByBadge =
+    isPaidEvent(tournament) &&
+    !holdsPaidOrder &&
+    (await participantBadgeCompsChildEvent(
+      ctx,
+      tournament,
+      registration.participantId,
+    ));
+  if (isPaidEvent(tournament) && !holdsPaidOrder && !compedByBadge) {
     await setRegistrationState(ctx, registration._id, {
       entryStatus: "pending",
       updatedAt: now,
@@ -269,7 +281,11 @@ export async function restoreEntry(
     tournamentId: tournament._id,
     actor,
     actorRole,
-    event: { type: "player_reinstated", player: auditPlayerRef(registration) },
+    event: {
+      type: "player_reinstated",
+      player: auditPlayerRef(registration),
+      compedByBadge: compedByBadge || undefined,
+    },
   });
 }
 
@@ -298,8 +314,17 @@ export async function approveEntry(
   // (re)enters "pending" — no seat, no participation status — alongside a
   // payable order, and the Checkout webhook confirms the seat when the
   // payment lands (payments/webhooks.ts). Capacity was only a courtesy check
-  // here; it is re-checked when the payment arrives.
-  if (isPaidTournament(tournament)) {
+  // here; it is re-checked when the payment arrives. A participant whose
+  // convention pass comps this event (ADR 0004) skips payment and seats
+  // through the free arm below, audited as a comped entry.
+  const compedByBadge =
+    isPaidEvent(tournament) &&
+    (await participantBadgeCompsChildEvent(
+      ctx,
+      tournament,
+      registration.participantId,
+    ));
+  if (isPaidEvent(tournament) && !compedByBadge) {
     if (registration.entryStatus !== "pending") {
       await setRegistrationState(ctx, registration._id, {
         entryStatus: "pending",
@@ -347,6 +372,7 @@ export async function approveEntry(
       type: "registration_approved",
       player: auditPlayerRef(registration),
       previousEntryStatus: approveEffect,
+      compedByBadge: compedByBadge || undefined,
     },
   });
 }
@@ -397,7 +423,7 @@ export async function rejectEntry(
   // and a paid one refunds in full, the organizer absorbing the fee
   // (payments/refunds.ts) — and it never flags the player.
   await settleOrdersOnEntryExit(ctx, {
-    tournament,
+    owner: { kind: "tournament", event: tournament },
     registration,
     actor,
     actorRole,

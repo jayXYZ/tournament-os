@@ -1,7 +1,14 @@
 import type { Id, TableNames } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { deleteResultRevisionsForMatch } from "./matchResults";
+import type { MoneyRowOwner } from "./paidEventOwner";
+import {
+  ownerOrdersQuery,
+  ownerPayoutsQuery,
+  ownerRefundsQuery,
+} from "./paidEventOwner";
 import { MAX_TOURNAMENT_PHASES } from "./phases";
+import { MAX_TICKET_TYPES_PER_CONVENTION } from "./ticketTypes";
 import { matchPlayers, roundMatches } from "./tournaments";
 
 // Deletion budget per transaction. Each invocation deletes at most this many
@@ -9,44 +16,101 @@ import { matchPlayers, roundMatches } from "./tournaments";
 // limits; callers reschedule until cleared.
 const DELETE_BATCH_SIZE = 512;
 
+// One batch's shared bookkeeping, threaded through every drain helper so the
+// whole pass spends a single budget and reports one completion verdict.
+type DeletionPass = {
+  budget: number;
+  // When a page comes back full there may be rows beyond the cursor, so the
+  // pass cannot prove the event is cleared even if budget remains.
+  sawFullPage: boolean;
+};
+
+function newDeletionPass(): DeletionPass {
+  return { budget: DELETE_BATCH_SIZE, sawFullPage: false };
+}
+
+// Deletes one fetched page of rows under the pass's budget. False means the
+// budget ran out mid-page and the caller should stop the pass.
+async function drainPage(
+  ctx: MutationCtx,
+  pass: DeletionPass,
+  rows: Array<{ _id: Id<TableNames> }>,
+  pageSize: number,
+): Promise<boolean> {
+  pass.sawFullPage ||= rows.length === pageSize;
+  for (const row of rows) {
+    if (pass.budget < 1) {
+      return false;
+    }
+    await ctx.db.delete(row._id);
+    pass.budget -= 1;
+  }
+  return true;
+}
+
+// Deletes the owner's payment history: payouts with their transfers, then
+// refunds and orders. Shared by both event kinds — the rows are only
+// reachable here after the delete guard proved every order terminal and
+// every refund settled (requireEventPaymentsSettled), so they are pure
+// history by now.
+async function drainPaidEventMoneyRows(
+  ctx: MutationCtx,
+  pass: DeletionPass,
+  owner: MoneyRowOwner,
+): Promise<boolean> {
+  const payouts = await ownerPayoutsQuery(ctx, owner).take(4);
+  pass.sawFullPage ||= payouts.length === 4;
+  for (const payout of payouts) {
+    const transfers = await ctx.db
+      .query("payoutTransfers")
+      .withIndex("by_payoutId_and_status", (q) => q.eq("payoutId", payout._id))
+      .take(512);
+    const transfersPageFull = transfers.length === 512;
+    pass.sawFullPage ||= transfersPageFull;
+    for (const transfer of transfers) {
+      if (pass.budget < 1) {
+        return false;
+      }
+      await ctx.db.delete(transfer._id);
+      pass.budget -= 1;
+    }
+    // A full page may hide transfers past its end; the payout must survive
+    // this pass or the next batch could never find them again (they are only
+    // reachable through their parent's id).
+    if (transfersPageFull || pass.budget < 1) {
+      return false;
+    }
+    await ctx.db.delete(payout._id);
+    pass.budget -= 1;
+  }
+
+  const paymentRefunds = await ownerRefundsQuery(ctx, owner).take(512);
+  if (!(await drainPage(ctx, pass, paymentRefunds, 512))) {
+    return false;
+  }
+
+  const paymentOrders = await ownerOrdersQuery(ctx, owner).take(512);
+  return await drainPage(ctx, pass, paymentOrders, 512);
+}
+
 // Deletes up to DELETE_BATCH_SIZE operational documents for a tournament:
 // phases with their rounds, matches, match players, standings, and
-// player-meeting seats, then decklists, registrations, test players (and
-// their synthetic users), audit events, test configs, and the invite link.
-// Returns true once everything is cleared; false means more data remains and
-// the caller should run another batch (e.g. by rescheduling itself via
-// ctx.scheduler.runAfter).
+// player-meeting seats, then decklists, payment history, registrations, test
+// players (and their synthetic users), audit events, test configs, and the
+// invite link. Returns true once everything is cleared; false means more
+// data remains and the caller should run another batch (e.g. by rescheduling
+// itself via ctx.scheduler.runAfter).
 export async function deleteTournamentOperationalDataBatch(
   ctx: MutationCtx,
   tournamentId: Id<"tournaments">,
 ): Promise<boolean> {
-  let budget = DELETE_BATCH_SIZE;
-  // When a page comes back full there may be rows beyond the cursor, so the
-  // pass cannot prove the tournament is cleared even if budget remains.
-  let sawFullPage = false;
-
-  // Deletes one fetched page of rows under the shared budget. False means the
-  // budget ran out mid-page and the caller should stop the pass.
-  const drainPage = async (
-    rows: Array<{ _id: Id<TableNames> }>,
-    pageSize: number,
-  ): Promise<boolean> => {
-    sawFullPage ||= rows.length === pageSize;
-    for (const row of rows) {
-      if (budget < 1) {
-        return false;
-      }
-      await ctx.db.delete(row._id);
-      budget -= 1;
-    }
-    return true;
-  };
+  const pass = newDeletionPass();
 
   const phases = await ctx.db
     .query("tournamentPhases")
     .withIndex("by_tournamentId", (q) => q.eq("tournamentId", tournamentId))
     .take(MAX_TOURNAMENT_PHASES);
-  sawFullPage ||= phases.length === MAX_TOURNAMENT_PHASES;
+  pass.sawFullPage ||= phases.length === MAX_TOURNAMENT_PHASES;
 
   for (const phase of phases) {
     const rounds = await ctx.db
@@ -55,24 +119,24 @@ export async function deleteTournamentOperationalDataBatch(
         q.eq("tournamentPhaseId", phase._id),
       )
       .take(128);
-    sawFullPage ||= rounds.length === 128;
+    pass.sawFullPage ||= rounds.length === 128;
     for (const round of rounds) {
       const matches = await roundMatches(ctx, round._id);
-      sawFullPage ||= matches.length === 512;
+      pass.sawFullPage ||= matches.length === 512;
       for (const match of matches) {
         const players = await matchPlayers(ctx, match._id);
         // Revisions per match are bounded by result overrides — budget a
         // handful alongside the player rows and the match itself.
-        if (budget < players.length + 8) {
+        if (pass.budget < players.length + 8) {
           return false;
         }
         for (const player of players) {
           await ctx.db.delete(player._id);
-          budget -= 1;
+          pass.budget -= 1;
         }
-        budget -= await deleteResultRevisionsForMatch(ctx, match._id);
+        pass.budget -= await deleteResultRevisionsForMatch(ctx, match._id);
         await ctx.db.delete(match._id);
-        budget -= 1;
+        pass.budget -= 1;
       }
       const standings = await ctx.db
         .query("roundStandings")
@@ -80,14 +144,14 @@ export async function deleteTournamentOperationalDataBatch(
           q.eq("tournamentRoundId", round._id),
         )
         .take(512);
-      if (!(await drainPage(standings, 512))) {
+      if (!(await drainPage(ctx, pass, standings, 512))) {
         return false;
       }
-      if (budget < 1) {
+      if (pass.budget < 1) {
         return false;
       }
       await ctx.db.delete(round._id);
-      budget -= 1;
+      pass.budget -= 1;
     }
     const seats = await ctx.db
       .query("playerMeetingSeats")
@@ -95,84 +159,31 @@ export async function deleteTournamentOperationalDataBatch(
         q.eq("tournamentPhaseId", phase._id),
       )
       .take(512);
-    if (!(await drainPage(seats, 512))) {
+    if (!(await drainPage(ctx, pass, seats, 512))) {
       return false;
     }
-    if (budget < 1) {
+    if (pass.budget < 1) {
       return false;
     }
     await ctx.db.delete(phase._id);
-    budget -= 1;
+    pass.budget -= 1;
   }
 
   const decklists = await ctx.db
     .query("tournamentDecklists")
     .withIndex("by_tournamentId", (q) => q.eq("tournamentId", tournamentId))
     .take(512);
-  if (!(await drainPage(decklists, 512))) {
+  if (!(await drainPage(ctx, pass, decklists, 512))) {
     return false;
   }
 
-  // Payment rows are only reachable here after the delete guard proved every
-  // order terminal and every refund settled (deleteTournament); the rows are
-  // pure history by now.
-  const payouts = await ctx.db
-    .query("tournamentPayouts")
-    .withIndex("by_tournamentId", (q) => q.eq("tournamentId", tournamentId))
-    .take(4);
-  sawFullPage ||= payouts.length === 4;
-  for (const payout of payouts) {
-    const transfers = await ctx.db
-      .query("payoutTransfers")
-      .withIndex("by_payoutId_and_status", (q) => q.eq("payoutId", payout._id))
-      .take(512);
-    const transfersPageFull = transfers.length === 512;
-    sawFullPage ||= transfersPageFull;
-    for (const transfer of transfers) {
-      if (budget < 1) {
-        return false;
-      }
-      await ctx.db.delete(transfer._id);
-      budget -= 1;
-    }
-    // A full page may hide transfers past its end; the payout must survive
-    // this pass or the next batch could never find them again (they are only
-    // reachable through their parent's id).
-    if (transfersPageFull || budget < 1) {
-      return false;
-    }
-    await ctx.db.delete(payout._id);
-    budget -= 1;
-  }
-
-  const paymentRefunds = await ctx.db
-    .query("paymentRefunds")
-    .withIndex("by_tournamentId_and_status", (q) =>
-      q.eq("tournamentId", tournamentId),
-    )
-    .take(512);
-  sawFullPage ||= paymentRefunds.length === 512;
-  for (const paymentRefund of paymentRefunds) {
-    if (budget < 1) {
-      return false;
-    }
-    await ctx.db.delete(paymentRefund._id);
-    budget -= 1;
-  }
-
-  const paymentOrders = await ctx.db
-    .query("paymentOrders")
-    .withIndex("by_tournamentId_and_status", (q) =>
-      q.eq("tournamentId", tournamentId),
-    )
-    .take(512);
-  sawFullPage ||= paymentOrders.length === 512;
-  for (const paymentOrder of paymentOrders) {
-    if (budget < 1) {
-      return false;
-    }
-    await ctx.db.delete(paymentOrder._id);
-    budget -= 1;
+  if (
+    !(await drainPaidEventMoneyRows(ctx, pass, {
+      kind: "tournament",
+      tournamentId,
+    }))
+  ) {
+    return false;
   }
 
   const registrations = await ctx.db
@@ -181,7 +192,7 @@ export async function deleteTournamentOperationalDataBatch(
       q.eq("tournamentId", tournamentId),
     )
     .take(512);
-  if (!(await drainPage(registrations, 512))) {
+  if (!(await drainPage(ctx, pass, registrations, 512))) {
     return false;
   }
 
@@ -189,23 +200,23 @@ export async function deleteTournamentOperationalDataBatch(
     .query("testTournamentPlayers")
     .withIndex("by_tournamentId", (q) => q.eq("tournamentId", tournamentId))
     .take(512);
-  sawFullPage ||= testPlayers.length === 512;
+  pass.sawFullPage ||= testPlayers.length === 512;
   for (const testPlayer of testPlayers) {
-    if (budget < 2) {
+    if (pass.budget < 2) {
       return false;
     }
     await ctx.db.delete(testPlayer._id);
     // A dummy player's Guest participant belongs to this tournament alone,
     // so it dies with the test data.
     await ctx.db.delete(testPlayer.participantId);
-    budget -= 2;
+    pass.budget -= 2;
   }
 
   const auditEvents = await ctx.db
     .query("tournamentAuditEvents")
     .withIndex("by_tournamentId", (q) => q.eq("tournamentId", tournamentId))
     .take(512);
-  if (!(await drainPage(auditEvents, 512))) {
+  if (!(await drainPage(ctx, pass, auditEvents, 512))) {
     return false;
   }
 
@@ -213,7 +224,7 @@ export async function deleteTournamentOperationalDataBatch(
     .query("tournamentTestConfigs")
     .withIndex("by_tournamentId", (q) => q.eq("tournamentId", tournamentId))
     .take(16);
-  if (!(await drainPage(configs, 16))) {
+  if (!(await drainPage(ctx, pass, configs, 16))) {
     return false;
   }
 
@@ -223,14 +234,83 @@ export async function deleteTournamentOperationalDataBatch(
     .query("tournamentInvites")
     .withIndex("by_tournamentId", (q) => q.eq("tournamentId", tournamentId))
     .take(16);
-  sawFullPage ||= invites.length === 16;
-  for (const invite of invites) {
-    if (budget < 1) {
-      return false;
-    }
-    await ctx.db.delete(invite._id);
-    budget -= 1;
+  if (!(await drainPage(ctx, pass, invites, 16))) {
+    return false;
   }
 
-  return !sawFullPage;
+  return !pass.sawFullPage;
+}
+
+// Deletes up to DELETE_BATCH_SIZE operational documents for a convention:
+// child events are force-detached (patched, not deleted — deleting a
+// convention preserves the events it hosted, TODO.md §4), then the shared
+// payment-history drain, badges, ticket types, and audit events.
+export async function deleteConventionOperationalDataBatch(
+  ctx: MutationCtx,
+  conventionId: Id<"conventions">,
+): Promise<boolean> {
+  const pass = newDeletionPass();
+
+  // Force-detach children first so no tournament ever points at a deleted
+  // convention. Patches spend the same write budget as deletes.
+  const children = await ctx.db
+    .query("tournaments")
+    .withIndex("by_conventionId_and_startDate", (q) =>
+      q.eq("conventionId", conventionId),
+    )
+    .take(512);
+  pass.sawFullPage ||= children.length === 512;
+  for (const child of children) {
+    if (pass.budget < 1) {
+      return false;
+    }
+    await ctx.db.patch(child._id, {
+      conventionId: undefined,
+      updatedAt: Date.now(),
+    });
+    pass.budget -= 1;
+  }
+
+  if (
+    !(await drainPaidEventMoneyRows(ctx, pass, {
+      kind: "convention",
+      conventionId,
+    }))
+  ) {
+    return false;
+  }
+
+  const badges = await ctx.db
+    .query("conventionRegistrations")
+    .withIndex("by_conventionId_and_participantId", (q) =>
+      q.eq("conventionId", conventionId),
+    )
+    .take(512);
+  if (!(await drainPage(ctx, pass, badges, 512))) {
+    return false;
+  }
+
+  // Ticket types die with their convention (the money and badge rows that
+  // referenced them are already gone by this point in the batch).
+  const ticketTypes = await ctx.db
+    .query("conventionTicketTypes")
+    .withIndex("by_conventionId_and_sortOrder", (q) =>
+      q.eq("conventionId", conventionId),
+    )
+    .take(MAX_TICKET_TYPES_PER_CONVENTION);
+  if (
+    !(await drainPage(ctx, pass, ticketTypes, MAX_TICKET_TYPES_PER_CONVENTION))
+  ) {
+    return false;
+  }
+
+  const auditEvents = await ctx.db
+    .query("conventionAuditEvents")
+    .withIndex("by_conventionId", (q) => q.eq("conventionId", conventionId))
+    .take(512);
+  if (!(await drainPage(ctx, pass, auditEvents, 512))) {
+    return false;
+  }
+
+  return !pass.sawFullPage;
 }
