@@ -6,6 +6,7 @@ import {
   useRouteContext,
 } from '@tanstack/react-router'
 import { ClerkProvider, useAuth } from '@clerk/tanstack-react-start'
+import { shadcn } from '@clerk/themes'
 import { TanStackRouterDevtools } from '@tanstack/react-router-devtools'
 import { createServerFn } from '@tanstack/react-start'
 import * as React from 'react'
@@ -94,7 +95,9 @@ function RootComponent() {
   const context = useRouteContext({ from: Route.id })
 
   return (
-    <ClerkProvider>
+    // The shadcn theme reads this app's CSS tokens, so Clerk's widgets follow
+    // the light/dark toggle along with everything else.
+    <ClerkProvider appearance={{ theme: shadcn }}>
       <ConvexProviderWithClerk client={context.convexClient} useAuth={useAuth}>
         <RootDocument>
           <Outlet />
