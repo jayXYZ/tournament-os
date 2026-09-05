@@ -6,6 +6,7 @@ import { useAppAuth } from '@/lib/use-app-auth'
 
 import { BrandMark } from '@/components/shared/brand-mark'
 import { Button } from '@/components/ui/button'
+import { Spinner } from '@/components/ui/spinner'
 
 export function AdminAuthGate({
   children,
@@ -14,11 +15,13 @@ export function AdminAuthGate({
   children: ReactNode
   description?: string
 }) {
+  // Colors come from the theme tokens only: anything hardcoded here would
+  // cascade into the whole authenticated workspace and ignore the mode toggle.
   return (
-    <main className="min-h-svh bg-stone-100 text-stone-950">
+    <main className="min-h-svh bg-background text-foreground">
       <AuthLoading>
         <div className="flex min-h-svh items-center justify-center">
-          <div className="size-8 animate-spin rounded-full border-2 border-emerald-700 border-t-transparent" />
+          <Spinner className="size-8 text-muted-foreground" />
         </div>
       </AuthLoading>
       <Unauthenticated>
@@ -33,21 +36,18 @@ function SignedOutAdmin({ description }: { description: string }) {
   const { refreshAuth } = useAppAuth()
 
   return (
-    <section className="flex min-h-svh flex-col bg-stone-950 text-stone-50">
-      <header className="flex min-h-16 items-center justify-between border-b border-white/10 px-4 sm:px-6">
+    <section className="flex min-h-svh flex-col">
+      <header className="flex min-h-16 items-center justify-between border-b border-border px-4 sm:px-6">
         <div className="flex items-center gap-3">
-          <BrandMark variant="knockout" className="size-9" />
+          <BrandMark className="size-9" />
           <div>
             <p className="text-sm font-semibold leading-none">Paper Pairings</p>
-            <p className="mt-1 text-xs text-stone-400">Organization controls</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Organization controls
+            </p>
           </div>
         </div>
-        <Button
-          asChild
-          type="button"
-          variant="outline"
-          className="border-white/20 text-stone-50 hover:bg-white/10"
-        >
+        <Button asChild type="button" variant="outline">
           <Link to="/">
             <ArrowLeft className="size-4" />
             Player view
@@ -56,19 +56,21 @@ function SignedOutAdmin({ description }: { description: string }) {
       </header>
 
       <div className="mx-auto flex w-full max-w-xl flex-1 flex-col justify-center px-6 py-16">
-        <p className="text-xs font-medium uppercase tracking-[0.16em] text-emerald-200">
+        <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
           Admin access
         </p>
-        <h1 className="mt-3 text-4xl font-semibold tracking-normal text-white sm:text-5xl">
+        <h1 className="mt-3 text-4xl font-semibold tracking-normal sm:text-5xl">
           Sign in to manage your organization.
         </h1>
-        <p className="mt-5 text-base leading-7 text-stone-300">{description}</p>
+        <p className="mt-5 text-base leading-7 text-muted-foreground">
+          {description}
+        </p>
         <div className="mt-8">
           <Button
             type="button"
             size="lg"
             onClick={() => void refreshAuth({ ensureSignedIn: true })}
-            className="h-11 bg-emerald-300 px-4 text-sm text-stone-950 hover:bg-emerald-200"
+            className="h-11 px-4 text-sm"
           >
             <LogIn className="size-4" />
             Sign in

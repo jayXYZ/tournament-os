@@ -5,6 +5,9 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
+/* Clerk's shadcn theme styles its widgets with this app's CSS tokens and
+   `dark:` utilities; this import lets Tailwind generate those classes. */
+@import '@clerk/themes/shadcn.css';
 
 @plugin '@tailwindcss/typography';
 
