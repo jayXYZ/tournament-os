@@ -10,8 +10,8 @@ export function BrandMark({
   className,
 }: {
   // `auto` renders both variants and lets the `.dark` class pick; pass an
-  // explicit variant on surfaces whose darkness ignores the theme (e.g. the
-  // always-dark admin sign-in screen).
+  // explicit variant only on surfaces whose darkness ignores the theme (e.g.
+  // a fixed-color hero or print layout).
   variant?: BrandMarkVariant
   className?: string
 }) {
