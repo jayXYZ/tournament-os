@@ -18,8 +18,19 @@ import { toast } from 'sonner'
 
 import { api } from '@tournament-os/backend/convex/_generated/api'
 import { mutationErrorMessage } from '@tournament-os/core'
-import { inProgressRound } from './pairings-board'
+import {
+  activeRoundProgress,
+  advanceAction,
+  betweenRoundTarget,
+  phaseSlots,
+} from './progression-timeline'
 import { RoundTimerChip } from './round-timer-chip'
+import type {
+  ActiveRoundProgress,
+  ActiveRoundStep,
+  PhaseBoard,
+  RoundSlot,
+} from './progression-timeline'
 import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
 import type { PairingsBoard } from './pairings-board'
 import {
@@ -37,128 +48,6 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
-
-type PhaseBoard = PairingsBoard['phases'][number]
-type Round = PhaseBoard['rounds'][number]
-type AdvanceStep = Exclude<
-  PairingsBoard['nextStep'],
-  { kind: 'tournamentCompleted' } | { kind: 'tournamentCancelled' }
->
-type ActiveRoundStep =
-  | 'pairingsReady'
-  | 'timerReady'
-  | 'playing'
-  | 'readyToComplete'
-
-type ActiveRoundProgress = {
-  roundId: Id<'tournamentRounds'>
-  step: ActiveRoundStep
-}
-
-type BetweenRoundTarget = {
-  phaseId: Id<'tournamentPhases'>
-  slotIndex: number
-}
-
-// One node on the bar. Beyond the rounds that exist, fixed-length phases show
-// their remaining planned rounds and dynamic phases show a single "?" node,
-// so the bar's full width reflects the tournament's expected shape. A planned
-// round's number is null when it can't be known yet (an earlier dynamic phase
-// hasn't resolved its round count), in which case the node shows "?".
-type RoundSlot =
-  | { kind: 'round'; round: Round }
-  | { kind: 'planned'; roundNumber: number | null }
-  | { kind: 'unknown' }
-
-// Slots come from the server's timeline projection (model/phases.ts
-// phaseTimelines): the engine owns the round-numbering math, this only
-// shapes it into nodes. A null plannedRoundCount is an unresolved dynamic
-// phase — by definition still upcoming or in progress — so it shows the
-// single "?" node.
-function phaseSlots(phaseBoard: PhaseBoard): Array<RoundSlot> {
-  const { rounds, timeline } = phaseBoard
-  const slots: Array<RoundSlot> = rounds.map((round) => ({
-    kind: 'round',
-    round,
-  }))
-
-  if (timeline.plannedRoundCount !== null) {
-    for (
-      let index = rounds.length;
-      index < timeline.plannedRoundCount;
-      index++
-    ) {
-      slots.push({
-        kind: 'planned',
-        roundNumber:
-          timeline.startRoundNumber === null
-            ? null
-            : timeline.startRoundNumber + index,
-      })
-    }
-  } else {
-    slots.push({ kind: 'unknown' })
-  }
-
-  return slots
-}
-
-// The backend's next action is also the most precise description of an active
-// round's lifecycle. Keep that meaning on the node itself: the action button
-// can then move around the dashboard without separating the state from the
-// round it describes.
-function activeRoundProgress(board: PairingsBoard): ActiveRoundProgress | null {
-  const { nextStep } = board
-  if (nextStep.kind === 'publishPairings') {
-    return { roundId: nextStep.roundId, step: 'pairingsReady' }
-  }
-  if (nextStep.kind === 'completeRound') {
-    return {
-      roundId: nextStep.roundId,
-      step: nextStep.ready ? 'readyToComplete' : 'playing',
-    }
-  }
-  if (nextStep.kind !== 'startTimer') {
-    return null
-  }
-
-  const activeRound = inProgressRound(board)
-  return activeRound ? { roundId: activeRound._id, step: 'timerReady' } : null
-}
-
-// Once a completed round is waiting for the next one to be generated, the
-// next planned slot becomes the bar's current step. This works within a phase
-// and across phase boundaries, including dynamic phases whose node is "?".
-function betweenRoundTarget(board: PairingsBoard): BetweenRoundTarget | null {
-  const betweenRounds =
-    board.tournament.lifecycle === 'in_progress' &&
-    board.nextStep.kind === 'generateNextRound'
-  if (!betweenRounds) {
-    return null
-  }
-
-  let lastRoundPhaseIndex = -1
-  for (const [index, phaseBoard] of board.phases.entries()) {
-    if (phaseBoard.rounds.length > 0) {
-      lastRoundPhaseIndex = index
-    }
-  }
-
-  for (
-    let phaseIndex = Math.max(lastRoundPhaseIndex, 0);
-    phaseIndex < board.phases.length;
-    phaseIndex++
-  ) {
-    const phaseBoard = board.phases[phaseIndex]
-    const slots = phaseSlots(phaseBoard)
-    const slotIndex = slots.findIndex((slot) => slot.kind !== 'round')
-    if (slotIndex !== -1) {
-      return { phaseId: phaseBoard.phase._id, slotIndex }
-    }
-  }
-
-  return null
-}
 
 // The timeline destination the organizer is currently viewing. Pairings and
 // standings both fall back to their latest available round when the URL has no
@@ -341,76 +230,36 @@ function AdvanceStepButton({
 
   const tournamentId = board.tournament._id
 
-  // Success copy is shown on the button itself while it is still sized for
-  // the idle label, so keep it shorter than the matching "Hold to" label.
-  function advanceAction(advanceStep: AdvanceStep) {
-    switch (advanceStep.kind) {
+  const action = advanceAction(step)
+  const Icon = { Globe, Users, Swords, Send, TimerIcon, ListOrdered, Trophy }[
+    action.icon
+  ]
+  function runAdvance() {
+    switch (step.kind) {
       case 'publishTournament':
-        return {
-          label: 'Hold to publish and open registration',
-          icon: <Globe />,
-          success: 'Registration opened',
-          run: () => publishTournament({ tournamentId }),
-        }
+        return publishTournament({ tournamentId })
       case 'startPlayerMeeting':
-        return {
-          label: 'Hold to start player meeting',
-          icon: <Users />,
-          success: 'Meeting started',
-          run: () => startPlayerMeeting({ phaseId: advanceStep.phaseId }),
-        }
+        return startPlayerMeeting({ phaseId: step.phaseId })
       case 'startTournament':
-        return {
-          label: 'Hold to generate pairings',
-          icon: <Swords />,
-          success: 'Pairings generated',
-          run: () => startTournament({ tournamentId }),
-        }
+        return startTournament({ tournamentId })
       case 'publishPairings':
-        return {
-          label: 'Hold to publish pairings',
-          icon: <Send />,
-          success: 'Pairings published',
-          run: () => publishPairings({ roundId: advanceStep.roundId }),
-        }
+        return publishPairings({ roundId: step.roundId })
       case 'startTimer':
-        return {
-          label: 'Hold to start round timer',
-          icon: <TimerIcon />,
-          success: 'Timer started',
-          run: () => startTimer({ tournamentId }),
-        }
+        return startTimer({ tournamentId })
       case 'completeRound':
-        return {
-          label: 'Hold to complete round and post standings',
-          icon: <ListOrdered />,
-          success: 'Round completed',
-          run: () => completeRound({ roundId: advanceStep.roundId }),
-        }
+        return completeRound({ roundId: step.roundId })
       case 'generateNextRound':
-        return {
-          label: 'Hold to generate pairings',
-          icon: <Swords />,
-          success: 'Pairings generated',
-          run: () => generateNextRound({ tournamentId }),
-        }
+        return generateNextRound({ tournamentId })
       case 'completeTournament':
-        return {
-          label: 'Hold to complete tournament',
-          icon: <Trophy />,
-          success: 'Tournament completed',
-          run: () => completeTournament({ tournamentId }),
-        }
+        return completeTournament({ tournamentId })
     }
   }
-
-  const action = advanceAction(step)
 
   // The hold button confirms success on its own face; errors still toast.
   // Rethrow so the button skips its success state on failure.
   async function handleAdvance() {
     try {
-      await action.run()
+      await runAdvance()
       // Starting the timer doesn't change which round is current, so keep
       // whatever round the organizer is viewing instead of resetting it.
       if (step.kind !== 'startTimer') {
@@ -437,7 +286,7 @@ function AdvanceStepButton({
         onConfirm={handleAdvance}
         successLabel={action.success}
       >
-        {action.icon}
+        <Icon />
         {step.ready ? action.label : (step.reason ?? action.label)}
       </HoldButton>
     </div>

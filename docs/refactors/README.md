@@ -10,11 +10,10 @@ references were accurate at that point.
 
 | #   | Doc                                                | One-liner                                                        | Effort |
 | --- | -------------------------------------------------- | ---------------------------------------------------------------- | ------ |
-| 07  | [timeline-module](07-timeline-module.md)           | Pure timeline math out of the 809-line progress bar              | Small  |
 | 10  | [audit-event-coupling](10-audit-event-coupling.md) | Audit policy table, then close the timer/delete/publish log gaps | Medium |
 
-The fixture consolidation is complete; see [fixture conventions](09-fixture-consolidation.md).
-The two remaining refactors are independent.
+Completed refactors: [fixture conventions](09-fixture-consolidation.md) and
+[timeline presentation](07-timeline-module.md). The audit policy remains open.
 
 ## Standing constraints for every refactor
 
