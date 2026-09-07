@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { api } from '@tournament-os/backend/convex/_generated/api'
 import type { FunctionReturnType } from 'convex/server'
 import type { Doc } from '@tournament-os/backend/convex/_generated/dataModel'
+import { useTimedQuery } from '@/hooks/use-timed-query'
 import { DetailLine } from '@/components/shared/detail-line'
 import { LoadingCard } from '@/components/shared/loading-card'
 import { MarkdownContent } from '@/components/shared/markdown-content'
@@ -285,7 +286,7 @@ function RegistrationPanel({
     api.payments.queries.getFeePreview,
     isPaid ? { entryFeeCents: tournament.entryFeeCents! } : 'skip',
   )
-  const myOrder = useQuery(
+  const myOrder = useTimedQuery(
     api.payments.queries.getMyEntryOrder,
     isPaid && user ? { tournamentId: tournament._id } : 'skip',
   )

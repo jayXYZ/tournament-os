@@ -383,7 +383,7 @@ test("a private convention keeps its child-event list for the organizing team an
   // private.
   const ticketTypes = await organizer.query(
     api.conventions.ticketTypes.listTicketTypesForOrganizer,
-    { conventionId },
+    { now: Date.now(), conventionId },
   );
   await t.run(async (ctx) => {
     await ctx.db.insert("users", {

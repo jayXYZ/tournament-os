@@ -119,7 +119,7 @@ async function seedPaidConvention(
   // Price the seeded default pass (ADR 0004: fees live on ticket types).
   const ticketTypes = await organizer.query(
     api.conventions.ticketTypes.listTicketTypesForOrganizer,
-    { conventionId },
+    { now: Date.now(), conventionId },
   );
   const ticketTypeId = ticketTypes[0]!._id;
   await organizer.mutation(api.conventions.ticketTypes.updateTicketType, {
@@ -363,6 +363,7 @@ test("the badge refund default anchors to the convention start: the panel promis
   // Before the start, the window (refundDeadline ?? startDate) is open.
   expect(
     (await player.query(api.payments.queries.getMyBadgeOrder, {
+      now: Date.now(),
       conventionId,
     }))!.cancelOutcome,
   ).toBe("full_refund");
@@ -371,6 +372,7 @@ test("the badge refund default anchors to the convention start: the panel promis
   vi.setSystemTime(START + 60 * 60 * 1000);
   expect(
     (await player.query(api.payments.queries.getMyBadgeOrder, {
+      now: Date.now(),
       conventionId,
     }))!.cancelOutcome,
   ).toBe("no_refund");

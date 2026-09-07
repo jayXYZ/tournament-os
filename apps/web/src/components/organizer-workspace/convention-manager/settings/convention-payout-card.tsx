@@ -3,6 +3,7 @@ import { useAction, useQuery } from 'convex/react'
 import { api } from '@tournament-os/backend/convex/_generated/api'
 import type { Doc } from '@tournament-os/backend/convex/_generated/dataModel'
 import type { PaidEventPayoutCopy } from '@/components/organizer-workspace/paid-event/payout-card'
+import { useTimedQuery } from '@/hooks/use-timed-query'
 import { PaidEventPayoutCard } from '@/components/organizer-workspace/paid-event/payout-card'
 
 const copy: PaidEventPayoutCopy = {
@@ -26,7 +27,7 @@ export function ConventionPayoutCard({
       : 'skip',
   )
   // Paid-ness lives on the ticket types now (ADR 0004).
-  const ticketTypes = useQuery(
+  const ticketTypes = useTimedQuery(
     api.conventions.ticketTypes.listTicketTypesForOrganizer,
     { conventionId: convention._id },
   )

@@ -40,12 +40,21 @@ async function entryOrderView(
   ctx: QueryCtx,
   owner: PaidEventRef,
   registration: AnyEntryRegistration,
+  now: number,
 ) {
   const order = await latestOrderForRegistration(ctx, registration._id);
   if (!order) {
     return null;
   }
+  const deadline =
+    owner.kind === "convention"
+      ? (owner.event.refundDeadline ?? owner.event.startDate)
+      : owner.event.refundDeadline;
   return {
+    refreshAt:
+      order.status === "paid" && deadline !== undefined && now <= deadline
+        ? deadline + 1
+        : null,
     status: order.status,
     purpose: order.purpose,
     amountBreakdown: order.amountBreakdown,
@@ -54,6 +63,7 @@ async function entryOrderView(
       owner,
       order,
       registration.participantId,
+      now,
     ),
   };
 }
@@ -62,7 +72,7 @@ async function entryOrderView(
 // panel and the payment return page render. Reactive: the webhook's write
 // flips this the moment fulfillment lands.
 export const getMyEntryOrder = query({
-  args: { tournamentId: v.id("tournaments") },
+  args: { tournamentId: v.id("tournaments"), now: v.number() },
   handler: async (ctx, args) => {
     const user = await currentUserOrNull(ctx);
     if (!user) {
@@ -83,6 +93,7 @@ export const getMyEntryOrder = query({
       ctx,
       { kind: "tournament", event: tournament },
       registration,
+      args.now,
     );
   },
 });
@@ -90,7 +101,7 @@ export const getMyEntryOrder = query({
 // The badge twin of getMyEntryOrder: the caller's latest badge order for a
 // convention — what the badge panel and the payment return page render.
 export const getMyBadgeOrder = query({
-  args: { conventionId: v.id("conventions") },
+  args: { conventionId: v.id("conventions"), now: v.number() },
   handler: async (ctx, args) => {
     const user = await currentUserOrNull(ctx);
     if (!user) {
@@ -105,6 +116,7 @@ export const getMyBadgeOrder = query({
       ctx,
       { kind: "convention", event: convention },
       badge,
+      args.now,
     );
   },
 });

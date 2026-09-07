@@ -18,6 +18,7 @@ import {
   hasTicketTypeCapacity,
   isPaidTicketType,
   isTicketTypeOnSale,
+  nextTicketSaleChange,
   listTicketTypes,
   requireTicketType,
   requireTicketTypeDeletable,
@@ -49,13 +50,13 @@ const ticketTypeInputArgs = {
 // re-implementing the rules. Follows the convention page's own access rule
 // (canViewConvention) — a hidden convention exposes no types or prices.
 export const listPublicTicketTypes = query({
-  args: { conventionId: v.id("conventions") },
+  args: { conventionId: v.id("conventions"), now: v.number() },
   handler: async (ctx, args) => {
     const convention = await requireConvention(ctx, args.conventionId);
     if (!(await canViewConvention(ctx, convention))) {
       return [];
     }
-    const now = Date.now();
+    const now = args.now;
     const feeConfig = feeConfigFromEnv();
     const ticketTypes = await listTicketTypes(ctx, args.conventionId);
     return ticketTypes.map((ticketType) => ({
@@ -76,6 +77,7 @@ export const listPublicTicketTypes = query({
       saleEndDate: effectiveSaleEnd(ticketType, convention),
       includedTournamentIds: ticketType.includedTournamentIds,
       onSale: isTicketTypeOnSale(convention, ticketType, now),
+      refreshAt: nextTicketSaleChange(convention, ticketType, now),
       soldOut: !hasTicketTypeCapacity(ticketType),
     }));
   },
@@ -84,19 +86,20 @@ export const listPublicTicketTypes = query({
 // The organizer's full list, with the per-type lock the settings UI needs
 // (a priced type with any order keeps its price).
 export const listTicketTypesForOrganizer = query({
-  args: { conventionId: v.id("conventions") },
+  args: { conventionId: v.id("conventions"), now: v.number() },
   handler: async (ctx, args) => {
     const { convention } = await requireConventionOrganizerAccess(
       ctx,
       args.conventionId,
     );
-    const now = Date.now();
+    const now = args.now;
     const ticketTypes = await listTicketTypes(ctx, args.conventionId);
     return await Promise.all(
       ticketTypes.map(async (ticketType) => ({
         ...ticketType,
         effectiveSaleEndDate: effectiveSaleEnd(ticketType, convention),
         onSale: isTicketTypeOnSale(convention, ticketType, now),
+        refreshAt: nextTicketSaleChange(convention, ticketType, now),
         priceLocked: await ticketTypeHasOrders(ctx, ticketType._id),
       })),
     );

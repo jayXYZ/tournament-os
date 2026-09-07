@@ -5,6 +5,7 @@ import { api } from '@tournament-os/backend/convex/_generated/api'
 import type { ReactNode } from 'react'
 import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
 import type { PaymentReturnCopy } from '@/components/shared/payment-return'
+import { useTimedQuery } from '@/hooks/use-timed-query'
 import {
   PaymentOutcomeCard,
   PaymentPendingCard,
@@ -92,7 +93,7 @@ function OrderOutcome({
   conventionId: Id<'conventions'>
   backLink: ReactNode
 }) {
-  const order = useQuery(api.payments.queries.getMyBadgeOrder, {
+  const order = useTimedQuery(api.payments.queries.getMyBadgeOrder, {
     conventionId,
   })
   const badge = useQuery(api.conventions.registrations.getMyBadge, {

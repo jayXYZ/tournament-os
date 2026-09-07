@@ -14,6 +14,7 @@ import type {
   Doc,
   Id,
 } from '@tournament-os/backend/convex/_generated/dataModel'
+import { useTimedQuery } from '@/hooks/use-timed-query'
 import { formatConventionDateRange } from '@/components/conventions/convention-display'
 import { DetailLine } from '@/components/shared/detail-line'
 import { LoadMoreButton } from '@/components/shared/load-more-button'
@@ -196,14 +197,14 @@ function BadgePanel({
     api.conventions.registrations.getMyBadge,
     user ? { conventionId: convention._id } : 'skip',
   )
-  const ticketTypes = useQuery(
+  const ticketTypes = useTimedQuery(
     api.conventions.ticketTypes.listPublicTicketTypes,
     {
       conventionId: convention._id,
     },
   )
   const cancelBadge = useMutation(api.conventions.registrations.cancelMyBadge)
-  const myOrder = useQuery(
+  const myOrder = useTimedQuery(
     api.payments.queries.getMyBadgeOrder,
     user ? { conventionId: convention._id } : 'skip',
   )

@@ -227,7 +227,7 @@ test("first player cancel refunds in full with the organizer absorbing the fee; 
   expect(flag.repeatDropFeesKept).toBe(false);
   const beforeCancel = await asPlayer.query(
     api.payments.queries.getMyEntryOrder,
-    { tournamentId },
+    { now: Date.now(), tournamentId },
   );
   expect(beforeCancel?.cancelOutcome).toBe("full_refund");
 
@@ -254,7 +254,7 @@ test("first player cancel refunds in full with the organizer absorbing the fee; 
   const secondOrderId = await payForEntry(t, tournamentId, "two");
   const beforeSecondCancel = await asPlayer.query(
     api.payments.queries.getMyEntryOrder,
-    { tournamentId },
+    { now: Date.now(), tournamentId },
   );
   expect(beforeSecondCancel?.cancelOutcome).toBe("entry_only_refund");
 
@@ -314,7 +314,7 @@ test("a cancel past the refund deadline refunds nothing and the order stays paid
   const orderId = await payForEntry(t, tournamentId, "one");
   const beforeCancel = await asPlayer.query(
     api.payments.queries.getMyEntryOrder,
-    { tournamentId },
+    { now: Date.now(), tournamentId },
   );
   expect(beforeCancel?.cancelOutcome).toBe("no_refund");
 
@@ -645,4 +645,27 @@ test("refund reconciliation recovers a lost executor write by row id", async () 
     stripeRefundId: "re_lost_1",
   });
   expect((await latestOrder(t, tournamentId)).status).toBe("refunded");
+});
+
+test("refund previews expire at the deadline without a database write", async () => {
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const deadline = Date.now() + 60_000;
+  const tournamentId = await seedPaidTournament(t, organizationId, {
+    refundDeadline: deadline,
+  });
+  await payForEntry(t, tournamentId, "deadline");
+  const player = t.withIdentity(playerOne);
+  expect(
+    await player.query(api.payments.queries.getMyEntryOrder, {
+      tournamentId,
+      now: deadline,
+    }),
+  ).toMatchObject({ cancelOutcome: "full_refund", refreshAt: deadline + 1 });
+  expect(
+    await player.query(api.payments.queries.getMyEntryOrder, {
+      tournamentId,
+      now: deadline + 1,
+    }),
+  ).toMatchObject({ cancelOutcome: "no_refund", refreshAt: null });
 });

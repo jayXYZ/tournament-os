@@ -6,6 +6,7 @@ import { useMyRegistration } from '@tournament-os/core'
 import type { ReactNode } from 'react'
 import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
 import type { PaymentReturnCopy } from '@/components/shared/payment-return'
+import { useTimedQuery } from '@/hooks/use-timed-query'
 import {
   PaymentOutcomeCard,
   PaymentPendingCard,
@@ -93,7 +94,7 @@ function OrderOutcome({
   tournamentId: Id<'tournaments'>
   backLink: ReactNode
 }) {
-  const order = useQuery(api.payments.queries.getMyEntryOrder, {
+  const order = useTimedQuery(api.payments.queries.getMyEntryOrder, {
     tournamentId,
   })
   const registration = useMyRegistration(tournamentId)
