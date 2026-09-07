@@ -11,6 +11,7 @@ export const ORGANIZER_STORAGE_STATE = 'e2e/.auth/organizer.json'
 // backend code has changed.
 export default defineConfig({
   testDir: './e2e',
+  testIgnore: '**/smoke/**',
   fullyParallel: false,
   workers: 1,
   retries: 0,

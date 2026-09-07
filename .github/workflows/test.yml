@@ -36,6 +36,26 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm format:check
 
+  web-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build:web
+      - run: pnpm --filter @tournament-os/web exec playwright install --with-deps chromium
+      - run: pnpm test:smoke
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: web-smoke-traces
+          path: apps/web/test-results/
+          retention-days: 7
+
   # Bundles the Expo app for every platform and verifies Expo-managed
   # dependency versions, since the native package has no test script and
   # would otherwise go completely unchecked.

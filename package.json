@@ -26,7 +26,8 @@
     "lint:backend": "pnpm --filter @tournament-os/backend lint",
     "typecheck": "pnpm -r run typecheck",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "test:smoke": "pnpm --filter @tournament-os/web test:smoke"
   },
   "dependencies": {
     "expo": "catalog:",
