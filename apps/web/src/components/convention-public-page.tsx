@@ -1,5 +1,9 @@
 import { useState } from 'react'
-import { mutationErrorMessage } from '@tournament-os/core'
+import {
+  mutationErrorMessage,
+  useMyBadge,
+  useMyBadgeRefundFlag,
+} from '@tournament-os/core'
 import {
   useAction,
   useMutation,
@@ -14,6 +18,7 @@ import type {
   Doc,
   Id,
 } from '@tournament-os/backend/convex/_generated/dataModel'
+import { useMyBadgeOrder } from '@/hooks/use-my-order'
 import { useTimedQuery } from '@/hooks/use-timed-query'
 import { formatConventionDateRange } from '@/components/conventions/convention-display'
 import { DetailLine } from '@/components/shared/detail-line'
@@ -193,10 +198,7 @@ function BadgePanel({
   badgesLeft: number
 }) {
   const { user, loading, refreshAuth } = useAppAuth()
-  const badge = useQuery(
-    api.conventions.registrations.getMyBadge,
-    user ? { conventionId: convention._id } : 'skip',
-  )
+  const badge = useMyBadge(convention._id)
   const ticketTypes = useTimedQuery(
     api.conventions.ticketTypes.listPublicTicketTypes,
     {
@@ -204,14 +206,8 @@ function BadgePanel({
     },
   )
   const cancelBadge = useMutation(api.conventions.registrations.cancelMyBadge)
-  const myOrder = useTimedQuery(
-    api.payments.queries.getMyBadgeOrder,
-    user ? { conventionId: convention._id } : 'skip',
-  )
-  const refundFlag = useQuery(
-    api.payments.queries.getMyBadgeRefundFlag,
-    user ? { conventionId: convention._id } : 'skip',
-  )
+  const myOrder = useMyBadgeOrder(convention._id)
+  const refundFlag = useMyBadgeRefundFlag(convention._id)
   const createBadgeCheckout = useAction(
     api.payments.checkout.createBadgeCheckout,
   )

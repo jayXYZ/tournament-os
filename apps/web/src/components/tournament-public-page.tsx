@@ -1,13 +1,17 @@
 import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
-import { mutationErrorMessage, useMyRegistration } from '@tournament-os/core'
+import {
+  mutationErrorMessage,
+  useMyRefundFlag,
+  useMyRegistration,
+} from '@tournament-os/core'
 import { useAction, useMutation, useQuery } from 'convex/react'
 import { Building2, CalendarDays, LogIn, Swords, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@tournament-os/backend/convex/_generated/api'
 import type { FunctionReturnType } from 'convex/server'
 import type { Doc } from '@tournament-os/backend/convex/_generated/dataModel'
-import { useTimedQuery } from '@/hooks/use-timed-query'
+import { useMyEntryOrder } from '@/hooks/use-my-order'
 import { DetailLine } from '@/components/shared/detail-line'
 import { LoadingCard } from '@/components/shared/loading-card'
 import { MarkdownContent } from '@/components/shared/markdown-content'
@@ -286,14 +290,8 @@ function RegistrationPanel({
     api.payments.queries.getFeePreview,
     isPaid ? { entryFeeCents: tournament.entryFeeCents! } : 'skip',
   )
-  const myOrder = useTimedQuery(
-    api.payments.queries.getMyEntryOrder,
-    isPaid && user ? { tournamentId: tournament._id } : 'skip',
-  )
-  const refundFlag = useQuery(
-    api.payments.queries.getMyRefundFlag,
-    isPaid && user ? { tournamentId: tournament._id } : 'skip',
-  )
+  const myOrder = useMyEntryOrder(isPaid ? tournament._id : null)
+  const refundFlag = useMyRefundFlag(isPaid ? tournament._id : null)
   const { busy, run } = useBusyAction()
   // Checkout leaves the page for Stripe, so its pending flag deliberately
   // stays set through the redirect (useBusyAction's run would clear it).

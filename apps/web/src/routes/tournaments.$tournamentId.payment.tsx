@@ -1,18 +1,20 @@
+import { useConvexAuthReadiness, useMyRegistration } from '@tournament-os/core'
 import { Link, createFileRoute } from '@tanstack/react-router'
 import { useQuery } from 'convex/react'
 import { SearchX } from 'lucide-react'
 import { api } from '@tournament-os/backend/convex/_generated/api'
-import { useMyRegistration } from '@tournament-os/core'
 import type { ReactNode } from 'react'
 import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
 import type { PaymentReturnCopy } from '@/components/shared/payment-return'
-import { useTimedQuery } from '@/hooks/use-timed-query'
 import {
   PaymentOutcomeCard,
   PaymentPendingCard,
   PaymentReturnOutcome,
+  PaymentSignInCard,
   paymentReturnSearch,
 } from '@/components/shared/payment-return'
+import { useAppAuth } from '@/lib/use-app-auth'
+import { useMyEntryOrder } from '@/hooks/use-my-order'
 import { SiteShell, SiteShellBackLink } from '@/components/shared/site-shell'
 
 // Stripe Checkout return page for tournament entry fees. The status dispatch
@@ -60,6 +62,8 @@ function RouteComponent() {
 }
 
 function PaymentOutcome({ publicCode }: { publicCode: string }) {
+  const { user, loading, refreshAuth } = useAppAuth()
+  const readiness = useConvexAuthReadiness()
   const event = useQuery(api.tournaments.lifecycle.getPublicTournament, {
     publicCode,
   })
@@ -69,6 +73,12 @@ function PaymentOutcome({ publicCode }: { publicCode: string }) {
     </Link>
   )
 
+  if (loading || (user && readiness === 'pending')) {
+    return <PaymentPendingCard title="Checking your account" />
+  }
+  if (!user) {
+    return <PaymentSignInCard onSignIn={() => void refreshAuth()} />
+  }
   if (event === undefined) {
     return <PaymentPendingCard title="Loading the event" />
   }
@@ -94,9 +104,7 @@ function OrderOutcome({
   tournamentId: Id<'tournaments'>
   backLink: ReactNode
 }) {
-  const order = useTimedQuery(api.payments.queries.getMyEntryOrder, {
-    tournamentId,
-  })
+  const order = useMyEntryOrder(tournamentId)
   const registration = useMyRegistration(tournamentId)
 
   return (
