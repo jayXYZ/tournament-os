@@ -1,3 +1,4 @@
+import { useConvexAuthReadiness, useMyBadge } from '@tournament-os/core'
 import { Link, createFileRoute } from '@tanstack/react-router'
 import { useQuery } from 'convex/react'
 import { SearchX } from 'lucide-react'
@@ -9,8 +10,11 @@ import {
   PaymentOutcomeCard,
   PaymentPendingCard,
   PaymentReturnOutcome,
+  PaymentSignInCard,
   paymentReturnSearch,
 } from '@/components/shared/payment-return'
+import { useAppAuth } from '@/lib/use-app-auth'
+import { useMyBadgeOrder } from '@/hooks/use-my-order'
 import { SiteShell, SiteShellBackLink } from '@/components/shared/site-shell'
 
 // Stripe Checkout return page for badge purchases. The status dispatch and
@@ -58,6 +62,8 @@ function RouteComponent() {
 }
 
 function PaymentOutcome({ publicCode }: { publicCode: string }) {
+  const { user, loading, refreshAuth } = useAppAuth()
+  const readiness = useConvexAuthReadiness()
   const result = useQuery(api.conventions.lifecycle.getPublicConvention, {
     publicCode,
   })
@@ -67,6 +73,12 @@ function PaymentOutcome({ publicCode }: { publicCode: string }) {
     </Link>
   )
 
+  if (loading || (user && readiness === 'pending')) {
+    return <PaymentPendingCard title="Checking your account" />
+  }
+  if (!user) {
+    return <PaymentSignInCard onSignIn={() => void refreshAuth()} />
+  }
   if (result === undefined) {
     return <PaymentPendingCard title="Loading the convention" />
   }
@@ -92,12 +104,8 @@ function OrderOutcome({
   conventionId: Id<'conventions'>
   backLink: ReactNode
 }) {
-  const order = useQuery(api.payments.queries.getMyBadgeOrder, {
-    conventionId,
-  })
-  const badge = useQuery(api.conventions.registrations.getMyBadge, {
-    conventionId,
-  })
+  const order = useMyBadgeOrder(conventionId)
+  const badge = useMyBadge(conventionId)
 
   return (
     <PaymentReturnOutcome

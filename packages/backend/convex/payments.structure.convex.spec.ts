@@ -69,7 +69,7 @@ const webhooksSource = readFileSync(
   "utf8",
 );
 const registrationsSource = readFileSync(
-  new URL("./tournaments/registrations.ts", import.meta.url),
+  new URL("./model/roster.ts", import.meta.url),
   "utf8",
 );
 

@@ -101,6 +101,21 @@ export function isTicketTypeOnSale(
   );
 }
 
+// Query clients refresh at the next boundary, including the first millisecond
+// after an inclusive sale end. No database write is needed to open/close sales.
+export function nextTicketSaleChange(
+  convention: Doc<"conventions">,
+  ticketType: Doc<"conventionTicketTypes">,
+  now: number,
+) {
+  if (convention.lifecycle !== "registration") return null;
+  const boundaries = [
+    ticketType.saleStartDate,
+    effectiveSaleEnd(ticketType, convention) + 1,
+  ].filter((value): value is number => value !== undefined && value > now);
+  return boundaries.length ? Math.min(...boundaries) : null;
+}
+
 export function requireTicketTypeOnSale(
   convention: Doc<"conventions">,
   ticketType: Doc<"conventionTicketTypes">,

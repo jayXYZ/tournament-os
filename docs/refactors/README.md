@@ -1,20 +1,15 @@
-# Architecture refactor backlog
+# Architecture refactors
 
-These handoff prompts came out of a five-report architecture review
-(2026-08-05/06). The original backlog had ten items; seven landed and were
-deleted (auth-readiness seam, progression module, test infrastructure,
-participation/standings sync, player access ladder, match-result module,
-current-match semantics — see git history for the original docs). The
-remaining docs were re-verified against the codebase on 2026-08-29; file:line
-references were accurate at that point.
+The ten items from the August 2026 architecture review are complete. Seven
+landed earlier (see git history for their original handoff prompts); the final
+three now document the resulting conventions:
 
-| #   | Doc                                                  | One-liner                                                        | Effort |
-| --- | ---------------------------------------------------- | ---------------------------------------------------------------- | ------ |
-| 07  | [timeline-module](07-timeline-module.md)             | Pure timeline math out of the 809-line progress bar              | Small  |
-| 09  | [fixture-consolidation](09-fixture-consolidation.md) | Fixtures through public mutations; delete the last duplicate     | Medium |
-| 10  | [audit-event-coupling](10-audit-event-coupling.md)   | Audit policy table, then close the timer/delete/publish log gaps | Medium |
-
-All three are independent of each other.
+- [Timeline presentation](07-timeline-module.md): pure progression display logic
+  and focused tests.
+- [Fixture conventions](09-fixture-consolidation.md): public registration for
+  shared workflow fixtures and explicit raw engine seeds.
+- [Audit event coupling](10-audit-event-coupling.md): a written audit policy and
+  domain operations that own both state changes and journal entries.
 
 ## Standing constraints for every refactor
 

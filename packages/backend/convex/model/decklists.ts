@@ -1,3 +1,4 @@
+import { auditPlayerRef, logAuditEvent } from "./auditLog";
 import {
   MAX_CARD_NAME_LENGTH,
   MAX_DECK_NAME_LENGTH,
@@ -5,7 +6,7 @@ import {
 import type { Infer } from "convex/values";
 
 import type { Doc, Id } from "../_generated/dataModel";
-import type { QueryCtx } from "../_generated/server";
+import type { QueryCtx, MutationCtx } from "../_generated/server";
 import type { decklistCardEntryValidator } from "../validators";
 
 export type DecklistCardEntry = Infer<typeof decklistCardEntryValidator>;
@@ -118,4 +119,88 @@ export function decklistSubmissionOpen(
     registration.entryStatus === "confirmed" &&
     registration.participationStatus === "active"
   );
+}
+
+export async function submitDecklist(
+  ctx: MutationCtx,
+  {
+    tournament,
+    registration,
+    user,
+  }: {
+    tournament: Doc<"tournaments">;
+    registration: Doc<"tournamentRegistrations">;
+    user: Doc<"users">;
+  },
+  args: {
+    deckName?: string;
+    maindeck: DecklistCardEntry[];
+    sideboard: DecklistCardEntry[];
+    rawText?: string;
+  },
+): Promise<Id<"tournamentDecklists">> {
+  // Checked separately from the open/closed gate below so an event that
+  // never collects decklists doesn't report itself as merely "closed".
+  if (!tournament.decklistRequired) {
+    throw new Error("This tournament does not collect decklists");
+  }
+  if (!decklistSubmissionOpen(tournament, registration)) {
+    throw new Error("Decklist submission is closed for this tournament");
+  }
+
+  const maindeck = normalizeBoard("Maindeck", args.maindeck);
+  if (maindeck.length === 0) {
+    throw new Error("Maindeck cannot be empty");
+  }
+  const sideboard = normalizeBoard("Sideboard", args.sideboard);
+  // An all-whitespace deck name reads as "left blank", not as a name.
+  const deckName = args.deckName?.trim() || undefined;
+  if (deckName !== undefined && deckName.length > MAX_DECK_NAME_LENGTH) {
+    throw new Error("Deck name is too long");
+  }
+  if (args.rawText !== undefined && args.rawText.length > MAX_RAW_TEXT_LENGTH) {
+    throw new Error("Decklist text is too long");
+  }
+
+  const existing = await decklistForRegistration(ctx, registration._id);
+  const decklist = {
+    tournamentId: tournament._id,
+    registrationId: registration._id,
+    deckName,
+    maindeck,
+    sideboard,
+    rawText: args.rawText,
+    updatedAt: Date.now(),
+  };
+  let decklistId: Id<"tournamentDecklists">;
+  if (existing) {
+    // replace, not patch: a resubmission is a complete statement of the
+    // list, so optional fields omitted this time (deckName, rawText) clear
+    // instead of surviving from the previous submission.
+    await ctx.db.replace(existing._id, decklist);
+    decklistId = existing._id;
+  } else {
+    decklistId = await ctx.db.insert("tournamentDecklists", decklist);
+  }
+  // Write the roster's denormalized copy through (see the schema comment on
+  // tournamentRegistrations). deckName is patched even when undefined so a
+  // resubmission that dropped the name clears the copy too.
+  await ctx.db.patch(registration._id, {
+    decklistId,
+    deckName,
+    updatedAt: decklist.updatedAt,
+  });
+  await logAuditEvent(ctx, {
+    tournamentId: tournament._id,
+    actor: user,
+    actorRole: "player",
+    event: {
+      type: "decklist_submitted",
+      player: auditPlayerRef(registration),
+      maindeckCardCount: boardCardCount(maindeck),
+      sideboardCardCount: boardCardCount(sideboard),
+      isUpdate: existing !== null,
+    },
+  });
+  return decklistId;
 }

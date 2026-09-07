@@ -1,3 +1,4 @@
+import { formatTimer } from '@tournament-os/shared/timer-utils'
 import { usePaginatedQuery } from 'convex/react'
 import { ScrollText } from 'lucide-react'
 
@@ -147,6 +148,23 @@ function AuditEventItem({ row }: { row: AuditEventRow }) {
 function describeEvent(row: AuditEventRow): string {
   const { event } = row
   switch (event.type) {
+    case 'pairings_published':
+      return `Published pairings for round ${event.roundNumber}`
+    case 'round_duration_changed':
+      return `Changed the default round duration to ${formatTimer(event.durationMs)}`
+    case 'round_timer_changed': {
+      const labels = {
+        started: 'Started',
+        paused: 'Paused',
+        resumed: 'Resumed',
+        adjusted: 'Adjusted',
+        cleared: 'Cleared',
+      }
+      const duration = event.timer
+        ? ` (${formatTimer(event.timer.durationMs)})`
+        : ''
+      return `${labels[event.action]} the round timer${duration}`
+    }
     case 'match_result_recorded':
       return `Recorded ${formatScoreline(event.result)} ${matchLocation(event)}`
     case 'match_result_reported':

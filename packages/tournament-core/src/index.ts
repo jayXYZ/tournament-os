@@ -1,5 +1,8 @@
 export {
   useDropSelf,
+  useMyBadge,
+  useMyRefundFlag,
+  useMyBadgeRefundFlag,
   useLatestStandings,
   useMyCurrentMatch,
   useMyDecklist,

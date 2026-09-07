@@ -5,6 +5,7 @@ import { ArrowRight, CalendarDays, Ticket, Trophy } from 'lucide-react'
 import { api } from '@tournament-os/backend/convex/_generated/api'
 import { useManagedConvention } from './convention-manager-context'
 import type { ReactNode } from 'react'
+import { useTimedQuery } from '@/hooks/use-timed-query'
 import { formatConventionDateRange } from '@/components/conventions/convention-display'
 import { WorkspacePageHeader } from '@/components/shared/workspace-page-header'
 import {
@@ -89,7 +90,7 @@ export function ConventionOverviewView() {
   })
   // The public listing carries the name/price pair the summary line needs
   // without the organizer listing's per-type payment-lock probes.
-  const ticketTypes = useQuery(
+  const ticketTypes = useTimedQuery(
     api.conventions.ticketTypes.listPublicTicketTypes,
     { conventionId },
   )

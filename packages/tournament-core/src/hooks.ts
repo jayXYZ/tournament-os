@@ -70,3 +70,24 @@ export function useReportResult() {
 export function useDropSelf() {
   return useMutation(api.tournaments.player.dropSelf);
 }
+
+export function useMyBadge(conventionId: Id<"conventions"> | null) {
+  return useQuery(
+    api.conventions.registrations.getMyBadge,
+    useAuthedQueryArgs(conventionId ? { conventionId } : null),
+  );
+}
+
+export function useMyRefundFlag(tournamentId: Id<"tournaments"> | null) {
+  return useQuery(
+    api.payments.queries.getMyRefundFlag,
+    useAuthedQueryArgs(tournamentId ? { tournamentId } : null),
+  );
+}
+
+export function useMyBadgeRefundFlag(conventionId: Id<"conventions"> | null) {
+  return useQuery(
+    api.payments.queries.getMyBadgeRefundFlag,
+    useAuthedQueryArgs(conventionId ? { conventionId } : null),
+  );
+}

@@ -11,6 +11,7 @@ import type {
   Doc,
   Id,
 } from '@tournament-os/backend/convex/_generated/dataModel'
+import { useTimedQuery } from '@/hooks/use-timed-query'
 import {
   FeePreviewPanel,
   StripeOnboardingNotice,
@@ -71,7 +72,7 @@ export function TicketTypesCard({
   // goes away. The server stays authoritative; this keeps the card from
   // offering a dialog whose submit it would refuse.
   const started = Date.now() >= convention.startDate
-  const ticketTypes = useQuery(
+  const ticketTypes = useTimedQuery(
     api.conventions.ticketTypes.listTicketTypesForOrganizer,
     { conventionId: convention._id },
   )

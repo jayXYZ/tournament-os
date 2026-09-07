@@ -205,3 +205,17 @@ export function PaymentReturnOutcome({
       )
   }
 }
+
+export function PaymentSignInCard({ onSignIn }: { onSignIn: () => void }) {
+  return (
+    <Empty className="min-h-80 border bg-card">
+      <EmptyHeader>
+        <EmptyTitle>Sign in to view your payment</EmptyTitle>
+        <EmptyDescription>
+          Use the account you paid with to check your registration.
+        </EmptyDescription>
+      </EmptyHeader>
+      <Button onClick={onSignIn}>Sign in</Button>
+    </Empty>
+  )
+}

@@ -252,11 +252,12 @@ export async function paidEntryCancelOutcome(
   owner: PaidEventRef,
   order: Doc<"paymentOrders">,
   participantId: Id<"participants">,
+  now: number,
 ): Promise<"full_refund" | "entry_only_refund" | "no_refund" | null> {
   if (order.status !== "paid") {
     return null;
   }
-  if (!paidEntryRefundWindowOpen(owner, Date.now())) {
+  if (!paidEntryRefundWindowOpen(owner, now)) {
     return "no_refund";
   }
   return (await hasPriorPlayerCancelFullRefund(ctx, owner, participantId))

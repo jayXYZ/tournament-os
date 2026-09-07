@@ -1,6 +1,5 @@
 import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
-
 import type { Doc, Id } from "../_generated/dataModel";
 import {
   mutation,
@@ -9,32 +8,22 @@ import {
   type QueryCtx,
 } from "../_generated/server";
 import { currentUserOrNull } from "../model/access";
-import { logAuditEvent } from "../model/auditLog";
-import { inviteCodeGrantsAccess } from "../model/invites";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
 import { registrationsConcededByDrop } from "../model/matchResults";
 import { ORGANIZER_LIST_PAGE_SIZE, clampPageSize } from "../model/pagination";
-import {
-  ensureParticipantForUser,
-  participantForUser,
-} from "../model/participants";
-import { setRegistrationState } from "../model/participation";
-import { resolveChildEventAdmission } from "../model/conventions";
+import { participantForUser } from "../model/participants";
 import { isPaidEvent, latestOrderForRegistration } from "../model/payments";
-import { tiebreakRandom } from "../model/random";
 import {
-  adjustConfirmedRegistrationCount,
   entryReviewActions,
-  playerDisplayName,
   registrationDropEffect,
   registrationForUser,
   registrationReinstateEffect,
-  requireCapacityAvailable,
   requireRegistration,
   resolveRegistrationDisplayName,
 } from "../model/registrations";
 import {
   approveEntry,
+  registerPlayer,
   cancelEntry,
   dropPlayer,
   reinstatePlayer,
@@ -93,40 +82,6 @@ async function registrationRows(
   );
 }
 
-// What finding an existing registration row means for a new registerSelf
-// attempt, per entry status: the error that blocks it, or null for
-// "cancelled" — the one state whose released seat the re-registration path
-// reuses. The review-flow states (pending/waitlisted/rejected) each get
-// their own honest message rather than a blanket "Already registered": a
-// pending or waitlisted row is a live application a second submission would
-// duplicate, and a rejected row records an organizer decision that silently
-// re-registering would overturn with one click — the way back from a
-// rejection is approveEntry (the organizer reversal in model/roster.ts),
-// never this mutation quietly stamping the entry confirmed.
-function existingEntryBlocksRegistration(
-  entryStatus: Doc<"tournamentRegistrations">["entryStatus"],
-): string | null {
-  switch (entryStatus) {
-    case "confirmed":
-      return "Already registered";
-    case "pending":
-      return "Your registration is pending review";
-    case "waitlisted":
-      return "You are on the waitlist for this event";
-    case "rejected":
-      return "Your registration was declined";
-    case "cancelled":
-      return null;
-    default:
-      // A new entry status must decide what registerSelf does with it: the
-      // `satisfies never` fails the build until this switch handles it, and
-      // this throw catches a rogue runtime value.
-      throw new Error(
-        `Unhandled registration entry status: ${entryStatus satisfies never}`,
-      );
-  }
-}
-
 export const registerSelf = mutation({
   args: {
     tournamentId: v.id("tournaments"),
@@ -136,129 +91,11 @@ export const registerSelf = mutation({
     await enforceRateLimit(ctx, "registerSelf");
     const user = await ensureCurrentUser(ctx);
     const tournament = await requireTournament(ctx, args.tournamentId);
-    const existing = await registrationForUser(
-      ctx,
-      args.tournamentId,
-      user._id,
-    );
-    // A private event takes no registrations off the public page. Two grants
-    // get past that: the event's invite code, which is the organizer's way of
-    // letting new players in at all — and an existing row, because a player
-    // who already holds one was admitted once and still resolves the event's
-    // code, so cancelling is not a one-way door out of an invite-only event:
-    // the cancelled row is the standing invitation that lets them back in.
-    // Nothing else slips through — every other entry status is rejected just
-    // below (the invite code included: it grants entry, it never overturns an
-    // entry decision such as a rejection), so a live row can only ever
-    // re-enter the event it belongs to.
-    if (
-      tournament.lifecycle !== "registration" ||
-      (tournament.visibility === "private" &&
-        existing === null &&
-        !(await inviteCodeGrantsAccess(ctx, tournament, args.inviteCode)))
-    ) {
-      throw new Error("Tournament is not open for registration");
-    }
-    // A badge-gated child event admits self-registration only with a
-    // confirmed convention badge (model/conventions.ts). Organizer verbs
-    // (approve, guest enroll) bypass the gate by never routing here.
-    const childAdmission = await resolveChildEventAdmission(
-      ctx,
+    return await registerPlayer(ctx, {
       tournament,
-      user._id,
-    );
-    // Direct registration on a paid event goes through the Checkout action
-    // (payments/checkout.ts), which files the pending row itself; the seat
-    // is only ever taken by the payment webhook. Approval-mode paid events
-    // still file their free application here — payment is requested at
-    // approval. A player whose convention pass comps this event (ADR 0004)
-    // registers free right here: no order is ever created for them, and the
-    // audit row records the comp.
-    const compedByBadge =
-      isPaidEvent(tournament) &&
-      !tournament.registrationRequiresApproval &&
-      childAdmission.compedByBadge;
-    if (
-      isPaidEvent(tournament) &&
-      !tournament.registrationRequiresApproval &&
-      !compedByBadge
-    ) {
-      throw new Error(
-        "This event charges an entry fee — register through the payment checkout",
-      );
-    }
-
-    if (existing) {
-      const blockedBecause = existingEntryBlocksRegistration(
-        existing.entryStatus,
-      );
-      if (blockedBecause !== null) {
-        throw new Error(blockedBecause);
-      }
-    }
-
-    // Applications are capacity-gated like direct registrations: a full
-    // event takes no more entries in either mode. (Accepting applications
-    // past capacity — or auto-waitlisting them — is the waitlist-promotion
-    // work, not a side effect of the approval toggle.)
-    requireCapacityAvailable(tournament);
-    // Under organizer approval the row enters as a "pending" application —
-    // no seat taken, no participation status — and the entry-review verbs
-    // decide it. Re-registering a cancelled row files a fresh application
-    // the same way: a released seat is no shortcut past review. One
-    // admission shape serves the fresh insert and the reused row alike.
-    const requiresApproval = tournament.registrationRequiresApproval;
-    const admission = requiresApproval
-      ? { entryStatus: "pending" as const }
-      : {
-          entryStatus: "confirmed" as const,
-          participationStatus: "active" as const,
-        };
-    const now = Date.now();
-    const playerName = playerDisplayName(user);
-    const participant = await ensureParticipantForUser(ctx, user._id);
-    const registrationId =
-      existing?._id ??
-      (await ctx.db.insert("tournamentRegistrations", {
-        tournamentId: args.tournamentId,
-        participantId: participant._id,
-        tournamentStartDate: tournament.startDate,
-        ...admission,
-        playerName,
-        createdAt: now,
-        tiebreakRandom: tiebreakRandom(
-          tournament.seed ?? tournament.publicCode,
-          String(user.publicCode),
-        ),
-        updatedAt: now,
-      }));
-    if (existing) {
-      await setRegistrationState(ctx, existing._id, {
-        ...admission,
-        playerName,
-        tournamentStartDate: tournament.startDate,
-        updatedAt: now,
-      });
-    }
-    if (!requiresApproval) {
-      await adjustConfirmedRegistrationCount(ctx, tournament, 1, now);
-    }
-    await logAuditEvent(ctx, {
-      tournamentId: tournament._id,
-      actor: user,
-      actorRole: "player",
-      event: requiresApproval
-        ? {
-            type: "registration_requested",
-            player: { registrationId, playerName: playerName ?? null },
-          }
-        : {
-            type: "player_registered",
-            player: { registrationId, playerName: playerName ?? null },
-            compedByBadge: compedByBadge || undefined,
-          },
+      user,
+      inviteCode: args.inviteCode,
     });
-    return registrationId;
   },
 });
 

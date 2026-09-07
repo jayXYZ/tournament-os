@@ -2,12 +2,25 @@
 // schema are imported as types only, so this module stays inert if the Convex
 // CLI ever bundles it alongside the deployed functions.
 import type { TestConvex } from "convex-test";
+import { requiredGameWins } from "@tournament-os/shared/match-structure";
 import type { FunctionArgs } from "convex/server";
 
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import type schema from "./schema";
+
+// Escape hatch for engine-only or historical states unavailable through public
+// mutations. Every caller must explain which invariant it intentionally bypasses.
+export async function rawSeed<T>(
+  t: TestConvex<typeof schema>,
+  reason: string,
+  seed: (ctx: MutationCtx) => Promise<T>,
+): Promise<T> {
+  if (!reason.trim())
+    throw new Error("Raw fixtures must explain their purpose");
+  return await t.run(seed);
+}
 
 // Registrations belong to participants (ADR 0002), so spec seeding that
 // inserts registrations directly must create the identity hop registerSelf
@@ -86,39 +99,59 @@ export async function seedOrganizer(
   });
 }
 
-// Records a 2-0 win for player one in every published pairing of the current
-// round, then completes the round. Assumes pairings auto-publish; suites that
-// publish manually or record results differently keep their own variant.
+// Publishes and plays the current round using its match structure, preserving
+// automatic results. Accepts a base test or an already-authenticated client.
 export async function playOutCurrentRound(
-  t: TestConvex<typeof schema>,
+  t:
+    | TestConvex<typeof schema>
+    | Pick<TestConvex<typeof schema>, "query" | "mutation">,
   tournamentId: Id<"tournaments">,
 ) {
-  const organizer = t.withIdentity(organizerIdentity);
+  const organizer = "withIdentity" in t ? t.withIdentity(organizerIdentity) : t;
   const round = await organizer.query(api.tournaments.rounds.getCurrentRound, {
     tournamentId,
   });
   if (!round) {
     throw new Error("No current round to play out");
   }
+  await organizer.mutation(api.tournaments.rounds.publishPairings, {
+    roundId: round._id,
+  });
+  const setup = await organizer.query(
+    api.tournaments.lifecycle.getTournamentSetup,
+    { tournamentId },
+  );
+  const phase = setup.phases.find(
+    (item) => item._id === round.tournamentPhaseId,
+  );
+  if (!phase) throw new Error("Current phase not found");
+  const pairKeys: string[] = [];
   const pairings = await organizer.query(
     api.tournaments.rounds.listRoundPairings,
     { roundId: round._id },
   );
   for (const { match, players } of pairings) {
-    if (players.length !== 2) {
+    if (players.length !== 2 || match.matchStatus !== "upcoming") {
       continue;
     }
+    pairKeys.push(
+      players
+        .map((player) => player.playerId)
+        .sort()
+        .join("+"),
+    );
     await organizer.mutation(api.tournaments.rounds.recordMatchResult, {
       matchId: match._id,
       playerOneRegistrationId: players[0].playerId,
       playerTwoRegistrationId: players[1].playerId,
-      playerOneGameWins: 2,
+      playerOneGameWins: requiredGameWins(phase.bestOf),
       playerTwoGameWins: 0,
     });
   }
   await organizer.mutation(api.tournaments.rounds.completeRound, {
     roundId: round._id,
   });
+  return { round, pairKeys };
 }
 
 type TournamentPhaseInputs = FunctionArgs<
@@ -126,8 +159,7 @@ type TournamentPhaseInputs = FunctionArgs<
 >["phases"];
 
 // Creates and publishes a phased tournament with playerCount confirmed active
-// players (numbered 1..N as playerIdentity numbers), seeded directly through
-// the identity hop registerSelf performs. The knobs cover the ways suites
+// players (numbered 1..N as playerIdentity numbers), admitted by registerSelf. The knobs cover the ways suites
 // deliberately shape the field:
 //   - tiebreak "descending" makes equal records rank in player-number order
 //     (keeping e.g. the round-one bye on the highest player number);
@@ -158,7 +190,10 @@ export async function seedTournamentWithPlayers(
     tiebreak = "ascending",
     playerNames,
   } = options;
-  const { organizationId } = await seedOrganizer(t);
+  const { organizationId } = await seedOrganizer(
+    t,
+    firstPublicCode + playerCount,
+  );
   const organizer = t.withIdentity(organizerIdentity);
   const tournamentId: Id<"tournaments"> = await organizer.mutation(
     api.tournaments.lifecycle.createTournamentWithPhases,
@@ -166,7 +201,7 @@ export async function seedTournamentWithPlayers(
       organizationId,
       name,
       startDate: Date.now(),
-      playerCapacity: 16,
+      playerCapacity: Math.max(16, playerCount),
       format: "standard",
       phases,
     },
@@ -179,49 +214,38 @@ export async function seedTournamentWithPlayers(
     },
   );
 
-  const customNames = Array.isArray(playerNames) ? playerNames : undefined;
-  const registrationIds = await t.run(async (ctx) => {
-    const now = Date.now();
-    const tournament = await ctx.db.get(tournamentId);
-    if (!tournament) {
-      throw new Error("Tournament not found in test setup");
-    }
-    const ids: Id<"tournamentRegistrations">[] = [];
-    for (let playerNumber = 1; playerNumber <= playerCount; playerNumber += 1) {
-      const identity = playerIdentity(playerNumber);
-      const playerName = customNames?.[playerNumber - 1] ?? identity.name;
-      const userId = await ctx.db.insert("users", {
-        tokenIdentifier: identity.tokenIdentifier,
-        publicCode: firstPublicCode + playerNumber - 1,
-        email: identity.email,
-        name: playerName,
-        updatedAt: now,
-      });
-      const participantId = await insertLinkedParticipant(ctx, userId);
-      ids.push(
-        await ctx.db.insert("tournamentRegistrations", {
-          tournamentId,
-          participantId,
-          tournamentStartDate: tournament.startDate,
-          entryStatus: "confirmed",
-          participationStatus: "active",
-          ...(playerNames ? { playerName } : {}),
-          createdAt: now + playerNumber,
-          tiebreakRandom:
-            tiebreak === "descending" ? 100_000 - playerNumber : playerNumber,
-          updatedAt: now,
-        }),
-      );
-    }
-    await ctx.db.patch(tournamentId, {
-      confirmedRegistrationCount: playerCount,
-      updatedAt: now,
-    });
-    return ids;
-  });
   await organizer.mutation(api.tournaments.lifecycle.publishTournament, {
     tournamentId,
   });
+  const customNames = Array.isArray(playerNames) ? playerNames : undefined;
+  const registrationIds: Id<"tournamentRegistrations">[] = [];
+  for (let playerNumber = 1; playerNumber <= playerCount; playerNumber++) {
+    const identity = playerIdentity(playerNumber);
+    const player = t.withIdentity({
+      ...identity,
+      name: customNames?.[playerNumber - 1] ?? identity.name,
+    });
+    const userId = await player.mutation(api.users.upsertMe, {});
+    const registrationId = await player.mutation(
+      api.tournaments.registrations.registerSelf,
+      { tournamentId },
+    );
+    registrationIds.push(registrationId);
+    await rawSeed(
+      t,
+      "Deterministic identity/tiebreak values and optional missing-name fallback; admission and counters remain public writes",
+      async (ctx) => {
+        await ctx.db.patch(userId, {
+          publicCode: firstPublicCode + playerNumber - 1,
+        });
+        await ctx.db.patch(registrationId, {
+          tiebreakRandom:
+            tiebreak === "descending" ? 100_000 - playerNumber : playerNumber,
+          ...(!playerNames ? { playerName: undefined } : {}),
+        });
+      },
+    );
+  }
 
   return { tournamentId, registrationIds };
 }
@@ -320,4 +344,47 @@ export async function currentRound(
     }
     return round;
   });
+}
+
+// Engine-only pre-publication field. Integration scenarios use seedTournamentWithPlayers.
+export async function rawSeedActiveRegistrations(
+  t: TestConvex<typeof schema>,
+  tournamentId: Id<"tournaments">,
+  count: number,
+) {
+  await rawSeed(
+    t,
+    "Legacy engine fixtures deliberately seat players before publication, with fixed player identities and tiebreaks",
+    async (ctx) => {
+      const now = Date.now();
+      const tournament = await ctx.db.get(tournamentId);
+      if (!tournament) {
+        throw new Error("Tournament not found in test setup");
+      }
+      for (let playerNumber = 1; playerNumber <= count; playerNumber += 1) {
+        const userId = await ctx.db.insert("users", {
+          tokenIdentifier: `player:${playerNumber}`,
+          publicCode: playerNumber,
+          email: `player${playerNumber}@example.test`,
+          name: `Player ${playerNumber}`,
+          updatedAt: now,
+        });
+        const participant9Id = await insertLinkedParticipant(ctx, userId);
+        await ctx.db.insert("tournamentRegistrations", {
+          tournamentId,
+          participantId: participant9Id,
+          tournamentStartDate: tournament.startDate,
+          entryStatus: "confirmed",
+          participationStatus: "active",
+          createdAt: now + playerNumber,
+          tiebreakRandom: playerNumber,
+          updatedAt: now,
+        });
+      }
+      await ctx.db.patch(tournamentId, {
+        confirmedRegistrationCount:
+          tournament.confirmedRegistrationCount + count,
+      });
+    },
+  );
 }

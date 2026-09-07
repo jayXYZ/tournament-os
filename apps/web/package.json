@@ -13,7 +13,8 @@
     "format": "prettier --write .",
     "lint": "tsc && eslint .  --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "test": "vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:smoke": "playwright test --config playwright.smoke.config.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",
@@ -62,11 +63,13 @@
     "@tailwindcss/typography": "^0.5.20",
     "@tailwindcss/vite": "^4.2.2",
     "@tanstack/eslint-config": "^0.4.0",
+    "@testing-library/react": "^16.3.3",
     "@types/node": "^24.12.2",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.2",
     "autoprefixer": "^10.5.0",
+    "jsdom": "^30.0.1",
     "prettier": "^3.8.3",
     "tailwindcss": "^4.2.2",
     "typescript": "catalog:",

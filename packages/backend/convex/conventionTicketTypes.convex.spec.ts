@@ -160,7 +160,7 @@ async function seedLiveConvention(
   });
   const ticketTypes = await organizer.query(
     api.conventions.ticketTypes.listTicketTypesForOrganizer,
-    { conventionId },
+    { now: Date.now(), conventionId },
   );
   return {
     conventionId,
@@ -238,7 +238,7 @@ test("sale windows: door sales stay open, a pass for a finished day is not purch
 
   const publicTypes = await t.query(
     api.conventions.ticketTypes.listPublicTicketTypes,
-    { conventionId },
+    { now: Date.now(), conventionId },
   );
   expect(
     Object.fromEntries(publicTypes.map((row) => [row.name, row.onSale])),
@@ -692,4 +692,36 @@ test("a ticket type with registrations cannot be deleted; an unused one can", as
     ticketTypeId: unusedId,
   });
   expect(await t.run(async (ctx) => ctx.db.get(unusedId))).toBeNull();
+});
+
+test("ticket previews cross both sale boundaries using query time without writes", async () => {
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const { conventionId, defaultTicketTypeId } = await seedLiveConvention(
+    t,
+    organizationId,
+  );
+  const start = Date.now() + 1000;
+  const end = start + 1000;
+  await t
+    .withIdentity(organizerIdentity)
+    .mutation(api.conventions.ticketTypes.updateTicketType, {
+      ticketTypeId: defaultTicketTypeId,
+      name: "General admission",
+      priceCents: 0,
+      saleStartDate: start,
+      saleEndDate: end,
+    });
+  for (const [now, onSale, refreshAt] of [
+    [start - 1, false, start],
+    [start, true, end + 1],
+    [end, true, end + 1],
+    [end + 1, false, null],
+  ] as const) {
+    const [ticket] = await t.query(
+      api.conventions.ticketTypes.listPublicTicketTypes,
+      { conventionId, now },
+    );
+    expect(ticket).toMatchObject({ onSale, refreshAt });
+  }
 });

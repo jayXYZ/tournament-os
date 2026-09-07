@@ -47,3 +47,22 @@ Tests create tournaments marked as test events under the "E2E Test
 Organization" workspace and complete them, so they accumulate as finished
 test tournaments in the dev deployment. Pre-production, that's acceptable;
 `pnpm db:wipe` resets the deployment whenever wanted.
+
+## Isolated CI smoke suite
+
+`pnpm test:smoke` launches a separate Vite entry point on port 3100 and runs
+Chromium against the real registration, badge, and organizer timeline
+components. It requires no secrets or cloud data. The tests exercise auth
+readiness, registration/cancellation, and publish → pair → publish-pairings
+controls, asserting the mutation names and arguments they send.
+
+Only the smoke Vite config aliases auth/Convex hooks to deterministic
+in-memory adapters. These adapters are outside the application entry point
+and never enter the production build. This checks browser rendering and UI
+wiring; it does not verify Clerk token issuance, Convex transport, or Stripe.
+The cloud suite above and backend integration tests cover those separate
+boundaries. The two Playwright configs exclude each other's tests.
+
+CI runs `pnpm build:web` independently of the smoke harness, then this suite,
+and uploads traces on failure. To install Chromium locally, run
+`pnpm --filter @tournament-os/web exec playwright install chromium`.

@@ -403,11 +403,57 @@ export const matchResultLineValidator = v.object({
   gameDraws: v.number(),
 });
 
+// The tournament's single live round timer. Server-side writes happen only on
+// organizer actions; clients derive the ticking countdown (and overtime, which
+// is never stored) from these anchors locally. Mirrored structurally by
+// RoundTimerState in @tournament-os/shared/timer-utils.
+export const tournamentRoundTimerValidator = v.union(
+  v.object({
+    kind: v.literal("running"),
+    roundId: v.id("tournamentRounds"),
+    // Epoch ms when remaining time hits zero; clients tick against this.
+    endsAt: v.number(),
+    // Configured length including adjustments, for "12:34 of 50:00" displays.
+    durationMs: v.number(),
+    startedAt: v.number(),
+  }),
+  v.object({
+    kind: v.literal("paused"),
+    roundId: v.id("tournamentRounds"),
+    // Frozen remainder; negative when paused while already in overtime.
+    remainingMs: v.number(),
+    durationMs: v.number(),
+    startedAt: v.number(),
+  }),
+);
+
 // What happened, as a discriminated union so the log view renders each kind
 // with full type safety. Events carry enough denormalized context (names,
 // round/table numbers, prior results) to reconstruct a dispute without
 // joining back to rows that may since have changed.
 export const tournamentAuditEventValidator = v.union(
+  v.object({
+    type: v.literal("pairings_published"),
+    roundId: v.id("tournamentRounds"),
+    roundNumber: v.number(),
+  }),
+  v.object({
+    type: v.literal("round_duration_changed"),
+    previousDurationMs: v.union(v.number(), v.null()),
+    durationMs: v.number(),
+  }),
+  v.object({
+    type: v.literal("round_timer_changed"),
+    action: v.union(
+      v.literal("started"),
+      v.literal("paused"),
+      v.literal("resumed"),
+      v.literal("adjusted"),
+      v.literal("cleared"),
+    ),
+    previousTimer: v.union(tournamentRoundTimerValidator, v.null()),
+    timer: v.union(tournamentRoundTimerValidator, v.null()),
+  }),
   v.object({
     type: v.literal("match_result_recorded"),
     matchId: v.id("tournamentMatches"),
@@ -703,29 +749,5 @@ export const conventionAuditEventValidator = v.union(
   v.object({
     type: v.literal("order_disputed"),
     player: conventionAuditPlayerRefValidator,
-  }),
-);
-
-// The tournament's single live round timer. Server-side writes happen only on
-// organizer actions; clients derive the ticking countdown (and overtime, which
-// is never stored) from these anchors locally. Mirrored structurally by
-// RoundTimerState in @tournament-os/shared/timer-utils.
-export const tournamentRoundTimerValidator = v.union(
-  v.object({
-    kind: v.literal("running"),
-    roundId: v.id("tournamentRounds"),
-    // Epoch ms when remaining time hits zero; clients tick against this.
-    endsAt: v.number(),
-    // Configured length including adjustments, for "12:34 of 50:00" displays.
-    durationMs: v.number(),
-    startedAt: v.number(),
-  }),
-  v.object({
-    kind: v.literal("paused"),
-    roundId: v.id("tournamentRounds"),
-    // Frozen remainder; negative when paused while already in overtime.
-    remainingMs: v.number(),
-    durationMs: v.number(),
-    startedAt: v.number(),
   }),
 );
