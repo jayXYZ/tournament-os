@@ -30,6 +30,7 @@ import {
   previousTournamentRound,
   reopenPhaseAtRound,
   requirePhase,
+  requireCurrentPhase,
   requireResolvedPhaseTotalRounds,
   resolvePhaseTotalRounds,
   roundNumberInPhase,
@@ -63,6 +64,7 @@ import {
   isPairingsVisibleToPlayers,
   requireRound,
   requireTournament,
+  requireSetupEditable,
   roundHasRecordedResult,
   roundMatchesWithPlayers,
 } from "./tournaments";
@@ -664,6 +666,7 @@ export async function pairFirstRoundOfTournament(
 export async function publishPairings(
   ctx: MutationCtx,
   roundId: Id<"tournamentRounds">,
+  actor: Doc<"users">,
 ): Promise<Id<"tournamentRounds">> {
   const round = await requireRound(ctx, roundId);
   const phase = await requirePhase(ctx, round.tournamentPhaseId);
@@ -688,6 +691,16 @@ export async function publishPairings(
   await ctx.db.patch(round._id, {
     pairingsPublishedAt: now,
     updatedAt: now,
+  });
+  await logAuditEvent(ctx, {
+    tournamentId: round.tournamentId,
+    actor,
+    actorRole: "organizer",
+    event: {
+      type: "pairings_published",
+      roundId: round._id,
+      roundNumber: round.roundNumber,
+    },
   });
   return round._id;
 }
@@ -810,7 +823,7 @@ async function executeGenerateNextRound(
     event: {
       type: "round_started",
       roundId,
-      roundNumber: step.round.roundNumber + 1,
+      roundNumber: (await requireRound(ctx, roundId)).roundNumber,
       playerCount,
     },
   });
@@ -1278,4 +1291,63 @@ export async function startPlayerMeeting(
     },
   });
   return phase._id;
+}
+
+export async function publishTournament(
+  ctx: MutationCtx,
+  { tournament, user }: ProgressionActor,
+) {
+  requireSetupEditable(tournament);
+  await requireCurrentPhase(ctx, tournament._id);
+
+  await ctx.db.patch(tournament._id, {
+    lifecycle: "registration",
+    updatedAt: Date.now(),
+  });
+  await logAuditEvent(ctx, {
+    tournamentId: tournament._id,
+    actor: user,
+    actorRole: "organizer",
+    event: { type: "tournament_published" },
+  });
+  return tournament._id;
+}
+
+export async function cancelTournament(
+  ctx: MutationCtx,
+  { tournament, user }: ProgressionActor,
+) {
+  if (tournament.lifecycle === "completed") {
+    throw new Error("Completed tournaments cannot be cancelled");
+  }
+  if (tournament.lifecycle === "cancelled") {
+    throw new Error("Tournament is already cancelled");
+  }
+  await ctx.db.patch(tournament._id, {
+    lifecycle: "cancelled",
+    // A cancelled event has no live round, so any running timer dies with it.
+    roundTimer: undefined,
+    updatedAt: Date.now(),
+  });
+  await logAuditEvent(ctx, {
+    tournamentId: tournament._id,
+    actor: user,
+    actorRole: "organizer",
+    event: { type: "tournament_cancelled" },
+  });
+  // A cancelled paid event makes every player whole: open checkouts close
+  // and every payment refunds (payments/refunds.ts sweeps).
+  if ((tournament.entryFeeCents ?? 0) > 0) {
+    await ctx.scheduler.runAfter(
+      0,
+      internal.payments.refunds.closeOpenOrdersSweep,
+      { tournamentId: tournament._id },
+    );
+    await ctx.scheduler.runAfter(
+      0,
+      internal.payments.refunds.cancelEventPaymentsSweep,
+      { tournamentId: tournament._id },
+    );
+  }
+  return tournament._id;
 }

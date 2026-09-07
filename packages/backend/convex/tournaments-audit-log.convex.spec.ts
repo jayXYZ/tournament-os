@@ -18,6 +18,115 @@ import {
 } from "./specHelpers";
 import { createConvexTest } from "./specHelpers.runtime";
 
+test("explicit pairings publication is audited once with its organizer and round", async () => {
+  const t = createConvexTest();
+  const { tournamentId } = await seedTournamentWithPlayers(t, {
+    name: "Publication audit",
+    playerCount: 4,
+    autoPublishPairings: false,
+  });
+  const organizer = t.withIdentity(organizerIdentity);
+  const roundId = await organizer.mutation(
+    api.tournaments.rounds.startTournament,
+    { tournamentId },
+  );
+  const before = await auditEvents(t, tournamentId);
+  await expect(
+    t
+      .withIdentity(playerIdentity(1))
+      .mutation(api.tournaments.rounds.publishPairings, { roundId }),
+  ).rejects.toThrow();
+  expect(await auditEvents(t, tournamentId)).toEqual(before);
+  await organizer.mutation(api.tournaments.rounds.publishPairings, { roundId });
+  await organizer.mutation(api.tournaments.rounds.publishPairings, { roundId });
+  const publications = (await auditEvents(t, tournamentId)).filter(
+    (row) => row.event.type === "pairings_published",
+  );
+  expect(publications).toHaveLength(1);
+  expect(publications[0]).toMatchObject({
+    actorName: "Organizer",
+    actorRole: "organizer",
+    event: { type: "pairings_published", roundId, roundNumber: 1 },
+  });
+  expect(
+    (
+      await organizer.query(api.tournaments.rounds.getCurrentRound, {
+        tournamentId,
+      })
+    )?.pairingsPublishedAt,
+  ).toBeDefined();
+});
+
+test("timer controls journal before/after anchors, while failures and no-ops stay silent", async () => {
+  const t = createConvexTest();
+  const { tournamentId } = await seedStartedTournament(t, 4);
+  const organizer = t.withIdentity(organizerIdentity);
+  const durationMs = 45 * 60_000;
+  await organizer.mutation(api.tournaments.timer.setRoundDuration, {
+    tournamentId,
+    durationMs,
+  });
+  await organizer.mutation(api.tournaments.timer.setRoundDuration, {
+    tournamentId,
+    durationMs,
+  });
+  await organizer.mutation(api.tournaments.timer.startTimer, { tournamentId });
+  await organizer.mutation(api.tournaments.timer.pauseTimer, { tournamentId });
+  await organizer.mutation(api.tournaments.timer.adjustTimer, {
+    tournamentId,
+    deltaMs: 60_000,
+  });
+  await organizer.mutation(api.tournaments.timer.resumeTimer, { tournamentId });
+  await organizer.mutation(api.tournaments.timer.startTimer, { tournamentId });
+  await organizer.mutation(api.tournaments.timer.clearTimer, { tournamentId });
+  const events = await auditEvents(t, tournamentId);
+  const durationEvents = events.filter(
+    (row) => row.event.type === "round_duration_changed",
+  );
+  expect(durationEvents).toHaveLength(1);
+  expect(durationEvents[0].event).toMatchObject({ durationMs });
+  const timerRows = events.filter(
+    (row) => row.event.type === "round_timer_changed",
+  );
+  expect(timerRows.every((row) => row.actorRole === "organizer")).toBe(true);
+  const timerEvents = timerRows
+    .map((row) => row.event)
+    .filter((event) => event.type === "round_timer_changed")
+    .reverse();
+  expect(timerEvents.map((event) => event.action)).toEqual([
+    "started",
+    "paused",
+    "adjusted",
+    "resumed",
+    "started",
+    "cleared",
+  ]);
+  expect(timerEvents[0].previousTimer).toBeNull();
+  for (let index = 1; index < timerEvents.length; index++) {
+    expect(timerEvents[index].previousTimer).toEqual(
+      timerEvents[index - 1].timer,
+    );
+  }
+  expect(timerEvents.at(-1)?.timer).toBeNull();
+  expect(
+    (
+      await organizer.query(api.tournaments.lifecycle.getTournamentSetup, {
+        tournamentId,
+      })
+    ).tournament.roundTimer,
+  ).toBeUndefined();
+  await organizer.mutation(api.tournaments.timer.clearTimer, { tournamentId });
+  await expect(
+    organizer.mutation(api.tournaments.timer.pauseTimer, { tournamentId }),
+  ).rejects.toThrow();
+  await expect(
+    t
+      .withIdentity(playerIdentity(1))
+      .mutation(api.tournaments.timer.startTimer, { tournamentId }),
+  ).rejects.toThrow();
+  expect(await auditEvents(t, tournamentId)).toEqual(events);
+});
+
 test("result reports and organizer overrides are audited", async () => {
   const t = createConvexTest();
   const { tournamentId, registrationIds } = await seedStartedTournament(t, 4);

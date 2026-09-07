@@ -61,8 +61,8 @@ export const publishPairings = mutation({
   args: { roundId: v.id("tournamentRounds") },
   handler: async (ctx, args) => {
     const round = await requireRound(ctx, args.roundId);
-    await requireOrganizerAccess(ctx, round.tournamentId);
-    return await publishPairingsTransition(ctx, args.roundId);
+    const { user } = await requireOrganizerAccess(ctx, round.tournamentId);
+    return await publishPairingsTransition(ctx, args.roundId, user);
   },
 });
 
