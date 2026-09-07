@@ -46,12 +46,13 @@ test("result reports and organizer overrides are audited", async () => {
       playerTwoGameWins: 2,
     });
 
-  // Newest first: override, report, tournament start, publish.
+  // Newest first: override, report, tournament start, real admissions, publish.
   const events = await auditEvents(t, tournamentId);
   expect(events.map((row) => row.event.type)).toEqual([
     "match_result_recorded",
     "match_result_reported",
     "tournament_started",
+    ...Array<string>(4).fill("player_registered"),
     "tournament_published",
   ]);
 
@@ -162,6 +163,7 @@ test("registration changes and drops are audited with the acting side", async ()
     ["registration_cancelled", "organizer", "Organizer"],
     ["registration_cancelled", "player", "Player 5"],
     ["player_registered", "player", "Player 5"],
+    ...[4, 3, 2, 1].map((n) => ["player_registered", "player", `Player ${n}`]),
     ["tournament_published", "organizer", "Organizer"],
   ]);
 
@@ -202,6 +204,7 @@ test("round and tournament lifecycle actions are audited", async () => {
     "round_started",
     "round_completed",
     "tournament_started",
+    ...Array<string>(4).fill("player_registered"),
     "tournament_published",
   ]);
   const roundStarted = lifecycleEvents[2];

@@ -8,13 +8,13 @@ current-match semantics — see git history for the original docs). The
 remaining docs were re-verified against the codebase on 2026-08-29; file:line
 references were accurate at that point.
 
-| #   | Doc                                                  | One-liner                                                        | Effort |
-| --- | ---------------------------------------------------- | ---------------------------------------------------------------- | ------ |
-| 07  | [timeline-module](07-timeline-module.md)             | Pure timeline math out of the 809-line progress bar              | Small  |
-| 09  | [fixture-consolidation](09-fixture-consolidation.md) | Fixtures through public mutations; delete the last duplicate     | Medium |
-| 10  | [audit-event-coupling](10-audit-event-coupling.md)   | Audit policy table, then close the timer/delete/publish log gaps | Medium |
+| #   | Doc                                                | One-liner                                                        | Effort |
+| --- | -------------------------------------------------- | ---------------------------------------------------------------- | ------ |
+| 07  | [timeline-module](07-timeline-module.md)           | Pure timeline math out of the 809-line progress bar              | Small  |
+| 10  | [audit-event-coupling](10-audit-event-coupling.md) | Audit policy table, then close the timer/delete/publish log gaps | Medium |
 
-All three are independent of each other.
+The fixture consolidation is complete; see [fixture conventions](09-fixture-consolidation.md).
+The two remaining refactors are independent.
 
 ## Standing constraints for every refactor
 
