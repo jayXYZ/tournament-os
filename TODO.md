@@ -517,10 +517,17 @@ push, analytics, and monitoring should be independent consumers.
   - [ ] Result slips
   - [ ] Standings
 - [ ] Complete native player-controller parity
-  - [x] Show current match, player meetings, live timer, and standings
-  - [ ] Report a result (surface mutation errors via
-        `mutationErrorMessage` from `@paper-pairings/core` so rate-limited
-        rejections get the retry-later treatment)
+  - [x] Show current match and player meetings
+  - [ ] Custom app bar (event name + `RoundTimerPill`; the native stack
+        header wraps items in an iOS 26 glass capsule, so the timer is
+        unmounted until then) and tab bar
+  - [ ] Standings (removed from the match page; return them behind the
+        planned tab bar)
+  - [x] Report a result (the scoreboard from the Figma "Match result
+        explorations" page: half-numeral tap targets, draws behind a prompt,
+        hold to submit; mutation errors surface via `mutationErrorMessage`
+        from `@paper-pairings/core` so rate-limited rejections get the
+        retry-later treatment)
   - [ ] Drop from the event
   - [ ] Show match history
   - [ ] Submit and view decklists

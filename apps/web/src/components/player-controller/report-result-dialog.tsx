@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { formatGameScoreline, useReportResult } from '@paper-pairings/core'
+import { describeResultPreview, useReportResult } from '@paper-pairings/core'
 import {
   MAX_GAME_DRAWS,
   requiredGameWins,
@@ -90,7 +90,7 @@ export function ReportResultDialog({
             disabled={busy}
           />
           <p className="text-center text-sm font-medium text-muted-foreground">
-            {resultPreview(
+            {describeResultPreview(
               myGameWins,
               opponentGameWins,
               gameDraws,
@@ -158,19 +158,4 @@ function GameWinsStepper({
       </div>
     </div>
   )
-}
-
-function resultPreview(
-  myGameWins: number,
-  opponentGameWins: number,
-  gameDraws: number,
-  opponentName: string,
-) {
-  if (myGameWins > opponentGameWins) {
-    return `You win ${formatGameScoreline(myGameWins, opponentGameWins, gameDraws)}`
-  }
-  if (myGameWins < opponentGameWins) {
-    return `${opponentName} wins ${formatGameScoreline(opponentGameWins, myGameWins, gameDraws)}`
-  }
-  return `Draw ${formatGameScoreline(myGameWins, opponentGameWins, gameDraws)}`
 }

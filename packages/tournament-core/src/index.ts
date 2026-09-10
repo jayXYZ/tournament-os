@@ -30,6 +30,7 @@ export {
   describeCurrentMatch,
   describeDropConfirmation,
   describeHeaderBadge,
+  describeResultPreview,
   reportAction,
 } from "./player-view";
 export type {
