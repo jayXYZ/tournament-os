@@ -6,6 +6,7 @@ import { api } from '@paper-pairings/backend/convex/_generated/api'
 import { displayPlayerName } from '@paper-pairings/core'
 import { ManageMatchMenu } from './manage-match-menu'
 import { MatchResultCell } from './match-result-cell'
+import { ScoreSlipPlayers, ScoreSlipTable } from './score-slip'
 import type { ColumnDef } from '@tanstack/react-table'
 import type { Id } from '@paper-pairings/backend/convex/_generated/dataModel'
 import type { BestOf } from '@paper-pairings/shared/match-structure'
@@ -13,7 +14,6 @@ import type { PairingRow } from './pairing-row'
 import { TableEmptyState } from '@/components/shared/table-empty-state'
 import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'
 import { TableSearchInput } from '@/components/shared/table-search-input'
-import { Badge } from '@/components/ui/badge'
 import { DataTable, DataTableColumnHeader } from '@/components/ui/data-table'
 
 // Built per render because the manage cell needs the round's phase match
@@ -31,13 +31,7 @@ function buildPairingColumns(
         <DataTableColumnHeader column={column} title="Table" />
       ),
       meta: { className: 'w-20' },
-      cell: ({ row }) => (
-        <span className="font-medium tabular-nums">
-          {row.original.match.tableNumber ?? (
-            <span className="text-muted-foreground">&mdash;</span>
-          )}
-        </span>
-      ),
+      cell: ({ row }) => <ScoreSlipTable row={row.original} />,
     },
     {
       id: 'players',
@@ -52,7 +46,7 @@ function buildPairingColumns(
       // put as pairings change across pages.
       meta: { className: 'w-full' },
       enableSorting: false,
-      cell: ({ row }) => <PairingPlayersCell row={row.original} />,
+      cell: ({ row }) => <ScoreSlipPlayers row={row.original} />,
     },
     {
       id: 'result',
@@ -121,31 +115,5 @@ export function PairingsTable({
         />
       )}
     />
-  )
-}
-
-function PairingPlayersCell({ row }: { row: PairingRow }) {
-  const playerOne = row.players.at(0)
-  const playerTwo = row.players.at(1)
-  const isBye = row.players.some((player) => player.isBye)
-
-  return (
-    <>
-      <p className="font-medium text-foreground">
-        {displayPlayerName(playerOne?.playerName)}
-        {isBye ? null : (
-          <span className="font-normal text-muted-foreground"> vs.</span>
-        )}
-      </p>
-      {isBye ? (
-        <Badge variant="secondary" className="mt-1">
-          Bye
-        </Badge>
-      ) : (
-        <p className="font-medium text-foreground">
-          {displayPlayerName(playerTwo?.playerName)}
-        </p>
-      )}
-    </>
   )
 }

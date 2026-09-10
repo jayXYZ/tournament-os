@@ -20,6 +20,7 @@ import {
   analyzeProgression,
   completeRound as completeRoundTransition,
   generateNextRound as generateNextRoundTransition,
+  liveRoundSummary,
   loadPhaseBoards,
   publishPairings as publishPairingsTransition,
   rewindLatestRound as rewindLatestRoundTransition,
@@ -294,9 +295,28 @@ export const getPairingsBoard = query({
   handler: async (ctx, args) => {
     const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
     const phaseBoards = await loadPhaseBoards(ctx, args.tournamentId);
-    const { nextStep, actions } = await analyzeProgression(ctx, tournament, {
-      phaseBoards,
-    });
+    const { facts, nextStep, actions } = await analyzeProgression(
+      ctx,
+      tournament,
+      { phaseBoards },
+    );
+
+    // Who is still playing. The confirmed count is denormalized on the
+    // tournament; the non-active statuses are three small indexed reads,
+    // bounded by the player cap, and every manager route subscribes to this
+    // board so the overview's "31 playing, 1 dropped" line costs no extra
+    // subscription.
+    const nonActive = await nonActiveParticipationStatuses(ctx, tournament._id);
+    const field = {
+      confirmed: tournament.confirmedRegistrationCount,
+      active: tournament.confirmedRegistrationCount - nonActive.size,
+      dropped: 0,
+      eliminated: 0,
+      disqualified: 0,
+    };
+    for (const status of nonActive.values()) {
+      field[status] += 1;
+    }
 
     // Derived from the same boards progression analyzes, so the timeline the
     // clients render can never disagree with nextStep.
@@ -309,6 +329,8 @@ export const getPairingsBoard = query({
       })),
       nextStep,
       rewind: actions.rewind,
+      liveRound: liveRoundSummary(facts),
+      field,
     };
   },
 });
