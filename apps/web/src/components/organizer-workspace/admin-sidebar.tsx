@@ -1,7 +1,7 @@
 import { Link, useLocation } from '@tanstack/react-router'
 import {
-  ArrowLeft,
   Building2,
+  DoorOpen,
   LogOut,
   Tent,
   Trophy,
@@ -102,10 +102,10 @@ export function AdminSidebar() {
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton asChild tooltip="Player view">
+            <SidebarMenuButton asChild tooltip="Leave admin">
               <Link to="/">
-                <ArrowLeft />
-                <span>Player view</span>
+                <DoorOpen />
+                <span>Leave admin</span>
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>

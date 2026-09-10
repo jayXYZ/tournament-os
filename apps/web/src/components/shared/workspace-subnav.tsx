@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils'
 export type WorkspaceSubnavItem = {
   label: string
   href: string
-  icon: LucideIcon
+  icon?: LucideIcon
   search?: Record<string, unknown>
 }
 
@@ -31,7 +31,7 @@ export function WorkspaceSubnav({
         aria-label={ariaLabel}
         className="border-b border-border bg-background duration-300 ease-out animate-in slide-in-from-top motion-reduce:animate-none"
       >
-        <div className="mx-auto flex max-w-6xl items-center gap-1 overflow-x-auto px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto flex max-w-7xl items-center gap-1 overflow-x-auto px-4 sm:px-6 lg:px-8">
           {items.map((item) => {
             const Icon = item.icon
             const isActive = pathname === item.href
@@ -48,7 +48,7 @@ export function WorkspaceSubnav({
                   'data-[active=true]:border-foreground data-[active=true]:text-foreground',
                 )}
               >
-                <Icon className="size-4 shrink-0" />
+                {Icon ? <Icon className="size-4 shrink-0" /> : null}
                 <span>{item.label}</span>
               </Link>
             )

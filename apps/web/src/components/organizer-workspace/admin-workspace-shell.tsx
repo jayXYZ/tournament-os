@@ -1,3 +1,5 @@
+import { useState } from 'react'
+
 import { AdminAuthGate } from './admin-auth-gate'
 import { AdminHeader, AdminSidebar } from './admin-sidebar'
 import { OrganizationProvider } from './organization-context'
@@ -8,17 +10,27 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import { useEnsureUserRow } from '@/hooks/use-ensure-user-row'
 
 export function AdminWorkspaceShell({
-  defaultSidebarOpen,
+  collapseSidebar,
   children,
 }: {
-  defaultSidebarOpen: boolean
+  // Inside a tournament the three workspace links do not need 16rem while an
+  // event is running, so the sidebar defaults to its icon rail there and
+  // reopens on the way out. A manual toggle holds until the scope changes.
+  collapseSidebar: boolean
   children: ReactNode
 }) {
+  const [open, setOpen] = useState(!collapseSidebar)
+  const [previousCollapse, setPreviousCollapse] = useState(collapseSidebar)
+  if (collapseSidebar !== previousCollapse) {
+    setPreviousCollapse(collapseSidebar)
+    setOpen(!collapseSidebar)
+  }
+
   return (
     <AdminAuthGate>
       <TooltipProvider>
         <OrganizationProvider>
-          <SidebarProvider defaultOpen={defaultSidebarOpen}>
+          <SidebarProvider open={open} onOpenChange={setOpen}>
             <UpsertCurrentUser />
             <AdminSidebar />
             <SidebarInset className="h-svh overflow-hidden md:peer-data-[variant=inset]:h-[calc(100svh-1rem)]">
