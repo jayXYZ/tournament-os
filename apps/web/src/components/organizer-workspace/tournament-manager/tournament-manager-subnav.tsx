@@ -1,12 +1,3 @@
-import {
-  ClipboardList,
-  LayoutDashboard,
-  ScrollText,
-  Settings,
-  Swords,
-  Timer,
-  Trophy,
-} from 'lucide-react'
 import { useLocation, useSearch } from '@tanstack/react-router'
 
 import type { WorkspaceSubnavItem } from '@/components/shared/workspace-subnav'
@@ -35,27 +26,21 @@ export function TournamentManagerSubnav({
           round: search.round,
         }
   const items: Array<WorkspaceSubnavItem> = [
-    { label: 'Overview', href: base, icon: LayoutDashboard },
-    {
-      label: 'Registrations',
-      href: `${base}/registrations`,
-      icon: ClipboardList,
-    },
+    { label: 'Overview', href: base },
+    { label: 'Registrations', href: `${base}/registrations` },
     {
       label: 'Pairings',
       href: pairingsPath,
-      icon: Swords,
       search: pathname === pairingsPath ? {} : selectedRoundSearch,
     },
-    { label: 'Timer', href: `${base}/timer`, icon: Timer },
+    { label: 'Timer', href: `${base}/timer` },
     {
       label: 'Standings',
       href: standingsPath,
-      icon: Trophy,
       search: pathname === standingsPath ? {} : selectedRoundSearch,
     },
-    { label: 'Log', href: `${base}/log`, icon: ScrollText },
-    { label: 'Settings', href: `${base}/settings`, icon: Settings },
+    { label: 'Activity', href: `${base}/log` },
+    { label: 'Settings', href: `${base}/settings` },
   ]
 
   return <WorkspaceSubnav aria-label="Tournament sections" items={items} />

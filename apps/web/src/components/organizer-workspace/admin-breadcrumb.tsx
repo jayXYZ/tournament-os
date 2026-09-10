@@ -51,8 +51,10 @@ const viewLabels: Record<AdminView, string> = {
 const tournamentPageLabels: Record<string, string> = {
   registrations: 'Registrations',
   pairings: 'Pairings',
-  settings: 'Settings',
+  timer: 'Timer',
   standings: 'Standings',
+  log: 'Activity',
+  settings: 'Settings',
 }
 
 const conventionPageLabels: Record<string, string> = {

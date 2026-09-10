@@ -1,10 +1,10 @@
 import type { Doc } from '@paper-pairings/backend/convex/_generated/dataModel'
 
-import { Badge } from '@/components/ui/badge'
+import type { StatusTone } from '@/components/shared/status-dot'
+import { StatusDot } from '@/components/shared/status-dot'
 
 export type TournamentLifecycle = Doc<'tournaments'>['lifecycle']
 export type TournamentVisibility = Doc<'tournaments'>['visibility']
-type BadgeVariant = 'default' | 'secondary' | 'outline' | 'destructive'
 
 const shortDateFormatter = new Intl.DateTimeFormat('en-US', {
   month: 'short',
@@ -25,13 +25,13 @@ const longDateFormatter = new Intl.DateTimeFormat('en-US', {
 
 const tournamentLifecycles: Record<
   TournamentLifecycle,
-  { label: string; variant: BadgeVariant }
+  { label: string; tone: StatusTone }
 > = {
-  setup: { label: 'Setup', variant: 'outline' },
-  registration: { label: 'Open for registration', variant: 'secondary' },
-  in_progress: { label: 'In progress', variant: 'default' },
-  completed: { label: 'Completed', variant: 'outline' },
-  cancelled: { label: 'Cancelled', variant: 'destructive' },
+  setup: { label: 'Setup', tone: 'muted' },
+  registration: { label: 'Open for registration', tone: 'accent' },
+  in_progress: { label: 'In progress', tone: 'live' },
+  completed: { label: 'Completed', tone: 'neutral' },
+  cancelled: { label: 'Cancelled', tone: 'danger' },
 }
 
 export function formatTournamentDateShort(timestamp: number) {
@@ -57,8 +57,8 @@ export function TournamentLifecycleBadge({
 }: {
   lifecycle: TournamentLifecycle
 }) {
-  const badge = tournamentLifecycles[lifecycle]
-  return <Badge variant={badge.variant}>{badge.label}</Badge>
+  const status = tournamentLifecycles[lifecycle]
+  return <StatusDot tone={status.tone}>{status.label}</StatusDot>
 }
 
 export const tournamentVisibilities: Record<
@@ -79,6 +79,8 @@ export function TournamentVisibilityBadge({
   visibility: TournamentVisibility
 }) {
   return (
-    <Badge variant="outline">{tournamentVisibilities[visibility].label}</Badge>
+    <StatusDot tone="muted">
+      {tournamentVisibilities[visibility].label}
+    </StatusDot>
   )
 }

@@ -50,7 +50,7 @@ function SignedOutAdmin({ description }: { description: string }) {
         <Button asChild type="button" variant="outline">
           <Link to="/">
             <ArrowLeft className="size-4" />
-            Player view
+            Player home
           </Link>
         </Button>
       </header>

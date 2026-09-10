@@ -335,7 +335,7 @@ function TournamentTableAction({
             params={{ tournamentId: publicCode }}
           >
             <Swords data-icon="inline-start" />
-            Open player controller
+            Open my player view
           </Link>
         </Button>
       )
