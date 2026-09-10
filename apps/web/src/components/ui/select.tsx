@@ -1,9 +1,11 @@
 'use client'
 
 import * as React from 'react'
+import { cva } from 'class-variance-authority'
 import { Select as SelectPrimitive } from 'radix-ui'
-
 import { CheckIcon, ChevronDownIcon, ChevronUpIcon } from 'lucide-react'
+import type { VariantProps } from 'class-variance-authority'
+
 import { cn } from '@/lib/utils'
 
 function Select({
@@ -31,27 +33,62 @@ function SelectValue({
   return <SelectPrimitive.Value data-slot="select-value" {...props} />
 }
 
+const selectTriggerVariants = cva(
+  "flex w-fit items-center justify-between gap-1.5 rounded-md border whitespace-nowrap transition-colors outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-2 aria-invalid:ring-destructive/20 data-placeholder:text-muted-foreground *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-1.5 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5",
+  {
+    variants: {
+      variant: {
+        default:
+          'border-input bg-input/20 dark:bg-input/30 dark:hover:bg-input/50',
+        // Reads as plain text with a chevron until the pointer or keyboard
+        // reaches it. Then the box the default variant wears fades in, and
+        // stays while the menu is open so the trigger doesn't vanish under it.
+        ghost:
+          'border-transparent bg-transparent enabled:hover:border-input enabled:hover:bg-input/20 focus-visible:bg-input/20 data-[state=open]:border-input data-[state=open]:bg-input/20 motion-reduce:transition-none dark:enabled:hover:bg-input/30 dark:focus-visible:bg-input/30 dark:data-[state=open]:bg-input/30',
+      },
+      size: {
+        default: 'h-7 px-2 py-1.5 text-xs/relaxed',
+        sm: 'h-6 px-2 py-1.5 text-xs/relaxed',
+      },
+    },
+    compoundVariants: [
+      // Ghost lives inside running text, so it takes the surrounding font and
+      // line-height instead of the control type scale and sits on the text
+      // baseline. Negative margins cancel its padding (and, vertically, the
+      // 1px border) so the hover box bleeds around the words without moving
+      // them or changing the line height.
+      {
+        variant: 'ghost',
+        class:
+          "inline-flex h-auto gap-1 -mx-1 -my-[calc(--spacing(0.5)+1px)] px-1 py-0.5 align-baseline text-[length:inherit] leading-[inherit] [&_svg:not([class*='size-'])]:size-[1em]",
+      },
+    ],
+    defaultVariants: {
+      variant: 'default',
+      size: 'default',
+    },
+  },
+)
+
 function SelectTrigger({
   className,
+  variant = 'default',
   size = 'default',
   children,
   ...props
-}: React.ComponentProps<typeof SelectPrimitive.Trigger> & {
-  size?: 'sm' | 'default'
-}) {
+}: React.ComponentProps<typeof SelectPrimitive.Trigger> &
+  VariantProps<typeof selectTriggerVariants>) {
   return (
     <SelectPrimitive.Trigger
       data-slot="select-trigger"
+      data-variant={variant}
       data-size={size}
-      className={cn(
-        "flex w-fit items-center justify-between gap-1.5 rounded-md border border-input bg-input/20 px-2 py-1.5 text-xs/relaxed whitespace-nowrap transition-colors outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-2 aria-invalid:ring-destructive/20 data-placeholder:text-muted-foreground data-[size=default]:h-7 data-[size=sm]:h-6 *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-1.5 dark:bg-input/30 dark:hover:bg-input/50 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5",
-        className,
-      )}
+      className={cn(selectTriggerVariants({ variant, size }), className)}
       {...props}
     >
       {children}
       <SelectPrimitive.Icon asChild>
-        <ChevronDownIcon className="pointer-events-none size-3.5 text-muted-foreground" />
+        <ChevronDownIcon className="pointer-events-none text-muted-foreground" />
       </SelectPrimitive.Icon>
     </SelectPrimitive.Trigger>
   )
@@ -195,4 +232,5 @@ export {
   SelectSeparator,
   SelectTrigger,
   SelectValue,
+  selectTriggerVariants,
 }
