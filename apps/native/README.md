@@ -68,10 +68,22 @@ src/
     _layout.tsx          # Clerk + Convex providers, root Stack
     index.tsx            # Auth gate: <AuthView> modal when signed out,
                          #   <UserButton> + the player's active tournaments when in
-    tournament/[code].tsx # Current match + live standings, keyed by the
-                          #   tournament's public code (shared core hooks)
+    tournament/[code].tsx # The match page, keyed by the tournament's public
+                          #   code (shared core hooks): the report scoreboard
+                          #   while the viewer's match is reportable, the
+                          #   result card after
+  components/
+    report-result-scoreboard.tsx # Game-win counts stepped by tapping the
+                                 #   upper/lower half of each numeral, draws
+                                 #   behind a prompt, hold to submit
+    hold-button.tsx      # Native port of the web HoldButton (800ms sweep)
+    round-timer-pill.tsx # App-bar timer pill, unmounted until the custom
+                         #   header lands (iOS 26 glass wraps header items)
+    toast.tsx            # One-at-a-time bottom toast (sonner stand-in)
   lib/
     convex.ts            # ConvexReactClient singleton
+    palette.ts           # Dark-theme tokens mirrored from the web app.css
+    typography.ts        # Font families registered in _layout.tsx (Geist)
 ```
 
 ## Monorepo notes

@@ -138,6 +138,25 @@ export function reportAction(
   };
 }
 
+// The live read of a result as it is entered — the scoreline the report
+// will record, phrased from the reporter's seat — shown above the submit
+// control on every reporting surface so the two clients never word it
+// differently.
+export function describeResultPreview(
+  myGameWins: number,
+  opponentGameWins: number,
+  gameDraws: number,
+  opponentName: string,
+): string {
+  if (myGameWins > opponentGameWins) {
+    return `You win ${formatGameScoreline(myGameWins, opponentGameWins, gameDraws)}`;
+  }
+  if (myGameWins < opponentGameWins) {
+    return `${opponentName} wins ${formatGameScoreline(opponentGameWins, myGameWins, gameDraws)}`;
+  }
+  return `Draw ${formatGameScoreline(myGameWins, opponentGameWins, gameDraws)}`;
+}
+
 // The drop confirmation dialog's description. The concession half reads the
 // server's dropWouldConcede fact rather than deriving from the visible
 // match: the engine concedes an unfinished current-round match even while

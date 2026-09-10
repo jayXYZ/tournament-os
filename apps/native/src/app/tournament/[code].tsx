@@ -1,19 +1,13 @@
 import { useUser } from "@clerk/expo";
 import {
   describeCurrentMatch,
-  describeHeaderBadge,
-  displayPlayerName,
-  formatRecord,
-  standingStatusLabel,
-  useLatestStandings,
+  reportAction,
   useMyCurrentMatch,
   usePlayerTournamentAccess,
-  useRoundTimer,
 } from "@paper-pairings/core";
 import type {
   CurrentMatchDescription,
   PlayerTournamentEvent,
-  RoundTimer,
 } from "@paper-pairings/core";
 import { useLocalSearchParams, useNavigation } from "expo-router";
 import { useEffect } from "react";
@@ -27,9 +21,17 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { Badge } from "@/components/badge";
+import { ReportResultScoreboard } from "@/components/report-result-scoreboard";
 import { SignInButton } from "@/components/sign-in-button";
+import { Toast, useToast } from "@/components/toast";
 import { palette } from "@/lib/palette";
 
+// The match page: the viewer's current match — the report scoreboard while
+// it is live, the result card once it lands. The Figma "Player / App bar"
+// (event name + round timer) and the tab bar are still to come as custom
+// chrome; until then the native stack header carries only the event name
+// (see components/round-timer-pill.tsx for why the timer is not in it), and
+// standings stay off this page.
 export default function TournamentScreen() {
   const { code } = useLocalSearchParams<{ code: string }>();
   // The shared access ladder needs the app's own auth signal; Convex
@@ -111,57 +113,55 @@ export default function TournamentScreen() {
 // queries reject anything less (the server's requireRegisteredPlayer).
 function TournamentContent({ event }: { event: PlayerTournamentEvent }) {
   const current = useMyCurrentMatch(event.tournament._id);
-  const standings = useLatestStandings(event.tournament._id);
-  const badge = describeHeaderBadge(current);
+  const { toast, show, dismiss } = useToast();
 
   return (
     <SafeAreaView style={styles.container} edges={["bottom"]}>
       <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Current round</Text>
-          {badge ? <Badge tone={badge.tone}>{badge.label}</Badge> : null}
-        </View>
-        <RoundCountdown timer={event.tournament.roundTimer} />
-        <CurrentMatch current={current} />
-
-        <Text style={[styles.sectionTitle, styles.sectionGap]}>Standings</Text>
-        <Standings standings={standings} />
+        <CurrentMatch
+          current={current}
+          onReported={() => show("Result reported.")}
+          onReportError={(message) => show(message, "destructive")}
+        />
       </ScrollView>
+      <Toast toast={toast} onDismiss={dismiss} />
     </SafeAreaView>
-  );
-}
-
-// Live round timer, ticked locally against the Convex-synced anchors carried
-// on the public event query — the same source web reads. Hidden while no
-// timer is set; overtime counts up in red.
-function RoundCountdown({ timer }: { timer: RoundTimer | null | undefined }) {
-  const { phase, remainingMs, formatted } = useRoundTimer(timer);
-  if (phase === "idle") {
-    return null;
-  }
-
-  const overtime = remainingMs < 0;
-  return (
-    <Text style={[styles.countdown, overtime && styles.countdownOvertime]}>
-      {phase === "paused" ? "Timer paused · " : ""}
-      {formatted}
-    </Text>
   );
 }
 
 // Renders the shared Player View description (see @paper-pairings/core
 // player-view.ts) — state branching and copy live in the presenter, this
-// component owns only the native styling. The report action is not yet
-// wired on native, so a reportable match reads as informational for now.
+// component owns only the native styling. While the viewer's match is
+// reportable the scoreboard takes the card's place: the current round is the
+// report surface, as in the web player controller's design direction. Once
+// the result lands the query flips to completed and the card returns with
+// the scoreline and its provenance badge.
 function CurrentMatch({
   current,
+  onReported,
+  onReportError,
 }: {
   current: ReturnType<typeof useMyCurrentMatch>;
+  onReported: () => void;
+  onReportError: (message: string) => void;
 }) {
   const description = describeCurrentMatch(current);
+  const action = reportAction(current);
 
   if (description.kind === "loading") {
     return <Text style={styles.muted}>Loading…</Text>;
+  }
+
+  if (action && description.kind === "card") {
+    return (
+      <ReportResultScoreboard
+        action={action}
+        label={description.label}
+        title={description.title}
+        onReported={onReported}
+        onError={onReportError}
+      />
+    );
   }
 
   if (description.kind === "status") {
@@ -208,45 +208,6 @@ function DescriptionCard({
   );
 }
 
-function Standings({
-  standings,
-}: {
-  standings: ReturnType<typeof useLatestStandings>;
-}) {
-  if (standings === undefined) {
-    return <Text style={styles.muted}>Loading…</Text>;
-  }
-  if (standings === null) {
-    return <Text style={styles.muted}>No standings published yet.</Text>;
-  }
-
-  return (
-    <View style={styles.card}>
-      <Text style={styles.cardLabel}>After round {standings.roundNumber}</Text>
-      {standings.rows.map((row) => {
-        const statusLabel = standingStatusLabel(row);
-        return (
-          <View
-            key={`${row.rank}-${row.name ?? "anon"}`}
-            style={[styles.row, row.isMe && styles.rowMe]}
-          >
-            <Text style={styles.rank}>{row.rank}</Text>
-            <Text style={styles.name} numberOfLines={1}>
-              {displayPlayerName(row.name)}
-            </Text>
-            {statusLabel ? (
-              <Text style={styles.playoffStatus}>{statusLabel}</Text>
-            ) : null}
-            <Text style={styles.record}>
-              {formatRecord(row.matchWins, row.matchLosses, row.matchDraws)}
-            </Text>
-          </View>
-        );
-      })}
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: palette.background },
   content: { padding: 20, gap: 12 },
@@ -263,19 +224,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   signInButton: { marginTop: 12 },
-  sectionHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  sectionTitle: {
-    color: palette.mutedForeground,
-    fontSize: 13,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  sectionGap: { marginTop: 12 },
   muted: { color: palette.mutedForeground, fontSize: 15 },
   card: {
     backgroundColor: palette.card,
@@ -298,31 +246,4 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   scoreline: { color: palette.foreground, fontSize: 17, fontWeight: "600" },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 8,
-    gap: 12,
-  },
-  rowMe: {
-    backgroundColor: palette.secondary,
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    marginHorizontal: -8,
-  },
-  countdown: {
-    color: palette.foreground,
-    fontSize: 17,
-    fontWeight: "600",
-    fontVariant: ["tabular-nums"],
-  },
-  countdownOvertime: { color: palette.destructive },
-  rank: { color: palette.mutedForeground, fontSize: 15, width: 28 },
-  name: { color: palette.foreground, fontSize: 15, flex: 1 },
-  playoffStatus: { color: palette.mutedForeground, fontSize: 12 },
-  record: {
-    color: palette.foreground,
-    fontSize: 15,
-    fontVariant: ["tabular-nums"],
-  },
 });

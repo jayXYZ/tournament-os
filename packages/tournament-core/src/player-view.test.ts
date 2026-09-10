@@ -4,6 +4,7 @@ import {
   describeCurrentMatch,
   describeDropConfirmation,
   describeHeaderBadge,
+  describeResultPreview,
   reportAction,
 } from "./player-view.ts";
 import type { MyActiveMatch, MyCurrentMatch } from "./types.ts";
@@ -339,4 +340,13 @@ test("a drop with nothing to concede gets the plain confirmation", () => {
     describeDropConfirmation(currentMatch({ kind: "between_rounds", round })),
   ).toBe(plain);
   expect(describeDropConfirmation(undefined)).toBe(plain);
+});
+
+test("the result preview names the winner from the reporter's seat", () => {
+  expect(describeResultPreview(2, 1, 0, "Alice")).toBe("You win 2–1");
+  // The opponent's line is their scoreline, not the reporter's mirrored one.
+  expect(describeResultPreview(1, 2, 0, "Alice")).toBe("Alice wins 2–1");
+  expect(describeResultPreview(0, 0, 0, "Alice")).toBe("Draw 0–0");
+  // Drawn games only appear once there are any.
+  expect(describeResultPreview(1, 1, 1, "Alice")).toBe("Draw 1–1–1");
 });
