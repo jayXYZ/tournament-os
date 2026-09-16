@@ -1,0 +1,159 @@
+{
+  "fileKey": "zAdTtFsrw1Y9WOmbHLHDRU",
+  "fileUrl": "https://www.figma.com/design/zAdTtFsrw1Y9WOmbHLHDRU",
+  "collections": {
+    "Primitives": {
+      "id": "VariableCollectionId:2:2",
+      "mode": "2:0"
+    },
+    "Color": {
+      "id": "VariableCollectionId:2:38",
+      "light": "2:1",
+      "dark": "2:2"
+    },
+    "Spacing": {
+      "id": "VariableCollectionId:2:73",
+      "mode": "2:3"
+    },
+    "Radius": {
+      "id": "VariableCollectionId:2:85",
+      "mode": "2:4"
+    },
+    "Size": {
+      "id": "VariableCollectionId:2:92",
+      "mode": "2:5"
+    }
+  },
+  "textStyles": [
+    "Display",
+    "Heading/H1",
+    "Heading/H2",
+    "Heading/H3",
+    "Body/Large",
+    "Body/Default",
+    "Body/Small",
+    "Label/Default",
+    "Label/Small",
+    "Caption",
+    "Eyebrow",
+    "Numeral/Large",
+    "Numeral/Timer"
+  ],
+  "pages": {
+    "Read Me": "0:1",
+    "Colorboard": "2:116",
+    "Foundations": "2:117",
+    "Wireframe Kit": "2:119",
+    "Web App": "2:121",
+    "Mobile App": "2:122",
+    "Site Map": "2:123"
+  },
+  "components": {
+    "Icon": "3:17",
+    "Button": "3:67",
+    "Field": "4:60",
+    "Toggle": "4:84",
+    "Badge": "5:42",
+    "Tab": "5:60",
+    "Nav Item": "5:74",
+    "Avatar": "5:84",
+    "Placeholder": "7:13",
+    "Text Block": "7:17",
+    "Card": "7:23",
+    "Stat Tile": "7:33",
+    "Empty State": "7:38",
+    "Table Row": "11:44",
+    "Dialog": "11:99",
+    "Toast": "11:110",
+    "Timer Pill": "12:39",
+    "Hold Button": "12:53",
+    "Web / Top Bar": "12:55",
+    "Web / Admin Sidebar": "12:81",
+    "Mobile / App Bar": "12:125",
+    "Mobile / Tab Bar": "12:211",
+    "Web / Sub-nav": "13:92",
+    "Mobile / List Row": "13:165",
+    "Match Card": "13:201",
+    "Score Column": "13:203",
+    "Scrim": "13:209"
+  },
+  "screens": {
+    "/": "15:2",
+    "/#signed-in": "15:114",
+    "/sign-in": "16:152",
+    "/sign-up": "16:181",
+    "/join/$code": "16:211",
+    "/settings": "16:287",
+    "/users/$code": "17:268",
+    "/tournaments/$id": "17:540",
+    "/tournaments/$id/play": "19:507",
+    "/tournaments/$id/play#phone": "19:741",
+    "overlay:report-result": "19:800",
+    "/tournaments/$id/decklist": "20:714",
+    "/tournaments/$id/payment": "20:982",
+    "overlay:drop-confirm": "20:1085",
+    "/admin#signed-out": "21:922",
+    "/admin": "21:964",
+    "overlay:create-tournament": "21:1123",
+    "/admin/staff": "22:1126",
+    "/admin/organization": "22:1346",
+    "/admin/stripe-return": "22:1544",
+    "/admin/tournaments/$id": "23:1417",
+    "/admin/tournaments/$id/registrations": "25:1688",
+    "/admin/tournaments/$id/pairings": "25:1983",
+    "/admin/tournaments/$id/pairings#meeting": "25:2230",
+    "m:/#pending": "26:2",
+    "m:/#signed-out": "26:13",
+    "m:sign-in-sheet": "26:33",
+    "m:/": "26:69",
+    "m:/#empty": "26:109",
+    "overlay:enter-result": "27:2189",
+    "overlay:unpublish-confirm": "27:2242",
+    "overlay:drop-player": "27:2265",
+    "/admin/tournaments/$id/timer": "27:2282",
+    "/admin/tournaments/$id/standings": "27:2487",
+    "m:/tournament/$code#loading": "27:2849",
+    "m:/tournament/$code#not-found": "27:2867",
+    "m:/tournament/$code#signed-out": "27:2885",
+    "m:/tournament/$code#not-registered": "27:2909",
+    "m:/tournament/$code#waiting": "27:2928",
+    "m:/tournament/$code#meeting": "27:2973",
+    "m:/tournament/$code#pending": "27:3018",
+    "m:/tournament/$code#between": "27:3063",
+    "m:/tournament/$code#no-match": "27:3109",
+    "m:/tournament/$code#bye": "27:3153",
+    "/admin/tournaments/$id/log": "29:2544",
+    "/admin/tournaments/$id/settings": "29:2800",
+    "m:/tournament/$code": "32:302",
+    "m:/tournament/$code#report": "32:357",
+    "m:/tournament/$code#reported": "32:444",
+    "m:/tournament/$code#standings": "32:514",
+    "m:/tournament/$code#history": "32:641",
+    "m:/tournament/$code#more": "32:710",
+    "overlay:publish-confirm": "32:3785",
+    "overlay:cancel-confirm": "32:3814",
+    "overlay:delete-confirm": "32:3831"
+  },
+  "colorboardNodes": {
+    "primitives": "2:124",
+    "semanticLight": "2:350",
+    "semanticDark": "2:469"
+  },
+  "foundationsRoot": "2:250",
+  "sections": {
+    "web": {
+      "Public & Auth": "36:3237",
+      "Player": "36:3238",
+      "Organizer Admin": "36:3239"
+    },
+    "mobile": {
+      "Home & Auth": "36:3930",
+      "Tournament \u2014 gate states": "36:3931",
+      "Tournament \u2014 waiting states": "36:3932",
+      "Tournament \u2014 match flow & planned tabs": "36:3933"
+    }
+  },
+  "siteMapRoot": "34:2",
+  "readMeRoot": "35:2",
+  "status": "complete 2026-09-16"
+}
