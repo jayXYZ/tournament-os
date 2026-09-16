@@ -1,0 +1,2538 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Paper Pairings: the name in the visual design</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=Source+Sans+3:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      /* ------------------------------------------------------------------
+   Tokens: copied from apps/web/src/styles/app.css. Proposed tokens are
+   marked. Values in oklch so the two themes stay honest to the app.
+   ------------------------------------------------------------------ */
+      :root {
+        --background: oklch(0.968 0.005 86);
+        --foreground: oklch(0.215 0.005 67.6);
+        --card: oklch(0.988 0.004 87);
+        --secondary: oklch(0.935 0.006 86);
+        --muted-foreground: oklch(0.457 0.008 88.7);
+        --border: oklch(0.88 0.007 86);
+        --accent-brand: oklch(0.47 0.13 285);
+        --accent-brand-foreground: oklch(0.985 0.004 87);
+        --sidebar: oklch(0.93 0.006 86);
+        --round-pairings: oklch(0.52 0.14 75);
+        --round-live: oklch(0.47 0.13 160);
+        --round-between: oklch(0.53 0.17 40);
+        --destructive: oklch(0.577 0.245 27.325);
+        /* proposed */
+        --sheet: oklch(0.997 0.003 88);
+        --ink-ballpoint: oklch(0.42 0.17 262);
+        --ink-red: oklch(0.55 0.21 28);
+        --ink-pencil: oklch(0.6 0.012 80);
+        --carbon-tint: color-mix(in oklab, var(--accent-brand) 7%, var(--card));
+        --radius: 0.625rem;
+        --font-sans: "Inter", system-ui, sans-serif;
+        --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, monospace;
+        --font-serif: "Source Serif 4", Georgia, serif;
+        --font-sans-alt: "Source Sans 3", var(--font-sans);
+        --shadow:
+          0 1px 2px color-mix(in oklab, var(--foreground) 10%, transparent),
+          0 6px 16px -8px
+            color-mix(in oklab, var(--foreground) 18%, transparent);
+        color-scheme: light;
+      }
+      .dark {
+        --background: oklch(0.21 0.005 60);
+        --foreground: oklch(0.935 0.013 86.8);
+        --card: oklch(0.25 0.006 67);
+        --secondary: oklch(0.3 0.007 75);
+        --muted-foreground: oklch(0.765 0.018 84.6);
+        --border: oklch(0.935 0.013 86.8 / 13%);
+        --accent-brand: oklch(0.76 0.11 285);
+        --accent-brand-foreground: oklch(0.198 0.004 48.5);
+        --sidebar: oklch(0.17 0.004 48.5);
+        --round-pairings: oklch(0.78 0.14 75);
+        --round-live: oklch(0.75 0.12 160);
+        --round-between: oklch(0.76 0.15 40);
+        --destructive: oklch(0.704 0.191 22.216);
+        --sheet: oklch(0.29 0.006 67);
+        --ink-ballpoint: oklch(0.74 0.12 262);
+        --ink-red: oklch(0.72 0.17 25);
+        --ink-pencil: oklch(0.62 0.012 80);
+        --shadow:
+          0 1px 2px oklch(0 0 0 / 40%), 0 6px 16px -8px oklch(0 0 0 / 60%);
+        color-scheme: dark;
+      }
+
+      /* ------------------------------------------------------------------ page */
+      * {
+        box-sizing: border-box;
+      }
+      html {
+        -webkit-text-size-adjust: 100%;
+      }
+      body {
+        margin: 0;
+        background: var(--sidebar);
+        color: var(--foreground);
+        font: 15px/1.5 var(--font-sans);
+        font-feature-settings: "cv11", "ss01";
+      }
+      a {
+        color: inherit;
+      }
+      button {
+        font: inherit;
+        color: inherit;
+      }
+      .mark {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+      .mark-auto .knockout {
+        display: none;
+      }
+      .dark .mark-auto .outline {
+        display: none;
+      }
+      .dark .mark-auto .knockout {
+        display: block;
+      }
+
+      .top {
+        position: sticky;
+        top: 0;
+        z-index: 5;
+        background: color-mix(in oklab, var(--sidebar) 88%, transparent);
+        backdrop-filter: blur(10px);
+        border-bottom: 1px solid var(--border);
+      }
+      .top-inner {
+        max-width: 1240px;
+        margin: 0 auto;
+        padding: 12px 24px;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+      }
+      .top-inner .mark-auto {
+        width: 32px;
+        height: 32px;
+        flex: none;
+      }
+      .top-inner h1 {
+        font-size: 15px;
+        font-weight: 600;
+        margin: 0;
+        line-height: 1.2;
+      }
+      .top-inner p {
+        margin: 2px 0 0;
+        font-size: 12px;
+        color: var(--muted-foreground);
+      }
+      .top nav {
+        margin-left: auto;
+        display: flex;
+        gap: 4px;
+      }
+      .top nav a,
+      .toggle {
+        text-decoration: none;
+        font-size: 13px;
+        padding: 6px 10px;
+        border-radius: 6px;
+        border: 1px solid transparent;
+        background: none;
+        cursor: pointer;
+      }
+      .top nav a:hover,
+      .toggle:hover {
+        background: var(--background);
+      }
+      .toggle {
+        border-color: var(--border);
+        margin-left: 8px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .toggle svg {
+        width: 14px;
+        height: 14px;
+      }
+      .dark .toggle .sun {
+        display: none;
+      }
+      .toggle .moon {
+        display: none;
+      }
+      .dark .toggle .moon {
+        display: block;
+      }
+
+      main {
+        max-width: 1240px;
+        margin: 0 auto;
+        padding: 8px 24px 96px;
+      }
+      .lede {
+        max-width: 62ch;
+        margin: 40px 0 0;
+        font-size: 17px;
+        line-height: 1.55;
+      }
+      .lede + .lede {
+        margin-top: 12px;
+        color: var(--muted-foreground);
+        font-size: 15px;
+      }
+
+      .section {
+        margin-top: 72px;
+        scroll-margin-top: 72px;
+      }
+      .section > h2 {
+        font-size: 30px;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+        margin: 0;
+        line-height: 1.15;
+      }
+      .section > p {
+        margin: 8px 0 0;
+        color: var(--muted-foreground);
+        max-width: 60ch;
+      }
+      .space {
+        margin-top: 36px;
+        padding-top: 22px;
+        border-top: 1px solid var(--border);
+      }
+      .space > h3 {
+        font-size: 16px;
+        font-weight: 600;
+        margin: 0 0 14px;
+      }
+      .space > h3 small {
+        font-weight: 400;
+        color: var(--muted-foreground);
+        margin-left: 8px;
+      }
+
+      .options {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+        gap: 16px;
+      }
+      .opt {
+        margin: 0;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        overflow: hidden;
+        display: grid;
+        grid-template-rows: subgrid;
+        grid-row: span 2;
+        min-width: 0;
+      }
+      @supports not (grid-template-rows: subgrid) {
+        .opt {
+          display: flex;
+          flex-direction: column;
+        }
+      }
+      .opt.wide {
+        grid-column: span 2;
+      }
+      @media (max-width: 640px) {
+        .opt.wide {
+          grid-column: span 1;
+        }
+      }
+      .demo {
+        background: var(--background);
+        min-height: 220px;
+        flex: 1;
+        align-self: stretch;
+        display: grid;
+        place-items: center;
+        padding: 22px;
+        border-bottom: 1px solid var(--border);
+        position: relative;
+        overflow: hidden;
+      }
+      .demo.stretch {
+        display: block;
+      }
+      .demo.tl {
+        place-items: start;
+      }
+      figcaption {
+        padding: 14px 16px 16px;
+        display: grid;
+        gap: 6px;
+      }
+      figcaption .t {
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      figcaption .d {
+        color: var(--muted-foreground);
+        font-size: 14px;
+        line-height: 1.5;
+      }
+      figcaption .how {
+        font: 12px/1.55 var(--font-mono);
+        color: var(--muted-foreground);
+        padding-top: 10px;
+        margin-top: 4px;
+        border-top: 1px dashed var(--border);
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      figcaption .how b {
+        color: var(--foreground);
+        font-weight: 500;
+      }
+      .chip {
+        font-size: 11px;
+        font-weight: 500;
+        padding: 2px 7px;
+        border-radius: 999px;
+        background: color-mix(in oklab, var(--accent-brand) 14%, transparent);
+        color: var(--accent-brand);
+        line-height: 1.5;
+      }
+      .note {
+        margin: 16px 0 0;
+        font-size: 14px;
+        color: var(--muted-foreground);
+        max-width: 62ch;
+      }
+
+      /* --------------------------------------------------------- identity demos */
+      .wm-stack {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 0 16px;
+        align-items: stretch;
+      }
+      .wm-stack .mark-auto {
+        width: 44px;
+        height: 44px;
+        grid-row: span 2;
+        align-self: center;
+      }
+      .wm-stack span {
+        font-size: 26px;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+        line-height: 1.15;
+        padding: 4px 0;
+      }
+      .wm-stack span:first-of-type {
+        border-bottom: 1px solid var(--border);
+      }
+
+      .mono-wm {
+        display: grid;
+        gap: 14px;
+        justify-items: center;
+      }
+      .mono-wm .name {
+        font: 500 22px/1 var(--font-mono);
+        letter-spacing: -0.01em;
+      }
+      .mono-wm .row {
+        display: flex;
+        gap: 18px;
+        align-items: baseline;
+        font-size: 14px;
+      }
+      .mono-wm .row .n {
+        font: 500 14px/1 var(--font-mono);
+        font-variant-numeric: tabular-nums;
+      }
+
+      .superfamily {
+        display: grid;
+        gap: 10px;
+        max-width: 34ch;
+      }
+      .superfamily h4 {
+        margin: 0;
+        font: 600 28px/1.15 var(--font-serif);
+        letter-spacing: -0.01em;
+        font-variation-settings: "opsz" 40;
+      }
+      .superfamily p {
+        margin: 0;
+        font: 400 15px/1.55 var(--font-sans-alt);
+        color: var(--muted-foreground);
+      }
+      .superfamily .pairline {
+        display: flex;
+        gap: 10px;
+        font-size: 12px;
+        color: var(--muted-foreground);
+      }
+      .superfamily .pairline i {
+        font-family: var(--font-serif);
+        font-style: normal;
+      }
+      .superfamily .pairline s {
+        text-decoration: none;
+        font-family: var(--font-sans-alt);
+      }
+
+      .vs-axis {
+        display: grid;
+        grid-template-columns: 1fr auto 1fr;
+        gap: 6px 14px;
+        width: 100%;
+        max-width: 380px;
+        font-weight: 500;
+      }
+      .vs-axis .l {
+        text-align: right;
+      }
+      .vs-axis .r {
+        text-align: left;
+      }
+      .vs-axis .v {
+        color: var(--muted-foreground);
+        font-weight: 400;
+        font-size: 13px;
+        padding-top: 2px;
+      }
+      .vs-axis .n {
+        grid-column: 1 / -1;
+        font: 12px var(--font-mono);
+        color: var(--muted-foreground);
+        text-align: center;
+        margin-top: 6px;
+      }
+      .vs-axis .n:first-child {
+        margin-top: 0;
+      }
+
+      .hanging {
+        width: 100%;
+        max-width: 380px;
+        display: grid;
+        gap: 2px;
+        padding-left: 44px;
+      }
+      .hanging li {
+        list-style: none;
+        position: relative;
+        padding: 6px 0;
+        border-bottom: 1px solid var(--border);
+        font-weight: 500;
+        display: flex;
+        justify-content: space-between;
+      }
+      .hanging li:last-child {
+        border-bottom: none;
+      }
+      .hanging li span {
+        color: var(--muted-foreground);
+        font-weight: 400;
+      }
+      .hanging li::before {
+        content: attr(data-table);
+        position: absolute;
+        left: -44px;
+        top: 6px;
+        width: 32px;
+        text-align: right;
+        font: 500 14px/1.5 var(--font-mono);
+        font-variant-numeric: tabular-nums;
+        color: var(--muted-foreground);
+      }
+
+      /* ---------------------------------------------------------- material demos */
+      .two {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        width: 100%;
+      }
+      .mini {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 12px 14px;
+        display: grid;
+        gap: 4px;
+        font-size: 14px;
+      }
+      .mini .k {
+        font-size: 12px;
+        color: var(--muted-foreground);
+      }
+      .mini .v {
+        font-weight: 600;
+      }
+      .mini .s {
+        font: 500 13px var(--font-mono);
+        font-variant-numeric: tabular-nums;
+      }
+      .mini[data-copy] {
+        background: var(--carbon-tint);
+        border-color: color-mix(
+          in oklab,
+          var(--accent-brand) 35%,
+          var(--border)
+        );
+        color: color-mix(in oklab, var(--accent-brand) 75%, var(--foreground));
+      }
+      .mini[data-copy] .k {
+        color: color-mix(
+          in oklab,
+          var(--accent-brand) 65%,
+          var(--muted-foreground)
+        );
+      }
+
+      .tiers {
+        display: grid;
+        gap: 0;
+        width: 100%;
+        max-width: 360px;
+      }
+      .tier {
+        padding: 14px 16px;
+        border-radius: 10px;
+        font-size: 13px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border: 1px solid var(--border);
+      }
+      .tier + .tier {
+        margin: 10px 14px 0;
+      }
+      .tier code {
+        font: 12px var(--font-mono);
+        color: var(--muted-foreground);
+      }
+      .tier.frame {
+        background: var(--sidebar);
+      }
+      .tier.panel {
+        background: var(--background);
+      }
+      .tier.card {
+        background: var(--card);
+      }
+      .tier.sheet {
+        background: var(--sheet);
+      }
+
+      .inks {
+        width: 100%;
+        max-width: 360px;
+        border-top: 1px solid var(--border);
+      }
+      .inks div {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        padding: 8px 4px;
+        border-bottom: 1px solid var(--border);
+        font-size: 14px;
+      }
+      .inks .res {
+        font: 500 14px var(--font-mono);
+        font-variant-numeric: tabular-nums;
+      }
+      .inks .ballpoint {
+        color: var(--ink-ballpoint);
+      }
+      .inks .red {
+        color: var(--ink-red);
+      }
+      .inks .pencil {
+        color: var(--ink-pencil);
+      }
+
+      .ramp {
+        display: grid;
+        gap: 8px;
+        width: 100%;
+        max-width: 360px;
+        font: 13px/1.5 var(--font-mono);
+      }
+      .ramp div {
+        display: grid;
+        grid-template-columns: 28px 1fr auto;
+        gap: 12px;
+        align-items: center;
+      }
+      .ramp i {
+        display: block;
+        width: 28px;
+        height: 28px;
+        border-radius: 6px;
+        border: 1px solid var(--border);
+      }
+      .ramp small {
+        color: var(--muted-foreground);
+      }
+
+      /* folded corner */
+      .sheet-wrap {
+        position: relative;
+        width: 100%;
+        max-width: 340px;
+        filter: drop-shadow(
+            0 1px 1px color-mix(in oklab, var(--foreground) 12%, transparent)
+          )
+          drop-shadow(
+            0 8px 18px color-mix(in oklab, var(--foreground) 10%, transparent)
+          );
+      }
+      .sheet-card {
+        position: relative;
+        background: var(--card);
+        padding: 16px 18px 18px;
+        clip-path: polygon(
+          0 0,
+          calc(100% - 22px) 0,
+          100% 22px,
+          100% 100%,
+          0 100%
+        );
+        border-radius: 8px 0 8px 8px;
+      }
+      .sheet-card::after {
+        content: "";
+        position: absolute;
+        top: 0;
+        right: 0;
+        width: 22px;
+        height: 22px;
+        background: linear-gradient(
+          225deg,
+          transparent 50%,
+          var(--secondary) 50%
+        );
+        box-shadow: -1px 1px 2px
+          color-mix(in oklab, var(--foreground) 12%, transparent);
+      }
+      .sheet-card .k {
+        font-size: 12px;
+        color: var(--muted-foreground);
+      }
+      .sheet-card .v {
+        font-size: 20px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        margin-top: 2px;
+      }
+      .sheet-card .v small {
+        display: block;
+        font-size: 14px;
+        font-weight: 400;
+        color: var(--muted-foreground);
+      }
+      .sheet-card .row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 12px;
+        font-size: 13px;
+        color: var(--muted-foreground);
+      }
+      .sheet-card .row b {
+        font: 500 14px var(--font-mono);
+        color: var(--foreground);
+      }
+
+      /* perforation */
+      .slip {
+        width: 100%;
+        max-width: 340px;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: var(--shadow);
+      }
+      .slip .head {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 14px;
+        padding: 14px 16px 16px;
+        align-items: center;
+      }
+      .slip .head .n {
+        font: 600 24px/1 var(--font-mono);
+        font-variant-numeric: tabular-nums;
+      }
+      .slip .head .names {
+        font-weight: 500;
+        line-height: 1.35;
+      }
+      .slip .head .names span {
+        color: var(--muted-foreground);
+        font-weight: 400;
+        font-size: 13px;
+      }
+      .slip .result {
+        background: var(--secondary);
+        padding: 16px 16px 14px;
+        min-height: 60px;
+        position: relative;
+        mask: radial-gradient(circle at 6px 0, transparent 3.5px, #000 4px) 0
+          0 / 12px 100% repeat-x;
+        -webkit-mask: radial-gradient(
+            circle at 6px 0,
+            transparent 3.5px,
+            #000 4px
+          )
+          0 0 / 12px 100% repeat-x;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 13px;
+        color: var(--muted-foreground);
+      }
+      .slip .result .box {
+        width: 74px;
+        height: 32px;
+        border: 1.5px dashed
+          color-mix(in oklab, var(--foreground) 35%, transparent);
+        border-radius: 4px;
+        background: var(--card);
+      }
+
+      /* ruled */
+      .ruled {
+        width: 100%;
+        max-width: 360px;
+        border-left: 2px solid
+          color-mix(in oklab, var(--accent-brand) 45%, transparent);
+        padding-left: 14px;
+      }
+      .ruled div {
+        display: grid;
+        grid-template-columns: 24px 1fr auto;
+        gap: 12px;
+        padding: 7px 0;
+        border-bottom: 1px solid var(--border);
+        font-size: 14px;
+      }
+      .ruled div:first-child {
+        color: var(--muted-foreground);
+        font-size: 12px;
+      }
+      .ruled .rk {
+        font: 500 13px var(--font-mono);
+        font-variant-numeric: tabular-nums;
+        color: var(--muted-foreground);
+      }
+      .ruled .pts {
+        font: 500 14px var(--font-mono);
+        font-variant-numeric: tabular-nums;
+      }
+
+      /* grain */
+      .grain-pair {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        width: 100%;
+        height: 100%;
+        min-height: 176px;
+      }
+      .frame-demo {
+        position: relative;
+        background: var(--sidebar);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 14px;
+        font-size: 13px;
+        overflow: hidden;
+      }
+      .frame-demo .lbl {
+        color: var(--muted-foreground);
+        font-size: 12px;
+        margin-bottom: 8px;
+      }
+      .frame-demo .item {
+        padding: 6px 8px;
+        border-radius: 6px;
+        margin-top: 2px;
+      }
+      .frame-demo .item.on {
+        background: var(--background);
+        font-weight: 500;
+      }
+      .frame-demo.grain::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.55 0 0 0 0 0.55 0 0 0 0 0.55 0 0 0 1 0'/></filter><rect width='240' height='240' filter='url(%23n)'/></svg>");
+        background-size: 240px 240px;
+        opacity: 0.5;
+        mix-blend-mode: multiply;
+      }
+      .dark .frame-demo.grain::before {
+        mix-blend-mode: soft-light;
+        opacity: 0.6;
+      }
+
+      /* stamp */
+      .stamp {
+        display: inline-block;
+        padding: 6px 14px;
+        border: 2.5px solid currentColor;
+        border-radius: 4px;
+        font: 700 18px/1 var(--font-sans);
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        transform: rotate(-6deg);
+        color: var(--ink-red);
+        mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='s'><feTurbulence type='fractalNoise' baseFrequency='0.12' numOctaves='3' seed='7'/><feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1.6 1.6 1.6 0 -1.3'/></filter><rect width='200' height='200' filter='url(%23s)'/></svg>");
+        -webkit-mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='s'><feTurbulence type='fractalNoise' baseFrequency='0.12' numOctaves='3' seed='7'/><feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1.6 1.6 1.6 0 -1.3'/></filter><rect width='200' height='200' filter='url(%23s)'/></svg>");
+        mask-size: 200px 200px;
+        -webkit-mask-size: 200px 200px;
+      }
+      .stamp.carbon {
+        color: var(--accent-brand);
+      }
+      .stamp-row {
+        display: flex;
+        gap: 28px;
+        align-items: center;
+        flex-wrap: wrap;
+        justify-content: center;
+      }
+      .stamp-row .ctx {
+        position: relative;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 14px 16px;
+        width: 200px;
+        font-size: 13px;
+        color: var(--muted-foreground);
+      }
+      .stamp-row .ctx b {
+        display: block;
+        color: var(--foreground);
+        font-size: 15px;
+        margin-bottom: 2px;
+      }
+      .stamp-row .ctx .stamp {
+        position: absolute;
+        right: -6px;
+        top: -10px;
+        font-size: 13px;
+        padding: 4px 9px;
+        border-width: 2px;
+      }
+
+      /* -------------------------------------------------------- behavior demos */
+      .bracket-list {
+        width: 100%;
+        max-width: 380px;
+        display: grid;
+        gap: 8px;
+      }
+      .brk {
+        position: relative;
+        padding: 8px 12px 8px 18px;
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 2px 12px;
+        align-items: center;
+      }
+      .brk::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 4px;
+        bottom: 4px;
+        width: 8px;
+        border: 2px solid var(--foreground);
+        border-right: none;
+        border-radius: 3px 0 0 3px;
+      }
+      .brk.copy::before {
+        border-color: var(--accent-brand);
+      }
+      .brk .p {
+        font-weight: 500;
+      }
+      .brk .n {
+        grid-row: span 2;
+        font: 500 14px var(--font-mono);
+        color: var(--muted-foreground);
+        font-variant-numeric: tabular-nums;
+      }
+
+      .posted {
+        width: 100%;
+        max-width: 440px;
+        background: var(--sheet);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        box-shadow: var(--shadow);
+        padding: 18px 20px 16px;
+        position: relative;
+      }
+      .posted .hd {
+        display: grid;
+        grid-template-columns: 28px 1fr auto;
+        gap: 12px;
+        align-items: center;
+        padding-bottom: 12px;
+        border-bottom: 1.5px solid var(--foreground);
+      }
+      .posted .hd .mark-auto {
+        width: 28px;
+        height: 28px;
+      }
+      .posted .hd b {
+        display: block;
+        font-size: 15px;
+        line-height: 1.2;
+      }
+      .posted .hd span {
+        font-size: 12px;
+        color: var(--muted-foreground);
+      }
+      .posted .hd .rt {
+        text-align: right;
+        font: 500 12px/1.35 var(--font-mono);
+        color: var(--muted-foreground);
+      }
+      .posted table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 6px;
+        font-size: 13.5px;
+      }
+      .posted td {
+        padding: 5px 0;
+        border-bottom: 1px solid var(--border);
+      }
+      .posted tr:last-child td {
+        border-bottom: none;
+      }
+      .posted td.tn {
+        text-align: center;
+        font: 500 13px var(--font-mono);
+        font-variant-numeric: tabular-nums;
+        color: var(--muted-foreground);
+        width: 44px;
+      }
+      .posted td.op {
+        text-align: right;
+        color: var(--muted-foreground);
+      }
+      .posted .tape {
+        position: absolute;
+        top: -8px;
+        left: 50%;
+        width: 64px;
+        height: 16px;
+        transform: translateX(-50%) rotate(-1deg);
+        background: color-mix(in oklab, var(--foreground) 8%, transparent);
+        border-radius: 1px;
+      }
+
+      .slipcard {
+        width: 100%;
+        max-width: 420px;
+        aspect-ratio: 3.4 / 1;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        box-shadow: var(--shadow);
+        display: grid;
+        grid-template-columns: 72px 1fr 110px;
+        overflow: hidden;
+      }
+      .slipcard .tn {
+        display: grid;
+        place-items: center;
+        border-right: 1px solid var(--border);
+        font: 600 26px var(--font-mono);
+        font-variant-numeric: tabular-nums;
+      }
+      .slipcard .tn small {
+        font: 11px var(--font-sans);
+        color: var(--muted-foreground);
+      }
+      .slipcard .who {
+        padding: 12px 14px;
+        display: grid;
+        align-content: center;
+      }
+      .slipcard .who b {
+        font-size: 16px;
+      }
+      .slipcard .who span {
+        font-size: 13px;
+        color: var(--muted-foreground);
+      }
+      .slipcard .box {
+        margin: 10px;
+        border: 1.5px dashed
+          color-mix(in oklab, var(--foreground) 30%, transparent);
+        border-radius: 6px;
+        display: grid;
+        place-items: center;
+        font-size: 12px;
+        color: var(--muted-foreground);
+        text-align: center;
+        padding: 6px;
+      }
+
+      /* motion */
+      .motion {
+        display: grid;
+        gap: 14px;
+        width: 100%;
+        max-width: 380px;
+        justify-items: center;
+      }
+      .btn {
+        padding: 7px 12px;
+        border-radius: 7px;
+        border: 1px solid var(--border);
+        background: var(--card);
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        box-shadow: 0 1px 2px
+          color-mix(in oklab, var(--foreground) 10%, transparent);
+      }
+      .btn.primary {
+        background: var(--foreground);
+        color: var(--background);
+        border-color: var(--foreground);
+      }
+      @keyframes post-sheet {
+        0% {
+          transform: translateY(-14px);
+          opacity: 0;
+        }
+        60% {
+          transform: translateY(2px);
+          opacity: 1;
+        }
+        100% {
+          transform: none;
+          opacity: 1;
+        }
+      }
+      .posting {
+        animation: post-sheet 0.6s cubic-bezier(0.2, 0.7, 0.25, 1) both;
+      }
+      @keyframes write-in {
+        0% {
+          background-color: color-mix(
+            in oklab,
+            var(--accent-brand) 22%,
+            transparent
+          );
+          border-color: var(--accent-brand);
+        }
+      }
+      .writebox {
+        width: 100%;
+        max-width: 380px;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 12px 14px;
+        display: grid;
+        grid-template-columns: 1fr auto;
+        align-items: center;
+        gap: 12px;
+        font-size: 14px;
+        font-weight: 500;
+      }
+      .writebox .res {
+        min-width: 64px;
+        height: 32px;
+        border: 1.5px dashed
+          color-mix(in oklab, var(--foreground) 30%, transparent);
+        border-radius: 5px;
+        display: grid;
+        place-items: center;
+        font: 500 14px var(--font-mono);
+        color: var(--foreground);
+      }
+      .writebox .res:empty::after {
+        content: "";
+      }
+      .writebox.written .res {
+        animation: write-in 1s ease-out;
+        border-style: solid;
+        border-color: var(--border);
+      }
+      .writebox .res.written-ink {
+        color: var(--ink-ballpoint);
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .posting,
+        .writebox.written .res {
+          animation: none;
+        }
+      }
+
+      /* copy */
+      .verbs {
+        width: 100%;
+        max-width: 380px;
+        border-collapse: collapse;
+        font-size: 14px;
+      }
+      .verbs th {
+        text-align: left;
+        font-weight: 500;
+        font-size: 12px;
+        color: var(--muted-foreground);
+        padding: 0 0 6px;
+        border-bottom: 1px solid var(--border);
+      }
+      .verbs td {
+        padding: 7px 0;
+        border-bottom: 1px solid var(--border);
+      }
+      .verbs td:first-child {
+        color: var(--muted-foreground);
+        text-decoration: line-through;
+        text-decoration-color: color-mix(
+          in oklab,
+          var(--muted-foreground) 50%,
+          transparent
+        );
+      }
+      .verbs td:last-child {
+        font-weight: 500;
+      }
+      .empty {
+        text-align: center;
+        display: grid;
+        justify-items: center;
+        gap: 6px;
+        max-width: 30ch;
+      }
+      .empty .mark-auto {
+        width: 44px;
+        height: 44px;
+        opacity: 0.35;
+        margin-bottom: 6px;
+      }
+      .empty b {
+        font-size: 15px;
+      }
+      .empty p {
+        margin: 0;
+        font-size: 13.5px;
+        color: var(--muted-foreground);
+      }
+      .empty .btn {
+        margin-top: 8px;
+      }
+      .taglines {
+        display: grid;
+        gap: 14px;
+        text-align: left;
+      }
+      .taglines p {
+        margin: 0;
+        font: 400 24px/1.2 var(--font-serif);
+        letter-spacing: -0.01em;
+        font-variation-settings: "opsz" 40;
+      }
+      .taglines p small {
+        display: block;
+        font: 12px/1.5 var(--font-sans);
+        color: var(--muted-foreground);
+        margin-top: 2px;
+      }
+
+      /* outputs */
+      .page {
+        width: 210px;
+        aspect-ratio: 210 / 297;
+        background: #fff;
+        color: #1b1917;
+        border-radius: 2px;
+        box-shadow:
+          0 1px 2px rgba(0, 0, 0, 0.15),
+          0 12px 24px -10px rgba(0, 0, 0, 0.35);
+        padding: 16px 16px 14px;
+        font-size: 7px;
+        line-height: 1.4;
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        gap: 8px;
+      }
+      .page .ph {
+        display: grid;
+        grid-template-columns: 14px 1fr auto;
+        gap: 6px;
+        align-items: center;
+        border-bottom: 1px solid #1b1917;
+        padding-bottom: 6px;
+      }
+      .page .ph svg {
+        width: 14px;
+        height: 14px;
+      }
+      .page .ph b {
+        display: block;
+        font-size: 8px;
+      }
+      .page .ph span {
+        color: #595752;
+      }
+      .page .ph .r {
+        text-align: right;
+        font-family: var(--font-mono);
+        color: #595752;
+      }
+      .page table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      .page td {
+        padding: 2.2px 0;
+        border-bottom: 0.5px solid #d9d4c8;
+      }
+      .page td.c {
+        text-align: center;
+        font-family: var(--font-mono);
+        color: #595752;
+        width: 22px;
+      }
+      .page td.o {
+        text-align: right;
+        color: #595752;
+      }
+      .page .pf {
+        display: flex;
+        justify-content: space-between;
+        color: #8a857b;
+        font-size: 6px;
+      }
+
+      .tearoff {
+        width: 100%;
+        max-width: 300px;
+        background: #fff;
+        color: #1b1917;
+        border-radius: 2px;
+        box-shadow:
+          0 1px 2px rgba(0, 0, 0, 0.15),
+          0 12px 24px -10px rgba(0, 0, 0, 0.35);
+        overflow: hidden;
+      }
+      .tear {
+        padding: 12px 14px;
+        display: grid;
+        grid-template-columns: 34px 1fr 56px;
+        gap: 10px;
+        align-items: center;
+        font-size: 11px;
+        position: relative;
+      }
+      .tear + .tear::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 0;
+        height: 8px;
+        transform: translateY(-50%);
+        background: #cfc9bd;
+        mask: radial-gradient(circle at 5px 50%, #000 2px, transparent 2.5px) 0
+          0 / 10px 8px repeat-x;
+        -webkit-mask: radial-gradient(
+            circle at 5px 50%,
+            #000 2px,
+            transparent 2.5px
+          )
+          0 0 / 10px 8px repeat-x;
+      }
+      .tear .n {
+        font: 600 18px/1 var(--font-mono);
+      }
+      .tear .w b {
+        display: block;
+        font-size: 12px;
+      }
+      .tear .w span {
+        color: #595752;
+      }
+      .tear .bx {
+        height: 30px;
+        border: 1px dashed #8a857b;
+        border-radius: 3px;
+      }
+
+      .icons {
+        display: flex;
+        gap: 22px;
+        align-items: flex-end;
+        flex-wrap: wrap;
+        justify-content: center;
+      }
+      .icon {
+        display: grid;
+        justify-items: center;
+        gap: 8px;
+        font-size: 12px;
+        color: var(--muted-foreground);
+      }
+      .icon .tile {
+        width: 76px;
+        height: 76px;
+        border-radius: 17px;
+        display: grid;
+        place-items: center;
+        box-shadow: var(--shadow);
+      }
+      .icon .tile svg {
+        width: 76px;
+        height: 76px;
+      }
+      .icon .dark-tile {
+        background: #171514;
+        color: #ede9e0;
+      }
+      .icon .paper-tile {
+        background: #f7f5f0;
+        color: #1b1917;
+        border: 1px solid rgba(0, 0, 0, 0.08);
+      }
+      .icon .tint-tile {
+        background: linear-gradient(#66666b, #2f2f33);
+        color: #fff;
+      }
+
+      footer {
+        margin-top: 72px;
+        padding-top: 20px;
+        border-top: 1px solid var(--border);
+        font-size: 13px;
+        color: var(--muted-foreground);
+        max-width: 62ch;
+      }
+    </style>
+  </head>
+  <body>
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+      <symbol id="mark-outline" viewBox="0 0 480 480">
+        <path
+          d="M70 44C70 30.7452 80.7452 20 94 20H280.059C286.424 20 292.529 22.5286 297.029 27.0294L402.971 132.971C407.471 137.471 410 143.576 410 149.941V436C410 449.255 399.255 460 386 460H94C80.7452 460 70 449.255 70 436V44Z"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="32"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+        <path
+          d="M290 20V116C290 129.255 300.745 140 314 140H410"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="32"
+          stroke-linejoin="round"
+        />
+        <path
+          d="M134 190H216C229.255 190 240 200.745 240 214V326C240 339.255 229.255 350 216 350H134"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="32"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+        <path
+          d="M240 270H346"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="32"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+      </symbol>
+      <symbol id="mark-knockout" viewBox="0 0 480 480">
+        <path
+          d="M274 116C274 138.091 291.909 156 314 156H410V436C410 449.255 399.255 460 386 460H94C80.7452 460 70 449.255 70 436V44C70 30.7452 80.7452 20 94 20H274V116ZM134 174C125.163 174 118 181.163 118 190C118 198.837 125.163 206 134 206H216C220.418 206 224 209.582 224 214V326C224 330.418 220.418 334 216 334H134C125.163 334 118 341.163 118 350C118 358.837 125.163 366 134 366H216C238.091 366 256 348.091 256 326V286H346C354.837 286 362 278.837 362 270C362 261.163 354.837 254 346 254H256V214C256 191.909 238.091 174 216 174H134ZM394 124H314C309.582 124 306 120.418 306 116V36L394 124Z"
+          fill="currentColor"
+        />
+      </symbol>
+      <symbol id="mono-pp" viewBox="0 0 480 480">
+        <g
+          fill="none"
+          stroke="currentColor"
+          stroke-width="32"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="M104 80V400" />
+          <path d="M104 80H176A64 64 0 0 1 176 208H104" />
+          <path d="M376 80V400" />
+          <path d="M376 80H304A64 64 0 0 0 304 208H376" />
+        </g>
+      </symbol>
+      <symbol id="dogear-p-text" viewBox="0 0 480 480">
+        <g
+          fill="none"
+          stroke="currentColor"
+          stroke-width="46"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="M140 70V410" />
+          <path d="M140 70H262L326 134V206C326 232.51 304.51 254 278 254H140" />
+          <path d="M262 70V134H326" />
+        </g>
+      </symbol>
+      <symbol id="dogear-p" viewBox="0 0 480 480">
+        <g
+          fill="none"
+          stroke="currentColor"
+          stroke-width="32"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="M140 70V410" />
+          <path d="M140 70H262L326 134V206C326 232.51 304.51 254 278 254H140" />
+          <path d="M262 70V134H326" />
+        </g>
+      </symbol>
+    </svg>
+
+    <header class="top">
+      <div class="top-inner">
+        <div class="mark-auto">
+          <svg class="mark outline"><use href="#mark-outline" /></svg
+          ><svg class="mark knockout"><use href="#mark-knockout" /></svg>
+        </div>
+        <div>
+          <h1>Paper Pairings</h1>
+          <p>The name in the visual design: every option, live</p>
+        </div>
+        <nav>
+          <a href="#identity">Identity</a>
+          <a href="#material">Material</a>
+          <a href="#behavior">Behavior</a>
+          <button
+            class="toggle"
+            type="button"
+            onclick="document.documentElement.classList.toggle('dark')"
+          >
+            <svg
+              class="sun"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+            >
+              <circle cx="12" cy="12" r="4" />
+              <path
+                d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"
+              />
+            </svg>
+            <svg
+              class="moon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+            >
+              <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" />
+            </svg>
+            Theme
+          </button>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <p class="lede">
+        The name gives the design two levers. <b>Paper</b> is the material:
+        score slips, posted sheets, carbon copies, ballpoint ink.
+        <b>Pairings</b> is the structure: two things that belong together. Each
+        panel below is one option, drawn with the app's real tokens, with a note
+        on how it would be built.
+      </p>
+      <p class="lede">
+        Chips mark the options recommended in the memo. Toggle the theme to
+        check both ramps.
+      </p>
+
+      <!-- =========================================================== IDENTITY -->
+      <section class="section" id="identity">
+        <h2>Identity</h2>
+        <p>Mark, wordmark, and type. Where the name is literally read.</p>
+
+        <div class="space">
+          <h3>Wordmark</h3>
+          <div class="options">
+            <figure class="opt">
+              <div class="demo">
+                <div class="wm-stack">
+                  <div class="mark-auto">
+                    <svg class="mark outline"><use href="#mark-outline" /></svg
+                    ><svg class="mark knockout">
+                      <use href="#mark-knockout" />
+                    </svg>
+                  </div>
+                  <span>Paper</span>
+                  <span>Pairings</span>
+                </div>
+              </div>
+              <figcaption>
+                <div class="t">The two words as a pair</div>
+                <div class="d">
+                  Stacked at the same measure with a hairline between them, the
+                  way two names sit on a slip. The mark spans both rows.
+                </div>
+                <div class="how">
+                  <b>BrandWordmark</b> component beside BrandMark. Two-row grid,
+                  hairline uses --border, same token as the pairings table rows.
+                </div>
+              </figcaption>
+            </figure>
+
+            <figure class="opt">
+              <div class="demo">
+                <svg viewBox="0 0 480 480" style="width: 120px; height: 120px">
+                  <use href="#mono-pp" />
+                </svg>
+              </div>
+              <figcaption>
+                <div class="t">Double-P monogram</div>
+                <div class="d">
+                  A P and its mirror meet bowl to bowl, so the initials
+                  themselves are a pairing. Same stroke weight and joins as the
+                  existing sheet mark.
+                </div>
+                <div class="how">
+                  Second symbol in <b>brand-mark.tsx</b>. Add to
+                  scripts/render-brand-assets.mjs so favicon and app icon can
+                  use it.
+                </div>
+              </figcaption>
+            </figure>
+
+            <figure class="opt">
+              <div class="demo">
+                <div style="display: grid; gap: 22px; justify-items: center">
+                  <svg viewBox="0 0 480 480" style="width: 88px; height: 88px">
+                    <use href="#dogear-p" />
+                  </svg>
+                  <div
+                    style="
+                      font-size: 34px;
+                      font-weight: 600;
+                      letter-spacing: -0.02em;
+                      line-height: 1.15;
+                      white-space: nowrap;
+                    "
+                  >
+                    <svg
+                      viewBox="0 0 480 480"
+                      style="
+                        width: 0.904em;
+                        height: 0.904em;
+                        vertical-align: -0.089em;
+                        margin: 0 -0.2em 0 -0.22em;
+                      "
+                    >
+                      <use href="#dogear-p-text" /></svg
+                    >aper Pairings
+                  </div>
+                </div>
+              </div>
+              <figcaption>
+                <div class="t">Dog-ear the P</div>
+                <div class="d">
+                  The first letter takes the mark's folded corner. The wordmark
+                  and the mark become one drawing.
+                </div>
+                <div class="how">
+                  SVG wordmark with an <b>sr-only</b> text fallback. Folded
+                  letterforms can't come from a web font.
+                </div>
+              </figcaption>
+            </figure>
+
+            <figure class="opt">
+              <div class="demo">
+                <div class="mono-wm">
+                  <div class="name">Paper Pairings</div>
+                  <div class="row">
+                    <span class="n">Table 12</span><span class="n">Round 3</span
+                    ><span class="n">2–1</span>
+                  </div>
+                </div>
+              </div>
+              <figcaption>
+                <div class="t">Wordmark in the table-number face</div>
+                <div class="d">
+                  Sentence case Geist Mono, so the brand name speaks in the same
+                  voice as table numbers, rounds, and scores.
+                </div>
+                <div class="how">
+                  Swap <b>font-sans</b> for font-mono on the two name strings in
+                  public-site-header.tsx and admin-auth-gate.tsx.
+                </div>
+              </figcaption>
+            </figure>
+          </div>
+        </div>
+
+        <div class="space">
+          <h3>Typography</h3>
+          <div class="options">
+            <figure class="opt">
+              <div class="demo">
+                <div class="superfamily">
+                  <h4>Round 3 pairings are posted</h4>
+                  <p>
+                    Find your table below. Results are due 50 minutes after the
+                    round starts.
+                  </p>
+                  <div class="pairline">
+                    <i>Source Serif 4</i> <span>with</span> <s>Source Sans 3</s>
+                  </div>
+                </div>
+              </div>
+              <figcaption>
+                <div class="t">A typographic pair</div>
+                <div class="d">
+                  A serif and sans designed together as one superfamily. Two
+                  faces that were made to be paired, for an app about pairing.
+                </div>
+                <div class="how">
+                  Two <b>@fontsource-variable</b> imports. Point --font-heading
+                  at the serif in the @theme inline block; the slot already
+                  exists.
+                </div>
+              </figcaption>
+            </figure>
+
+            <figure class="opt">
+              <div class="demo">
+                <div class="vs-axis">
+                  <div class="n">Table 4</div>
+                  <div class="l">Kira Adams</div>
+                  <div class="v">vs</div>
+                  <div class="r">Jordan Park</div>
+                  <div class="n">Table 9</div>
+                  <div class="l">Tomás Brennan</div>
+                  <div class="v">vs</div>
+                  <div class="r">Li Wu</div>
+                  <div class="n">Table 12</div>
+                  <div class="l">Mai Chen</div>
+                  <div class="v">vs</div>
+                  <div class="r">Rafael Ortiz</div>
+                </div>
+              </div>
+              <figcaption>
+                <div class="t">
+                  A shared vs axis <span class="chip">Recommended</span>
+                </div>
+                <div class="d">
+                  Names meet at a fixed center line. Every pair reads as one
+                  unit, and the column of vs marks becomes the spine of the
+                  list.
+                </div>
+                <div class="how">
+                  Third <b>layout="paired"</b> mode on ScoreSlipPlayers:
+                  grid-template-columns: 1fr auto 1fr, right-align the first
+                  name.
+                </div>
+              </figcaption>
+            </figure>
+
+            <figure class="opt">
+              <div class="demo">
+                <ul class="hanging">
+                  <li data-table="4">Kira Adams <span>Jordan Park</span></li>
+                  <li data-table="9">Tomás Brennan <span>Li Wu</span></li>
+                  <li data-table="12">Mai Chen <span>Rafael Ortiz</span></li>
+                  <li data-table="17">Sam Diaz <span>Noor Haddad</span></li>
+                </ul>
+              </div>
+              <figcaption>
+                <div class="t">Hanging table numbers</div>
+                <div class="d">
+                  Numbers hang in the left margin in mono with tabular figures.
+                  The list reads like a typed sheet with a margin.
+                </div>
+                <div class="how">
+                  Negative-margin gutter column on the pairings table wrapper.
+                  <b>tabular-nums</b> is already set in score-slip.tsx.
+                </div>
+              </figcaption>
+            </figure>
+          </div>
+        </div>
+      </section>
+
+      <!-- =========================================================== MATERIAL -->
+      <section class="section" id="material">
+        <h2>Material</h2>
+        <p>Color, surface, texture. Where the app feels like paper.</p>
+
+        <div class="space">
+          <h3>Color</h3>
+          <div class="options">
+            <figure class="opt">
+              <div class="demo">
+                <div class="two">
+                  <div class="mini">
+                    <div class="k">Organizer's record</div>
+                    <div class="v">Table 12</div>
+                    <div>Mai Chen vs Rafael Ortiz</div>
+                    <div class="s">2–1 Chen</div>
+                  </div>
+                  <div class="mini" data-copy>
+                    <div class="k">Your copy</div>
+                    <div class="v">Table 12</div>
+                    <div>You vs Rafael Ortiz</div>
+                    <div class="s">2–1 You</div>
+                  </div>
+                </div>
+              </div>
+              <figcaption>
+                <div class="t">
+                  Carbon copy as meaning <span class="chip">Recommended</span>
+                </div>
+                <div class="d">
+                  Anything that is a copy of the organizer's record takes the
+                  carbon tint: the player's pairing, the public standings
+                  mirror, receipts. The accent becomes a rule people learn.
+                </div>
+                <div class="how">
+                  <b>data-copy</b> attribute plus one utility: background:
+                  color-mix(in oklab, var(--accent-brand) 7%, var(--card)). Mix
+                  in oklab, not oklch: the violet-to-warm hue path in oklch
+                  passes through red and tints the copy brown.
+                </div>
+              </figcaption>
+            </figure>
+
+            <figure class="opt">
+              <div class="demo">
+                <div class="tiers">
+                  <div class="tier frame">Frame <code>--sidebar</code></div>
+                  <div class="tier panel">Panel <code>--background</code></div>
+                  <div class="tier card">Card <code>--card</code></div>
+                  <div class="tier sheet">
+                    Posted sheet <code>--sheet · new</code>
+                  </div>
+                </div>
+              </div>
+              <figcaption>
+                <div class="t">A whiter stock for the posted sheet</div>
+                <div class="d">
+                  Frame and cards stay on kraft. Pairings and standings sit on a
+                  fresh sheet, one step brighter, like paper taped to the wall.
+                </div>
+                <div class="how">
+                  One new <b>--sheet</b> token in both ramps: light oklch(0.997
+                  0.003 88), dark oklch(0.29 0.006 67). Apply only to those two
+                  tables.
+                </div>
+              </figcaption>
+            </figure>
+
+            <figure class="opt">
+              <div class="demo">
+                <div class="inks">
+                  <div>
+                    <span>Table 4</span><span class="res ballpoint">2–1</span>
+                  </div>
+                  <div>
+                    <span>Table 9</span><span class="res red">Game loss</span>
+                  </div>
+                  <div>
+                    <span>Table 12</span
+                    ><span class="res pencil">Not turned in</span>
+                  </div>
+                  <div>
+                    <span>Table 17</span><span class="res ballpoint">2–0</span>
+                  </div>
+                </div>
+              </div>
+              <figcaption>
+                <div class="t">Ink instead of status colors</div>
+                <div class="d">
+                  Results in ballpoint blue, penalties in red pen, anything
+                  pending in pencil grey. Status reads as what was written and
+                  with what.
+                </div>
+                <div class="how">
+                  Retune <b>--round-*</b> hues toward ink and add --ink-pencil
+                  for unreported results. Three tokens, both ramps.
+                </div>
+              </figcaption>
+            </figure>
+
+            <figure class="opt">
+              <div class="demo">
+                <div class="ramp">
+                  <div>
+                    <i style="background: var(--sidebar)"></i>--paper-frame
+                    <small>was --sidebar</small>
+                  </div>
+                  <div>
+                    <i style="background: var(--background)"></i>--paper-panel
+                    <small>was --background</small>
+                  </div>
+                  <div>
+                    <i style="background: var(--card)"></i>--paper-slip
+                    <small>was --card</small>
+                  </div>
+                  <div>
+                    <i style="background: var(--sheet)"></i>--paper-sheet
+                    <small>new</small>
+                  </div>
+                  <div>
+                    <i style="background: var(--accent-brand)"></i>--carbon
+                    <small>was --accent-brand</small>
+                  </div>
+                </div>
+              </div>
+              <figcaption>
+                <div class="t">Name the ramp after paper</div>
+                <div class="d">
+                  No visual change. Token names and comments carry the metaphor
+                  so future work extends it instead of the abstraction.
+                </div>
+                <div class="how">
+                  Alias in <b>app.css</b>: keep shadcn names for components, add
+                  paper-named aliases that the app's own styles use.
+                </div>
+              </figcaption>
+            </figure>
+          </div>
+        </div>
+
+        <div class="space">
+          <h3>Surface and texture <small>pick one, at most two</small></h3>
+          <div class="options">
+            <figure class="opt">
+              <div class="demo">
+                <div class="sheet-wrap">
+                  <div class="sheet-card">
+                    <div class="k">Round 3</div>
+                    <div class="v">
+                      You vs Jordan Park
+                      <small>Best of three, 50 minutes</small>
+                    </div>
+                    <div class="row"><span>Table</span><b>12</b></div>
+                  </div>
+                </div>
+              </div>
+              <figcaption>
+                <div class="t">Folded corner on sheet cards</div>
+                <div class="d">
+                  Cards that stand for a piece of paper repeat the mark's
+                  dog-ear: the current match card and the score slip. Nothing
+                  else folds.
+                </div>
+                <div class="how">
+                  clip-path: polygon(0 0, calc(100% - 22px) 0, 100% 22px, 100%
+                  100%, 0 100%) plus a ::after gradient triangle. Wrap it, since
+                  clip-path also clips the border; use <b>drop-shadow</b> on the
+                  wrapper for the edge.
+                </div>
+              </figcaption>
+            </figure>
+
+            <figure class="opt">
+              <div class="demo">
+                <div class="slip">
+                  <div class="head">
+                    <div class="n">12</div>
+                    <div class="names">
+                      Mai Chen <span>vs</span> Rafael Ortiz<br /><span
+                        >Round 3</span
+                      >
+                    </div>
+                  </div>
+                  <div class="result">
+                    Tear here to turn in
+                    <div class="box"></div>
+                  </div>
+                </div>
+              </div>
+              <figcaption>
+                <div class="t">Perforated result edge</div>
+                <div class="d">
+                  The result section of a slip has a tear-off edge with real
+                  half-circle perforations, not a dashed border.
+                </div>
+                <div class="how">
+                  mask: radial-gradient(circle at 6px 0, transparent 3.5px, #000
+                  4px) 0 0 / <b>12px 100%</b> repeat-x on the result block.
+                </div>
+              </figcaption>
+            </figure>
+
+            <figure class="opt">
+              <div class="demo">
+                <div class="ruled">
+                  <div>
+                    <span class="rk">#</span><span>Standings after round 3</span
+                    ><span>Pts</span>
+                  </div>
+                  <div>
+                    <span class="rk">1</span><span>Mai Chen</span
+                    ><span class="pts">9</span>
+                  </div>
+                  <div>
+                    <span class="rk">2</span><span>Jordan Park</span
+                    ><span class="pts">7</span>
+                  </div>
+                  <div>
+                    <span class="rk">3</span><span>Kira Adams</span
+                    ><span class="pts">6</span>
+                  </div>
+                  <div>
+                    <span class="rk">4</span><span>Li Wu</span
+                    ><span class="pts">6</span>
+                  </div>
+                </div>
+              </div>
+              <figcaption>
+                <div class="t">Ruled lines with a margin rule</div>
+                <div class="d">
+                  Row separators read as ruled paper, and one carbon-colored
+                  vertical rule sits at the left margin like a notebook's margin
+                  line.
+                </div>
+                <div class="how">
+                  <b>border-l-2 border-accent-brand/40</b> on the standings
+                  wrapper. Rows keep their existing 1px --border.
+                </div>
+              </figcaption>
+            </figure>
+
+            <figure class="opt">
+              <div class="demo stretch">
+                <div class="grain-pair">
+                  <div class="frame-demo">
+                    <div class="lbl">Flat (today)</div>
+                    <div class="item">Overview</div>
+                    <div class="item on">Pairings</div>
+                    <div class="item">Standings</div>
+                    <div class="item">Timer</div>
+                  </div>
+                  <div class="frame-demo grain">
+                    <div class="lbl">Grain on the frame</div>
+                    <div class="item">Overview</div>
+                    <div class="item on">Pairings</div>
+                    <div class="item">Standings</div>
+                    <div class="item">Timer</div>
+                  </div>
+                </div>
+              </div>
+              <figcaption>
+                <div class="t">Paper grain on the frame only</div>
+                <div class="d">
+                  A faint fiber texture on the sidebar frame. Cards and
+                  scrolling content stay flat, so the texture is felt rather
+                  than seen.
+                </div>
+                <div class="how">
+                  SVG <b>feTurbulence</b> as a data-URI background on a
+                  ::before, opacity 0.3 to 0.4, multiply in light and soft-light
+                  in dark. One large element, never per card.
+                </div>
+              </figcaption>
+            </figure>
+
+            <figure class="opt">
+              <div class="demo">
+                <div class="stamp-row">
+                  <div class="ctx">
+                    <b>Round 3</b>Pairings, 24 players
+                    <div class="stamp">Posted</div>
+                  </div>
+                  <div class="ctx">
+                    <b>Standings</b>After 5 rounds
+                    <div class="stamp carbon">Final</div>
+                  </div>
+                </div>
+              </div>
+              <figcaption>
+                <div class="t">Rubber stamps for terminal states</div>
+                <div class="d">
+                  Posted and Final rendered as rotated, outlined stamps with
+                  uneven ink. The one place uppercase is honest, because stamps
+                  are uppercase.
+                </div>
+                <div class="how">
+                  <b>Stamp</b> component: 2px border, rotate(-6deg),
+                  letter-spacing 0.14em, mask-image with a turbulence SVG for
+                  ink dropout.
+                </div>
+              </figcaption>
+            </figure>
+          </div>
+          <p class="note">
+            Fold, perforation, grain, and stamps together tip into
+            skeuomorphism. Choose one material cue and let the carbon copy carry
+            the rest.
+          </p>
+        </div>
+      </section>
+
+      <!-- =========================================================== BEHAVIOR -->
+      <section class="section" id="behavior">
+        <h2>Behavior and outputs</h2>
+        <p>Layout, motion, copy, and the physical things the app produces.</p>
+
+        <div class="space">
+          <h3>Layout</h3>
+          <div class="options">
+            <figure class="opt">
+              <div class="demo">
+                <div class="bracket-list">
+                  <div class="brk">
+                    <div class="p">Kira Adams</div>
+                    <div class="n">4</div>
+                    <div class="p">Jordan Park</div>
+                  </div>
+                  <div class="brk">
+                    <div class="p">Tomás Brennan</div>
+                    <div class="n">9</div>
+                    <div class="p">Li Wu</div>
+                  </div>
+                  <div class="brk copy">
+                    <div class="p">You</div>
+                    <div class="n">12</div>
+                    <div class="p">Rafael Ortiz</div>
+                  </div>
+                </div>
+              </div>
+              <figcaption>
+                <div class="t">
+                  The pair as the structural unit
+                  <span class="chip">Recommended</span>
+                </div>
+                <div class="d">
+                  The mark's bracket becomes the device for "these two belong
+                  together". Your own pairing takes the carbon bracket.
+                </div>
+                <div class="how">
+                  ::before on the pairing row: 8px wide, <b>border-left</b> plus
+                  top and bottom, no right border, radius 3px 0 0 3px.
+                </div>
+              </figcaption>
+            </figure>
+
+            <figure class="opt wide">
+              <div class="demo">
+                <div class="posted" id="postedSheet">
+                  <div class="tape"></div>
+                  <div class="hd">
+                    <div class="mark-auto">
+                      <svg class="mark outline">
+                        <use href="#mark-outline" /></svg
+                      ><svg class="mark knockout">
+                        <use href="#mark-knockout" />
+                      </svg>
+                    </div>
+                    <div><b>Spring Open</b><span>Round 3 pairings</span></div>
+                    <div class="rt">24 players<br />Posted 2:14 pm</div>
+                  </div>
+                  <table>
+                    <tr>
+                      <td>Adams, Kira</td>
+                      <td class="tn">4</td>
+                      <td class="op">Park, Jordan</td>
+                    </tr>
+                    <tr>
+                      <td>Brennan, Tomás</td>
+                      <td class="tn">9</td>
+                      <td class="op">Wu, Li</td>
+                    </tr>
+                    <tr>
+                      <td>Chen, Mai</td>
+                      <td class="tn">12</td>
+                      <td class="op">Ortiz, Rafael</td>
+                    </tr>
+                    <tr>
+                      <td>Diaz, Sam</td>
+                      <td class="tn">17</td>
+                      <td class="op">Haddad, Noor</td>
+                    </tr>
+                    <tr>
+                      <td>Haddad, Noor</td>
+                      <td class="tn">17</td>
+                      <td class="op">Diaz, Sam</td>
+                    </tr>
+                  </table>
+                </div>
+              </div>
+              <figcaption>
+                <div class="t">The posted pairings sheet</div>
+                <div class="d">
+                  The public pairings page laid out like the sheet taped to the
+                  wall: event and round header, alphabetical by player, table in
+                  the middle. It doubles as the projector view.
+                </div>
+                <div class="how">
+                  New <b>PostedSheet</b> layout for tournaments.$id.play and the
+                  projector route. Sits on --sheet, header rule 1.5px
+                  --foreground.
+                </div>
+              </figcaption>
+            </figure>
+
+            <figure class="opt wide">
+              <div class="demo">
+                <div class="slipcard">
+                  <div class="tn">12<small>Table</small></div>
+                  <div class="who">
+                    <b>You vs Jordan Park</b><span>Round 3, best of three</span>
+                  </div>
+                  <div class="box">Write in a result</div>
+                </div>
+              </div>
+              <figcaption>
+                <div class="t">Slip-proportioned match card</div>
+                <div class="d">
+                  The player's current match card is wide and short like a real
+                  slip, with a result box that is literally empty until filled.
+                </div>
+                <div class="how">
+                  Grid <b>72px 1fr 110px</b> on CurrentMatchCard's
+                  DescriptionCard; the result box opens the existing
+                  ReportResultDialog.
+                </div>
+              </figcaption>
+            </figure>
+          </div>
+        </div>
+
+        <div class="space">
+          <h3>Motion, spent once <small>press the buttons to replay</small></h3>
+          <div class="options">
+            <figure class="opt">
+              <div class="demo">
+                <div class="motion">
+                  <div
+                    class="posted"
+                    id="postAnim"
+                    style="max-width: 320px; padding: 14px 16px 12px"
+                  >
+                    <div class="hd" style="padding-bottom: 8px">
+                      <div class="mark-auto">
+                        <svg class="mark outline">
+                          <use href="#mark-outline" /></svg
+                        ><svg class="mark knockout">
+                          <use href="#mark-knockout" />
+                        </svg>
+                      </div>
+                      <div><b>Round 4</b><span>Pairings</span></div>
+                      <div class="rt">24 players</div>
+                    </div>
+                    <table>
+                      <tr>
+                        <td>Adams, Kira</td>
+                        <td class="tn">2</td>
+                        <td class="op">Chen, Mai</td>
+                      </tr>
+                      <tr>
+                        <td>Park, Jordan</td>
+                        <td class="tn">5</td>
+                        <td class="op">Wu, Li</td>
+                      </tr>
+                    </table>
+                  </div>
+                  <button
+                    class="btn primary"
+                    type="button"
+                    onclick="replay('postAnim', 'posting')"
+                  >
+                    Post pairings
+                  </button>
+                </div>
+              </div>
+              <figcaption>
+                <div class="t">Pairings post</div>
+                <div class="d">
+                  When a round is paired, the sheet drops a few pixels and
+                  settles. Once. Nothing else on the page moves on its own.
+                </div>
+                <div class="how">
+                  @keyframes post-sheet: translateY(-14px) to 0 with a 60%
+                  overshoot, 0.6s cubic-bezier(0.2,0.7,0.25,1). Reuse the easing
+                  from <b>advance-step-attention</b>; guard with
+                  prefers-reduced-motion.
+                </div>
+              </figcaption>
+            </figure>
+
+            <figure class="opt">
+              <div class="demo">
+                <div class="motion">
+                  <div class="writebox" id="writeBox">
+                    <div>Table 12 · You vs Rafael Ortiz</div>
+                    <div class="res" id="writeRes"></div>
+                  </div>
+                  <button class="btn" type="button" onclick="writeIn()">
+                    Turn in 2–1
+                  </button>
+                </div>
+              </div>
+              <figcaption>
+                <div class="t">Writing the result</div>
+                <div class="d">
+                  Turning in a result fills the box with the carbon tint once
+                  and the score appears in ballpoint. The same confirmation the
+                  decklist editor already uses.
+                </div>
+                <div class="how">
+                  Extend the <b>deck-row-added</b> keyframe to
+                  match-result-cell.tsx: background flashes --accent-brand at
+                  22%, 1s ease-out.
+                </div>
+              </figcaption>
+            </figure>
+          </div>
+        </div>
+
+        <div class="space">
+          <h3>Copy</h3>
+          <div class="options">
+            <figure class="opt">
+              <div class="demo">
+                <table class="verbs">
+                  <tr>
+                    <th>Instead of</th>
+                    <th>Say</th>
+                  </tr>
+                  <tr>
+                    <td>Publish pairings</td>
+                    <td>Post pairings</td>
+                  </tr>
+                  <tr>
+                    <td>Result reported</td>
+                    <td>Turned in</td>
+                  </tr>
+                  <tr>
+                    <td>Round view</td>
+                    <td>Sheet</td>
+                  </tr>
+                  <tr>
+                    <td>Match record</td>
+                    <td>Slip</td>
+                  </tr>
+                  <tr>
+                    <td>Lock standings</td>
+                    <td>Post final standings</td>
+                  </tr>
+                </table>
+              </div>
+              <figcaption>
+                <div class="t">Paper verbs throughout</div>
+                <div class="d">
+                  Actions named for what happens at a real event. The button
+                  says Post, the toast says Posted, the stamp says Posted.
+                </div>
+                <div class="how">
+                  Add entries to <b>CONTEXT.md</b>; update the presenters in
+                  @paper-pairings/core (player-view.ts) and the organizer views
+                  to match.
+                </div>
+              </figcaption>
+            </figure>
+
+            <figure class="opt">
+              <div class="demo">
+                <div class="empty">
+                  <div class="mark-auto">
+                    <svg class="mark outline"><use href="#mark-outline" /></svg
+                    ><svg class="mark knockout">
+                      <use href="#mark-knockout" />
+                    </svg>
+                  </div>
+                  <b>No pairings posted yet</b>
+                  <p>
+                    Pair round 1 to post the first sheet. Players see it the
+                    moment you do.
+                  </p>
+                  <button class="btn primary" type="button">
+                    Pair round 1
+                  </button>
+                </div>
+              </div>
+              <figcaption>
+                <div class="t">Empty states as blank paper</div>
+                <div class="d">
+                  The blank sheet is the invitation. The outline mark at low
+                  opacity, one sentence, one action.
+                </div>
+                <div class="how">
+                  <b>EmptyMedia</b> variant that renders BrandMark outline at
+                  35% opacity. Copy lives in the presenter.
+                </div>
+              </figcaption>
+            </figure>
+
+            <figure class="opt">
+              <div class="demo">
+                <div class="taglines">
+                  <p>
+                    Every match, on paper.<small
+                      >Sign-in gate, public pages</small
+                    >
+                  </p>
+                  <p>Pair the room.<small>Organizer landing</small></p>
+                  <p>
+                    Post the round.<small>The one button that matters</small>
+                  </p>
+                </div>
+              </div>
+              <figcaption>
+                <div class="t">Taglines</div>
+                <div class="d">
+                  Three candidates, each using one of the two words. Set in the
+                  serif if the typographic pair is adopted; otherwise in Inter
+                  at the same size.
+                </div>
+                <div class="how">
+                  Replace the "Admin access" eyebrow in
+                  <b>admin-auth-gate.tsx</b> with the tagline; drop the
+                  uppercase tracking.
+                </div>
+              </figcaption>
+            </figure>
+          </div>
+        </div>
+
+        <div class="space">
+          <h3>Physical outputs and icons</h3>
+          <div class="options">
+            <figure class="opt">
+              <div class="demo">
+                <div class="page">
+                  <div class="ph">
+                    <svg viewBox="0 0 480 480">
+                      <use href="#mark-knockout" />
+                    </svg>
+                    <div><b>Spring Open</b><span>Round 3 pairings</span></div>
+                    <div class="r">24 players<br />2:14 pm</div>
+                  </div>
+                  <table>
+                    <tr>
+                      <td>Adams, Kira</td>
+                      <td class="c">4</td>
+                      <td class="o">Park, Jordan</td>
+                    </tr>
+                    <tr>
+                      <td>Brennan, Tomás</td>
+                      <td class="c">9</td>
+                      <td class="o">Wu, Li</td>
+                    </tr>
+                    <tr>
+                      <td>Chen, Mai</td>
+                      <td class="c">12</td>
+                      <td class="o">Ortiz, Rafael</td>
+                    </tr>
+                    <tr>
+                      <td>Diaz, Sam</td>
+                      <td class="c">17</td>
+                      <td class="o">Haddad, Noor</td>
+                    </tr>
+                    <tr>
+                      <td>Haddad, Noor</td>
+                      <td class="c">17</td>
+                      <td class="o">Diaz, Sam</td>
+                    </tr>
+                    <tr>
+                      <td>Ortiz, Rafael</td>
+                      <td class="c">12</td>
+                      <td class="o">Chen, Mai</td>
+                    </tr>
+                    <tr>
+                      <td>Park, Jordan</td>
+                      <td class="c">4</td>
+                      <td class="o">Adams, Kira</td>
+                    </tr>
+                    <tr>
+                      <td>Wu, Li</td>
+                      <td class="c">9</td>
+                      <td class="o">Brennan, Tomás</td>
+                    </tr>
+                    <tr>
+                      <td>…</td>
+                      <td class="c"></td>
+                      <td class="o"></td>
+                    </tr>
+                  </table>
+                  <div class="pf">
+                    <span>Paper Pairings</span><span>Sheet 1 of 1</span>
+                  </div>
+                </div>
+              </div>
+              <figcaption>
+                <div class="t">
+                  Print stylesheet <span class="chip">Recommended</span>
+                </div>
+                <div class="d">
+                  Pairings and standings print as real sheets: no chrome, mark
+                  and name in the header, a footer that says where it came from.
+                  The most literal fulfilment of the name.
+                </div>
+                <div class="how">
+                  One <b>@media print</b> block in app.css: @page margin 0.6in,
+                  sidebar print:hidden, break-inside: avoid per row.
+                </div>
+              </figcaption>
+            </figure>
+
+            <figure class="opt">
+              <div class="demo">
+                <div class="tearoff">
+                  <div class="tear">
+                    <div class="n">4</div>
+                    <div class="w">
+                      <b>Adams vs Park</b><span>Round 3</span>
+                    </div>
+                    <div class="bx"></div>
+                  </div>
+                  <div class="tear">
+                    <div class="n">9</div>
+                    <div class="w">
+                      <b>Brennan vs Wu</b><span>Round 3</span>
+                    </div>
+                    <div class="bx"></div>
+                  </div>
+                  <div class="tear">
+                    <div class="n">12</div>
+                    <div class="w">
+                      <b>Chen vs Ortiz</b><span>Round 3</span>
+                    </div>
+                    <div class="bx"></div>
+                  </div>
+                </div>
+              </div>
+              <figcaption>
+                <div class="t">Tear-off score slips</div>
+                <div class="d">
+                  A print-only page of slips, perforated between, for organizers
+                  who still hand out paper at the table.
+                </div>
+                <div class="how">
+                  New route <b>admin/tournaments/$id/slips</b>: print-only grid,
+                  three per page, page-break-inside: avoid on each slip.
+                </div>
+              </figcaption>
+            </figure>
+
+            <figure class="opt">
+              <div class="demo">
+                <div class="icons">
+                  <div class="icon">
+                    <div class="tile dark-tile">
+                      <svg viewBox="0 0 480 480">
+                        <use href="#mark-knockout" />
+                      </svg>
+                    </div>
+                    Today
+                  </div>
+                  <div class="icon">
+                    <div class="tile paper-tile">
+                      <svg viewBox="0 0 480 480">
+                        <use href="#mark-outline" />
+                      </svg>
+                    </div>
+                    Paper
+                  </div>
+                  <div class="icon">
+                    <div class="tile tint-tile">
+                      <svg viewBox="0 0 480 480">
+                        <use href="#mark-knockout" />
+                      </svg>
+                    </div>
+                    Tinted
+                  </div>
+                </div>
+              </div>
+              <figcaption>
+                <div class="t">App icon variants</div>
+                <div class="d">
+                  The dark tile stays as the default. A paper tile with the
+                  outline mark for iOS light appearance, and a tinted variant
+                  for iOS 18 tinted home screens.
+                </div>
+                <div class="how">
+                  Expo <b>ios.icon</b> appearance dictionary: light, dark,
+                  tinted. Extend scripts/render-brand-assets.mjs to emit all
+                  three.
+                </div>
+              </figcaption>
+            </figure>
+          </div>
+        </div>
+      </section>
+
+      <footer>
+        Recommendation from the memo: spend the boldness in two places. Make the
+        pair the structural unit with the shared vs axis and the bracket, and
+        make carbon copy a semantic state. Add the print stylesheet because it
+        is cheap and literal. Treat fold, perforation, grain, and stamps as a
+        menu to pick one from.
+      </footer>
+    </main>
+
+    <script>
+      function replay(id, cls) {
+        var el = document.getElementById(id);
+        el.classList.remove(cls);
+        void el.offsetWidth;
+        el.classList.add(cls);
+      }
+      function writeIn() {
+        var box = document.getElementById("writeBox");
+        var res = document.getElementById("writeRes");
+        box.classList.remove("written");
+        res.textContent = "";
+        res.classList.remove("written-ink");
+        void box.offsetWidth;
+        res.textContent = "2–1";
+        res.classList.add("written-ink");
+        box.classList.add("written");
+      }
+      if (
+        location.search.includes("dark") ||
+        (!location.search.includes("light") &&
+          window.matchMedia("(prefers-color-scheme: dark)").matches)
+      ) {
+        document.documentElement.classList.add("dark");
+      }
+    </script>
+  </body>
+</html>
