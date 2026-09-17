@@ -50,6 +50,14 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Spinner } from '@/components/ui/spinner'
 import { useBusyAction } from '@/hooks/use-busy-action'
 import { cn } from '@/lib/utils'
@@ -83,6 +91,64 @@ type RegistrationStatus =
 
 const REGISTRATION_PAGE_SIZE = 100
 
+type EntryStatus = Doc<'tournamentRegistrations'>['entryStatus']
+
+// The toolbar's status filter: one entry status, or 'all' for the whole
+// history. Filtering is server-side (both roster queries take the status),
+// so it sees every row, not just the pages loaded so far. 'all' is a
+// sentinel because the Select's value must be a string, and it is mapped to
+// an absent argument at the query boundary. Pending leads: a busy event's
+// applications awaiting review are what an organizer comes here to find.
+type RegistrationFilter = EntryStatus | 'all'
+
+const registrationFilterOptions: Array<{
+  value: RegistrationFilter
+  label: string
+}> = [
+  { value: 'all', label: 'All registrations' },
+  { value: 'pending', label: 'Pending review' },
+  { value: 'waitlisted', label: 'Waitlisted' },
+  { value: 'confirmed', label: 'Confirmed' },
+  { value: 'cancelled', label: 'Cancelled' },
+  { value: 'rejected', label: 'Rejected' },
+]
+
+const registrationFilterValues = new Set<string>(
+  registrationFilterOptions.map((option) => option.value),
+)
+
+function isRegistrationFilter(value: string): value is RegistrationFilter {
+  return registrationFilterValues.has(value)
+}
+
+// What an empty filtered list means, per status — "no registrations yet"
+// would be wrong for a full roster with nothing pending.
+const emptyFilterCopy: Record<
+  EntryStatus,
+  { title: string; description: string }
+> = {
+  pending: {
+    title: 'No applications awaiting review',
+    description: 'New registration requests will appear here.',
+  },
+  waitlisted: {
+    title: 'No waitlisted players',
+    description: 'Players you move to the waitlist will appear here.',
+  },
+  confirmed: {
+    title: 'No confirmed players',
+    description: 'Players holding a seat will appear here.',
+  },
+  cancelled: {
+    title: 'No cancelled registrations',
+    description: 'Players who withdraw or are removed will appear here.',
+  },
+  rejected: {
+    title: 'No rejected registrations',
+    description: 'Applications you decline will appear here.',
+  },
+}
+
 const statusBadgeVariant: Record<
   RegistrationStatus,
   'default' | 'secondary' | 'destructive' | 'outline'
@@ -104,10 +170,13 @@ export function RegistrationsView({
 }: {
   tournamentId: Id<'tournaments'>
 }) {
+  const [filter, setFilter] = useState<RegistrationFilter>('all')
+  const entryStatus = filter === 'all' ? undefined : filter
   const { results, status, loadMore } = usePaginatedQuery(
     api.tournaments.registrations.listRegistrationPage,
     {
       tournamentId,
+      entryStatus,
     },
     { initialNumItems: REGISTRATION_PAGE_SIZE },
   )
@@ -124,25 +193,27 @@ export function RegistrationsView({
   const searching = search !== ''
   const searchResults = useQuery(
     api.tournaments.registrations.searchRegistrations,
-    searching ? { tournamentId, search } : 'skip',
+    searching ? { tournamentId, search, entryStatus } : 'skip',
   )
   // Keep the previous matches on screen while a keystroke's query is in
   // flight so the table doesn't flash empty between results. The cache is
   // only valid for the current uninterrupted search session: emptying the
   // box clears it (handleSearchTermChange), and it is stamped with the
-  // tournament it belongs to so a tournament switch mid-search can't show
-  // another roster's rows. useQuery's value is looked up by the current
-  // render's args, so `searchResults` here is always rows for exactly this
-  // render's { tournamentId, search } — the stamp can't mislabel.
+  // tournament and status filter it belongs to so a tournament switch or
+  // filter change mid-search can't show another list's rows. useQuery's
+  // value is looked up by the current render's args, so `searchResults`
+  // here is always rows for exactly this render's { tournamentId, search,
+  // entryStatus } — the stamp can't mislabel.
   const lastSearchResults = useRef<{
     tournamentId: Id<'tournaments'>
+    filter: RegistrationFilter
     rows: Array<RegistrationRow>
   } | null>(null)
   useEffect(() => {
     if (searchResults !== undefined) {
-      lastSearchResults.current = { tournamentId, rows: searchResults }
+      lastSearchResults.current = { tournamentId, filter, rows: searchResults }
     }
-  }, [searchResults, tournamentId])
+  }, [searchResults, tournamentId, filter])
 
   function handleSearchTermChange(value: string) {
     if (value.trim() === '') {
@@ -156,7 +227,8 @@ export function RegistrationsView({
 
   const cachedSearchRows =
     lastSearchResults.current !== null &&
-    lastSearchResults.current.tournamentId === tournamentId
+    lastSearchResults.current.tournamentId === tournamentId &&
+    lastSearchResults.current.filter === filter
       ? lastSearchResults.current.rows
       : undefined
 
@@ -184,6 +256,8 @@ export function RegistrationsView({
         <CardContent>
           <RegistrationsTable
             registrations={rows}
+            filter={filter}
+            onFilterChange={setFilter}
             searchTerm={searchTerm}
             onSearchTermChange={handleSearchTermChange}
             searchPending={searching && searchResults === undefined}
@@ -345,12 +419,16 @@ function getRegistrationColumns({
 
 function RegistrationsTable({
   registrations,
+  filter,
+  onFilterChange,
   searchTerm,
   onSearchTermChange,
   searchPending,
   showPaymentColumn,
 }: {
   registrations: Array<RegistrationRow> | undefined
+  filter: RegistrationFilter
+  onFilterChange: (filter: RegistrationFilter) => void
   searchTerm: string
   onSearchTermChange: (value: string) => void
   searchPending: boolean
@@ -377,14 +455,53 @@ function RegistrationsTable({
   }
 
   // While searching an empty page means "no match", not "no registrations",
-  // so keep the table (and its search box) on screen.
-  if (!searching && registrations.length === 0) {
+  // so keep the table (and its search box) on screen. An empty filtered
+  // list likewise keeps the toolbar, so the organizer can switch back off
+  // the filter, and names the filter in its empty state.
+  if (!searching && registrations.length === 0 && filter === 'all') {
     return (
       <TableEmptyState
         icon={ClipboardList}
         title="No registrations yet"
         description="Players who sign up for this tournament will appear here."
       />
+    )
+  }
+
+  const filterSelect = (
+    <Select
+      value={filter}
+      onValueChange={(value) => {
+        if (isRegistrationFilter(value)) {
+          onFilterChange(value)
+        }
+      }}
+    >
+      <SelectTrigger aria-label="Filter by status" className="w-44">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectGroup>
+          {registrationFilterOptions.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectGroup>
+      </SelectContent>
+    </Select>
+  )
+
+  if (!searching && registrations.length === 0 && filter !== 'all') {
+    return (
+      <div className="flex flex-col gap-2">
+        {filterSelect}
+        <TableEmptyState
+          icon={ClipboardList}
+          title={emptyFilterCopy[filter].title}
+          description={emptyFilterCopy[filter].description}
+        />
+      </div>
     )
   }
 
@@ -412,13 +529,16 @@ function RegistrationsTable({
         // TanStack column filter (which would re-filter the server's
         // matches).
         toolbar={() => (
-          <Input
-            aria-label="Search players..."
-            placeholder="Search players..."
-            value={searchTerm}
-            onChange={(event) => onSearchTermChange(event.target.value)}
-            className="max-w-xs"
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            <Input
+              aria-label="Search players..."
+              placeholder="Search players..."
+              value={searchTerm}
+              onChange={(event) => onSearchTermChange(event.target.value)}
+              className="max-w-xs"
+            />
+            {filterSelect}
+          </div>
         )}
       />
     </div>
