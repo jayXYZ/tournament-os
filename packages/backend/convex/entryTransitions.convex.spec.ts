@@ -522,6 +522,87 @@ test("applications gate on confirmed seats, not on other applications", async ()
   expect(await confirmedCount(t, tournamentId)).toBe(1);
 });
 
+test("the organizer roster filters by entry status, in the list and in search", async () => {
+  const t = createConvexTest();
+  const { tournamentId } = await seedOpenTournament(t);
+  const organizer = t.withIdentity(organizerIdentity);
+  // Two confirmed seats, then two applications and a waitlisted row, so an
+  // unfiltered walk mixes every state and a pending filter has both rows to
+  // find — and one confirmed row to leave out.
+  await registerPlayer(t, tournamentId, 1);
+  await registerPlayer(t, tournamentId, 2);
+  const pendingIds = [
+    await seedApplication(t, tournamentId, 3, "pending"),
+    await seedApplication(t, tournamentId, 4, "pending"),
+  ];
+  const waitlistedId = await seedApplication(t, tournamentId, 5, "waitlisted");
+
+  // Unfiltered: the whole history.
+  expect(await organizerRegistrationRows(t, tournamentId)).toHaveLength(5);
+
+  // Filtered to pending: exactly the applications awaiting review, newest
+  // first, each carrying its approve projection so the queue acts in place.
+  const pending = await organizer.query(
+    api.tournaments.registrations.listRegistrationPage,
+    {
+      tournamentId,
+      entryStatus: "pending",
+      paginationOpts: { numItems: 100, cursor: null },
+    },
+  );
+  expect(pending.isDone).toBe(true);
+  expect(pending.page.map((row) => row.registration._id)).toEqual(
+    [...pendingIds].reverse(),
+  );
+  expect(pending.page.every((row) => row.approveEffect === "pending")).toBe(
+    true,
+  );
+
+  const waitlisted = await organizer.query(
+    api.tournaments.registrations.listRegistrationPage,
+    {
+      tournamentId,
+      entryStatus: "waitlisted",
+      paginationOpts: { numItems: 100, cursor: null },
+    },
+  );
+  expect(waitlisted.page.map((row) => row.registration._id)).toEqual([
+    waitlistedId,
+  ]);
+
+  // Search composes with the filter: every seeded name matches "Player",
+  // but under the pending filter only the applications come back.
+  const searched = await organizer.query(
+    api.tournaments.registrations.searchRegistrations,
+    { tournamentId, search: "Player", entryStatus: "pending" },
+  );
+  expect(new Set(searched.map((row) => row.registration._id))).toEqual(
+    new Set(pendingIds),
+  );
+  const unfilteredSearch = await organizer.query(
+    api.tournaments.registrations.searchRegistrations,
+    { tournamentId, search: "Player" },
+  );
+  expect(unfilteredSearch).toHaveLength(5);
+
+  // The filter tracks state changes: approving an application moves it out
+  // of the pending queue.
+  await organizer.mutation(api.tournaments.registrations.approveRegistration, {
+    registrationId: pendingIds[0],
+  });
+  const afterApproval = await organizer.query(
+    api.tournaments.registrations.listRegistrationPage,
+    {
+      tournamentId,
+      entryStatus: "pending",
+      paginationOpts: { numItems: 100, cursor: null },
+    },
+  );
+  expect(afterApproval.page.map((row) => row.registration._id)).toEqual([
+    pendingIds[1],
+  ]);
+});
+
 // A published tournament sitting in the "registration" lifecycle — the only
 // lifecycle in which entry decisions exist.
 async function seedOpenTournament(
