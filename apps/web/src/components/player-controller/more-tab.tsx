@@ -16,13 +16,6 @@ import { boardCount } from '@/components/player-controller/decklist/decklist-dra
 import { ConfirmActionDialog } from '@/components/shared/confirm-action-dialog'
 import { ResultBadge } from '@/components/shared/result-badge'
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 
 type MyDecklistData = FunctionReturnType<
@@ -46,8 +39,9 @@ export function MoreTab({
   // the page reads from the server.
   myDecklist: MyDecklistData | undefined
 }) {
-  // No wrapper of its own: the controller lays these cards out in whichever
-  // grid is active (the More tab's column on phones, the left desktop column).
+  // No wrapper of its own: the controller lays these sections out in
+  // whichever grid is active (the More tab's column on phones, the left
+  // desktop column). Hairlines separate them; the first one has none.
   return (
     <>
       <DecklistCard
@@ -83,15 +77,15 @@ function DecklistCard({
     // The link shows even with no list on file; the decklist page's own
     // empty state covers that.
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Decklist</CardTitle>
-          <CardDescription>
+      <section className="flex flex-col gap-3 border-t border-border pt-4 first:border-t-0 first:pt-0">
+        <div>
+          <h2 className="text-sm font-medium">Decklist</h2>
+          <p className="text-xs/relaxed text-muted-foreground">
             This event does not collect decklists. Any list you already
             submitted is still on file.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+          </p>
+        </div>
+        <div>
           <Button asChild type="button" variant="outline">
             <Link
               to="/tournaments/$tournamentId/decklist"
@@ -100,8 +94,8 @@ function DecklistCard({
               View your decklist
             </Link>
           </Button>
-        </CardContent>
-      </Card>
+        </div>
+      </section>
     )
   }
   if (data === null) {
@@ -121,13 +115,13 @@ function DecklistCard({
       : 'Submission is closed and no decklist is on file. Talk to the organizer if you still need to register one.'
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Decklist</CardTitle>
-        <CardDescription>{description}</CardDescription>
-      </CardHeader>
+    <section className="flex flex-col gap-3 border-t border-border pt-4 first:border-t-0 first:pt-0">
+      <div>
+        <h2 className="text-sm font-medium">Decklist</h2>
+        <p className="text-xs/relaxed text-muted-foreground">{description}</p>
+      </div>
       {decklist || submissionOpen ? (
-        <CardContent>
+        <div>
           <Button
             asChild
             type="button"
@@ -144,9 +138,9 @@ function DecklistCard({
                 : 'View decklist'}
             </Link>
           </Button>
-        </CardContent>
+        </div>
       ) : null}
-    </Card>
+    </section>
   )
 }
 
@@ -158,16 +152,20 @@ function MatchHistoryCard({
   const history = useMyMatchHistory(tournamentId)
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Match history</CardTitle>
-        <CardDescription>Your results in this tournament.</CardDescription>
-      </CardHeader>
-      <CardContent className="grid gap-1.5">
+    <section className="flex flex-col gap-3 border-t border-border pt-4 first:border-t-0 first:pt-0">
+      <div>
+        <h2 className="text-sm font-medium">Match history</h2>
+        <p className="text-xs/relaxed text-muted-foreground">
+          Your results in this tournament.
+        </p>
+      </div>
+      <div className="grid gap-1.5">
         {history === undefined ? (
           [0, 1].map((row) => <Skeleton key={row} className="h-10" />)
         ) : history.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No matches yet.</p>
+          <p className="text-xs/relaxed text-muted-foreground">
+            No matches yet.
+          </p>
         ) : (
           history.map((entry) => (
             <div
@@ -193,8 +191,8 @@ function MatchHistoryCard({
             </div>
           ))
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   )
 }
 
@@ -209,30 +207,30 @@ function DropCard({
 
   if (currentMatch?.myRegistrationStatus === 'dropped') {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Dropped</CardTitle>
-          <CardDescription>
+      <section className="flex flex-col gap-3 border-t border-border pt-4 first:border-t-0 first:pt-0">
+        <div>
+          <h2 className="text-sm font-medium">Dropped</h2>
+          <p className="text-xs/relaxed text-muted-foreground">
             You have dropped from this tournament. You can keep watching
             standings, and your finished matches still count.
-          </CardDescription>
-        </CardHeader>
-      </Card>
+          </p>
+        </div>
+      </section>
     )
   }
 
   if (currentMatch?.myRegistrationStatus === 'disqualified') {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Disqualified</CardTitle>
-          <CardDescription>
+      <section className="flex flex-col gap-3 border-t border-border pt-4 first:border-t-0 first:pt-0">
+        <div>
+          <h2 className="text-sm font-medium">Disqualified</h2>
+          <p className="text-xs/relaxed text-muted-foreground">
             You have been disqualified from this tournament. Your finished
             matches stay on record and still count for opponents&apos;
             tiebreakers.
-          </CardDescription>
-        </CardHeader>
-      </Card>
+          </p>
+        </div>
+      </section>
     )
   }
 
@@ -241,15 +239,15 @@ function DropCard({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Drop from tournament</CardTitle>
-        <CardDescription>
+    <section className="flex flex-col gap-3 border-t border-border pt-4 first:border-t-0 first:pt-0">
+      <div>
+        <h2 className="text-sm font-medium">Drop from tournament</h2>
+        <p className="text-xs/relaxed text-muted-foreground">
           Dropping removes you from future rounds immediately. Your finished
           matches still count for opponents&apos; tiebreakers.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
+        </p>
+      </div>
+      <div>
         <ConfirmActionDialog
           trigger={
             <Button type="button" variant="destructive">
@@ -267,7 +265,7 @@ function DropCard({
             toast.success('You have dropped from the tournament.')
           }}
         />
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   )
 }

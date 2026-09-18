@@ -16,13 +16,6 @@ import type {
 } from '@paper-pairings/backend/convex/_generated/dataModel'
 import { TournamentPhaseEditor } from '@/components/tournaments/tournament-phase-editor'
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
 import { FieldGroup } from '@/components/ui/field'
 import { Spinner } from '@/components/ui/spinner'
 import { useBusyAction } from '@/hooks/use-busy-action'
@@ -81,16 +74,16 @@ export function PhaseSettingsCard({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Phase settings</CardTitle>
-        <CardDescription>
+    <section className="flex flex-col gap-4">
+      <div>
+        <h2 className="text-sm font-medium">Phase settings</h2>
+        <p className="text-xs/relaxed text-muted-foreground">
           {locked
             ? 'Phase structure is locked after tournament play begins.'
             : 'Add, remove, reorder, and configure phases before tournament play begins. Structural changes to a phase with a started player meeting reset its seating.'}
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
+        </p>
+      </div>
+      <div>
         <form onSubmit={handleSubmit}>
           <FieldGroup>
             <TournamentPhaseEditor
@@ -106,7 +99,7 @@ export function PhaseSettingsCard({
             </div>
           </FieldGroup>
         </form>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   )
 }

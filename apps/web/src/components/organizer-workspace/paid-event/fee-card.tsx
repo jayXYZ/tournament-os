@@ -14,13 +14,6 @@ import type { Id } from '@paper-pairings/backend/convex/_generated/dataModel'
 import { toDatetimeLocalValue } from '@/components/tournaments'
 import { Button } from '@/components/ui/button'
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
-import {
   Field,
   FieldDescription,
   FieldGroup,
@@ -118,14 +111,14 @@ export function PaidEventFeeCard({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{copy.title}</CardTitle>
-        <CardDescription>
+    <section className="flex flex-col gap-4">
+      <div>
+        <h2 className="text-sm font-medium">{copy.title}</h2>
+        <p className="text-xs/relaxed text-muted-foreground">
           {locked ? copy.lockedDescription : copy.description}
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
+        </p>
+      </div>
+      <div>
         <form onSubmit={handleSubmit}>
           <FieldGroup>
             <div className="grid gap-4 md:grid-cols-2">
@@ -184,7 +177,7 @@ export function PaidEventFeeCard({
             </div>
           </FieldGroup>
         </form>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   )
 }

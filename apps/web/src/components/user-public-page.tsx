@@ -10,13 +10,6 @@ import { PageNotFound } from '@/components/shared/page-not-found'
 import { SiteShell, SiteShellBackLink } from '@/components/shared/site-shell'
 import { Button } from '@/components/ui/button'
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
-import {
   Empty,
   EmptyDescription,
   EmptyHeader,
@@ -73,27 +66,27 @@ function PlayerProfile({
         <PrivacyBanner message="Your tournament history is hidden — only you can see the results below." />
       ) : null}
 
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-4">
-            {player.avatarUrl ? (
-              <img
-                src={player.avatarUrl}
-                alt=""
-                className="size-14 shrink-0 rounded-full object-cover"
-              />
-            ) : (
-              <div className="flex size-14 shrink-0 items-center justify-center rounded-full bg-muted text-xl font-semibold text-muted-foreground">
-                {initial}
-              </div>
-            )}
-            <div>
-              <CardTitle className="text-2xl">{displayName}</CardTitle>
-              <CardDescription>Player #{player.publicCode}</CardDescription>
-            </div>
+      <header className="flex items-center gap-4">
+        {player.avatarUrl ? (
+          <img
+            src={player.avatarUrl}
+            alt=""
+            className="size-14 shrink-0 rounded-full object-cover"
+          />
+        ) : (
+          <div className="flex size-14 shrink-0 items-center justify-center rounded-full bg-muted text-xl font-semibold text-muted-foreground">
+            {initial}
           </div>
-        </CardHeader>
-      </Card>
+        )}
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            {displayName}
+          </h1>
+          <p className="text-xs/relaxed text-muted-foreground">
+            Player #{player.publicCode}
+          </p>
+        </div>
+      </header>
 
       {player.historyVisible ? (
         <TournamentHistory publicCode={publicCode} />
@@ -106,31 +99,27 @@ function PlayerProfile({
 
 function PrivacyBanner({ message }: { message: string }) {
   return (
-    <Card className="border-dashed">
-      <CardContent className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
-        <span className="flex items-center gap-2">
-          <EyeOff className="size-4 shrink-0" aria-hidden="true" />
-          {message}
-        </span>
-        <Button asChild type="button" variant="outline" size="sm">
-          <Link to="/settings">
-            <Settings data-icon="inline-start" />
-            Privacy settings
-          </Link>
-        </Button>
-      </CardContent>
-    </Card>
+    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4 text-xs/relaxed text-muted-foreground">
+      <span className="flex items-center gap-2">
+        <EyeOff className="size-4 shrink-0" aria-hidden="true" />
+        {message}
+      </span>
+      <Button asChild type="button" variant="outline" size="sm">
+        <Link to="/settings">
+          <Settings data-icon="inline-start" />
+          Privacy settings
+        </Link>
+      </Button>
+    </div>
   )
 }
 
 function HistoryPrivate() {
   return (
-    <Card>
-      <CardContent className="flex items-center gap-2 text-sm text-muted-foreground">
-        <EyeOff className="size-4 shrink-0" aria-hidden="true" />
-        This player&apos;s tournament history is private.
-      </CardContent>
-    </Card>
+    <p className="flex items-center gap-2 border-t border-border pt-6 text-xs/relaxed text-muted-foreground">
+      <EyeOff className="size-4 shrink-0" aria-hidden="true" />
+      This player&apos;s tournament history is private.
+    </p>
   )
 }
 
@@ -184,7 +173,7 @@ function TournamentHistory({ publicCode }: { publicCode: string }) {
       )
     }
     return (
-      <Empty className="border bg-card">
+      <Empty className="border-t border-border pt-6">
         <EmptyHeader>
           <EmptyTitle>No completed tournaments yet</EmptyTitle>
           <EmptyDescription>
@@ -197,8 +186,8 @@ function TournamentHistory({ publicCode }: { publicCode: string }) {
   }
 
   return (
-    <div className="grid gap-4">
-      <h2 className="text-lg font-semibold">Tournament history</h2>
+    <section className="flex flex-col gap-4 border-t border-border pt-6">
+      <h2 className="text-sm font-medium">Tournament history</h2>
       {results.map((result) => (
         <UserPublicTournamentCard
           key={result.tournamentId}
@@ -212,6 +201,6 @@ function TournamentHistory({ publicCode }: { publicCode: string }) {
         label="Load older tournaments"
         loadingLabel="Loading older tournaments…"
       />
-    </div>
+    </section>
   )
 }

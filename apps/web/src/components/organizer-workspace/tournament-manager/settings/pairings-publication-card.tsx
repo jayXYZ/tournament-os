@@ -5,13 +5,6 @@ import { api } from '@paper-pairings/backend/convex/_generated/api'
 import type { Doc } from '@paper-pairings/backend/convex/_generated/dataModel'
 import { isTournamentEnded } from '@/components/tournaments'
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
-import {
   Field,
   FieldContent,
   FieldDescription,
@@ -46,15 +39,15 @@ export function PairingsPublicationCard({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Pairing publication</CardTitle>
-        <CardDescription>
+    <section className="flex flex-col gap-4">
+      <div>
+        <h2 className="text-sm font-medium">Pairing publication</h2>
+        <p className="text-xs/relaxed text-muted-foreground">
           Choose whether players see each new round as soon as its pairings are
           generated.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
+        </p>
+      </div>
+      <div>
         <Field orientation="horizontal" data-disabled={disabled}>
           <FieldContent>
             <FieldLabel htmlFor="settings-auto-publish-pairings">
@@ -74,7 +67,7 @@ export function PairingsPublicationCard({
             aria-label="Publish pairings automatically"
           />
         </Field>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   )
 }

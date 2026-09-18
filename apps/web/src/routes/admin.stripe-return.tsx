@@ -7,13 +7,6 @@ import { mutationErrorMessage } from '@paper-pairings/core'
 import { AdminViewsLayout } from '@/components/organizer-workspace/admin-views-layout'
 import { useOrganization } from '@/components/organizer-workspace/organization-context'
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
 import { Spinner } from '@/components/ui/spinner'
 
 // Landing page for Stripe Connect onboarding redirects. Stripe sends the
@@ -103,16 +96,18 @@ function RouteComponent() {
 
   return (
     <AdminViewsLayout>
-      <Card className="max-w-xl">
-        <CardHeader>
-          <CardTitle>Stripe onboarding</CardTitle>
-          <CardDescription>
+      <section className="flex max-w-xl flex-col gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            Stripe onboarding
+          </h1>
+          <p className="text-xs/relaxed text-muted-foreground">
             {expiredLink
               ? 'That onboarding link expired or was already used.'
               : 'Welcome back from Stripe.'}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
+          </p>
+        </div>
+        <div className="flex flex-col gap-4">
           {organizations !== undefined && !selectedOrganizationId ? (
             <p className="text-sm text-muted-foreground">
               No organization is selected. Pick one from the admin workspace,
@@ -150,8 +145,8 @@ function RouteComponent() {
               <Link to="/admin/organization">Back to organization</Link>
             </Button>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </section>
     </AdminViewsLayout>
   )
 }

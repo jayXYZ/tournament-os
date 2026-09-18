@@ -6,13 +6,6 @@ import { api } from '@paper-pairings/backend/convex/_generated/api'
 import type { FormEvent } from 'react'
 import type { Doc } from '@paper-pairings/backend/convex/_generated/dataModel'
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
 import { FieldGroup } from '@/components/ui/field'
 import { Spinner } from '@/components/ui/spinner'
 import { useBusyAction } from '@/hooks/use-busy-action'
@@ -53,15 +46,15 @@ export function EventDetailsCard({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Event details</CardTitle>
-        <CardDescription>
+    <section className="flex flex-col gap-4">
+      <div>
+        <h2 className="text-sm font-medium">Event details</h2>
+        <p className="text-xs/relaxed text-muted-foreground">
           Description, prizes, and logistics shown on the public event page.
           Editable at any time, even after the event starts.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
+        </p>
+      </div>
+      <div>
         <form onSubmit={handleSubmit}>
           <FieldGroup>
             <Suspense
@@ -86,7 +79,7 @@ export function EventDetailsCard({
             </div>
           </FieldGroup>
         </form>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   )
 }

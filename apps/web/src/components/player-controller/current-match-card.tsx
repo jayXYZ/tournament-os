@@ -121,7 +121,7 @@ function StatusEmpty({
   description: string
 }) {
   return (
-    <Empty className="min-h-60 border bg-card">
+    <Empty className="min-h-60">
       <EmptyHeader>
         <EmptyMedia variant="icon">
           <Icon aria-hidden="true" />

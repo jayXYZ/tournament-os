@@ -11,13 +11,6 @@ import { ProfilePrivacyCard } from '@/components/settings/profile-privacy-card'
 import { LoadingCard } from '@/components/shared/loading-card'
 import { SiteShell, SiteShellBackLink } from '@/components/shared/site-shell'
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
 import { useEnsureUserRow } from '@/hooks/use-ensure-user-row'
 import { useAppAuth } from '@/lib/use-app-auth'
 
@@ -66,21 +59,21 @@ function SettingsContent() {
 
 function AccountSetupFailedCard({ onRetry }: { onRetry: () => void }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Couldn&apos;t load your account</CardTitle>
-        <CardDescription>
+    <section className="flex flex-col gap-4">
+      <div>
+        <h2 className="text-sm font-medium">Couldn&apos;t load your account</h2>
+        <p className="text-xs/relaxed text-muted-foreground">
           Something went wrong while setting up your player account. Check your
           connection and try again.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
+        </p>
+      </div>
+      <div>
         <Button type="button" onClick={onRetry}>
           <RotateCcw data-icon="inline-start" />
           Try again
         </Button>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   )
 }
 
@@ -88,15 +81,15 @@ function SignedOutSettings() {
   const { refreshAuth } = useAppAuth()
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Sign in to manage your settings</CardTitle>
-        <CardDescription>
+    <section className="flex flex-col gap-4">
+      <div>
+        <h2 className="text-sm font-medium">Sign in to manage your settings</h2>
+        <p className="text-xs/relaxed text-muted-foreground">
           Profile privacy and tournament history controls are tied to your
           player account.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
+        </p>
+      </div>
+      <div>
         <Button
           type="button"
           onClick={() => void refreshAuth({ ensureSignedIn: true })}
@@ -104,8 +97,8 @@ function SignedOutSettings() {
           <LogIn data-icon="inline-start" />
           Sign in
         </Button>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   )
 }
 

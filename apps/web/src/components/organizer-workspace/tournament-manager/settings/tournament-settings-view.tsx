@@ -45,29 +45,31 @@ export function TournamentSettingsView({
                 : 'Core and phase settings are locked after tournament play begins. Visibility, event details, and pairing publication preferences can still be changed.'}
             </p>
           ) : null}
-          <TournamentSettingsCard
-            key={setup.tournament._id}
-            tournament={setup.tournament}
-          />
-          <InviteLinkCard tournament={setup.tournament} />
-          <EntryFeeCard
-            key={`${setup.tournament._id}-entry-fee`}
-            tournament={setup.tournament}
-          />
-          <PayoutCard tournament={setup.tournament} />
-          <PairingsPublicationCard tournament={setup.tournament} />
-          <EventDetailsCard
-            key={`${setup.tournament._id}-details`}
-            tournament={setup.tournament}
-          />
-          <PhaseSettingsCard
-            key={setup.phases
-              .map((phase) => `${phase._id}:${phase.updatedAt}`)
-              .join('|')}
-            tournament={setup.tournament}
-            phases={setup.phases}
-          />
-          <DangerZoneCard tournament={setup.tournament} />
+          <div className="flex flex-col divide-y divide-border [&>*]:py-6 [&>*:first-child]:pt-0 [&>*:last-child]:pb-0">
+            <TournamentSettingsCard
+              key={setup.tournament._id}
+              tournament={setup.tournament}
+            />
+            <InviteLinkCard tournament={setup.tournament} />
+            <EntryFeeCard
+              key={`${setup.tournament._id}-entry-fee`}
+              tournament={setup.tournament}
+            />
+            <PayoutCard tournament={setup.tournament} />
+            <PairingsPublicationCard tournament={setup.tournament} />
+            <EventDetailsCard
+              key={`${setup.tournament._id}-details`}
+              tournament={setup.tournament}
+            />
+            <PhaseSettingsCard
+              key={setup.phases
+                .map((phase) => `${phase._id}:${phase.updatedAt}`)
+                .join('|')}
+              tournament={setup.tournament}
+              phases={setup.phases}
+            />
+            <DangerZoneCard tournament={setup.tournament} />
+          </div>
         </>
       )}
     </section>

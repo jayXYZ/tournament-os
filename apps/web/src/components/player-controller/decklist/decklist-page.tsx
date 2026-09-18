@@ -208,7 +208,6 @@ function DecklistFrame({
         {eventName !== null ? (
           <div className="hidden pt-8 lg:block">
             <WorkspacePageHeader
-              eyebrow="Decklist"
               title={
                 // The placeholder reserves exactly the real title's box:
                 // h-9 (2.25rem) equals text-3xl's line height (1.875rem x

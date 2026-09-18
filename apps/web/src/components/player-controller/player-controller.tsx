@@ -202,10 +202,7 @@ function ControllerReady({
         }
       >
         <div className="hidden pt-8 lg:block">
-          <WorkspacePageHeader
-            eyebrow={event.organizationName ?? 'Player controller'}
-            title={event.tournament.name}
-          />
+          <WorkspacePageHeader title={event.tournament.name} />
         </div>
 
         {/* Desktop stand-in for the phone app bar: no site chrome is sticky

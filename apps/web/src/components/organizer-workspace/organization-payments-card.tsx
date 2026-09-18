@@ -7,13 +7,6 @@ import { mutationErrorMessage } from '@paper-pairings/core'
 import { useOrganization } from './organization-context'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
 
@@ -26,9 +19,9 @@ const statusLabels = {
   unsupported: 'Not supported',
 } as const
 
-// Stripe Connect card on the organization profile page. Connecting redirects
-// to Stripe-hosted onboarding and lands back on /admin/stripe-return, which
-// refreshes the capability snapshot this card renders.
+// Stripe Connect section on the organization profile page. Connecting
+// redirects to Stripe-hosted onboarding and lands back on
+// /admin/stripe-return, which refreshes the capability snapshot this renders.
 export function OrganizationPaymentsCard() {
   const { selectedOrganizationId } = useOrganization()
 
@@ -91,15 +84,15 @@ export function OrganizationPaymentsCard() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Payments</CardTitle>
-        <CardDescription>
+    <section className="flex flex-col gap-4">
+      <div>
+        <h2 className="text-sm font-medium">Payments</h2>
+        <p className="text-xs/relaxed text-muted-foreground">
           Connect a Stripe account to charge entry fees and receive payouts for
           your events.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
+        </p>
+      </div>
+      <div className="flex flex-col gap-4">
         {settings === undefined ? (
           <Skeleton className="h-16" />
         ) : !settings.stripeConfigured ? (
@@ -170,7 +163,7 @@ export function OrganizationPaymentsCard() {
             )}
           </>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   )
 }

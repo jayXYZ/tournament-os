@@ -7,7 +7,7 @@ import { WorkspacePageHeader } from '@/components/shared/workspace-page-header'
 import { TournamentTable } from '@/components/tournaments'
 
 export function TournamentAdminView() {
-  const { selectedOrganizationId, selectedOrganization } = useOrganization()
+  const { selectedOrganizationId } = useOrganization()
   const tournaments = useQuery(
     api.tournaments.lifecycle.listUpcomingForOrganization,
     selectedOrganizationId
@@ -23,7 +23,6 @@ export function TournamentAdminView() {
   return (
     <section className="flex flex-col gap-4">
       <WorkspacePageHeader
-        eyebrow={selectedOrganization?.organization.name ?? 'Admin workspace'}
         title="Tournaments"
         actions={<CreateTournamentDialog />}
       />

@@ -8,14 +8,8 @@ import { canInviteMembers } from '@paper-pairings/shared/organizer-utils'
 import { useOrganization } from './organization-context'
 import type { OrganizerInviteRole } from '@paper-pairings/shared/organizer-utils'
 import type { FormEvent } from 'react'
+import { WorkspacePageHeader } from '@/components/shared/workspace-page-header'
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
 import {
   Empty,
   EmptyHeader,
@@ -86,24 +80,24 @@ export function StaffView() {
   }
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[1fr_360px]">
-      <section className="grid gap-4">
-        <div className="flex items-center gap-2">
-          <Users className="size-4 text-muted-foreground" />
-          <h1 className="text-3xl font-semibold tracking-normal">Staff</h1>
-        </div>
-        <Card>
-          <CardHeader>
-            <CardTitle>Members</CardTitle>
-            <CardDescription>
+    <div className="flex flex-col gap-6">
+      <WorkspacePageHeader title="Staff" />
+
+      <div className="grid gap-8 xl:grid-cols-[1fr_360px]">
+        <section className="flex flex-col gap-4">
+          <div>
+            <h2 className="text-sm font-medium">Members</h2>
+            <p className="text-xs/relaxed text-muted-foreground">
               Mirrored organization memberships for the selected workspace.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-1">
+            </p>
+          </div>
+          {/* The member list frames itself like a table so it reads as the
+              page's main content rather than as a boxed aside. */}
+          <div className="divide-y divide-border rounded-lg border border-border">
             {(members ?? []).map((member) => (
               <div
                 key={member._id}
-                className="grid gap-2 border-b border-border py-3 last:border-b-0 sm:grid-cols-[1fr_auto_auto]"
+                className="grid gap-2 px-3 py-3 sm:grid-cols-[1fr_auto_auto]"
               >
                 <span className="text-sm font-medium">
                   {member.email ?? 'Pending user'}
@@ -126,29 +120,25 @@ export function StaffView() {
                 </EmptyHeader>
               </Empty>
             )}
-            {members === undefined && <Skeleton className="h-20" />}
-          </CardContent>
-        </Card>
-      </section>
+            {members === undefined && <Skeleton className="m-3 h-20" />}
+          </div>
+        </section>
 
-      <aside className="flex flex-col gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Current access</CardTitle>
-            <CardDescription className="capitalize">
+        <aside className="flex flex-col divide-y divide-border [&>*+*]:pt-6">
+          <section className="pb-6">
+            <h2 className="text-sm font-medium">Current access</h2>
+            <p className="text-xs/relaxed capitalize text-muted-foreground">
               {activeMembership?.role ?? 'No org'}
-            </CardDescription>
-          </CardHeader>
-        </Card>
+            </p>
+          </section>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Invite staff</CardTitle>
-            <CardDescription>
-              Owners and admins can invite staff to this workspace.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
+          <section className="flex flex-col gap-4 pb-6">
+            <div>
+              <h2 className="text-sm font-medium">Invite staff</h2>
+              <p className="text-xs/relaxed text-muted-foreground">
+                Owners and admins can invite staff to this workspace.
+              </p>
+            </div>
             <form onSubmit={handleInvite}>
               <FieldGroup>
                 <Field>
@@ -194,14 +184,10 @@ export function StaffView() {
                 )}
               </FieldGroup>
             </form>
-          </CardContent>
-        </Card>
+          </section>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Invitations</CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-3">
+          <section className="flex flex-col gap-3">
+            <h2 className="text-sm font-medium">Invitations</h2>
             {(invitations ?? []).map((invitation) => (
               <div key={invitation._id} className="border-b border-border pb-3">
                 <p className="truncate text-sm font-medium">
@@ -213,14 +199,14 @@ export function StaffView() {
               </div>
             ))}
             {invitations?.length === 0 && (
-              <p className="text-sm text-muted-foreground">
+              <p className="text-xs/relaxed text-muted-foreground">
                 No invitations sent.
               </p>
             )}
             {invitations === undefined && <Skeleton className="h-16" />}
-          </CardContent>
-        </Card>
-      </aside>
+          </section>
+        </aside>
+      </div>
     </div>
   )
 }

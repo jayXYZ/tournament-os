@@ -144,7 +144,9 @@ export function SiteShell({
           {siteHeader}
           <section
             className={cn(
-              'mx-auto grid gap-6 px-4 py-8 sm:px-6 lg:px-8',
+              // A zero-minimum grid track lets wide tables scroll inside
+              // their own containers instead of widening the page.
+              'mx-auto grid grid-cols-1 gap-6 px-4 py-8 sm:px-6 lg:px-8',
               maxWidthClasses[width],
               contentClassName,
             )}
