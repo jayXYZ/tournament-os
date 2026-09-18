@@ -1,4 +1,3 @@
-@import '@fontsource-variable/inter';
 @import '@fontsource-variable/geist';
 @import '@fontsource-variable/geist-mono';
 
@@ -65,99 +64,97 @@
 }
 
 :root {
-  /* Paper Pairings palette: warm "paper" neutrals from the brand exploration.
-     Anchors — foreground #1B1917, muted text #595752; the rest of the ramp
-     keeps the old lightness steps with the warm hue applied. */
-  /* Surface tiers, frame < panel < card, each a step apart and none of them
-     pure white: the paper is warm. The sidebar is the frame; --background is
-     the content panel it insets; cards sit on that. */
-  --background: oklch(0.968 0.005 86);
-  --foreground: oklch(0.215 0.005 67.6);
-  --card: oklch(0.988 0.004 87);
-  --card-foreground: oklch(0.215 0.005 67.6);
-  --popover: oklch(0.988 0.004 87);
-  --popover-foreground: oklch(0.215 0.005 67.6);
-  --primary: oklch(0.215 0.005 67.6);
-  --primary-foreground: oklch(0.985 0.004 87);
-  --secondary: oklch(0.935 0.006 86);
-  --secondary-foreground: oklch(0.215 0.005 67.6);
-  --muted: oklch(0.935 0.006 86);
-  --muted-foreground: oklch(0.457 0.008 88.7);
-  --accent: oklch(0.935 0.006 86);
-  --accent-foreground: oklch(0.215 0.005 67.6);
+  /* Monochrome. Every surface, text, and line token is zero-chroma; the only
+     color in the system is --accent-brand, and the small semantic signals
+     below. Light mode is one flat white plane: the sidebar, the content, and
+     cards all share it, and hairlines do the separating. */
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.19 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.19 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.19 0 0);
+  --primary: oklch(0.19 0 0);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.955 0 0);
+  --secondary-foreground: oklch(0.19 0 0);
+  --muted: oklch(0.965 0 0);
+  --muted-foreground: oklch(0.52 0 0);
+  --accent: oklch(0.965 0 0);
+  --accent-foreground: oklch(0.19 0 0);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.88 0.007 86);
-  --input: oklch(0.88 0.007 86);
-  /* Carbon: the blue-violet of the copy under a score slip. The one accent,
-     for selection, focus, the current round, and the primary action. */
-  --accent-brand: oklch(0.47 0.13 285);
-  --accent-brand-foreground: oklch(0.985 0.004 87);
-  --ring: oklch(0.47 0.13 285);
+  --border: oklch(0.905 0 0);
+  --input: oklch(0.905 0 0);
+  /* The one accent: indigo, reserved for selection, focus, the round in
+     play, and the organizer's consequential action. Never decoration. */
+  --accent-brand: oklch(0.5 0.2 278);
+  --accent-brand-foreground: oklch(1 0 0);
+  --ring: oklch(0.5 0.2 278);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
-  --round-pairings: oklch(0.52 0.14 75);
-  --round-timer: oklch(0.5 0.18 255);
-  --round-live: oklch(0.47 0.13 160);
-  --round-ready: oklch(0.5 0.18 305);
-  --round-between: oklch(0.53 0.17 40);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.93 0.006 86);
-  --sidebar-foreground: oklch(0.215 0.005 67.6);
-  --sidebar-primary: oklch(0.215 0.005 67.6);
-  --sidebar-primary-foreground: oklch(0.985 0.004 87);
-  --sidebar-accent: oklch(0.97 0.005 86);
-  --sidebar-accent-foreground: oklch(0.215 0.005 67.6);
-  --sidebar-border: oklch(0.88 0.007 86);
-  --sidebar-ring: oklch(0.47 0.13 285);
+  /* Three semantic signals, dot-sized: amber means waiting on the organizer,
+     green means live, and the accent means in play. Timer-armed is grey: set
+     but idle. */
+  --round-pairings: oklch(0.62 0.15 70);
+  --round-timer: oklch(0.45 0 0);
+  --round-live: oklch(0.55 0.15 155);
+  --round-ready: var(--accent-brand);
+  --round-between: var(--round-pairings);
+  --radius: 0.5rem;
+  --sidebar: oklch(1 0 0);
+  --sidebar-foreground: oklch(0.19 0 0);
+  --sidebar-primary: oklch(0.19 0 0);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.955 0 0);
+  --sidebar-accent-foreground: oklch(0.19 0 0);
+  --sidebar-border: oklch(0.905 0 0);
+  --sidebar-ring: oklch(0.5 0.2 278);
 }
 
 .dark {
-  /* Dark anchors from the brand exploration: background #171514 (warm
-     near-black), foreground #EDE9E0 (paper white), muted text #B8B2A6. */
-  /* Surface tiers, about 0.04 apart: frame (sidebar) 0.17, content panel
-     0.21, card 0.25, control 0.30. The old values put the sidebar and the
-     card at the same lightness, which is why the inset read flat. */
-  --background: oklch(0.21 0.005 60);
-  --foreground: oklch(0.935 0.013 86.8);
-  --card: oklch(0.25 0.006 67);
-  --card-foreground: oklch(0.935 0.013 86.8);
-  --popover: oklch(0.25 0.006 67);
-  --popover-foreground: oklch(0.935 0.013 86.8);
-  --primary: oklch(0.935 0.013 86.8);
-  --primary-foreground: oklch(0.198 0.004 48.5);
-  --secondary: oklch(0.3 0.007 75);
-  --secondary-foreground: oklch(0.935 0.013 86.8);
-  --muted: oklch(0.3 0.007 75);
-  --muted-foreground: oklch(0.765 0.018 84.6);
-  --accent: oklch(0.3 0.007 75);
-  --accent-foreground: oklch(0.935 0.013 86.8);
+  /* Dark is the same flat plane inverted: near-black base, cards a step up,
+     hairlines as translucent white so they read the same on every surface. */
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.93 0 0);
+  --card: oklch(0.175 0 0);
+  --card-foreground: oklch(0.93 0 0);
+  --popover: oklch(0.175 0 0);
+  --popover-foreground: oklch(0.93 0 0);
+  --primary: oklch(0.93 0 0);
+  --primary-foreground: oklch(0.145 0 0);
+  --secondary: oklch(0.23 0 0);
+  --secondary-foreground: oklch(0.93 0 0);
+  --muted: oklch(0.23 0 0);
+  --muted-foreground: oklch(0.68 0 0);
+  --accent: oklch(0.23 0 0);
+  --accent-foreground: oklch(0.93 0 0);
   --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(0.935 0.013 86.8 / 13%);
-  --input: oklch(0.935 0.013 86.8 / 18%);
-  --accent-brand: oklch(0.76 0.11 285);
-  --accent-brand-foreground: oklch(0.198 0.004 48.5);
-  --ring: oklch(0.76 0.11 285);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 14%);
+  --accent-brand: oklch(0.72 0.16 278);
+  --accent-brand-foreground: oklch(0.145 0 0);
+  --ring: oklch(0.72 0.16 278);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
   --round-pairings: oklch(0.78 0.14 75);
-  --round-timer: oklch(0.75 0.14 255);
-  --round-live: oklch(0.75 0.12 160);
-  --round-ready: oklch(0.76 0.14 305);
-  --round-between: oklch(0.76 0.15 40);
-  --sidebar: oklch(0.17 0.004 48.5);
-  --sidebar-foreground: oklch(0.935 0.013 86.8);
-  --sidebar-primary: oklch(0.935 0.013 86.8);
-  --sidebar-primary-foreground: oklch(0.198 0.004 48.5);
-  --sidebar-accent: oklch(0.31 0.007 75);
-  --sidebar-accent-foreground: oklch(0.935 0.013 86.8);
-  --sidebar-border: oklch(0.935 0.013 86.8 / 13%);
-  --sidebar-ring: oklch(0.76 0.11 285);
+  --round-timer: oklch(0.72 0 0);
+  --round-live: oklch(0.74 0.13 155);
+  --round-ready: var(--accent-brand);
+  --round-between: var(--round-pairings);
+  --sidebar: oklch(0.145 0 0);
+  --sidebar-foreground: oklch(0.93 0 0);
+  --sidebar-primary: oklch(0.93 0 0);
+  --sidebar-primary-foreground: oklch(0.145 0 0);
+  --sidebar-accent: oklch(0.23 0 0);
+  --sidebar-accent-foreground: oklch(0.93 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.72 0.16 278);
 }
 
 @layer base {
@@ -166,10 +163,6 @@
   }
   body {
     @apply bg-background text-foreground;
-  }
-
-  body:has([data-slot='sidebar'][data-variant='inset']) {
-    background-color: var(--sidebar);
   }
 
   button:not(:disabled),
@@ -298,11 +291,11 @@
   }
 }
 
-/* Fonts were provided by next/font in the Next.js app; Fontsource supplies
-   them here. These vars feed the @theme inline font mappings above. */
+/* Geist is the one family; Fontsource supplies it. These vars feed the
+   @theme inline font mappings above. */
 :root {
-  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
-  --font-geist-sans: 'Geist Variable', var(--font-sans);
+  --font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-geist-sans: var(--font-sans);
   --font-geist-mono:
     'Geist Mono Variable', ui-monospace, SFMono-Regular, monospace;
 }
