@@ -23,25 +23,23 @@ import type {
   Doc,
   Id,
 } from '@paper-pairings/backend/convex/_generated/dataModel'
-import {
-  entryStatusBadgeVariant,
-  paymentBadge,
-} from '@/components/organizer-workspace/paid-event/roster-badges'
+import type { StatusTone } from '@/components/shared/status-dot'
+import type {
+  DataTableFilterDef,
+  DataTableFilterOption,
+} from '@/components/ui/data-table-toolbar'
 import { ConfirmActionDialog } from '@/components/shared/confirm-action-dialog'
 import { LoadMoreButton } from '@/components/shared/load-more-button'
 import { TableEmptyState } from '@/components/shared/table-empty-state'
 import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'
-import { Badge } from '@/components/ui/badge'
+import { StatusDot } from '@/components/shared/status-dot'
 import { Button } from '@/components/ui/button'
 import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
-import { DataTable, DataTableColumnHeader } from '@/components/ui/data-table'
+  DataTable,
+  DataTableColumnHeader,
+  oneOfFilter,
+} from '@/components/ui/data-table'
+import { DataTableToolbar } from '@/components/ui/data-table-toolbar'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -49,7 +47,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
 import { useBusyAction } from '@/hooks/use-busy-action'
 import { cn } from '@/lib/utils'
@@ -76,6 +73,23 @@ type RegistrationRow = {
   paymentStatus: Doc<'paymentOrders'>['status'] | null
 }
 
+type PaymentStatus = NonNullable<RegistrationRow['paymentStatus']>
+
+const paymentPresentation: Record<
+  PaymentStatus,
+  { label: string; tone: StatusTone }
+> = {
+  requires_payment: { label: 'Payment due', tone: 'warning' },
+  awaiting_payment: { label: 'In checkout', tone: 'warning' },
+  paid: { label: 'Paid', tone: 'live' },
+  expired: { label: 'Unpaid', tone: 'muted' },
+  failed: { label: 'Failed', tone: 'danger' },
+  canceled: { label: 'Unpaid', tone: 'muted' },
+  refunded: { label: 'Refunded', tone: 'muted' },
+  partially_refunded: { label: 'Entry refunded', tone: 'muted' },
+  disputed: { label: 'Disputed', tone: 'danger' },
+}
+
 type RegistrationStatus =
   | Doc<'tournamentRegistrations'>['entryStatus']
   | NonNullable<Doc<'tournamentRegistrations'>['participationStatus']>
@@ -83,21 +97,62 @@ type RegistrationStatus =
 
 const REGISTRATION_PAGE_SIZE = 100
 
-const statusBadgeVariant: Record<
-  RegistrationStatus,
-  'default' | 'secondary' | 'destructive' | 'outline'
-> = {
-  // The entry statuses come from the shared roster map; the participation
-  // statuses below are tournament-only.
-  ...entryStatusBadgeVariant,
-  active: 'default',
-  eliminated: 'secondary',
-  dropped: 'destructive',
-  disqualified: 'destructive',
+// Status is a dot and a word (StatusDot): green for a seat in good standing,
+// amber for a row waiting on the organizer, red for one the organizer or the
+// rules removed, grey for the rest.
+const statusTone: Record<RegistrationStatus, StatusTone> = {
+  active: 'live',
+  pending: 'warning',
+  waitlisted: 'warning',
+  confirmed: 'live',
+  cancelled: 'muted',
+  rejected: 'danger',
+  eliminated: 'muted',
+  dropped: 'danger',
+  disqualified: 'danger',
   // Malformed data only (see effectiveRegistrationStatus); flagged distinctly
   // rather than folded into "confirmed" so it can't misread as good standing.
-  [MALFORMED_REGISTRATION_STATUS]: 'outline',
+  [MALFORMED_REGISTRATION_STATUS]: 'warning',
 }
+
+const toneDotClassName: Record<StatusTone, string> = {
+  live: 'bg-round-live',
+  accent: 'bg-accent-brand',
+  neutral: 'bg-foreground',
+  muted: 'bg-muted-foreground',
+  warning: 'bg-round-pairings',
+  danger: 'bg-destructive',
+}
+
+// The filter chips offer the statuses a roster can actually hold; the
+// malformed marker is diagnostic and stays out of the list.
+const statusFilterOptions: Array<DataTableFilterOption> = (
+  [
+    'confirmed',
+    'active',
+    'pending',
+    'waitlisted',
+    'cancelled',
+    'rejected',
+    'eliminated',
+    'dropped',
+    'disqualified',
+  ] satisfies Array<
+    Exclude<RegistrationStatus, typeof MALFORMED_REGISTRATION_STATUS>
+  >
+).map((status) => ({
+  value: status,
+  label: status.charAt(0).toUpperCase() + status.slice(1),
+  dotClassName: toneDotClassName[statusTone[status]],
+}))
+
+const paymentFilterOptions: Array<DataTableFilterOption> = (
+  Object.keys(paymentPresentation) as Array<PaymentStatus>
+).map((status) => ({
+  value: status,
+  label: paymentPresentation[status].label,
+  dotClassName: toneDotClassName[paymentPresentation[status].tone],
+}))
 
 export function RegistrationsView({
   tournamentId,
@@ -171,35 +226,31 @@ export function RegistrationsView({
 
   return (
     <section className="flex flex-col gap-4">
-      <Card>
-        <CardHeader>
-          <CardTitle>Player registrations</CardTitle>
-          <CardDescription>
-            Review and manage the players signed up for this tournament.
-          </CardDescription>
-          <CardAction>
-            <RegistrationSettingsMenu tournament={setup?.tournament} />
-          </CardAction>
-        </CardHeader>
-        <CardContent>
-          <RegistrationsTable
-            registrations={rows}
-            searchTerm={searchTerm}
-            onSearchTermChange={handleSearchTermChange}
-            searchPending={searching && searchResults === undefined}
-            showPaymentColumn={(setup?.tournament.entryFeeCents ?? 0) > 0}
+      <div>
+        <h2 className="text-sm font-medium">Player registrations</h2>
+        <p className="text-xs/relaxed text-muted-foreground">
+          Review and manage the players signed up for this tournament.
+        </p>
+      </div>
+      <div>
+        <RegistrationsTable
+          registrations={rows}
+          searchTerm={searchTerm}
+          onSearchTermChange={handleSearchTermChange}
+          searchPending={searching && searchResults === undefined}
+          showPaymentColumn={(setup?.tournament.entryFeeCents ?? 0) > 0}
+          actions={<RegistrationSettingsMenu tournament={setup?.tournament} />}
+        />
+        {!searching ? (
+          <LoadMoreButton
+            className="mt-4"
+            status={status}
+            onLoadMore={() => loadMore(REGISTRATION_PAGE_SIZE)}
+            label="Load older registrations"
+            loadingLabel="Loading older registrations…"
           />
-          {!searching ? (
-            <LoadMoreButton
-              className="mt-4"
-              status={status}
-              onLoadMore={() => loadMore(REGISTRATION_PAGE_SIZE)}
-              label="Load older registrations"
-              loadingLabel="Loading older registrations…"
-            />
-          ) : null}
-        </CardContent>
-      </Card>
+        ) : null}
+      </div>
     </section>
   )
 }
@@ -283,14 +334,15 @@ function getRegistrationColumns({
           header: ({ column }) => (
             <DataTableColumnHeader column={column} title="Payment" />
           ),
-          meta: { className: 'w-32' },
+          filterFn: oneOfFilter,
+          meta: { className: 'w-36' },
           cell: ({ row }) => {
             const paymentStatus = row.original.paymentStatus
             if (!paymentStatus) {
-              return <span className="text-sm text-muted-foreground">—</span>
+              return <span className="text-muted-foreground">—</span>
             }
-            const badge = paymentBadge[paymentStatus]
-            return <Badge variant={badge.variant}>{badge.label}</Badge>
+            const { label, tone } = paymentPresentation[paymentStatus]
+            return <StatusDot tone={tone}>{label}</StatusDot>
           },
         },
       ]
@@ -317,16 +369,17 @@ function getRegistrationColumns({
       header: ({ column }) => (
         <DataTableColumnHeader column={column} title="Status" />
       ),
-      // Fixed width keeps the badge from shifting as the longest visible
+      filterFn: oneOfFilter,
+      // Fixed width keeps the column from shifting as the longest visible
       // status label (e.g. "disqualified" vs "active") changes between
       // pages.
       meta: { className: 'w-32' },
       cell: ({ row }) => {
         const status = effectiveRegistrationStatus(row.original.registration)
         return (
-          <Badge variant={statusBadgeVariant[status]} className="capitalize">
+          <StatusDot tone={statusTone[status]} className="capitalize">
             {status}
-          </Badge>
+          </StatusDot>
         )
       },
     },
@@ -349,12 +402,14 @@ function RegistrationsTable({
   onSearchTermChange,
   searchPending,
   showPaymentColumn,
+  actions,
 }: {
   registrations: Array<RegistrationRow> | undefined
   searchTerm: string
   onSearchTermChange: (value: string) => void
   searchPending: boolean
   showPaymentColumn: boolean
+  actions?: React.ReactNode
 }) {
   const searching = searchTerm.trim() !== ''
   // `registrations` may still be the previous term's rows, kept on screen
@@ -376,17 +431,27 @@ function RegistrationsTable({
     return <TableLoadingSkeleton />
   }
 
-  // While searching an empty page means "no match", not "no registrations",
-  // so keep the table (and its search box) on screen.
-  if (!searching && registrations.length === 0) {
-    return (
-      <TableEmptyState
-        icon={ClipboardList}
-        title="No registrations yet"
-        description="Players who sign up for this tournament will appear here."
-      />
+  // The toolbar stays mounted on an empty roster too: that is when the
+  // organizer reaches for the settings menu, and while searching an empty
+  // page means "no match", not "no registrations".
+  const noResultsLabel = searching ? (
+    searchPending ? (
+      // Until the current term's results arrive an empty page is
+      // inconclusive, so don't yet claim the player doesn't exist.
+      'Searching registrations…'
+    ) : (
+      'No players match your search.'
     )
-  }
+  ) : registrations.length === 0 ? (
+    <TableEmptyState
+      icon={ClipboardList}
+      title="No registrations yet"
+      description="Players who sign up for this tournament will appear here."
+      className="min-h-48"
+    />
+  ) : (
+    'No players match these filters.'
+  )
 
   return (
     <div className="flex flex-col gap-2">
@@ -400,26 +465,42 @@ function RegistrationsTable({
         columns={columns}
         data={registrations}
         className={cn('min-w-[480px]', searchPending && 'opacity-60')}
-        // Until the current term's results arrive an empty page is
-        // inconclusive, so don't yet claim the player doesn't exist.
-        noResultsLabel={
-          searchPending
-            ? 'Searching registrations…'
-            : 'No players match your search.'
-        }
+        noResultsLabel={noResultsLabel}
         // The search term drives a server-side query, so the input is
         // controlled from outside the table instead of binding to a
         // TanStack column filter (which would re-filter the server's
-        // matches).
-        toolbar={() => (
-          <Input
-            aria-label="Search players..."
-            placeholder="Search players..."
-            value={searchTerm}
-            onChange={(event) => onSearchTermChange(event.target.value)}
-            className="max-w-xs"
-          />
-        )}
+        // matches). The status and payment filters do bind to columns: they
+        // narrow the rows on screen, which is every loaded page of the
+        // roster, or the search's best matches while a term is active.
+        toolbar={(table) => {
+          const filters: Array<DataTableFilterDef> = [
+            {
+              id: 'status',
+              label: 'Status',
+              options: statusFilterOptions,
+              column: table.getColumn('status'),
+            },
+          ]
+          if (showPaymentColumn) {
+            filters.push({
+              id: 'payment',
+              label: 'Payment',
+              options: paymentFilterOptions,
+              column: table.getColumn('payment'),
+            })
+          }
+          return (
+            <DataTableToolbar
+              search={{
+                value: searchTerm,
+                onChange: onSearchTermChange,
+                placeholder: 'Search players',
+              }}
+              filters={filters}
+              actions={actions}
+            />
+          )
+        }}
       />
     </div>
   )

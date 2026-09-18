@@ -14,6 +14,7 @@ import type {
   Column,
   ColumnDef,
   ColumnFiltersState,
+  FilterFn,
   SortingState,
   Table as TanstackTable,
 } from '@tanstack/react-table'
@@ -38,6 +39,16 @@ import { cn } from '@/lib/utils'
 
 const DEFAULT_PAGE_SIZE_OPTIONS = [10, 25, 50, 100]
 
+// Column filter for a DataTableFilter chip: the filter value is the set of
+// option values the organizer picked, and a row passes when its cell value
+// is one of them. An empty or missing set passes every row.
+export const oneOfFilter: FilterFn<any> = (row, columnId, filterValue) => {
+  if (!Array.isArray(filterValue) || filterValue.length === 0) {
+    return true
+  }
+  return filterValue.includes(row.getValue(columnId))
+}
+
 // Columns may align their header and cells (e.g. `text-right`) by setting
 // `meta: { className }` on the column definition.
 type DataTableColumnMeta = { className?: string }
@@ -52,7 +63,7 @@ interface DataTableProps<TData, TValue> {
   className?: string
   pageSize?: number
   pageSizeOptions?: Array<number>
-  noResultsLabel?: string
+  noResultsLabel?: React.ReactNode
   onRowClick?: (row: TData) => void
   toolbar?: (table: TanstackTable<TData>) => React.ReactNode
 }
