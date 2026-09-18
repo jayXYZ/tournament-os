@@ -33,7 +33,7 @@ export function AdminWorkspaceShell({
           <SidebarProvider open={open} onOpenChange={setOpen}>
             <UpsertCurrentUser />
             <AdminSidebar />
-            <SidebarInset className="h-svh overflow-hidden md:peer-data-[variant=inset]:h-[calc(100svh-1rem)]">
+            <SidebarInset className="h-svh overflow-hidden">
               <AdminHeader />
               <div className="flex min-h-0 flex-1 flex-col">{children}</div>
             </SidebarInset>

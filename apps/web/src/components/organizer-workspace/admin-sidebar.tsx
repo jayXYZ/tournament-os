@@ -40,7 +40,7 @@ export function AdminSidebar() {
   const view = viewFromPathname(useLocation().pathname)
 
   return (
-    <Sidebar variant="inset" collapsible="icon">
+    <Sidebar collapsible="icon">
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupLabel>Admin</SidebarGroupLabel>
@@ -120,7 +120,7 @@ export function AdminHeader() {
   const { user, signOut } = useAppAuth()
 
   return (
-    <header className="flex min-h-14 items-center justify-between gap-3 border-b border-border bg-background px-4 md:rounded-t-xl sm:px-6">
+    <header className="flex min-h-14 items-center justify-between gap-3 border-b border-border bg-background px-4 sm:px-6">
       <div className="flex items-center gap-2">
         <SidebarTrigger />
         <Separator
