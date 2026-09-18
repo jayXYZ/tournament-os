@@ -17,14 +17,6 @@ import {
 } from '@/components/tournaments'
 import { Button } from '@/components/ui/button'
 import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
-import {
   Field,
   FieldContent,
   FieldDescription,
@@ -103,22 +95,22 @@ export function TournamentSettingsCard({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Tournament settings</CardTitle>
-        <CardDescription>
-          {locked
-            ? 'Core settings are locked after tournament play begins.'
-            : 'Update these details any time before tournament play begins.'}
-        </CardDescription>
-        <CardAction>
-          <div className="flex items-center gap-2">
-            <VisibilitySelect tournament={tournament} />
-            <PublishTournamentButton tournament={tournament} />
-          </div>
-        </CardAction>
-      </CardHeader>
-      <CardContent>
+    <section className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h2 className="text-sm font-medium">Tournament settings</h2>
+          <p className="text-xs/relaxed text-muted-foreground">
+            {locked
+              ? 'Core settings are locked after tournament play begins.'
+              : 'Update these details any time before tournament play begins.'}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <VisibilitySelect tournament={tournament} />
+          <PublishTournamentButton tournament={tournament} />
+        </div>
+      </div>
+      <div>
         <form onSubmit={handleSubmit}>
           <FieldGroup>
             <TournamentBasicsFields
@@ -235,7 +227,7 @@ export function TournamentSettingsCard({
             </div>
           </FieldGroup>
         </form>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   )
 }

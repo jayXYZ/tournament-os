@@ -16,7 +16,6 @@ import { TableEmptyState } from '@/components/shared/table-empty-state'
 import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'
 import { TableSearchInput } from '@/components/shared/table-search-input'
 import { useTournamentRoundNavigation } from '@/components/tournaments'
-import { Card, CardContent } from '@/components/ui/card'
 import { DataTable, DataTableColumnHeader } from '@/components/ui/data-table'
 
 type StandingRow = FunctionReturnType<
@@ -43,21 +42,17 @@ export function StandingsView({
 
   return (
     <section className="flex flex-col gap-4">
-      <Card>
-        <CardContent className="flex flex-col gap-4">
-          {board === undefined ? (
-            <TableLoadingSkeleton />
-          ) : !navigation.selectedRound ? (
-            <TableEmptyState
-              icon={Trophy}
-              title="No standings yet"
-              description="Standings are generated when a round is completed. Finish a round to see the leaderboard here."
-            />
-          ) : (
-            <StandingsTable roundId={navigation.selectedRound._id} />
-          )}
-        </CardContent>
-      </Card>
+      {board === undefined ? (
+        <TableLoadingSkeleton />
+      ) : !navigation.selectedRound ? (
+        <TableEmptyState
+          icon={Trophy}
+          title="No standings yet"
+          description="Standings are generated when a round is completed. Finish a round to see the leaderboard here."
+        />
+      ) : (
+        <StandingsTable roundId={navigation.selectedRound._id} />
+      )}
     </section>
   )
 }

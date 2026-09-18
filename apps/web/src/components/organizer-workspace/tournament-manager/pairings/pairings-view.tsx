@@ -12,7 +12,6 @@ import type { RoundSelection } from '@/components/tournaments'
 import { TableEmptyState } from '@/components/shared/table-empty-state'
 import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'
 import { useTournamentRoundNavigation } from '@/components/tournaments'
-import { Card, CardContent } from '@/components/ui/card'
 
 export function PairingsView({
   tournamentId,
@@ -52,37 +51,35 @@ export function PairingsView({
       ) : null}
 
       {!navigation.isPlayerMeetingSelected ? (
-        <Card>
-          <CardContent className="flex flex-col gap-4">
-            <div className="flex justify-end">
-              <PairingsSettingsMenu
-                board={board}
-                roundId={navigation.selectedRound?._id ?? null}
-                onRewound={() => onRoundSelectionChange({})}
+        <div className="flex flex-col gap-4">
+          <div className="flex justify-end">
+            <PairingsSettingsMenu
+              board={board}
+              roundId={navigation.selectedRound?._id ?? null}
+              onRewound={() => onRoundSelectionChange({})}
+            />
+          </div>
+          {board === undefined ? (
+            <TableLoadingSkeleton />
+          ) : navigation.availableRounds.length === 0 || !selectedRound ? (
+            <TableEmptyState
+              icon={Swords}
+              title="No pairings yet"
+              description="Generate pairings to create the first round and assign players to tables."
+            />
+          ) : (
+            <>
+              {canEditPairings ? (
+                <UnpairedPlayersPanel roundId={selectedRound._id} />
+              ) : null}
+              <PairingsTable
+                roundId={selectedRound._id}
+                bestOf={activePhase?.bestOf ?? DEFAULT_BEST_OF}
+                canEditPairings={canEditPairings}
               />
-            </div>
-            {board === undefined ? (
-              <TableLoadingSkeleton />
-            ) : navigation.availableRounds.length === 0 || !selectedRound ? (
-              <TableEmptyState
-                icon={Swords}
-                title="No pairings yet"
-                description="Generate pairings to create the first round and assign players to tables."
-              />
-            ) : (
-              <>
-                {canEditPairings ? (
-                  <UnpairedPlayersPanel roundId={selectedRound._id} />
-                ) : null}
-                <PairingsTable
-                  roundId={selectedRound._id}
-                  bestOf={activePhase?.bestOf ?? DEFAULT_BEST_OF}
-                  canEditPairings={canEditPairings}
-                />
-              </>
-            )}
-          </CardContent>
-        </Card>
+            </>
+          )}
+        </div>
       ) : null}
     </section>
   )

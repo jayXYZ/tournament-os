@@ -56,10 +56,7 @@ function SignedOutAdmin({ description }: { description: string }) {
       </header>
 
       <div className="mx-auto flex w-full max-w-xl flex-1 flex-col justify-center px-6 py-16">
-        <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
-          Admin access
-        </p>
-        <h1 className="mt-3 text-4xl font-semibold tracking-normal sm:text-5xl">
+        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
           Sign in to manage your organization.
         </h1>
         <p className="mt-5 text-base leading-7 text-muted-foreground">

@@ -4,13 +4,6 @@ import { usePaginatedQuery } from 'convex/react'
 import { api } from '@paper-pairings/backend/convex/_generated/api'
 import { describeAuditEvent } from './audit-event-text'
 import type { Id } from '@paper-pairings/backend/convex/_generated/dataModel'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 
 const RECENT_COUNT = 6
@@ -53,10 +46,10 @@ export function RecentActivityCard({
   const recent = results.slice(0, RECENT_COUNT)
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Recent</CardTitle>
-        <CardDescription>
+    <section className="flex flex-col gap-4">
+      <div>
+        <h2 className="text-sm font-medium">Recent</h2>
+        <p className="text-xs/relaxed text-muted-foreground">
           <Link
             to="/admin/tournaments/$tournamentId/log"
             params={{ tournamentId: publicCode }}
@@ -64,9 +57,9 @@ export function RecentActivityCard({
           >
             All activity
           </Link>
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
+        </p>
+      </div>
+      <div>
         {status === 'LoadingFirstPage' ? (
           <div className="flex flex-col gap-2">
             <Skeleton className="h-5" />
@@ -98,7 +91,7 @@ export function RecentActivityCard({
             ))}
           </ul>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   )
 }

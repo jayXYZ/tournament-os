@@ -19,14 +19,8 @@ import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton
 import { TableSearchInput } from '@/components/shared/table-search-input'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
 import { DataTable, DataTableColumnHeader } from '@/components/ui/data-table'
+import { cn } from '@/lib/utils'
 
 export type TournamentTableVariant = 'public' | 'registered' | 'manage'
 
@@ -52,17 +46,10 @@ export function TournamentTable({
   )
 
   if (items === undefined) {
-    const copy = loadingCopy[variant]
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>{copy.title}</CardTitle>
-          <CardDescription>{copy.description}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <TableLoadingSkeleton rows={variant === 'registered' ? 2 : 3} />
-        </CardContent>
-      </Card>
+      <TournamentSection variant={variant} description={loadingCopy[variant]}>
+        <TableLoadingSkeleton rows={variant === 'registered' ? 2 : 3} />
+      </TournamentSection>
     )
   }
 
@@ -70,77 +57,75 @@ export function TournamentTable({
     return <TournamentTableEmpty variant={variant} />
   }
 
-  const copy = populatedCopy[variant]
   const isManage = variant === 'manage'
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{copy.title}</CardTitle>
-        <CardDescription>{copy.description}</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <DataTable
-          columns={columns}
-          data={items}
-          className={isManage ? 'min-w-[760px]' : 'min-w-[900px]'}
-          noResultsLabel="No tournaments match your search."
-          onRowClick={
-            isManage
-              ? (item) =>
-                  navigate({
-                    to: `/admin/tournaments/${String(
-                      item.tournament.publicCode,
-                    )}`,
-                  })
-              : undefined
-          }
-          toolbar={(table) => (
-            <TableSearchInput
-              table={table}
-              columnId="tournament"
-              placeholder="Search tournaments..."
-            />
-          )}
-        />
-      </CardContent>
-    </Card>
+    <TournamentSection variant={variant} description={populatedCopy[variant]}>
+      <DataTable
+        columns={columns}
+        data={items}
+        className={isManage ? 'min-w-[760px]' : 'min-w-[900px]'}
+        noResultsLabel="No tournaments match your search."
+        onRowClick={
+          isManage
+            ? (item) =>
+                navigate({
+                  to: `/admin/tournaments/${String(
+                    item.tournament.publicCode,
+                  )}`,
+                })
+            : undefined
+        }
+        toolbar={(table) => (
+          <TableSearchInput
+            table={table}
+            columnId="tournament"
+            placeholder="Search tournaments..."
+          />
+        )}
+      />
+    </TournamentSection>
   )
 }
 
-const loadingCopy: Record<
-  TournamentTableVariant,
-  { description: string; title: string }
-> = {
-  public: {
-    title: 'Loading tournaments',
-    description: 'Fetching public events available to players.',
-  },
-  registered: {
-    title: 'My tournaments',
-    description: 'Checking your ongoing and upcoming registrations.',
-  },
-  manage: {
-    title: 'Loading tournaments',
-    description: 'Fetching events for the selected organization.',
-  },
+// The public and manage tables sit directly under a page title that already
+// names them, so only the registered list (which shares a page with the
+// public schedule) carries its own heading. The others show their
+// description as a single muted line.
+const sectionTitle: Partial<Record<TournamentTableVariant, string>> = {
+  registered: 'My tournaments',
 }
 
-const populatedCopy: Record<
-  TournamentTableVariant,
-  { description: string; title: string }
-> = {
-  public: {
-    title: 'Public tournament schedule',
-    description: 'Upcoming events published by tournament organizers.',
-  },
-  registered: {
-    title: 'My tournaments',
-    description: 'Ongoing and upcoming events you are registered for.',
-  },
-  manage: {
-    title: 'Tournament schedule',
-    description: 'Upcoming organization tournaments.',
-  },
+const loadingCopy: Record<TournamentTableVariant, string> = {
+  public: 'Fetching public events available to players.',
+  registered: 'Checking your ongoing and upcoming registrations.',
+  manage: 'Fetching events for the selected organization.',
+}
+
+const populatedCopy: Record<TournamentTableVariant, string> = {
+  public: 'Upcoming events published by tournament organizers.',
+  registered: 'Ongoing and upcoming events you are registered for.',
+  manage: 'Upcoming organization tournaments.',
+}
+
+function TournamentSection({
+  variant,
+  description,
+  children,
+}: {
+  variant: TournamentTableVariant
+  description: string
+  children?: React.ReactNode
+}) {
+  const title = sectionTitle[variant]
+  return (
+    <section className="flex flex-col gap-4">
+      <div>
+        {title ? <h2 className="text-sm font-medium">{title}</h2> : null}
+        <p className="text-xs/relaxed text-muted-foreground">{description}</p>
+      </div>
+      {children}
+    </section>
+  )
 }
 
 function TournamentTableEmpty({
@@ -150,19 +135,14 @@ function TournamentTableEmpty({
 }) {
   if (variant === 'registered') {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>My tournaments</CardTitle>
-          <CardDescription>
-            You are not registered for any upcoming events yet. Pick one from
-            the schedule below to get started.
-          </CardDescription>
-        </CardHeader>
-      </Card>
+      <TournamentSection
+        variant={variant}
+        description="You are not registered for any upcoming events yet. Pick one from the schedule below to get started."
+      />
     )
   }
 
-  const empty = (
+  return (
     <TableEmptyState
       icon={variant === 'public' ? UserRound : CalendarDays}
       title="No upcoming tournaments"
@@ -171,18 +151,11 @@ function TournamentTableEmpty({
           ? 'Public tournaments will appear here once an organizer publishes future events.'
           : 'Future tournaments for this organization will appear here.'
       }
-      className={variant === 'public' ? 'min-h-80 border bg-card' : undefined}
+      className={cn(
+        'rounded-lg border border-border',
+        variant === 'public' && 'min-h-80',
+      )}
     />
-  )
-
-  if (variant === 'public') {
-    return empty
-  }
-
-  return (
-    <Card>
-      <CardContent>{empty}</CardContent>
-    </Card>
   )
 }
 

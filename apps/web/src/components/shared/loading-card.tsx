@@ -1,13 +1,7 @@
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
 import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'
 
-// Card-shaped placeholder for a page section still waiting on its query.
+// Placeholder for a page section still waiting on its query. Same shape as
+// the section it stands in for: heading, description, then the content.
 export function LoadingCard({
   title,
   description,
@@ -16,14 +10,12 @@ export function LoadingCard({
   description: string
 }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        <CardDescription>{description}</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <TableLoadingSkeleton />
-      </CardContent>
-    </Card>
+    <section className="flex flex-col gap-4">
+      <div>
+        <h2 className="text-sm font-medium">{title}</h2>
+        <p className="text-xs/relaxed text-muted-foreground">{description}</p>
+      </div>
+      <TableLoadingSkeleton />
+    </section>
   )
 }

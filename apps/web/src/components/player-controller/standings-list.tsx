@@ -11,13 +11,6 @@ import type { StandingRow } from '@paper-pairings/core'
 
 import type { Id } from '@paper-pairings/backend/convex/_generated/dataModel'
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
-import {
   Empty,
   EmptyDescription,
   EmptyHeader,
@@ -40,7 +33,7 @@ export function StandingsList({
 
   if (standings === null) {
     return (
-      <Empty className="min-h-60 border bg-card">
+      <Empty className="min-h-60">
         <EmptyHeader>
           <EmptyMedia variant="icon">
             <ListOrdered aria-hidden="true" />
@@ -57,24 +50,24 @@ export function StandingsList({
   const myRow = standings.rows.find((row) => row.isMe)
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Standings</CardTitle>
-        <CardDescription>
+    <section className="flex flex-col gap-4">
+      <div>
+        <h2 className="text-sm font-medium">Standings</h2>
+        <p className="text-xs/relaxed text-muted-foreground">
           After round {standings.roundNumber}
           {myRow
             ? ` · You're ${ordinal(myRow.rank)} with ${myRow.matchPoints} ${
                 myRow.matchPoints === 1 ? 'point' : 'points'
               }`
             : ''}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="grid gap-1.5">
+        </p>
+      </div>
+      <div className="grid gap-1.5">
         {standings.rows.map((row) => (
           <StandingsRow key={row.rank} row={row} />
         ))}
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   )
 }
 

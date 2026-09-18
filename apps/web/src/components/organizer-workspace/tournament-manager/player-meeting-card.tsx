@@ -10,13 +10,6 @@ import type {
 import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'
 import { Badge } from '@/components/ui/badge'
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
-import {
   Table,
   TableBody,
   TableCell,
@@ -55,9 +48,9 @@ export function PlayerMeetingCard({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
+    <section className="flex flex-col gap-4">
+      <div>
+        <h2 className="text-sm font-medium flex items-center gap-2">
           Player meeting
           {meetingStatus === 'in_progress' ? (
             <Badge>In progress</Badge>
@@ -66,14 +59,14 @@ export function PlayerMeetingCard({
             // still reads "Completed" here: the meeting itself did finish.
             <Badge variant="secondary">Completed</Badge>
           )}
-        </CardTitle>
-        <CardDescription>
+        </h2>
+        <p className="text-xs/relaxed text-muted-foreground">
           Players seated alphabetically for attendance and announcements. Drop
           no-shows from the Registrations view; dropped players are struck
           through here.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
+        </p>
+      </div>
+      <div>
         {seating === undefined ? (
           <TableLoadingSkeleton />
         ) : (
@@ -124,7 +117,7 @@ export function PlayerMeetingCard({
             </TableBody>
           </Table>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   )
 }

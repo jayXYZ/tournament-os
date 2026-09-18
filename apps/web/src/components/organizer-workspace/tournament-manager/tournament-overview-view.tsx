@@ -29,13 +29,6 @@ import {
   formatTournamentDateLong,
 } from '@/components/tournaments'
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 
 // The organizer's answer to "where are we?": the event's name, the live
@@ -92,8 +85,8 @@ export function TournamentOverviewView({
         <OverviewBody board={board} publicCode={publicCode} />
       ) : (
         <div className="grid gap-4 lg:grid-cols-[1.55fr_1fr]">
-          <Skeleton className="h-64 rounded-xl" />
-          <Skeleton className="h-64 rounded-xl" />
+          <Skeleton className="h-64" />
+          <Skeleton className="h-64" />
         </div>
       )}
 
@@ -126,7 +119,7 @@ function OverviewBody({
       : null
 
   return (
-    <div className="grid items-start gap-4 lg:grid-cols-[1.55fr_1fr]">
+    <div className="grid items-start gap-8 lg:grid-cols-[1.55fr_1fr]">
       {liveRound ? (
         <OutstandingTablesCard
           roundId={liveRound._id}
@@ -141,7 +134,7 @@ function OverviewBody({
           publicCode={publicCode}
         />
       )}
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-8">
         {liveRound ? (
           <UnconfirmedResultsCard roundId={liveRound._id} bestOf={bestOf} />
         ) : null}
@@ -236,13 +229,15 @@ function StateCard({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        {text ? <CardDescription>{text}</CardDescription> : null}
-      </CardHeader>
-      {action ? <CardContent>{action}</CardContent> : null}
-    </Card>
+    <section className="flex flex-col gap-4">
+      <div>
+        <h2 className="text-sm font-medium">{title}</h2>
+        {text ? (
+          <p className="text-xs/relaxed text-muted-foreground">{text}</p>
+        ) : null}
+      </div>
+      {action ? <div>{action}</div> : null}
+    </section>
   )
 }
 

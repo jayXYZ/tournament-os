@@ -23,14 +23,6 @@ import { useAppAuth } from '@/lib/use-app-auth'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { Spinner } from '@/components/ui/spinner'
 import { formatCents } from '@/lib/money'
@@ -139,14 +131,16 @@ function TournamentDetails({
           : 'wrong_day'
 
   return (
-    <Card>
-      <CardHeader>
+    <article className="flex flex-col gap-4">
+      <header>
         <div className="flex flex-wrap items-center gap-3">
-          <CardTitle className="text-2xl">{tournament.name}</CardTitle>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            {tournament.name}
+          </h1>
           <TournamentLifecycleBadge lifecycle={tournament.lifecycle} />
           <RoundTimerIndicator timer={tournament.roundTimer} />
         </div>
-        <CardDescription>
+        <p className="text-xs/relaxed text-muted-foreground">
           {tournament.isTestEvent
             ? 'Test event'
             : tournament.visibility === 'private'
@@ -165,9 +159,10 @@ function TournamentDetails({
               </Link>
             </>
           ) : null}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="grid gap-4">
+        </p>
+      </header>
+      <Separator />
+      <div className="grid gap-4">
         <div className="grid gap-3 text-sm sm:grid-cols-2">
           <DetailLine
             icon={CalendarDays}
@@ -239,19 +234,18 @@ function TournamentDetails({
             <MarkdownContent markdown={tournament.detailsMarkdown} />
           </>
         ) : null}
-      </CardContent>
-      <CardFooter>
-        <p className="text-xs text-muted-foreground">
-          {tournament.lifecycle === 'in_progress'
-            ? 'The event is under way. Pairings and standings are in your player view.'
-            : tournament.lifecycle === 'completed'
-              ? 'This event has finished. Final standings are in the player view.'
-              : tournament.lifecycle === 'cancelled'
-                ? 'This event was cancelled.'
-                : 'Pairings and standings appear in your player view once the event begins.'}
-        </p>
-      </CardFooter>
-    </Card>
+      </div>
+      <Separator />
+      <p className="text-xs text-muted-foreground">
+        {tournament.lifecycle === 'in_progress'
+          ? 'The event is under way. Pairings and standings are in your player view.'
+          : tournament.lifecycle === 'completed'
+            ? 'This event has finished. Final standings are in the player view.'
+            : tournament.lifecycle === 'cancelled'
+              ? 'This event was cancelled.'
+              : 'Pairings and standings appear in your player view once the event begins.'}
+      </p>
+    </article>
   )
 }
 

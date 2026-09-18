@@ -16,13 +16,6 @@ import type { BestOf } from '@paper-pairings/shared/match-structure'
 import type { PairingRow } from './pairings/pairing-row'
 import { Button } from '@/components/ui/button'
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
-import {
   Empty,
   EmptyDescription,
   EmptyHeader,
@@ -50,7 +43,7 @@ export function OutstandingTablesCard({
   })
 
   if (pairings === undefined) {
-    return <Skeleton className="h-64 rounded-xl" />
+    return <Skeleton className="h-64" />
   }
 
   const byes = pairings.filter((row) =>
@@ -64,14 +57,14 @@ export function OutstandingTablesCard({
   )
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>
+    <section className="flex flex-col gap-4">
+      <div>
+        <h2 className="text-sm font-medium">
           {outstanding.length === 0
             ? 'All tables reported'
             : `Waiting on ${outstanding.length} ${outstanding.length === 1 ? 'table' : 'tables'}`}
-        </CardTitle>
-        <CardDescription>
+        </h2>
+        <p className="text-xs/relaxed text-muted-foreground">
           {roundLabel}, {tables.length}{' '}
           {tables.length === 1 ? 'table' : 'tables'}
           {byes.length > 0
@@ -85,9 +78,9 @@ export function OutstandingTablesCard({
           >
             All pairings
           </Link>
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
+        </p>
+      </div>
+      <div className="flex flex-col gap-4">
         {outstanding.length === 0 ? (
           <Empty className="py-8">
             <EmptyHeader>
@@ -122,8 +115,8 @@ export function OutstandingTablesCard({
             . Awarded as a win, no table.
           </p>
         ) : null}
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   )
 }
 
@@ -181,22 +174,22 @@ export function UnconfirmedResultsCard({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Needs a look</CardTitle>
-        <CardDescription>
+    <section className="flex flex-col gap-4">
+      <div>
+        <h2 className="text-sm font-medium">Needs a look</h2>
+        <p className="text-xs/relaxed text-muted-foreground">
           Reported by one player and not yet confirmed. Each counts toward
           completing the round unless you change it.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
+        </p>
+      </div>
+      <div>
         <ul className="divide-y divide-border">
           {unconfirmed.map((row) => (
             <UnconfirmedRow key={row.match._id} row={row} bestOf={bestOf} />
           ))}
         </ul>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   )
 }
 

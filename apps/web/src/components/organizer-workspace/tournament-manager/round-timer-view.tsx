@@ -20,13 +20,6 @@ import type { FormEvent } from 'react'
 import type { Id } from '@paper-pairings/backend/convex/_generated/dataModel'
 import type { PairingsBoard } from './pairings-board'
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
 import { Field, FieldDescription, FieldLabel } from '@/components/ui/field'
 import { HoldButton } from '@/components/ui/hold-button'
 import { Input } from '@/components/ui/input'
@@ -54,13 +47,13 @@ export function RoundTimerView({
           <Skeleton className="h-40" />
         </div>
       ) : (
-        <>
+        <div className="flex flex-col divide-y divide-border [&>*]:py-6 [&>*:first-child]:pt-0 [&>*:last-child]:pb-0">
           <TimerCard key={board.tournament._id} board={board} />
           <RoundLengthCard
             key={`${board.tournament._id}-length`}
             tournament={board.tournament}
           />
-        </>
+        </div>
       )}
     </section>
   )
@@ -112,17 +105,17 @@ function TimerCard({ board }: { board: PairingsBoard }) {
   const disabled = currentRound === null || !pairingsPublished || busy
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>
+    <section className="flex flex-col gap-4">
+      <div>
+        <h2 className="text-sm font-medium">
           {currentRound ? currentRound.roundName : 'No round in progress'}
-        </CardTitle>
-        <CardDescription>
+        </h2>
+        <p className="text-xs/relaxed text-muted-foreground">
           Everyone viewing the event page or player controller sees this timer
           live.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col items-center gap-6 py-6">
+        </p>
+      </div>
+      <div className="flex flex-col items-center gap-6 py-6">
         <div className="flex flex-col items-center gap-1">
           <p
             aria-live="off"
@@ -244,8 +237,8 @@ function TimerCard({ board }: { board: PairingsBoard }) {
             </HoldButton>
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   )
 }
 
@@ -301,14 +294,14 @@ function RoundLengthCard({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Round length</CardTitle>
-        <CardDescription>
+    <section className="flex flex-col gap-4">
+      <div>
+        <h2 className="text-sm font-medium">Round length</h2>
+        <p className="text-xs/relaxed text-muted-foreground">
           Pre-fills the timer when you start a round.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
+        </p>
+      </div>
+      <div>
         <form onSubmit={handleSubmit} className="flex items-end gap-2">
           <Field className="w-24">
             <FieldLabel htmlFor="round-length-minutes">Minutes</FieldLabel>
@@ -330,7 +323,7 @@ function RoundLengthCard({
         <FieldDescription className="mt-2">
           Between {MIN_MINUTES} minutes and {MAX_MINUTES / 60} hours.
         </FieldDescription>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   )
 }

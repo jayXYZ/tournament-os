@@ -66,10 +66,7 @@ export function PlayerHome() {
 
       <div className="flex flex-col justify-between gap-5 md:flex-row md:items-end">
         <div>
-          <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
-            Player view
-          </p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-normal sm:text-4xl">
+          <h1 className="text-2xl font-semibold tracking-tight">
             Upcoming tournaments
           </h1>
         </div>

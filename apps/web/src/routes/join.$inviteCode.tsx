@@ -6,13 +6,6 @@ import { SiteShell } from '@/components/shared/site-shell'
 import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'
 import { Button } from '@/components/ui/button'
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
-import {
   Empty,
   EmptyDescription,
   EmptyHeader,
@@ -48,17 +41,17 @@ function RouteComponent() {
   return (
     <SiteShell subtitle="Tournament invite">
       {resolved === undefined ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Opening invite</CardTitle>
-            <CardDescription>Looking up the event.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <TableLoadingSkeleton />
-          </CardContent>
-        </Card>
+        <section className="flex flex-col gap-4">
+          <div>
+            <h2 className="text-sm font-medium">Opening invite</h2>
+            <p className="text-xs/relaxed text-muted-foreground">
+              Looking up the event.
+            </p>
+          </div>
+          <TableLoadingSkeleton />
+        </section>
       ) : (
-        <Empty className="min-h-80 border bg-card">
+        <Empty className="min-h-80">
           <EmptyHeader>
             <EmptyMedia variant="icon">
               <SearchX aria-hidden="true" />

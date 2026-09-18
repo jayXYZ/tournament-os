@@ -9,13 +9,6 @@ import { formatCents } from '@/lib/money'
 import { useOrganization } from '@/components/organizer-workspace/organization-context'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
 import { Spinner } from '@/components/ui/spinner'
 
 type PayoutSummary = FunctionReturnType<
@@ -73,12 +66,14 @@ export function PaidEventPayoutCard({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{copy.title}</CardTitle>
-        <CardDescription>{copy.description}</CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
+    <section className="flex flex-col gap-4">
+      <div>
+        <h2 className="text-sm font-medium">{copy.title}</h2>
+        <p className="text-xs/relaxed text-muted-foreground">
+          {copy.description}
+        </p>
+      </div>
+      <div className="flex flex-col gap-3">
         {!completed ? (
           <p className="text-sm text-muted-foreground">{copy.pendingMessage}</p>
         ) : payout === undefined ? (
@@ -146,7 +141,7 @@ export function PaidEventPayoutCard({
             )}
           </>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   )
 }
