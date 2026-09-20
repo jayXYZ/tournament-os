@@ -29,6 +29,7 @@ export function UserPublicPage({ publicCode }: { publicCode: string }) {
   return (
     <SiteShell
       subtitle="Player profile"
+      readingColumn
       actions={<SiteShellBackLink to="/">All tournaments</SiteShellBackLink>}
     >
       {player === undefined ? (

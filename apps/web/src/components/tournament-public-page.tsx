@@ -39,6 +39,7 @@ export function TournamentPublicPage({
   return (
     <SiteShell
       subtitle="Tournament details"
+      readingColumn
       toaster
       actions={<SiteShellBackLink to="/">All tournaments</SiteShellBackLink>}
     >

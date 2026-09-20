@@ -39,7 +39,7 @@ function RouteComponent() {
   }
 
   return (
-    <SiteShell subtitle="Tournament invite">
+    <SiteShell subtitle="Tournament invite" readingColumn>
       {resolved === undefined ? (
         <section className="flex flex-col gap-4">
           <div>

@@ -7,7 +7,6 @@ import {
   PlayerAccessShell,
   PlayerPageEmpty,
   PlayerPageSkeleton,
-  playerShellWidth,
 } from '../player-access-shell'
 import { usePlayerTournamentAccess } from '../use-player-tournament-access'
 import { DecklistEditor } from './decklist-editor'
@@ -154,11 +153,8 @@ function DecklistFrame({
 }) {
   return (
     <SiteShell
-      // playerShellWidth keeps /play and /decklist in lockstep: they share
-      // one header rail, and matching tokens keep it from reflowing when
-      // navigating between the two pages. Only the frame widens — the form
-      // column below caps the content itself at lg:max-w-2xl.
-      width={playerShellWidth}
+      // The shell frame is the shared page column; only the form column
+      // below caps the content itself at lg:max-w-2xl.
       subtitle="Decklist"
       toaster
       bottomBar={

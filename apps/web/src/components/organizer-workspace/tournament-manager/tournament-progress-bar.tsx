@@ -29,6 +29,7 @@ import {
   parseRoundSelectionSearch,
   useTournamentRoundNavigation,
 } from '@/components/tournaments'
+import { pageColumnClasses } from '@/components/shared/page-column'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { HoldButton } from '@/components/ui/hold-button'
@@ -269,7 +270,12 @@ export function TournamentProgressBar({
         aria-busy
         className="shrink-0 border-b border-border bg-background"
       >
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-6 px-4 py-2.5 sm:px-6 lg:px-8">
+        <div
+          className={cn(
+            pageColumnClasses,
+            'flex items-center justify-between gap-6 py-2.5',
+          )}
+        >
           <div className="flex items-center gap-3">
             {Array.from({ length: 3 }, (_, index) => (
               <Skeleton key={index} className="size-6 rounded-full" />
@@ -342,7 +348,12 @@ export function TournamentProgressBar({
         aria-label="Tournament progress"
         className="shrink-0 border-b border-border bg-background"
       >
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-6 px-4 py-2.5 sm:px-6 lg:px-8">
+        <div
+          className={cn(
+            pageColumnClasses,
+            'flex items-center justify-between gap-6 py-2.5',
+          )}
+        >
           {timeline}
           <div className="flex shrink-0 items-center gap-3">
             <RoundTimerChip board={board} publicCode={publicCode} />

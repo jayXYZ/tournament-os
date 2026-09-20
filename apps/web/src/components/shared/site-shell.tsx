@@ -4,45 +4,32 @@ import type { ComponentPropsWithRef, ReactNode } from 'react'
 
 import { BrandMark } from '@/components/shared/brand-mark'
 import {
-  PublicSiteHeader,
-  maxWidthClasses,
-} from '@/components/shared/public-site-header'
+  pageColumnClasses,
+  readingColumnClasses,
+} from '@/components/shared/page-column'
+import { PublicSiteHeader } from '@/components/shared/public-site-header'
 import { Button } from '@/components/ui/button'
 import { Toaster } from '@/components/ui/sonner'
 import { cn } from '@/lib/utils'
 
-// The app-chrome content column keeps app widths below `lg`, so it needs the
-// `lg:` variant of each header width class. The mapped type pins every value
-// to exactly `lg:` + the header's class, so this map can never drift from
-// `maxWidthClasses` (Tailwind needs the strings spelled out literally).
-const lgMaxWidthClasses: {
-  [Width in keyof typeof maxWidthClasses]: `lg:${(typeof maxWidthClasses)[Width]}`
-} = {
-  '4xl': 'lg:max-w-4xl',
-  '6xl': 'lg:max-w-6xl',
-  '7xl': 'lg:max-w-7xl',
-}
-
-// The centered column of the app chrome. The content column and the fixed
-// bottom bar both render exactly these classes (plus the `lg:` width above),
-// so a bar always lines up with the cards it sits under at every breakpoint.
-const appColumnClasses =
-  'mx-auto w-full max-w-md px-4 sm:max-w-2xl sm:px-6 lg:px-8'
-
 // Shared shell for the player-facing pages: the public site header over a
 // centered content column, with the page-level Toaster.
 //
+// Every page renders the same `pageColumnClasses` column for its header rail,
+// content and any pinned bars, so nothing shifts sideways when navigating
+// between routes. Text-heavy pages pass `readingColumn` to narrow the content
+// itself inside that column; the frame never changes width.
+//
 // Pages that read like the native app on phones (the player controller
 // surfaces) pass `appBar`: below `lg` the site header gives way to a compact
-// sticky app bar carrying the page's live status, and the content column
-// tightens to app widths above a single column of cards. From `lg` up the
-// site's standard chrome returns, so the page matches the rest of the website.
+// sticky app bar carrying the page's live status. From `lg` up the site's
+// standard chrome returns, so the page matches the rest of the website.
 // These pages can also pin a `bottomBar` to the viewport bottom; the shell
 // aligns it with the content column and keeps the content clear of it.
 export function SiteShell({
   subtitle,
   actions,
-  width = '4xl',
+  readingColumn = false,
   appBar,
   bottomBar,
   bottomBarLgHidden = false,
@@ -52,7 +39,8 @@ export function SiteShell({
 }: {
   subtitle: string
   actions?: ReactNode
-  width?: keyof typeof maxWidthClasses
+  // Cap the content at a reading width inside the shared page column.
+  readingColumn?: boolean
   // Content for the phone app bar; pass `true` for the default brand row.
   // Omit it entirely to keep the site header at every viewport.
   appBar?: ReactNode
@@ -69,9 +57,7 @@ export function SiteShell({
   toaster?: boolean
   children: ReactNode
 }) {
-  const siteHeader = (
-    <PublicSiteHeader maxWidth={width} subtitle={subtitle} actions={actions} />
-  )
+  const siteHeader = <PublicSiteHeader subtitle={subtitle} actions={actions} />
 
   // The fixed bottom bar only renders in the app chrome (the `appBar`
   // branch below), so toast clearance keys off both props together.
@@ -100,7 +86,7 @@ export function SiteShell({
       {appBar ? (
         <>
           <header className="sticky top-0 z-10 border-b border-border bg-background lg:hidden">
-            <div className="mx-auto max-w-md px-4 py-3 sm:max-w-2xl sm:px-6">
+            <div className={cn(pageColumnClasses, 'py-3')}>
               {appBar === true ? (
                 <div className="flex items-center gap-3">
                   <BrandMark className="size-8" />
@@ -114,8 +100,7 @@ export function SiteShell({
           <div className="hidden lg:block">{siteHeader}</div>
           <div
             className={cn(
-              appColumnClasses,
-              lgMaxWidthClasses[width],
+              pageColumnClasses,
               // Below `lg` the column always ends in pb-24: clearance for the
               // fixed bottom bar when one is pinned there, and the app
               // chrome's resting bottom padding otherwise. From `lg` up the
@@ -133,25 +118,25 @@ export function SiteShell({
                 bottomBarLgHidden && 'lg:hidden',
               )}
             >
-              <div className={cn(appColumnClasses, lgMaxWidthClasses[width])}>
-                {bottomBar}
-              </div>
+              <div className={pageColumnClasses}>{bottomBar}</div>
             </div>
           ) : null}
         </>
       ) : (
         <>
           {siteHeader}
-          <section
-            className={cn(
-              // A zero-minimum grid track lets wide tables scroll inside
-              // their own containers instead of widening the page.
-              'mx-auto grid grid-cols-1 gap-6 px-4 py-8 sm:px-6 lg:px-8',
-              maxWidthClasses[width],
-              contentClassName,
-            )}
-          >
-            {children}
+          <section className={cn(pageColumnClasses, 'py-8')}>
+            <div
+              className={cn(
+                readingColumn && readingColumnClasses,
+                // A zero-minimum grid track lets wide tables scroll inside
+                // their own containers instead of widening the page.
+                'grid grid-cols-1 gap-6',
+                contentClassName,
+              )}
+            >
+              {children}
+            </div>
           </section>
         </>
       )}
