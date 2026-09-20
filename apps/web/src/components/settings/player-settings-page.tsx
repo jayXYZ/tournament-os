@@ -18,6 +18,7 @@ export function PlayerSettingsPage() {
   return (
     <SiteShell
       subtitle="Account settings"
+      readingColumn
       toaster
       actions={<SiteShellBackLink to="/">All tournaments</SiteShellBackLink>}
     >

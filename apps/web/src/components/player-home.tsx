@@ -41,7 +41,6 @@ export function PlayerHome() {
   return (
     <SiteShell
       subtitle="Player tournament finder"
-      width="7xl"
       contentClassName="gap-8"
       actions={
         <>

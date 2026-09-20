@@ -16,12 +16,6 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
 
-// One shell width for the whole player surface. The /play page's SiteShell
-// and the /decklist page's DecklistFrame both pass this token, so the desktop
-// header rail and content column never resize while queries resolve or when
-// navigating between the two pages.
-export const playerShellWidth = '6xl'
-
 // Content-row skeletons for waits that happen after the event is known —
 // PlayerAccessShell uses it while the registration answer is pending, and the
 // decklist page reuses it while the decklist itself loads.

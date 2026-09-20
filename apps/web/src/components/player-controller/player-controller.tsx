@@ -15,7 +15,7 @@ import {
 } from 'lucide-react'
 import { CurrentMatchCard } from './current-match-card'
 import { MoreTab } from './more-tab'
-import { PlayerAccessShell, playerShellWidth } from './player-access-shell'
+import { PlayerAccessShell } from './player-access-shell'
 import { StandingsList } from './standings-list'
 import { usePlayerTournamentAccess } from './use-player-tournament-access'
 import type { ReactNode } from 'react'
@@ -52,7 +52,6 @@ export function PlayerController({ publicCode }: { publicCode: string }) {
   if (access.state !== 'ready') {
     return (
       <SiteShell
-        width={playerShellWidth}
         subtitle="Player controller"
         actions={access.state === 'notFound' ? undefined : eventPageAction}
         appBar
@@ -156,7 +155,6 @@ function ControllerReady({
   return (
     <RoundTimerProvider timer={event.tournament.roundTimer}>
       <SiteShell
-        width={playerShellWidth}
         subtitle="Player controller"
         actions={eventPageAction}
         toaster

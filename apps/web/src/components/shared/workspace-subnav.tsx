@@ -1,6 +1,7 @@
 import { Link, useLocation } from '@tanstack/react-router'
 
 import type { LucideIcon } from 'lucide-react'
+import { pageColumnClasses } from '@/components/shared/page-column'
 import { cn } from '@/lib/utils'
 
 export type WorkspaceSubnavItem = {
@@ -31,7 +32,12 @@ export function WorkspaceSubnav({
         aria-label={ariaLabel}
         className="border-b border-border bg-background duration-300 ease-out animate-in slide-in-from-top motion-reduce:animate-none"
       >
-        <div className="mx-auto flex max-w-7xl items-center gap-1 overflow-x-auto px-4 sm:px-6 lg:px-8">
+        <div
+          className={cn(
+            pageColumnClasses,
+            'flex items-center gap-1 overflow-x-auto',
+          )}
+        >
           {items.map((item) => {
             const Icon = item.icon
             const isActive = pathname === item.href
