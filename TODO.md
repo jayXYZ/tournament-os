@@ -333,11 +333,19 @@ claimed by one.
         approval mode, and their open applications in the home listing with
         a status badge (listMyTournaments now includes pending/waitlisted
         rows)
-  - [ ] Surface pending applications for organizer review: the
-        approve/waitlist/reject actions live on the chronologically
-        paginated, searchable Registrations table, so on a busy event
-        finding what awaits review means scanning pages — add a
-        pending-applications filter or queue view to the tab
+  - [x] Surface pending applications for organizer review (2026-09-16): the
+        Registrations tab's toolbar gains a single-select status chip
+        (Pending review / Waitlisted / Active / Eliminated / Dropped /
+        Disqualified / Cancelled / Rejected) applied server-side —
+        `listRegistrationPage` walks the existing
+        `by_tournamentId_and_entryStatus_and_participationStatus` index
+        under the status's prefix and `searchRegistrations` narrows on
+        `entryStatus` and `participationStatus` (now search-index filter
+        fields), so the filter sees the whole history rather than the pages
+        loaded so far and composes with the search box. Filtering to
+        "Pending review" is the review queue: the row menu's
+        approve/waitlist/reject actions act in place, and each filter has
+        its own empty state
   - [x] Bar re-entry to a private event after organizer removal
         (launch-blocking, completed 2026-08-19): rejecting is the bar — the
         roster menu's "Reject registration" acts on a cancelled row (closing

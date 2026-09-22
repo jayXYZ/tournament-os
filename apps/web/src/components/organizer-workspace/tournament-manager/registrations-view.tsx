@@ -124,27 +124,86 @@ const toneDotClassName: Record<StatusTone, string> = {
   danger: 'bg-destructive',
 }
 
-// The filter chips offer the statuses a roster can actually hold; the
-// malformed marker is diagnostic and stays out of the list.
+// The status chip's value: one effective status, or none for the whole
+// history. Filtering is server-side (both roster queries take it, as an index
+// prefix), so it sees every row, not just the pages loaded so far — with
+// "pending" as the review queue. That is also why it is single-select: one
+// prefix per walk. The chip offers the statuses a row can actually show:
+// "confirmed" never surfaces (a confirmed entry shows its participation
+// status instead), and the malformed marker is diagnostic. Pending leads: a
+// busy event's applications awaiting review are what an organizer comes here
+// to find.
+type RegistrationStatusFilter = Exclude<
+  RegistrationStatus,
+  'confirmed' | typeof MALFORMED_REGISTRATION_STATUS
+>
+
+const statusFilterLabel: Record<RegistrationStatusFilter, string> = {
+  pending: 'Pending review',
+  waitlisted: 'Waitlisted',
+  active: 'Active',
+  eliminated: 'Eliminated',
+  dropped: 'Dropped',
+  disqualified: 'Disqualified',
+  cancelled: 'Cancelled',
+  rejected: 'Rejected',
+}
+
 const statusFilterOptions: Array<DataTableFilterOption> = (
-  [
-    'confirmed',
-    'active',
-    'pending',
-    'waitlisted',
-    'cancelled',
-    'rejected',
-    'eliminated',
-    'dropped',
-    'disqualified',
-  ] satisfies Array<
-    Exclude<RegistrationStatus, typeof MALFORMED_REGISTRATION_STATUS>
-  >
+  Object.keys(statusFilterLabel) as Array<RegistrationStatusFilter>
 ).map((status) => ({
   value: status,
-  label: status.charAt(0).toUpperCase() + status.slice(1),
+  label: statusFilterLabel[status],
   dotClassName: toneDotClassName[statusTone[status]],
 }))
+
+function isRegistrationStatusFilter(
+  value: string | undefined,
+): value is RegistrationStatusFilter {
+  return value !== undefined && value in statusFilterLabel
+}
+
+// What an empty filtered list means, per status — "no registrations yet"
+// would be wrong for a full roster with nothing pending.
+const emptyFilterCopy: Record<
+  RegistrationStatusFilter,
+  { title: string; description: string }
+> = {
+  pending: {
+    title: 'No applications awaiting review',
+    description: 'New registration requests will appear here.',
+  },
+  waitlisted: {
+    title: 'No waitlisted players',
+    description: 'Players you move to the waitlist will appear here.',
+  },
+  active: {
+    title: 'No active players',
+    description:
+      'Players holding a seat and still in the event will appear here.',
+  },
+  eliminated: {
+    title: 'No eliminated players',
+    description: 'Players knocked out by the format will appear here.',
+  },
+  dropped: {
+    title: 'No dropped players',
+    description:
+      'Players who leave the event after being seated will appear here.',
+  },
+  disqualified: {
+    title: 'No disqualified players',
+    description: 'Players removed for a rules violation will appear here.',
+  },
+  cancelled: {
+    title: 'No cancelled registrations',
+    description: 'Players who withdraw or are removed will appear here.',
+  },
+  rejected: {
+    title: 'No rejected registrations',
+    description: 'Applications you decline will appear here.',
+  },
+}
 
 const paymentFilterOptions: Array<DataTableFilterOption> = (
   Object.keys(paymentPresentation) as Array<PaymentStatus>
@@ -159,13 +218,26 @@ export function RegistrationsView({
 }: {
   tournamentId: Id<'tournaments'>
 }) {
+  const [statusFilter, setStatusFilter] = useState<
+    RegistrationStatusFilter | undefined
+  >(undefined)
   const { results, status, loadMore } = usePaginatedQuery(
     api.tournaments.registrations.listRegistrationPage,
     {
       tournamentId,
+      status: statusFilter,
     },
     { initialNumItems: REGISTRATION_PAGE_SIZE },
   )
+  // A filter change restarts pagination, so status drops back to
+  // LoadingFirstPage. Only the very first load gets the skeleton: after that
+  // the table (and its toolbar, with the chip the organizer just picked)
+  // stays mounted and reports the reload in its empty row instead.
+  const loadedOnce = useRef(false)
+  if (status !== 'LoadingFirstPage') {
+    loadedOnce.current = true
+  }
+  const listPending = status === 'LoadingFirstPage' && loadedOnce.current
   const setup = useQuery(api.tournaments.lifecycle.getTournamentSetup, {
     tournamentId,
   })
@@ -179,25 +251,31 @@ export function RegistrationsView({
   const searching = search !== ''
   const searchResults = useQuery(
     api.tournaments.registrations.searchRegistrations,
-    searching ? { tournamentId, search } : 'skip',
+    searching ? { tournamentId, search, status: statusFilter } : 'skip',
   )
   // Keep the previous matches on screen while a keystroke's query is in
   // flight so the table doesn't flash empty between results. The cache is
   // only valid for the current uninterrupted search session: emptying the
   // box clears it (handleSearchTermChange), and it is stamped with the
-  // tournament it belongs to so a tournament switch mid-search can't show
-  // another roster's rows. useQuery's value is looked up by the current
-  // render's args, so `searchResults` here is always rows for exactly this
-  // render's { tournamentId, search } — the stamp can't mislabel.
+  // tournament and status filter it belongs to so a tournament switch or
+  // filter change mid-search can't show another list's rows. useQuery's
+  // value is looked up by the current render's args, so `searchResults`
+  // here is always rows for exactly this render's { tournamentId, search,
+  // status } — the stamp can't mislabel.
   const lastSearchResults = useRef<{
     tournamentId: Id<'tournaments'>
+    statusFilter: RegistrationStatusFilter | undefined
     rows: Array<RegistrationRow>
   } | null>(null)
   useEffect(() => {
     if (searchResults !== undefined) {
-      lastSearchResults.current = { tournamentId, rows: searchResults }
+      lastSearchResults.current = {
+        tournamentId,
+        statusFilter,
+        rows: searchResults,
+      }
     }
-  }, [searchResults, tournamentId])
+  }, [searchResults, tournamentId, statusFilter])
 
   function handleSearchTermChange(value: string) {
     if (value.trim() === '') {
@@ -211,7 +289,8 @@ export function RegistrationsView({
 
   const cachedSearchRows =
     lastSearchResults.current !== null &&
-    lastSearchResults.current.tournamentId === tournamentId
+    lastSearchResults.current.tournamentId === tournamentId &&
+    lastSearchResults.current.statusFilter === statusFilter
       ? lastSearchResults.current.rows
       : undefined
 
@@ -221,7 +300,9 @@ export function RegistrationsView({
       // unmount the search input mid-typing.
       (searchResults ?? cachedSearchRows ?? [])
     : status === 'LoadingFirstPage'
-      ? undefined
+      ? listPending
+        ? []
+        : undefined
       : results
 
   return (
@@ -235,9 +316,12 @@ export function RegistrationsView({
       <div>
         <RegistrationsTable
           registrations={rows}
+          statusFilter={statusFilter}
+          onStatusFilterChange={setStatusFilter}
           searchTerm={searchTerm}
           onSearchTermChange={handleSearchTermChange}
           searchPending={searching && searchResults === undefined}
+          listPending={listPending}
           showPaymentColumn={(setup?.tournament.entryFeeCents ?? 0) > 0}
           actions={<RegistrationSettingsMenu tournament={setup?.tournament} />}
         />
@@ -369,7 +453,6 @@ function getRegistrationColumns({
       header: ({ column }) => (
         <DataTableColumnHeader column={column} title="Status" />
       ),
-      filterFn: oneOfFilter,
       // Fixed width keeps the column from shifting as the longest visible
       // status label (e.g. "disqualified" vs "active") changes between
       // pages.
@@ -398,16 +481,22 @@ function getRegistrationColumns({
 
 function RegistrationsTable({
   registrations,
+  statusFilter,
+  onStatusFilterChange,
   searchTerm,
   onSearchTermChange,
   searchPending,
+  listPending,
   showPaymentColumn,
   actions,
 }: {
   registrations: Array<RegistrationRow> | undefined
+  statusFilter: RegistrationStatusFilter | undefined
+  onStatusFilterChange: (status: RegistrationStatusFilter | undefined) => void
   searchTerm: string
   onSearchTermChange: (value: string) => void
   searchPending: boolean
+  listPending: boolean
   showPaymentColumn: boolean
   actions?: React.ReactNode
 }) {
@@ -442,13 +531,26 @@ function RegistrationsTable({
     ) : (
       'No players match your search.'
     )
+  ) : listPending ? (
+    'Loading registrations…'
   ) : registrations.length === 0 ? (
-    <TableEmptyState
-      icon={ClipboardList}
-      title="No registrations yet"
-      description="Players who sign up for this tournament will appear here."
-      className="min-h-48"
-    />
+    statusFilter === undefined ? (
+      <TableEmptyState
+        icon={ClipboardList}
+        title="No registrations yet"
+        description="Players who sign up for this tournament will appear here."
+        className="min-h-48"
+      />
+    ) : (
+      // An empty filtered list names the filter, and keeps the toolbar so
+      // the organizer can switch it back off.
+      <TableEmptyState
+        icon={ClipboardList}
+        title={emptyFilterCopy[statusFilter].title}
+        description={emptyFilterCopy[statusFilter].description}
+        className="min-h-48"
+      />
+    )
   ) : (
     'No players match these filters.'
   )
@@ -466,19 +568,26 @@ function RegistrationsTable({
         data={registrations}
         className={cn('min-w-[480px]', searchPending && 'opacity-60')}
         noResultsLabel={noResultsLabel}
-        // The search term drives a server-side query, so the input is
-        // controlled from outside the table instead of binding to a
-        // TanStack column filter (which would re-filter the server's
-        // matches). The status and payment filters do bind to columns: they
-        // narrow the rows on screen, which is every loaded page of the
-        // roster, or the search's best matches while a term is active.
+        // The search term and status filter drive server-side queries, so
+        // both are controlled from outside the table instead of binding to
+        // TanStack column filters (which would re-filter the server's
+        // rows). The payment filter does bind to its column: it narrows the
+        // rows on screen, which is every loaded page of the roster, or the
+        // search's best matches while a term is active.
         toolbar={(table) => {
           const filters: Array<DataTableFilterDef> = [
             {
               id: 'status',
               label: 'Status',
               options: statusFilterOptions,
-              column: table.getColumn('status'),
+              single: true,
+              value: statusFilter === undefined ? [] : [statusFilter],
+              onChange: (value) => {
+                const [next] = value
+                onStatusFilterChange(
+                  isRegistrationStatusFilter(next) ? next : undefined,
+                )
+              },
             },
           ]
           if (showPaymentColumn) {

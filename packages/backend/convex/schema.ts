@@ -624,10 +624,12 @@ export default defineSchema({
     ])
     // Organizer roster search over the denormalized name. tournamentId as a
     // filter field scopes matches to one event, so searching never requires
-    // loading that event's registration history.
+    // loading that event's registration history; the status fields let the
+    // Registrations tab's status filter narrow a search the same way it
+    // narrows the paginated list (see searchRegistrations).
     .searchIndex("search_playerName", {
       searchField: "playerName",
-      filterFields: ["tournamentId"],
+      filterFields: ["tournamentId", "entryStatus", "participationStatus"],
     }),
 
   // One decklist per registration, submitted by the player for the event.

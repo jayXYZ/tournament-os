@@ -142,6 +142,20 @@ export const tournamentParticipationStatusValidator = v.union(
   v.literal("disqualified"),
 );
 
+// One state an organizer can narrow the Registrations tab to. These are the
+// effective statuses (@paper-pairings/shared effectiveRegistrationStatus): the
+// non-confirmed entry states pass through, and a confirmed entry is named by
+// its participation status instead, since that is what the roster shows. Each
+// value is a prefix of by_tournamentId_and_entryStatus_and_participationStatus
+// (see registrationStatusIndexKey), so the filter never post-scans.
+export const registrationStatusFilterValidator = v.union(
+  v.literal("pending"),
+  v.literal("waitlisted"),
+  v.literal("cancelled"),
+  v.literal("rejected"),
+  tournamentParticipationStatusValidator,
+);
+
 export const tournamentPhaseStatusValidator = v.union(
   v.literal("upcoming"),
   v.literal("in_progress"),
