@@ -1,11 +1,14 @@
 'use client'
 
 import * as React from 'react'
-import { Plus, Search, SlidersHorizontal, X } from 'lucide-react'
+import { CalendarDays, Plus, Search, SlidersHorizontal, X } from 'lucide-react'
 import type { Column } from '@tanstack/react-table'
 import type { LucideIcon } from 'lucide-react'
+import type { DateRange } from 'react-day-picker'
+import type { DateRangeFilterValue } from '@/components/ui/data-table'
 
 import { Button } from '@/components/ui/button'
+import { Calendar } from '@/components/ui/calendar'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
   DropdownMenu,
@@ -27,8 +30,9 @@ import { cn } from '@/lib/utils'
 
 // The row above a table: search on the left, one chip per filter, an
 // overflow menu for filters that only matter sometimes, and the table's own
-// actions pinned to the right. Filters hold a set of option values; each chip
-// reads "+ Label" until it has a value and then names what it holds.
+// actions pinned to the right. A filter holds either a set of option values
+// or a date range; each chip reads "+ Label" until it has a value and then
+// names what it holds.
 
 export type DataTableFilterOption = {
   value: string
@@ -37,18 +41,49 @@ export type DataTableFilterOption = {
   dotClassName?: string
 }
 
-export type DataTableFilterDef = {
+type DataTableFilterBase = {
   id: string
   label: string
   icon?: LucideIcon
-  options: Array<DataTableFilterOption>
   // Secondary filters live under "More filters" until picked or non-empty.
   secondary?: boolean
-  // Bind to a TanStack column (its filter value is the selected option
-  // values, see `oneOfFilter` in data-table.tsx), or control it directly.
+  // Bind to a TanStack column, or control the value directly.
   column?: Column<any, unknown>
+}
+
+// A checkbox list; the column's filter value is the selected option values
+// (see `oneOfFilter` in data-table.tsx).
+export type DataTableOptionsFilterDef = DataTableFilterBase & {
+  kind?: 'options'
+  options: Array<DataTableFilterOption>
   value?: Array<string>
   onChange?: (value: Array<string>) => void
+}
+
+// A calendar range; the column's filter value is inclusive epoch-ms bounds
+// (see `dateRangeFilter` in data-table.tsx).
+export type DataTableDateRangeFilterDef = DataTableFilterBase & {
+  kind: 'dateRange'
+  value?: DateRangeFilterValue
+  onChange?: (value: DateRangeFilterValue | undefined) => void
+}
+
+export type DataTableFilterDef =
+  | DataTableOptionsFilterDef
+  | DataTableDateRangeFilterDef
+
+// Toolbar `search` bound to a TanStack column's string filter, for tables
+// whose search narrows the rows already on the client.
+export function columnSearch(
+  column: Column<any, unknown> | undefined,
+  placeholder: string,
+) {
+  return {
+    value: String(column?.getFilterValue() ?? ''),
+    onChange: (value: string) =>
+      column?.setFilterValue(value === '' ? undefined : value),
+    placeholder,
+  }
 }
 
 export function DataTableToolbar({
@@ -72,9 +107,7 @@ export function DataTableToolbar({
 
   const visible = filters.filter(
     (filter) =>
-      !filter.secondary ||
-      revealed.has(filter.id) ||
-      readFilterValue(filter).length > 0,
+      !filter.secondary || revealed.has(filter.id) || hasFilterValue(filter),
   )
   const hidden = filters.filter((filter) => !visible.includes(filter))
 
@@ -103,14 +136,23 @@ export function DataTableToolbar({
         </InputGroup>
       ) : null}
 
-      {visible.map((filter) => (
-        <DataTableFilter
-          key={filter.id}
-          filter={filter}
-          open={openId === filter.id}
-          onOpenChange={(open) => setOpenId(open ? filter.id : null)}
-        />
-      ))}
+      {visible.map((filter) =>
+        filter.kind === 'dateRange' ? (
+          <DataTableDateRangeFilter
+            key={filter.id}
+            filter={filter}
+            open={openId === filter.id}
+            onOpenChange={(open) => setOpenId(open ? filter.id : null)}
+          />
+        ) : (
+          <DataTableFilter
+            key={filter.id}
+            filter={filter}
+            open={openId === filter.id}
+            onOpenChange={(open) => setOpenId(open ? filter.id : null)}
+          />
+        ),
+      )}
 
       {hidden.length > 0 ? (
         <DropdownMenu>
@@ -141,7 +183,15 @@ export function DataTableToolbar({
   )
 }
 
-function readFilterValue(filter: DataTableFilterDef): Array<string> {
+function hasFilterValue(filter: DataTableFilterDef) {
+  if (filter.kind === 'dateRange') {
+    const range = readDateRange(filter)
+    return range.from !== undefined || range.to !== undefined
+  }
+  return readFilterValue(filter).length > 0
+}
+
+function readFilterValue(filter: DataTableOptionsFilterDef): Array<string> {
   if (filter.column) {
     const value = filter.column.getFilterValue()
     return Array.isArray(value) ? (value as Array<string>) : []
@@ -149,11 +199,115 @@ function readFilterValue(filter: DataTableFilterDef): Array<string> {
   return filter.value ?? []
 }
 
-function writeFilterValue(filter: DataTableFilterDef, value: Array<string>) {
+function writeFilterValue(
+  filter: DataTableOptionsFilterDef,
+  value: Array<string>,
+) {
   if (filter.column) {
     filter.column.setFilterValue(value.length > 0 ? value : undefined)
   }
   filter.onChange?.(value)
+}
+
+function readDateRange(
+  filter: DataTableDateRangeFilterDef,
+): DateRangeFilterValue {
+  if (filter.column) {
+    return (
+      (filter.column.getFilterValue() as DateRangeFilterValue | undefined) ?? {}
+    )
+  }
+  return filter.value ?? {}
+}
+
+function writeDateRange(
+  filter: DataTableDateRangeFilterDef,
+  value: DateRangeFilterValue | undefined,
+) {
+  const next =
+    value && (value.from !== undefined || value.to !== undefined)
+      ? value
+      : undefined
+  if (filter.column) {
+    filter.column.setFilterValue(next)
+  }
+  filter.onChange?.(next)
+}
+
+// The chip itself: a trigger that names the filter and, once it holds a
+// value, what it holds, with a clear button attached on the right.
+function FilterChip({
+  filter,
+  summary,
+  onClear,
+  open,
+  onOpenChange,
+  contentClassName,
+  children,
+}: {
+  filter: DataTableFilterDef
+  summary: string | null
+  onClear: () => void
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  contentClassName?: string
+  children: React.ReactNode
+}) {
+  const Icon =
+    filter.icon ?? (filter.kind === 'dateRange' ? CalendarDays : Plus)
+  return (
+    <Popover open={open} onOpenChange={onOpenChange}>
+      <div className="flex items-center">
+        <PopoverTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            aria-label={
+              summary
+                ? `${filter.label}: ${summary}`
+                : `Filter by ${filter.label.toLowerCase()}`
+            }
+            className={cn(summary && 'rounded-r-none border-r-0')}
+          >
+            <Icon data-icon="inline-start" />
+            {filter.label}
+            {summary ? (
+              <span className="max-w-48 truncate font-normal text-muted-foreground">
+                {summary}
+              </span>
+            ) : null}
+          </Button>
+        </PopoverTrigger>
+        {summary ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            aria-label={`Clear ${filter.label.toLowerCase()} filter`}
+            className="rounded-l-none"
+            onClick={onClear}
+          >
+            <X />
+          </Button>
+        ) : null}
+      </div>
+      <PopoverContent
+        align="start"
+        className={cn('gap-0 p-1', contentClassName)}
+      >
+        {children}
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+// The chip names its first two picks and counts the rest, so a wide preset
+// (say, three active statuses) stays legible instead of truncating mid-word.
+function summarizeSelection(labels: Array<string>) {
+  if (labels.length <= 2) {
+    return labels.join(', ')
+  }
+  return `${labels.slice(0, 2).join(', ')} +${labels.length - 2}`
 }
 
 export function DataTableFilter({
@@ -161,7 +315,7 @@ export function DataTableFilter({
   open,
   onOpenChange,
 }: {
-  filter: DataTableFilterDef
+  filter: DataTableOptionsFilterDef
   open?: boolean
   onOpenChange?: (open: boolean) => void
 }) {
@@ -169,7 +323,6 @@ export function DataTableFilter({
   const selectedLabels = filter.options
     .filter((option) => selected.includes(option.value))
     .map((option) => option.label)
-  const Icon = filter.icon ?? Plus
 
   function toggle(value: string, checked: boolean) {
     writeFilterValue(
@@ -181,90 +334,168 @@ export function DataTableFilter({
   }
 
   return (
-    <Popover open={open} onOpenChange={onOpenChange}>
-      <div className="flex items-center">
-        <PopoverTrigger asChild>
+    <FilterChip
+      filter={filter}
+      summary={
+        selectedLabels.length > 0 ? summarizeSelection(selectedLabels) : null
+      }
+      onClear={() => writeFilterValue(filter, [])}
+      open={open}
+      onOpenChange={onOpenChange}
+      contentClassName="w-56"
+    >
+      <ul className="flex flex-col" role="group" aria-label={filter.label}>
+        {filter.options.map((option) => {
+          const id = `${filter.id}-${option.value}`
+          const checked = selected.includes(option.value)
+          return (
+            <li key={option.value}>
+              <label
+                htmlFor={id}
+                className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-muted"
+              >
+                <Checkbox
+                  id={id}
+                  checked={checked}
+                  onCheckedChange={(next) =>
+                    toggle(option.value, next === true)
+                  }
+                />
+                {option.dotClassName ? (
+                  <span
+                    aria-hidden="true"
+                    className={cn(
+                      'size-1.5 shrink-0 rounded-full',
+                      option.dotClassName,
+                    )}
+                  />
+                ) : null}
+                <span className="truncate">{option.label}</span>
+              </label>
+            </li>
+          )
+        })}
+      </ul>
+      {selected.length > 0 ? (
+        <div className="mt-1 border-t border-border pt-1">
           <Button
             type="button"
-            variant="outline"
-            aria-label={
-              selectedLabels.length > 0
-                ? `${filter.label}: ${selectedLabels.join(', ')}`
-                : `Filter by ${filter.label.toLowerCase()}`
-            }
-            className={cn(
-              selectedLabels.length > 0 && 'rounded-r-none border-r-0',
-            )}
-          >
-            <Icon data-icon="inline-start" />
-            {filter.label}
-            {selectedLabels.length > 0 ? (
-              <span className="max-w-40 truncate font-normal text-muted-foreground">
-                {selectedLabels.join(', ')}
-              </span>
-            ) : null}
-          </Button>
-        </PopoverTrigger>
-        {selectedLabels.length > 0 ? (
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            aria-label={`Clear ${filter.label.toLowerCase()} filter`}
-            className="rounded-l-none"
+            variant="ghost"
+            size="sm"
+            className="w-full justify-start"
             onClick={() => writeFilterValue(filter, [])}
           >
-            <X />
+            Clear
           </Button>
-        ) : null}
-      </div>
-      <PopoverContent align="start" className="w-56 gap-0 p-1">
-        <ul className="flex flex-col" role="group" aria-label={filter.label}>
-          {filter.options.map((option) => {
-            const id = `${filter.id}-${option.value}`
-            const checked = selected.includes(option.value)
-            return (
-              <li key={option.value}>
-                <label
-                  htmlFor={id}
-                  className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-muted"
-                >
-                  <Checkbox
-                    id={id}
-                    checked={checked}
-                    onCheckedChange={(next) =>
-                      toggle(option.value, next === true)
-                    }
-                  />
-                  {option.dotClassName ? (
-                    <span
-                      aria-hidden="true"
-                      className={cn(
-                        'size-1.5 shrink-0 rounded-full',
-                        option.dotClassName,
-                      )}
-                    />
-                  ) : null}
-                  <span className="truncate">{option.label}</span>
-                </label>
-              </li>
-            )
-          })}
-        </ul>
-        {selected.length > 0 ? (
-          <div className="mt-1 border-t border-border pt-1">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="w-full justify-start"
-              onClick={() => writeFilterValue(filter, [])}
-            >
-              Clear
-            </Button>
-          </div>
-        ) : null}
-      </PopoverContent>
-    </Popover>
+        </div>
+      ) : null}
+    </FilterChip>
+  )
+}
+
+const rangeDayFormatter = new Intl.DateTimeFormat('en-US', {
+  month: 'short',
+  day: 'numeric',
+})
+const rangeDayYearFormatter = new Intl.DateTimeFormat('en-US', {
+  month: 'short',
+  day: 'numeric',
+  year: 'numeric',
+})
+
+// "Sep 21 – Oct 3, 2026", or "Sep 21, 2026" for a single day; open ends read
+// "From …" / "Until …".
+export function formatDateRangeSummary(range: DateRangeFilterValue) {
+  const from = range.from === undefined ? null : new Date(range.from)
+  const to = range.to === undefined ? null : new Date(range.to)
+  if (from && to) {
+    if (from.toDateString() === to.toDateString()) {
+      return rangeDayYearFormatter.format(from)
+    }
+    const sameYear = from.getFullYear() === to.getFullYear()
+    return `${(sameYear ? rangeDayFormatter : rangeDayYearFormatter).format(
+      from,
+    )} – ${rangeDayYearFormatter.format(to)}`
+  }
+  if (from) {
+    return `From ${rangeDayYearFormatter.format(from)}`
+  }
+  if (to) {
+    return `Until ${rangeDayYearFormatter.format(to)}`
+  }
+  return null
+}
+
+// The stored range is inclusive epoch ms, so a picked end day covers its
+// whole day rather than stopping at midnight.
+function endOfDay(date: Date) {
+  const end = new Date(date)
+  end.setHours(23, 59, 59, 999)
+  return end.getTime()
+}
+
+function startOfDay(date: Date) {
+  const start = new Date(date)
+  start.setHours(0, 0, 0, 0)
+  return start.getTime()
+}
+
+export function DataTableDateRangeFilter({
+  filter,
+  open,
+  onOpenChange,
+}: {
+  filter: DataTableDateRangeFilterDef
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+}) {
+  const range = readDateRange(filter)
+  const selected: DateRange | undefined =
+    range.from === undefined && range.to === undefined
+      ? undefined
+      : {
+          from: range.from === undefined ? undefined : new Date(range.from),
+          to: range.to === undefined ? undefined : new Date(range.to),
+        }
+
+  return (
+    <FilterChip
+      filter={filter}
+      summary={formatDateRangeSummary(range)}
+      onClear={() => writeDateRange(filter, undefined)}
+      open={open}
+      onOpenChange={onOpenChange}
+      contentClassName="w-auto"
+    >
+      <Calendar
+        mode="range"
+        selected={selected}
+        defaultMonth={selected?.from}
+        onSelect={(next) =>
+          writeDateRange(
+            filter,
+            next
+              ? {
+                  from: next.from ? startOfDay(next.from) : undefined,
+                  to: next.to ? endOfDay(next.to) : undefined,
+                }
+              : undefined,
+          )
+        }
+      />
+      {selected ? (
+        <div className="mt-1 border-t border-border pt-1">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="w-full justify-start"
+            onClick={() => writeDateRange(filter, undefined)}
+          >
+            Clear
+          </Button>
+        </div>
+      ) : null}
+    </FilterChip>
   )
 }

@@ -4,6 +4,7 @@ import * as React from 'react'
 import {
   flexRender,
   getCoreRowModel,
+  getExpandedRowModel,
   getFilteredRowModel,
   getPaginationRowModel,
   getSortedRowModel,
@@ -14,7 +15,10 @@ import type {
   Column,
   ColumnDef,
   ColumnFiltersState,
+  ExpandedState,
   FilterFn,
+  OnChangeFn,
+  Row,
   SortingState,
   Table as TanstackTable,
 } from '@tanstack/react-table'
@@ -49,6 +53,28 @@ export const oneOfFilter: FilterFn<any> = (row, columnId, filterValue) => {
   return filterValue.includes(row.getValue(columnId))
 }
 
+// Inclusive epoch-ms bounds for a DataTableDateRangeFilter chip. Either end
+// may be open; `to` is the last instant of its day, so a same-day range
+// still matches events that afternoon.
+export type DateRangeFilterValue = { from?: number; to?: number }
+
+// Column filter for a date range chip: the cell value is an epoch-ms
+// timestamp, and a row passes when it falls inside the picked range.
+export const dateRangeFilter: FilterFn<any> = (row, columnId, filterValue) => {
+  const range = filterValue as DateRangeFilterValue | undefined
+  if (!range || (range.from === undefined && range.to === undefined)) {
+    return true
+  }
+  const value = row.getValue<number>(columnId)
+  if (range.from !== undefined && value < range.from) {
+    return false
+  }
+  if (range.to !== undefined && value > range.to) {
+    return false
+  }
+  return true
+}
+
 // Columns may align their header and cells (e.g. `text-right`) by setting
 // `meta: { className }` on the column definition.
 type DataTableColumnMeta = { className?: string }
@@ -66,6 +92,21 @@ interface DataTableProps<TData, TValue> {
   noResultsLabel?: React.ReactNode
   onRowClick?: (row: TData) => void
   toolbar?: (table: TanstackTable<TData>) => React.ReactNode
+  // Column filters applied on first render (e.g. a Status chip preset to
+  // active states). The table owns the state afterwards.
+  initialColumnFilters?: ColumnFiltersState
+  // Controlled column filters, for callers that keep them somewhere durable
+  // such as the route's search params. Pass both or neither.
+  columnFilters?: ColumnFiltersState
+  onColumnFiltersChange?: OnChangeFn<ColumnFiltersState>
+  // Stable row identity; defaults to the row index, which reshuffles the
+  // expanded/selected state whenever data reorders.
+  getRowId?: (row: TData) => string
+  // Nested rows: a parent's children render indented beneath it and can be
+  // collapsed with `row.getToggleExpandedHandler()`. Every parent starts
+  // expanded, and a search that matches a child keeps its parent visible.
+  getSubRows?: (row: TData) => Array<TData> | undefined
+  rowClassName?: (row: Row<TData>) => string | undefined
 }
 
 export function DataTable<TData, TValue>({
@@ -77,23 +118,36 @@ export function DataTable<TData, TValue>({
   noResultsLabel = 'No results.',
   onRowClick,
   toolbar,
+  initialColumnFilters = [],
+  columnFilters: controlledColumnFilters,
+  onColumnFiltersChange,
+  getRowId,
+  getSubRows,
+  rowClassName,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = React.useState<SortingState>([])
-  const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(
-    [],
-  )
+  const [internalColumnFilters, setInternalColumnFilters] =
+    React.useState<ColumnFiltersState>(initialColumnFilters)
+  const columnFilters = controlledColumnFilters ?? internalColumnFilters
+  const setColumnFilters = onColumnFiltersChange ?? setInternalColumnFilters
+  const [expanded, setExpanded] = React.useState<ExpandedState>(true)
 
   const table = useReactTable({
     data,
     columns,
+    getRowId,
+    getSubRows,
+    filterFromLeafRows: true,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
+    getExpandedRowModel: getExpandedRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
+    onExpandedChange: setExpanded,
     initialState: { pagination: { pageSize } },
-    state: { sorting, columnFilters },
+    state: { sorting, columnFilters, expanded },
   })
 
   const rows = table.getRowModel().rows
@@ -141,7 +195,10 @@ export function DataTable<TData, TValue>({
             rows.map((row) => (
               <TableRow
                 key={row.id}
-                className={onRowClick ? 'cursor-pointer' : undefined}
+                className={cn(
+                  onRowClick && 'cursor-pointer',
+                  rowClassName?.(row),
+                )}
                 onClick={
                   onRowClick ? () => onRowClick(row.original) : undefined
                 }

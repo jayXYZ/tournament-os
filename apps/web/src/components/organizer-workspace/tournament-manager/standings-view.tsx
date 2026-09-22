@@ -14,9 +14,12 @@ import type { Id } from '@paper-pairings/backend/convex/_generated/dataModel'
 import type { RoundSelection } from '@/components/tournaments'
 import { TableEmptyState } from '@/components/shared/table-empty-state'
 import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'
-import { TableSearchInput } from '@/components/shared/table-search-input'
 import { useTournamentRoundNavigation } from '@/components/tournaments'
 import { DataTable, DataTableColumnHeader } from '@/components/ui/data-table'
+import {
+  DataTableToolbar,
+  columnSearch,
+} from '@/components/ui/data-table-toolbar'
 
 type StandingRow = FunctionReturnType<
   typeof api.tournaments.rounds.listRoundStandings
@@ -186,10 +189,8 @@ function StandingsTable({ roundId }: { roundId: Id<'tournamentRounds'> }) {
       className="min-w-[640px]"
       noResultsLabel="No players match your search."
       toolbar={(table) => (
-        <TableSearchInput
-          table={table}
-          columnId="player"
-          placeholder="Search players..."
+        <DataTableToolbar
+          search={columnSearch(table.getColumn('player'), 'Search players')}
         />
       )}
     />

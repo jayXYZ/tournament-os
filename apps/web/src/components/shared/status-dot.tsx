@@ -9,7 +9,8 @@ export type StatusTone =
   | 'warning'
   | 'danger'
 
-const toneClassName: Record<StatusTone, string> = {
+// Exported so filter chips can draw the same dot beside a status option.
+export const statusDotToneClassName: Record<StatusTone, string> = {
   live: 'bg-round-live',
   accent: 'bg-accent-brand',
   neutral: 'bg-foreground',
@@ -39,7 +40,10 @@ export function StatusDot({
     >
       <span
         aria-hidden="true"
-        className={cn('size-1.5 shrink-0 rounded-full', toneClassName[tone])}
+        className={cn(
+          'size-1.5 shrink-0 rounded-full',
+          statusDotToneClassName[tone],
+        )}
       />
       {children}
     </span>

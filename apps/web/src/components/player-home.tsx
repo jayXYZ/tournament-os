@@ -4,7 +4,7 @@ import { useQuery } from 'convex/react'
 import { CalendarDays, LogIn, Settings, ShieldCheck, Users } from 'lucide-react'
 import { api } from '@paper-pairings/backend/convex/_generated/api'
 
-import { ConventionTable } from '@/components/conventions/convention-table'
+import type { TournamentTableSearchParams } from '@/components/tournaments'
 import { SiteShell } from '@/components/shared/site-shell'
 import { TournamentTable } from '@/components/tournaments'
 import { Button } from '@/components/ui/button'
@@ -12,24 +12,39 @@ import { Separator } from '@/components/ui/separator'
 import { Spinner } from '@/components/ui/spinner'
 import { useAppAuth } from '@/lib/use-app-auth'
 
-export function PlayerHome() {
+export function PlayerHome({
+  scheduleSearch,
+  onScheduleSearchChange,
+}: {
+  // Only the public schedule's toolbar is addressable from the URL; the
+  // registered list shares the page and keeps its own state.
+  scheduleSearch: TournamentTableSearchParams
+  onScheduleSearchChange: (next: TournamentTableSearchParams) => void
+}) {
   const { user, loading, refreshAuth, signOut } = useAppAuth()
   const tournaments = useQuery(api.tournaments.lifecycle.listUpcomingPublic)
   const conventions = useQuery(api.conventions.lifecycle.listUpcomingPublic)
   const myTournaments = useMyTournaments()
 
-  const publicItems = tournaments?.map((tournament) => ({
-    key: tournament._id,
-    organizationName: tournament.organizationName,
-    registeredCount: tournament.registeredCount,
-    tournament,
-  }))
-  const conventionItems = conventions?.map((convention) => ({
-    key: convention._id,
-    organizationName: convention.organizationName,
-    registeredCount: convention.registeredCount,
-    convention,
-  }))
+  // The public schedule groups each convention's events under it, so both
+  // lists load before the table renders rather than regrouping afterwards.
+  const publicLoaded = tournaments !== undefined && conventions !== undefined
+  const publicItems = publicLoaded
+    ? tournaments.map((tournament) => ({
+        key: tournament._id,
+        organizationName: tournament.organizationName,
+        registeredCount: tournament.registeredCount,
+        tournament,
+      }))
+    : undefined
+  const conventionItems = publicLoaded
+    ? conventions.map((convention) => ({
+        key: convention._id,
+        organizationName: convention.organizationName,
+        registeredCount: convention.registeredCount,
+        convention,
+      }))
+    : undefined
   const registeredItems = myTournaments?.map((entry) => ({
     key: entry.registration._id,
     organizationName: entry.organizationName,
@@ -80,14 +95,17 @@ export function PlayerHome() {
 
       <Separator />
 
-      <TournamentTable variant="public" items={publicItems} />
-
-      {/* Conventions get their own listing; their child events also appear
-          above as standalone tournaments (TODO §4: standalone discovery is
-          preserved). Hidden entirely until any exist. */}
-      {conventionItems !== undefined && conventionItems.length > 0 ? (
-        <ConventionTable variant="public" items={conventionItems} />
-      ) : null}
+      {/* Conventions sit in the schedule as collapsible groups with their
+          child events nested beneath them; a child whose convention is not
+          public still lists on its own (TODO §4: standalone discovery is
+          preserved). */}
+      <TournamentTable
+        variant="public"
+        items={publicItems}
+        conventions={conventionItems}
+        search={scheduleSearch}
+        onSearchChange={onScheduleSearchChange}
+      />
     </SiteShell>
   )
 }
