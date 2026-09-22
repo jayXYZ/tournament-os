@@ -235,7 +235,9 @@ function writeDateRange(
 }
 
 // The chip itself: a trigger that names the filter and, once it holds a
-// value, what it holds, with a clear button attached on the right.
+// value, what it holds. The leading "+" turns into an "×" (a quarter turn,
+// animated) that clears the filter; it is a sibling button laid over the
+// icon so the chip stays one pill without nesting buttons.
 function FilterChip({
   filter,
   summary,
@@ -253,42 +255,60 @@ function FilterChip({
   contentClassName?: string
   children: React.ReactNode
 }) {
-  const Icon =
+  const active = summary !== null
+  const IdleIcon =
     filter.icon ?? (filter.kind === 'dateRange' ? CalendarDays : Plus)
+  // A plus rotated a quarter turn is an ×, so the default icon animates into
+  // the clear affordance; a bespoke icon has no such trick and swaps for X.
+  const rotates = IdleIcon === Plus
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
-      <div className="flex items-center">
+      <div className="relative inline-flex items-center">
         <PopoverTrigger asChild>
           <Button
             type="button"
             variant="outline"
             aria-label={
-              summary
+              active
                 ? `${filter.label}: ${summary}`
                 : `Filter by ${filter.label.toLowerCase()}`
             }
-            className={cn(summary && 'rounded-r-none border-r-0')}
+            className="pl-1"
           >
-            <Icon data-icon="inline-start" />
+            <span
+              aria-hidden="true"
+              className="flex size-5 shrink-0 items-center justify-center"
+            >
+              {rotates || !active ? (
+                <IdleIcon
+                  className={cn(
+                    'size-3.5 transition-transform duration-200 ease-out',
+                    active && 'rotate-45',
+                  )}
+                />
+              ) : (
+                <X className="size-3.5" />
+              )}
+            </span>
             {filter.label}
-            {summary ? (
-              <span className="max-w-48 truncate font-normal text-muted-foreground">
+            {active ? ':' : null}
+            {active ? (
+              <span className="max-w-48 truncate font-normal text-accent-brand">
                 {summary}
               </span>
             ) : null}
           </Button>
         </PopoverTrigger>
-        {summary ? (
-          <Button
+        {/* Sits exactly over the icon circle: the trigger's 1px border plus
+            its pl-1. The circle only shows on hover or focus, so at rest the
+            × reads as part of the chip. */}
+        {active ? (
+          <button
             type="button"
-            variant="outline"
-            size="icon"
             aria-label={`Clear ${filter.label.toLowerCase()} filter`}
-            className="rounded-l-none"
             onClick={onClear}
-          >
-            <X />
-          </Button>
+            className="absolute top-1/2 left-[calc(--spacing(1)+1px)] size-5 -translate-y-1/2 rounded-full outline-none transition-colors duration-200 hover:bg-muted-foreground/20 focus-visible:bg-muted-foreground/20 focus-visible:ring-2 focus-visible:ring-ring/50"
+          />
         ) : null}
       </div>
       <PopoverContent
