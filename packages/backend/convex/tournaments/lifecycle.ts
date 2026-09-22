@@ -57,21 +57,6 @@ import {
   tournamentVisibilityValidator,
 } from "../validators";
 
-export const listForOrganization = query({
-  args: { organizationId: v.id("organizations") },
-  handler: async (ctx, args) => {
-    await requireActiveMembership(ctx, args.organizationId);
-
-    return await ctx.db
-      .query("tournaments")
-      .withIndex("by_organizationId", (q) =>
-        q.eq("organizationId", args.organizationId),
-      )
-      .order("desc")
-      .take(100);
-  },
-});
-
 export const listUpcomingPublic = query({
   args: {},
   handler: async (ctx) => {
@@ -101,32 +86,23 @@ export const listUpcomingPublic = query({
   },
 });
 
-export const listUpcomingForOrganization = query({
+export const listForOrganization = query({
   args: { organizationId: v.id("organizations") },
   handler: async (ctx, args) => {
     await requireActiveMembership(ctx, args.organizationId);
 
-    const now = Date.now();
-    const rows = (
-      await Promise.all(
-        (["setup", "registration", "in_progress"] as const).map((lifecycle) =>
-          ctx.db
-            .query("tournaments")
-            .withIndex("by_organizationId_and_lifecycle_and_startDate", (q) =>
-              q
-                .eq("organizationId", args.organizationId)
-                .eq("lifecycle", lifecycle)
-                .gte("startDate", now),
-            )
-            .order("asc")
-            .take(100),
-        ),
+    // Every lifecycle, newest start first. The organizer's table filters by
+    // status on the client, so completed and cancelled events stay
+    // reachable and an event that has already started never drops out of
+    // the list the moment its start time passes.
+    const rows = await ctx.db
+      .query("tournaments")
+      .withIndex("by_organizationId_and_startDate", (q) =>
+        q.eq("organizationId", args.organizationId),
       )
-    ).flat();
-
-    rows.sort((left, right) => left.startDate - right.startDate);
-    const limited = rows.slice(0, 100);
-    return limited.map((tournament) => ({
+      .order("desc")
+      .take(200);
+    return rows.map((tournament) => ({
       ...tournament,
       registeredCount: tournament.confirmedRegistrationCount,
     }));

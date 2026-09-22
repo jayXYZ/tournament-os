@@ -1,7 +1,11 @@
 import type { Doc } from '@paper-pairings/backend/convex/_generated/dataModel'
 
 import type { StatusTone } from '@/components/shared/status-dot'
-import { StatusDot } from '@/components/shared/status-dot'
+import type { DataTableFilterOption } from '@/components/ui/data-table-toolbar'
+import {
+  StatusDot,
+  statusDotToneClassName,
+} from '@/components/shared/status-dot'
 
 export type TournamentLifecycle = Doc<'tournaments'>['lifecycle']
 export type TournamentVisibility = Doc<'tournaments'>['visibility']
@@ -33,6 +37,24 @@ const tournamentLifecycles: Record<
   completed: { label: 'Completed', tone: 'neutral' },
   cancelled: { label: 'Cancelled', tone: 'danger' },
 }
+
+// One filter chip option per lifecycle, in workflow order, each carrying
+// the badge's dot so the popover reads like the Status column.
+export const tournamentLifecycleFilterOptions: Array<DataTableFilterOption> = (
+  Object.keys(tournamentLifecycles) as Array<TournamentLifecycle>
+).map((lifecycle) => ({
+  value: lifecycle,
+  label: tournamentLifecycles[lifecycle].label,
+  dotClassName: statusDotToneClassName[tournamentLifecycles[lifecycle].tone],
+}))
+
+// The lifecycles an organizer is still working: what the manage table shows
+// until they widen the Status filter to finished events.
+export const activeTournamentLifecycles: Array<TournamentLifecycle> = [
+  'setup',
+  'registration',
+  'in_progress',
+]
 
 export function formatTournamentDateShort(timestamp: number) {
   return shortDateFormatter.format(new Date(timestamp))

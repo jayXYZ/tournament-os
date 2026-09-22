@@ -514,6 +514,9 @@ export default defineSchema({
       "lifecycle",
       "startDate",
     ])
+    // The organizer's full event list in every lifecycle, schedule-ordered;
+    // the client narrows by status and format.
+    .index("by_organizationId_and_startDate", ["organizationId", "startDate"])
     // A convention's child events, schedule-ordered. Rows without a
     // conventionId never appear when querying a concrete convention.
     .index("by_conventionId_and_startDate", ["conventionId", "startDate"]),

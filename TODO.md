@@ -463,8 +463,8 @@ separate concerns. Model them explicitly before adding more boolean settings.
   - [ ] Show the location on public and player-facing event surfaces
   - [ ] Add indexes/read models needed for later location filtering
 - [ ] Add upcoming-tournament filters
-  - [ ] Format
-  - [ ] Date range
+  - [x] Format (Format chip on the public schedule and organizer tables)
+  - [x] Date range (Start date chip under More filters)
   - [ ] Location
 - [ ] Finish decklist submission and publishing
   - [x] Store one structured decklist per confirmed registration

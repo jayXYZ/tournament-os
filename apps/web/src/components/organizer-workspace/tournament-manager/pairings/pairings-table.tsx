@@ -13,8 +13,11 @@ import type { BestOf } from '@paper-pairings/shared/match-structure'
 import type { PairingRow } from './pairing-row'
 import { TableEmptyState } from '@/components/shared/table-empty-state'
 import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'
-import { TableSearchInput } from '@/components/shared/table-search-input'
 import { DataTable, DataTableColumnHeader } from '@/components/ui/data-table'
+import {
+  DataTableToolbar,
+  columnSearch,
+} from '@/components/ui/data-table-toolbar'
 
 // Built per render because the manage cell needs the round's phase match
 // structure to bound result entry, and whether the round's pairings are
@@ -108,10 +111,8 @@ export function PairingsTable({
       className="min-w-[640px]"
       noResultsLabel="No matches match your search."
       toolbar={(table) => (
-        <TableSearchInput
-          table={table}
-          columnId="players"
-          placeholder="Search players..."
+        <DataTableToolbar
+          search={columnSearch(table.getColumn('players'), 'Search players')}
         />
       )}
     />
