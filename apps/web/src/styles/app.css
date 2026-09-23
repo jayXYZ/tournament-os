@@ -1,6 +1,26 @@
 @import '@fontsource-variable/geist';
 @import '@fontsource-variable/geist-mono';
 
+/* Radix Colors: the 12-step scales Radix Themes is built on. `gray` is the
+   only neutral, `iris` the one accent, `red` the one danger hue. The alpha
+   scales (`-a`) are the ones to reach for on borders and hover fills, since
+   they compose over any surface identically in light and dark. Each file
+   scopes light to `:root` and dark to `.dark`, matching the theme provider. */
+@import '@radix-ui/colors/gray.css';
+@import '@radix-ui/colors/gray-alpha.css';
+@import '@radix-ui/colors/gray-dark.css';
+@import '@radix-ui/colors/gray-dark-alpha.css';
+@import '@radix-ui/colors/iris.css';
+@import '@radix-ui/colors/iris-alpha.css';
+@import '@radix-ui/colors/iris-dark.css';
+@import '@radix-ui/colors/iris-dark-alpha.css';
+@import '@radix-ui/colors/red.css';
+@import '@radix-ui/colors/red-alpha.css';
+@import '@radix-ui/colors/red-dark.css';
+@import '@radix-ui/colors/red-dark-alpha.css';
+@import '@radix-ui/colors/black-alpha.css';
+@import '@radix-ui/colors/white-alpha.css';
+
 @import 'tailwindcss';
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
@@ -54,107 +74,296 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
+  /* Radix scales as utilities: bg-gray-a3, text-iris-11, ring-red-a8, ... */
+  --color-gray-1: var(--gray-1);
+  --color-gray-2: var(--gray-2);
+  --color-gray-3: var(--gray-3);
+  --color-gray-4: var(--gray-4);
+  --color-gray-5: var(--gray-5);
+  --color-gray-6: var(--gray-6);
+  --color-gray-7: var(--gray-7);
+  --color-gray-8: var(--gray-8);
+  --color-gray-9: var(--gray-9);
+  --color-gray-10: var(--gray-10);
+  --color-gray-11: var(--gray-11);
+  --color-gray-12: var(--gray-12);
+  --color-iris-1: var(--iris-1);
+  --color-iris-2: var(--iris-2);
+  --color-iris-3: var(--iris-3);
+  --color-iris-4: var(--iris-4);
+  --color-iris-5: var(--iris-5);
+  --color-iris-6: var(--iris-6);
+  --color-iris-7: var(--iris-7);
+  --color-iris-8: var(--iris-8);
+  --color-iris-9: var(--iris-9);
+  --color-iris-10: var(--iris-10);
+  --color-iris-11: var(--iris-11);
+  --color-iris-12: var(--iris-12);
+  --color-red-1: var(--red-1);
+  --color-red-2: var(--red-2);
+  --color-red-3: var(--red-3);
+  --color-red-4: var(--red-4);
+  --color-red-5: var(--red-5);
+  --color-red-6: var(--red-6);
+  --color-red-7: var(--red-7);
+  --color-red-8: var(--red-8);
+  --color-red-9: var(--red-9);
+  --color-red-10: var(--red-10);
+  --color-red-11: var(--red-11);
+  --color-red-12: var(--red-12);
+  --color-gray-a1: var(--gray-a1);
+  --color-gray-a2: var(--gray-a2);
+  --color-gray-a3: var(--gray-a3);
+  --color-gray-a4: var(--gray-a4);
+  --color-gray-a5: var(--gray-a5);
+  --color-gray-a6: var(--gray-a6);
+  --color-gray-a7: var(--gray-a7);
+  --color-gray-a8: var(--gray-a8);
+  --color-gray-a9: var(--gray-a9);
+  --color-gray-a10: var(--gray-a10);
+  --color-gray-a11: var(--gray-a11);
+  --color-gray-a12: var(--gray-a12);
+  --color-iris-a1: var(--iris-a1);
+  --color-iris-a2: var(--iris-a2);
+  --color-iris-a3: var(--iris-a3);
+  --color-iris-a4: var(--iris-a4);
+  --color-iris-a5: var(--iris-a5);
+  --color-iris-a6: var(--iris-a6);
+  --color-iris-a7: var(--iris-a7);
+  --color-iris-a8: var(--iris-a8);
+  --color-iris-a9: var(--iris-a9);
+  --color-iris-a10: var(--iris-a10);
+  --color-iris-a11: var(--iris-a11);
+  --color-iris-a12: var(--iris-a12);
+  --color-red-a1: var(--red-a1);
+  --color-red-a2: var(--red-a2);
+  --color-red-a3: var(--red-a3);
+  --color-red-a4: var(--red-a4);
+  --color-red-a5: var(--red-a5);
+  --color-red-a6: var(--red-a6);
+  --color-red-a7: var(--red-a7);
+  --color-red-a8: var(--red-a8);
+  --color-red-a9: var(--red-a9);
+  --color-red-a10: var(--red-a10);
+  --color-red-a11: var(--red-a11);
+  --color-red-a12: var(--red-a12);
+  --color-black-a1: var(--black-a1);
+  --color-black-a2: var(--black-a2);
+  --color-black-a3: var(--black-a3);
+  --color-black-a4: var(--black-a4);
+  --color-black-a5: var(--black-a5);
+  --color-black-a6: var(--black-a6);
+  --color-black-a7: var(--black-a7);
+  --color-black-a8: var(--black-a8);
+  --color-black-a9: var(--black-a9);
+  --color-black-a10: var(--black-a10);
+  --color-black-a11: var(--black-a11);
+  --color-black-a12: var(--black-a12);
+  --color-white-a1: var(--white-a1);
+  --color-white-a2: var(--white-a2);
+  --color-white-a3: var(--white-a3);
+  --color-white-a4: var(--white-a4);
+  --color-white-a5: var(--white-a5);
+  --color-white-a6: var(--white-a6);
+  --color-white-a7: var(--white-a7);
+  --color-white-a8: var(--white-a8);
+  --color-white-a9: var(--white-a9);
+  --color-white-a10: var(--white-a10);
+  --color-white-a11: var(--white-a11);
+  --color-white-a12: var(--white-a12);
+  --color-surface: var(--surface);
+  --color-overlay: var(--overlay);
+  --color-card-border: var(--card-border);
+  --color-card-border-hover: var(--card-border-hover);
+  --color-card-border-active: var(--card-border-active);
+  --color-table-border: var(--table-border);
+  --color-gray-surface: var(--gray-surface);
+  --color-iris-surface: var(--iris-surface);
+  --color-red-surface: var(--red-surface);
+  /* Radix Themes elevation: 1 is an inset well, 2 a hairline card, 3 a
+     hovered card, 4-6 popovers and dialogs. Each carries its own hairline. */
+  --shadow-1: var(--elevation-1);
+  --shadow-2: var(--elevation-2);
+  --shadow-3: var(--elevation-3);
+  --shadow-4: var(--elevation-4);
+  --shadow-5: var(--elevation-5);
+  --shadow-6: var(--elevation-6);
+  /* Radius follows the Radix Themes "medium" scale (3/4/6/8/12/16px). Their
+     buttons take --radius-1..3 by size; larger panels take 4 and up. */
+  --radius-sm: var(--radius-2);
+  --radius-md: var(--radius-3);
+  --radius-lg: var(--radius-4);
+  --radius-xl: var(--radius-5);
+  --radius-2xl: var(--radius-6);
+  --radius-3xl: 20px;
+  --radius-4xl: 24px;
 }
 
-:root {
-  /* Monochrome. Every surface, text, and line token is zero-chroma; the only
-     color in the system is --accent-brand, and the small semantic signals
-     below. Light mode is one flat white plane: the sidebar, the content, and
-     cards all share it, and hairlines do the separating. */
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.19 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.19 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.19 0 0);
-  --primary: oklch(0.19 0 0);
-  --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.955 0 0);
-  --secondary-foreground: oklch(0.19 0 0);
-  --muted: oklch(0.965 0 0);
-  --muted-foreground: oklch(0.52 0 0);
-  --accent: oklch(0.965 0 0);
-  --accent-foreground: oklch(0.19 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.905 0 0);
-  --input: oklch(0.905 0 0);
-  /* The one accent: indigo, reserved for selection, focus, the round in
-     play, and the organizer's consequential action. Never decoration. */
-  --accent-brand: oklch(0.5 0.2 278);
-  --accent-brand-foreground: oklch(1 0 0);
-  --ring: oklch(0.5 0.2 278);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
+:root,
+.light {
+  /* Every neutral token is a step on the Radix gray scale, every accent a
+     step on iris, so components can reach past the semantic names to the
+     exact step Radix Themes uses (see the button). Light mode stays one flat
+     white plane: background, cards, and the sidebar share it, and translucent
+     hairlines do the separating. */
+  --radius-1: 3px;
+  --radius-2: 4px;
+  --radius-3: 6px;
+  --radius-4: 8px;
+  --radius-5: 12px;
+  --radius-6: 16px;
+  --radius: var(--radius-4);
+  /* Radix Themes "surface" fills: translucent panels that stay legible over
+     any background. --surface is the text-field one; the tinted ones are the
+     buttons'. */
+  --surface: rgb(255 255 255 / 0.85);
+  --gray-surface: #ffffffcc;
+  /* Dialog scrim, and the Card hairline: an alpha step blended a quarter of
+     the way to its solid step so it reads on any panel (Radix base-card). */
+  --overlay: var(--black-a6);
+  --card-border: color-mix(in oklab, var(--gray-a5), var(--gray-5) 25%);
+  --card-border-hover: color-mix(in oklab, var(--gray-a7), var(--gray-7) 25%);
+  --card-border-active: color-mix(in oklab, var(--gray-a6), var(--gray-6) 25%);
+  /* The Table frame: gray-a5 blended halfway to gray-6 (Radix table.css). */
+  --table-border: color-mix(in oklab, var(--gray-a5), var(--gray-6));
+  --elevation-1:
+    inset 0 0 0 1px var(--gray-a5), inset 0 1.5px 2px 0 var(--gray-a2),
+    inset 0 1.5px 2px 0 var(--black-a2);
+  --elevation-2:
+    0 0 0 1px var(--gray-a3), 0 0 0 0.5px var(--black-a1),
+    0 1px 1px 0 var(--gray-a2), 0 2px 1px -1px var(--black-a1),
+    0 1px 3px 0 var(--black-a1);
+  --elevation-3:
+    0 0 0 1px var(--gray-a3), 0 2px 3px -2px var(--gray-a3),
+    0 3px 12px -4px var(--black-a2), 0 4px 16px -8px var(--black-a2);
+  --elevation-4:
+    0 0 0 1px var(--gray-a3), 0 8px 40px var(--black-a1),
+    0 12px 32px -16px var(--gray-a3);
+  --elevation-5:
+    0 0 0 1px var(--gray-a3), 0 12px 60px var(--black-a3),
+    0 12px 32px -16px var(--gray-a5);
+  --elevation-6:
+    0 0 0 1px var(--gray-a3), 0 12px 60px var(--black-a3),
+    0 16px 64px var(--gray-a2), 0 16px 36px -20px var(--gray-a7);
+  --iris-surface: #f6f6ffcc;
+  --red-surface: #fff5f5cc;
+
+  --background: #ffffff;
+  --foreground: var(--gray-12);
+  --card: #ffffff;
+  --card-foreground: var(--gray-12);
+  --popover: #ffffff;
+  --popover-foreground: var(--gray-12);
+  /* Primary is Radix's high-contrast solid: gray-12 on gray-1. */
+  --primary: var(--gray-12);
+  --primary-foreground: var(--gray-1);
+  /* Steps 3/4/5 are Radix's rest/hover/active fills for UI elements. */
+  --secondary: var(--gray-a3);
+  --secondary-foreground: var(--gray-12);
+  --muted: var(--gray-a3);
+  --muted-foreground: var(--gray-11);
+  --accent: var(--gray-a3);
+  --accent-foreground: var(--gray-12);
+  --destructive: var(--red-9);
+  /* Step 6 is the subtle border, step 7 the interactive one (inputs). */
+  --border: var(--gray-a6);
+  --input: var(--gray-a7);
+  /* The one accent: iris, reserved for selection, focus, the round in play,
+     and the organizer's consequential action. Never decoration. */
+  --accent-brand: var(--iris-9);
+  --accent-brand-foreground: #ffffff;
+  /* Radix focuses with step 8 of the accent. */
+  --ring: var(--iris-8);
+  --chart-1: var(--gray-7);
+  --chart-2: var(--gray-8);
+  --chart-3: var(--gray-9);
+  --chart-4: var(--gray-10);
+  --chart-5: var(--gray-11);
   /* Three semantic signals, dot-sized: amber means waiting on the organizer,
      green means live, and the accent means in play. Timer-armed is grey: set
      but idle. */
   --round-pairings: oklch(0.62 0.15 70);
-  --round-timer: oklch(0.45 0 0);
+  --round-timer: var(--gray-10);
   --round-live: oklch(0.55 0.15 155);
   --round-ready: var(--accent-brand);
   --round-between: var(--round-pairings);
-  --radius: 0.5rem;
-  --sidebar: oklch(1 0 0);
-  --sidebar-foreground: oklch(0.19 0 0);
-  --sidebar-primary: oklch(0.19 0 0);
-  --sidebar-primary-foreground: oklch(1 0 0);
-  --sidebar-accent: oklch(0.955 0 0);
-  --sidebar-accent-foreground: oklch(0.19 0 0);
-  --sidebar-border: oklch(0.905 0 0);
-  --sidebar-ring: oklch(0.5 0.2 278);
+  --sidebar: #ffffff;
+  --sidebar-foreground: var(--gray-12);
+  --sidebar-primary: var(--gray-12);
+  --sidebar-primary-foreground: var(--gray-1);
+  --sidebar-accent: var(--gray-a3);
+  --sidebar-accent-foreground: var(--gray-12);
+  --sidebar-border: var(--gray-a6);
+  --sidebar-ring: var(--iris-8);
 }
 
 .dark {
-  /* Dark is the same flat plane inverted: near-black base, cards a step up,
-     hairlines as translucent white so they read the same on every surface. */
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.93 0 0);
-  --card: oklch(0.175 0 0);
-  --card-foreground: oklch(0.93 0 0);
-  --popover: oklch(0.175 0 0);
-  --popover-foreground: oklch(0.93 0 0);
-  --primary: oklch(0.93 0 0);
-  --primary-foreground: oklch(0.145 0 0);
-  --secondary: oklch(0.23 0 0);
-  --secondary-foreground: oklch(0.93 0 0);
-  --muted: oklch(0.23 0 0);
-  --muted-foreground: oklch(0.68 0 0);
-  --accent: oklch(0.23 0 0);
-  --accent-foreground: oklch(0.93 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 14%);
-  --accent-brand: oklch(0.72 0.16 278);
-  --accent-brand-foreground: oklch(0.145 0 0);
-  --ring: oklch(0.72 0.16 278);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
+  /* Dark follows Radix: gray-1 is the page, gray-2 the panel, and the same
+     alpha steps do borders and fills so every surface reads the same. The
+     scales themselves flip inside the imported Radix files. */
+  --surface: rgb(0 0 0 / 0.25);
+  --gray-surface: #21212180;
+  --overlay: var(--black-a8);
+  --elevation-1:
+    inset 0 -1px 1px 0 var(--gray-a3), inset 0 0 0 1px var(--gray-a3),
+    inset 0 3px 4px 0 var(--black-a5), inset 0 0 0 1px var(--gray-a4);
+  --elevation-2:
+    0 0 0 1px var(--gray-a6), 0 0 0 0.5px var(--black-a3),
+    0 1px 1px 0 var(--black-a6), 0 2px 1px -1px var(--black-a6),
+    0 1px 3px 0 var(--black-a5);
+  --elevation-3:
+    0 0 0 1px var(--gray-a6), 0 2px 3px -2px var(--black-a3),
+    0 3px 8px -2px var(--black-a6), 0 4px 12px -4px var(--black-a7);
+  --elevation-4:
+    0 0 0 1px var(--gray-a6), 0 8px 40px var(--black-a3),
+    0 12px 32px -16px var(--black-a5);
+  --elevation-5:
+    0 0 0 1px var(--gray-a6), 0 12px 60px var(--black-a5),
+    0 12px 32px -16px var(--black-a7);
+  --elevation-6:
+    0 0 0 1px var(--gray-a6), 0 12px 60px var(--black-a4),
+    0 16px 64px var(--black-a6), 0 16px 36px -20px var(--black-a11);
+  --iris-surface: #1d1b3980;
+  --red-surface: #2f151780;
+
+  --background: var(--gray-1);
+  --foreground: var(--gray-12);
+  --card: var(--gray-2);
+  --card-foreground: var(--gray-12);
+  --popover: var(--gray-2);
+  --popover-foreground: var(--gray-12);
+  --primary: var(--gray-12);
+  --primary-foreground: var(--gray-1);
+  --secondary: var(--gray-a3);
+  --secondary-foreground: var(--gray-12);
+  --muted: var(--gray-a3);
+  --muted-foreground: var(--gray-11);
+  --accent: var(--gray-a3);
+  --accent-foreground: var(--gray-12);
+  --destructive: var(--red-9);
+  --border: var(--gray-a6);
+  --input: var(--gray-a7);
+  --accent-brand: var(--iris-9);
+  --accent-brand-foreground: #ffffff;
+  --ring: var(--iris-8);
+  --chart-1: var(--gray-7);
+  --chart-2: var(--gray-8);
+  --chart-3: var(--gray-9);
+  --chart-4: var(--gray-10);
+  --chart-5: var(--gray-11);
   --round-pairings: oklch(0.78 0.14 75);
-  --round-timer: oklch(0.72 0 0);
+  --round-timer: var(--gray-10);
   --round-live: oklch(0.74 0.13 155);
   --round-ready: var(--accent-brand);
   --round-between: var(--round-pairings);
-  --sidebar: oklch(0.145 0 0);
-  --sidebar-foreground: oklch(0.93 0 0);
-  --sidebar-primary: oklch(0.93 0 0);
-  --sidebar-primary-foreground: oklch(0.145 0 0);
-  --sidebar-accent: oklch(0.23 0 0);
-  --sidebar-accent-foreground: oklch(0.93 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.72 0.16 278);
+  --sidebar: var(--gray-2);
+  --sidebar-foreground: var(--gray-12);
+  --sidebar-primary: var(--gray-12);
+  --sidebar-primary-foreground: var(--gray-1);
+  --sidebar-accent: var(--gray-a3);
+  --sidebar-accent-foreground: var(--gray-12);
+  --sidebar-border: var(--gray-a6);
+  --sidebar-ring: var(--iris-8);
 }
 
 @layer base {
