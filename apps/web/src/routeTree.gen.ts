@@ -17,6 +17,7 @@ import { Route as UsersPublicCodeRouteImport } from './routes/users.$publicCode'
 import { Route as SignUpSplatRouteImport } from './routes/sign-up.$'
 import { Route as SignInSplatRouteImport } from './routes/sign-in.$'
 import { Route as JoinInviteCodeRouteImport } from './routes/join.$inviteCode'
+import { Route as DevThemeRouteImport } from './routes/dev.theme'
 import { Route as AdminStripeReturnRouteImport } from './routes/admin.stripe-return'
 import { Route as AdminStaffRouteImport } from './routes/admin.staff'
 import { Route as AdminOrganizationRouteImport } from './routes/admin.organization'
@@ -80,6 +81,11 @@ const SignInSplatRoute = SignInSplatRouteImport.update({
 const JoinInviteCodeRoute = JoinInviteCodeRouteImport.update({
   id: '/join/$inviteCode',
   path: '/join/$inviteCode',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DevThemeRoute = DevThemeRouteImport.update({
+  id: '/dev/theme',
+  path: '/dev/theme',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminStripeReturnRoute = AdminStripeReturnRouteImport.update({
@@ -230,6 +236,7 @@ export interface FileRoutesByFullPath {
   '/admin/organization': typeof AdminOrganizationRoute
   '/admin/staff': typeof AdminStaffRoute
   '/admin/stripe-return': typeof AdminStripeReturnRoute
+  '/dev/theme': typeof DevThemeRoute
   '/join/$inviteCode': typeof JoinInviteCodeRoute
   '/sign-in/$': typeof SignInSplatRoute
   '/sign-up/$': typeof SignUpSplatRoute
@@ -263,6 +270,7 @@ export interface FileRoutesByTo {
   '/admin/organization': typeof AdminOrganizationRoute
   '/admin/staff': typeof AdminStaffRoute
   '/admin/stripe-return': typeof AdminStripeReturnRoute
+  '/dev/theme': typeof DevThemeRoute
   '/join/$inviteCode': typeof JoinInviteCodeRoute
   '/sign-in/$': typeof SignInSplatRoute
   '/sign-up/$': typeof SignUpSplatRoute
@@ -296,6 +304,7 @@ export interface FileRoutesById {
   '/admin/organization': typeof AdminOrganizationRoute
   '/admin/staff': typeof AdminStaffRoute
   '/admin/stripe-return': typeof AdminStripeReturnRoute
+  '/dev/theme': typeof DevThemeRoute
   '/join/$inviteCode': typeof JoinInviteCodeRoute
   '/sign-in/$': typeof SignInSplatRoute
   '/sign-up/$': typeof SignUpSplatRoute
@@ -332,6 +341,7 @@ export interface FileRouteTypes {
     | '/admin/organization'
     | '/admin/staff'
     | '/admin/stripe-return'
+    | '/dev/theme'
     | '/join/$inviteCode'
     | '/sign-in/$'
     | '/sign-up/$'
@@ -365,6 +375,7 @@ export interface FileRouteTypes {
     | '/admin/organization'
     | '/admin/staff'
     | '/admin/stripe-return'
+    | '/dev/theme'
     | '/join/$inviteCode'
     | '/sign-in/$'
     | '/sign-up/$'
@@ -397,6 +408,7 @@ export interface FileRouteTypes {
     | '/admin/organization'
     | '/admin/staff'
     | '/admin/stripe-return'
+    | '/dev/theme'
     | '/join/$inviteCode'
     | '/sign-in/$'
     | '/sign-up/$'
@@ -429,6 +441,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRoute: typeof AdminRouteWithChildren
   SettingsRoute: typeof SettingsRoute
+  DevThemeRoute: typeof DevThemeRoute
   JoinInviteCodeRoute: typeof JoinInviteCodeRoute
   SignInSplatRoute: typeof SignInSplatRoute
   SignUpSplatRoute: typeof SignUpSplatRoute
@@ -497,6 +510,13 @@ declare module '@tanstack/react-router' {
       path: '/join/$inviteCode'
       fullPath: '/join/$inviteCode'
       preLoaderRoute: typeof JoinInviteCodeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/dev/theme': {
+      id: '/dev/theme'
+      path: '/dev/theme'
+      fullPath: '/dev/theme'
+      preLoaderRoute: typeof DevThemeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/stripe-return': {
@@ -756,6 +776,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRoute: AdminRouteWithChildren,
   SettingsRoute: SettingsRoute,
+  DevThemeRoute: DevThemeRoute,
   JoinInviteCodeRoute: JoinInviteCodeRoute,
   SignInSplatRoute: SignInSplatRoute,
   SignUpSplatRoute: SignUpSplatRoute,
