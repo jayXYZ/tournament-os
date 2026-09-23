@@ -29,6 +29,12 @@ import {
   formatTournamentDateLong,
 } from '@/components/tournaments'
 import { Button } from '@/components/ui/button'
+import {
+  DataList,
+  DataListItem,
+  DataListLabel,
+  DataListValue,
+} from '@/components/ui/data-list'
 import { Skeleton } from '@/components/ui/skeleton'
 
 // The organizer's answer to "where are we?": the event's name, the live
@@ -281,7 +287,11 @@ function EventDetails({ board }: { board: PairingsBoard | undefined }) {
   const firstPhase = board?.phases.at(0)?.phase
 
   return (
-    <dl className="flex flex-wrap gap-x-6 gap-y-1 border-t border-border pt-4 text-xs text-muted-foreground">
+    <DataList
+      orientation="inline"
+      size="sm"
+      className="border-t border-border pt-4"
+    >
       <Detail label="Starts">
         {formatTournamentDateLong(tournament.startDate)}
       </Detail>
@@ -303,16 +313,16 @@ function EventDetails({ board }: { board: PairingsBoard | undefined }) {
         {formatTimer(tournament.roundDurationMs ?? DEFAULT_ROUND_DURATION_MS)}
       </Detail>
       {tournament.isTestEvent ? <Detail label="Test event">Yes</Detail> : null}
-    </dl>
+    </DataList>
   )
 }
 
 function Detail({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex items-baseline gap-1.5">
-      <dt>{label}</dt>
-      <dd className="font-medium text-foreground">{children}</dd>
-    </div>
+    <DataListItem>
+      <DataListLabel>{label}</DataListLabel>
+      <DataListValue>{children}</DataListValue>
+    </DataListItem>
   )
 }
 
