@@ -31,7 +31,7 @@ function Calendar({
     <DayPicker
       showOutsideDays={showOutsideDays}
       className={cn(
-        'group/calendar bg-background p-3 [--cell-radius:var(--radius-md)] [--cell-size:--spacing(6)] in-data-[slot=card-content]:bg-transparent in-data-[slot=popover-content]:bg-transparent',
+        'group/calendar bg-background p-3 [--cell-radius:var(--radius-2)] [--cell-size:--spacing(8)] in-data-[slot=card-content]:bg-transparent in-data-[slot=popover-content]:bg-transparent',
         String.raw`rtl:**:[.rdp-button\_next>svg]:rotate-180`,
         String.raw`rtl:**:[.rdp-button\_previous>svg]:rotate-180`,
         className,
@@ -56,12 +56,12 @@ function Calendar({
         ),
         button_previous: cn(
           buttonVariants({ variant: buttonVariant }),
-          'size-(--cell-size) p-0 select-none aria-disabled:opacity-50',
+          'size-(--cell-size) p-0 select-none aria-disabled:text-gray-a8',
           defaultClassNames.button_previous,
         ),
         button_next: cn(
           buttonVariants({ variant: buttonVariant }),
-          'size-(--cell-size) p-0 select-none aria-disabled:opacity-50',
+          'size-(--cell-size) p-0 select-none aria-disabled:text-gray-a8',
           defaultClassNames.button_next,
         ),
         month_caption: cn(
@@ -84,13 +84,13 @@ function Calendar({
           'font-medium select-none',
           captionLayout === 'label'
             ? 'text-sm'
-            : 'flex items-center gap-1 rounded-(--cell-radius) text-sm [&>svg]:size-3.5 [&>svg]:text-muted-foreground',
+            : 'flex items-center gap-1 rounded-(--cell-radius) text-sm [&>svg]:size-3.5 [&>svg]:text-gray-a11',
           defaultClassNames.caption_label,
         ),
         month_grid: cn('w-full border-collapse', defaultClassNames.month_grid),
         weekdays: cn('flex', defaultClassNames.weekdays),
         weekday: cn(
-          'flex-1 rounded-(--cell-radius) text-[0.8rem] font-normal text-muted-foreground select-none',
+          'flex-1 rounded-(--cell-radius) text-xs font-normal text-gray-a11 select-none',
           defaultClassNames.weekday,
         ),
         week: cn('mt-2 flex w-full', defaultClassNames.week),
@@ -99,7 +99,7 @@ function Calendar({
           defaultClassNames.week_number_header,
         ),
         week_number: cn(
-          'text-[0.8rem] text-muted-foreground select-none',
+          'text-xs text-gray-a11 select-none',
           defaultClassNames.week_number,
         ),
         day: cn(
@@ -110,26 +110,23 @@ function Calendar({
           defaultClassNames.day,
         ),
         range_start: cn(
-          'relative isolate z-0 rounded-l-(--cell-radius) bg-muted after:absolute after:inset-y-0 after:right-0 after:w-4 after:bg-muted',
+          'relative isolate z-0 rounded-l-(--cell-radius) bg-iris-a3 after:absolute after:inset-y-0 after:right-0 after:w-4 after:bg-iris-a3',
           defaultClassNames.range_start,
         ),
         range_middle: cn('rounded-none', defaultClassNames.range_middle),
         range_end: cn(
-          'relative isolate z-0 rounded-r-(--cell-radius) bg-muted after:absolute after:inset-y-0 after:left-0 after:w-4 after:bg-muted',
+          'relative isolate z-0 rounded-r-(--cell-radius) bg-iris-a3 after:absolute after:inset-y-0 after:left-0 after:w-4 after:bg-iris-a3',
           defaultClassNames.range_end,
         ),
         today: cn(
-          'rounded-(--cell-radius) bg-muted text-foreground data-[selected=true]:rounded-none',
+          'rounded-(--cell-radius) bg-gray-a3 text-foreground data-[selected=true]:rounded-none',
           defaultClassNames.today,
         ),
         outside: cn(
-          'text-muted-foreground aria-selected:text-muted-foreground',
+          'text-gray-a8 aria-selected:text-gray-a8',
           defaultClassNames.outside,
         ),
-        disabled: cn(
-          'text-muted-foreground opacity-50',
-          defaultClassNames.disabled,
-        ),
+        disabled: cn('text-gray-a8', defaultClassNames.disabled),
         hidden: cn('invisible', defaultClassNames.hidden),
         ...classNames,
       }}
@@ -222,8 +219,12 @@ function CalendarDayButton({
       data-range-start={modifiers.range_start}
       data-range-end={modifiers.range_end}
       data-range-middle={modifiers.range_middle}
+      data-outside={modifiers.outside}
+      data-disabled={modifiers.disabled}
       className={cn(
-        'relative isolate z-10 flex aspect-square size-auto w-full min-w-(--cell-size) flex-col gap-1 border-0 leading-none font-normal group-data-[focused=true]/day:relative group-data-[focused=true]/day:z-10 group-data-[focused=true]/day:border-ring group-data-[focused=true]/day:ring-[3px] group-data-[focused=true]/day:ring-ring/50 data-[range-end=true]:rounded-(--cell-radius) data-[range-end=true]:rounded-r-(--cell-radius) data-[range-end=true]:bg-primary data-[range-end=true]:text-primary-foreground data-[range-middle=true]:rounded-none data-[range-middle=true]:bg-muted data-[range-middle=true]:text-foreground data-[range-start=true]:rounded-(--cell-radius) data-[range-start=true]:rounded-l-(--cell-radius) data-[range-start=true]:bg-primary data-[range-start=true]:text-primary-foreground data-[selected-single=true]:bg-primary data-[selected-single=true]:text-primary-foreground dark:hover:text-foreground [&>span]:text-xs [&>span]:opacity-70',
+        // The ghost button sets its own text color, so outside and disabled
+        // days dim here rather than inheriting from the cell.
+        'relative isolate z-10 flex aspect-square size-auto w-full min-w-(--cell-size) flex-col gap-1 border-0 leading-none font-normal data-[disabled=true]:text-gray-a8 data-[outside=true]:text-gray-a8 group-data-[focused=true]/day:relative group-data-[focused=true]/day:z-10 group-data-[focused=true]/day:outline-2 group-data-[focused=true]/day:outline-solid group-data-[focused=true]/day:-outline-offset-1 group-data-[focused=true]/day:outline-ring data-[range-end=true]:rounded-(--cell-radius) data-[range-end=true]:rounded-r-(--cell-radius) data-[range-end=true]:bg-accent-brand data-[range-end=true]:text-accent-brand-foreground data-[range-middle=true]:rounded-none data-[range-middle=true]:bg-iris-a3 data-[range-middle=true]:text-foreground data-[range-start=true]:rounded-(--cell-radius) data-[range-start=true]:rounded-l-(--cell-radius) data-[range-start=true]:bg-accent-brand data-[range-start=true]:text-accent-brand-foreground data-[selected-single=true]:bg-accent-brand data-[selected-single=true]:text-accent-brand-foreground dark:hover:text-foreground [&>span]:text-xs [&>span]:opacity-70',
         defaultClassNames.day,
         className,
       )}
