@@ -129,6 +129,14 @@ const limits = {
     period: HOUR,
     capacity: 20,
   },
+  // One single-use Express Dashboard login link per call; same shape as the
+  // status refresh — cheap, but minted under our key.
+  stripeDashboardLink: {
+    kind: "token bucket",
+    rate: 60,
+    period: HOUR,
+    capacity: 20,
+  },
   // Each call files a registration/order row pair and mints a Stripe
   // Checkout Session. Sized like registerSelf — churn is the abuse case, and
   // every attempt creates external Stripe objects under our key.

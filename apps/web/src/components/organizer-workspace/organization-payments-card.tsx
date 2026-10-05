@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useAction, useQuery } from 'convex/react'
-import { RefreshCw } from 'lucide-react'
+import { ExternalLink, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@paper-pairings/backend/convex/_generated/api'
 import { mutationErrorMessage } from '@paper-pairings/core'
@@ -17,12 +17,13 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
 
-type PaymentsBusy = 'connect' | 'refresh' | null
+type PaymentsBusy = 'connect' | 'refresh' | 'dashboard' | null
 
 const statusLabels = {
   pending: 'Onboarding incomplete',
   active: 'Payouts ready',
   restricted: 'Action required',
+  rejected: 'Account rejected',
   unsupported: 'Not supported',
 } as const
 
@@ -44,8 +45,32 @@ export function OrganizationPaymentsCard() {
   const refreshAccountStatus = useAction(
     api.payments.connect.refreshAccountStatus,
   )
+  const createDashboardLink = useAction(
+    api.payments.connect.createDashboardLink,
+  )
 
   const [busy, setBusy] = useState<PaymentsBusy>(null)
+
+  // Stripe login links are single-use and short-lived, so one is minted per
+  // click and followed immediately, like the onboarding link.
+  async function handleOpenDashboard() {
+    if (!selectedOrganizationId) {
+      return
+    }
+
+    setBusy('dashboard')
+    try {
+      const { url } = await createDashboardLink({
+        organizationId: selectedOrganizationId,
+      })
+      window.location.assign(url)
+    } catch (error) {
+      toast.error(
+        mutationErrorMessage(error, 'Could not open the Stripe dashboard.'),
+      )
+      setBusy(null)
+    }
+  }
 
   async function handleConnect() {
     if (!selectedOrganizationId) {
@@ -150,6 +175,20 @@ export function OrganizationPaymentsCard() {
                   Continue onboarding
                 </Button>
               )}
+              <Button
+                variant={
+                  settings.connection.payoutsReady ? 'default' : 'outline'
+                }
+                onClick={() => void handleOpenDashboard()}
+                disabled={!settings.canManage || busy !== null}
+              >
+                {busy === 'dashboard' ? (
+                  <Spinner data-icon="inline-start" />
+                ) : (
+                  <ExternalLink data-icon="inline-start" />
+                )}
+                Open Stripe dashboard
+              </Button>
               <Button
                 variant="outline"
                 onClick={() => void handleRefresh()}

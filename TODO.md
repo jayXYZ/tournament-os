@@ -593,14 +593,21 @@ organizer is paid exactly the entry cost per paid seat.
       overloading registration status: no new entry statuses — "awaiting
       payment" is a pending entry plus a live order, seats move only through
       the webhook, and hard deletion refuses while money is unsettled
-- [ ] Verify the flow end-to-end against Stripe test mode (blocked on
-      human-only dashboard setup: platform profile with the negative-balance
-      liability acknowledgment, a restricted key + webhook endpoint, and the
-      payment env vars — see `docs/payments.md`)
-- [ ] Subscribe a v2 event destination for
-      `v2.core.account[requirements].updated` so connected-account status
-      stays fresh without polling (v1 polls on onboarding return and
-      re-checks live before every transfer, so staleness never moves money)
+- [x] Verify the flow end-to-end against a Stripe sandbox (2026-10-04):
+      hosted Connect onboarding → thin-event status sync → paid Checkout
+      registrations fulfilled by webhook → player-cancel full refund with the
+      organizer-absorbed fee → completion payout sweep (two transfers,
+      `source_transaction`-anchored, absorbed fee deducted). Surfaced and
+      fixed two account-creation requirements (`contact_email`,
+      `identity.country`) and the Accounts v2 restricted-key permission.
+- [x] Subscribe a v2 thin-event destination
+      (`/stripe/account-events`, `STRIPE_ACCOUNT_WEBHOOK_SECRET`) for
+      `v2.core.account[configuration.recipient].capability_status_updated`
+      and `v2.core.account[requirements].updated` so connected-account
+      status stays fresh without polling; the payout still re-checks live
+      before every transfer
+- [x] Give organizers Express Dashboard access through in-app single-use
+      login links (`createDashboardLink`)
 - [ ] Build the dispute workflow beyond v1's record-and-exclude (evidence
       submission, post-payout clawback via transfer reversals)
 - [ ] Reconcile the estimated processing fee against Stripe's actual

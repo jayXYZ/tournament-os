@@ -1,7 +1,13 @@
 import { v } from "convex/values";
 
 import { internal } from "../_generated/api";
-import { action, internalMutation, query } from "../_generated/server";
+import type { Doc } from "../_generated/dataModel";
+import {
+  action,
+  internalMutation,
+  query,
+  type MutationCtx,
+} from "../_generated/server";
 import { requireActiveMembership } from "../model/access";
 import {
   requirePaymentsPermission,
@@ -68,6 +74,14 @@ export const beginStripeOnboarding = internalMutation({
       args.organizationId,
     );
 
+    // Stripe refuses a recipient-configured account without a contact email,
+    // so a first-time connect needs one; a re-entry for an existing account
+    // never creates anything.
+    if (!existing && !user.email) {
+      throw new Error(
+        "Add an email address to your account before connecting Stripe",
+      );
+    }
     return {
       existingStripeAccountId: existing?.stripeAccountId ?? null,
       organizationName: organization.name,
@@ -120,6 +134,22 @@ export const beginStripeStatusRefresh = internalMutation({
   },
 });
 
+// The one writer of the capability snapshot, shared by the manual refresh and
+// the account event destination.
+async function applyAccountStatus(
+  ctx: MutationCtx,
+  account: Doc<"organizationStripeAccounts">,
+  transfersCapabilityStatus: TransfersCapabilityStatus,
+) {
+  const now = Date.now();
+  await ctx.db.patch(account._id, {
+    transfersCapabilityStatus,
+    payoutsReady: transfersCapabilityStatus === "active",
+    lastSyncedAt: now,
+    updatedAt: now,
+  });
+}
+
 export const recordStripeAccountStatus = internalMutation({
   args: {
     organizationId: v.id("organizations"),
@@ -133,15 +163,46 @@ export const recordStripeAccountStatus = internalMutation({
     if (!account) {
       throw new Error("Stripe account not found");
     }
-
-    const now = Date.now();
-    await ctx.db.patch(account._id, {
-      transfersCapabilityStatus: args.transfersCapabilityStatus,
-      payoutsReady: args.transfersCapabilityStatus === "active",
-      lastSyncedAt: now,
-      updatedAt: now,
-    });
+    await applyAccountStatus(ctx, account, args.transfersCapabilityStatus);
     return null;
+  },
+});
+
+// Webhook-driven snapshot write (http.ts `/stripe/account-events`): the event
+// names the connected account, not the organization. An account this
+// deployment never recorded (another environment's, or an abandoned
+// concurrent-onboarding loser) is ignored, not an error — Stripe should not
+// retry it.
+export const recordStripeAccountStatusByAccountId = internalMutation({
+  args: {
+    stripeAccountId: v.string(),
+    transfersCapabilityStatus: stripeTransfersCapabilityStatusValidator,
+  },
+  handler: async (ctx, args) => {
+    const account = await ctx.db
+      .query("organizationStripeAccounts")
+      .withIndex("by_stripeAccountId", (q) =>
+        q.eq("stripeAccountId", args.stripeAccountId),
+      )
+      .unique();
+    if (!account) {
+      return false;
+    }
+    await applyAccountStatus(ctx, account, args.transfersCapabilityStatus);
+    return true;
+  },
+});
+
+export const beginStripeDashboardLink = internalMutation({
+  args: { organizationId: v.id("organizations") },
+  handler: async (ctx, args) => {
+    await enforceRateLimit(ctx, "stripeDashboardLink");
+    await requirePaymentsPermission(ctx, args.organizationId);
+    const account = await stripeAccountForOrganization(
+      ctx,
+      args.organizationId,
+    );
+    return { stripeAccountId: account?.stripeAccountId ?? null };
   },
 });
 
@@ -166,10 +227,17 @@ export const createOnboardingLink = action({
 
     let stripeAccountId = begin.existingStripeAccountId;
     if (!stripeAccountId) {
+      if (!begin.contactEmail) {
+        // Unreachable: the begin mutation refuses a first-time connect
+        // without an email. Kept so the gateway contract stays non-optional.
+        throw new Error(
+          "Add an email address to your account before connecting Stripe",
+        );
+      }
       const created = await gateway.createRecipientAccount({
         organizationId: args.organizationId,
         displayName: begin.organizationName,
-        contactEmail: begin.contactEmail ?? undefined,
+        contactEmail: begin.contactEmail,
       });
       const recorded: { stripeAccountId: string } = await ctx.runMutation(
         internal.payments.connect.recordStripeAccountCreated,
@@ -191,9 +259,31 @@ export const createOnboardingLink = action({
   },
 });
 
+// Mints a single-use login link into the organization's Express Dashboard,
+// where the organizer sees their balance, upcoming payouts, and bank account.
+// Owner-only like every other connection verb, and only ever handed to the
+// authenticated owner in-app (Stripe: never share login links externally).
+export const createDashboardLink = action({
+  args: { organizationId: v.id("organizations") },
+  handler: async (ctx, args): Promise<{ url: string }> => {
+    const gateway = getStripeGateway(requireStripeSecretKey());
+    const begin: { stripeAccountId: string | null } = await ctx.runMutation(
+      internal.payments.connect.beginStripeDashboardLink,
+      { organizationId: args.organizationId },
+    );
+    if (!begin.stripeAccountId) {
+      throw new Error("Connect a Stripe account first");
+    }
+    return await gateway.createDashboardLoginLink({
+      stripeAccountId: begin.stripeAccountId,
+    });
+  },
+});
+
 // Re-reads the connected account's transfers capability from Stripe and
-// stores the snapshot. Fired by the onboarding return route and the card's
-// refresh button; the payout path re-checks live regardless.
+// stores the snapshot. Fired by the onboarding return route, the card's
+// refresh button, and the account event destination (http.ts); the payout
+// path re-checks live regardless.
 export const refreshAccountStatus = action({
   args: { organizationId: v.id("organizations") },
   handler: async (

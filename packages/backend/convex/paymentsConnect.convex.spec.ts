@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 import { beforeEach, expect, test, vi } from "vitest";
 
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import { organizerIdentity, seedOrganizer } from "./specHelpers";
 import { createConvexTest } from "./specHelpers.runtime";
 import type { TransfersCapabilityStatus } from "./stripe/client";
@@ -23,6 +23,7 @@ const gatewayState = vi.hoisted(() => ({
     refreshUrl: string;
   }>,
   retrieveStatusCalls: [] as Array<{ stripeAccountId: string }>,
+  dashboardLinkCalls: [] as Array<{ stripeAccountId: string }>,
   nextCapabilityStatus: "pending" as string,
 }));
 
@@ -56,6 +57,10 @@ vi.mock("./stripe/client", () => ({
       gatewayState.retrieveStatusCalls.push(args);
       return gatewayState.nextCapabilityStatus as TransfersCapabilityStatus;
     },
+    createDashboardLoginLink: async (args: { stripeAccountId: string }) => {
+      gatewayState.dashboardLinkCalls.push(args);
+      return { url: "https://connect.stripe.test/express-login" };
+    },
   }),
 }));
 
@@ -63,6 +68,7 @@ beforeEach(() => {
   gatewayState.createRecipientAccountCalls = [];
   gatewayState.createOnboardingLinkCalls = [];
   gatewayState.retrieveStatusCalls = [];
+  gatewayState.dashboardLinkCalls = [];
   gatewayState.nextCapabilityStatus = "pending";
 });
 
@@ -150,6 +156,67 @@ test("refresh snapshots the live transfers capability", async () => {
   });
 });
 
+test("account events overwrite the snapshot by connected account id", async () => {
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const asOwner = t.withIdentity(organizerIdentity);
+
+  await asOwner.action(api.payments.connect.createOnboardingLink, {
+    organizationId,
+  });
+
+  // The thin-event route (http.ts) re-reads the live capability and lands
+  // here with the account id Stripe named — no organization in the payload.
+  const recorded = await t.mutation(
+    internal.payments.connect.recordStripeAccountStatusByAccountId,
+    { stripeAccountId: "acct_test_1", transfersCapabilityStatus: "active" },
+  );
+  expect(recorded).toBe(true);
+
+  const settings = await asOwner.query(
+    api.payments.connect.getOrganizationPaymentSettings,
+    { organizationId },
+  );
+  expect(settings.connection).toMatchObject({
+    transfersCapabilityStatus: "active",
+    payoutsReady: true,
+  });
+
+  // An account this deployment never recorded is ignored, not an error, so
+  // Stripe does not retry the delivery.
+  const ignored = await t.mutation(
+    internal.payments.connect.recordStripeAccountStatusByAccountId,
+    {
+      stripeAccountId: "acct_unknown",
+      transfersCapabilityStatus: "restricted",
+    },
+  );
+  expect(ignored).toBe(false);
+});
+
+test("the owner opens the Express dashboard through a fresh login link", async () => {
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const asOwner = t.withIdentity(organizerIdentity);
+
+  await expect(
+    asOwner.action(api.payments.connect.createDashboardLink, {
+      organizationId,
+    }),
+  ).rejects.toThrow("Connect a Stripe account first");
+
+  await asOwner.action(api.payments.connect.createOnboardingLink, {
+    organizationId,
+  });
+  const link = await asOwner.action(api.payments.connect.createDashboardLink, {
+    organizationId,
+  });
+  expect(link.url).toBe("https://connect.stripe.test/express-login");
+  expect(gatewayState.dashboardLinkCalls).toEqual([
+    { stripeAccountId: "acct_test_1" },
+  ]);
+});
+
 test("refresh before connecting is refused", async () => {
   const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
@@ -200,6 +267,11 @@ test("admins can read payment settings but not manage the connection", async () 
   ).rejects.toThrow("Unauthorized");
   await expect(
     asAdmin.action(api.payments.connect.refreshAccountStatus, {
+      organizationId,
+    }),
+  ).rejects.toThrow("Unauthorized");
+  await expect(
+    asAdmin.action(api.payments.connect.createDashboardLink, {
       organizationId,
     }),
   ).rejects.toThrow("Unauthorized");
