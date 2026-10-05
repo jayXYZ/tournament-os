@@ -29,6 +29,17 @@ suites are `paymentsConnect` / `entryFeeSettings` / `paymentsCheckout` /
   reach their Express Dashboard (balance, upcoming payouts, bank account)
   through single-use login links minted in-app (`createDashboardLink`),
   the access path Stripe prescribes for `dashboard: "express"`.
+- **Supported countries: US only.** Accounts v2 requires `identity.country`
+  at creation and never lets it change; Checkout and transfers are USD-only.
+  `SUPPORTED_STRIPE_COUNTRIES` (`@paper-pairings/shared/payment-fees`) is
+  the one list: the first-connect action refuses any other country before
+  calling Stripe (a wrongly-countried account could never finish onboarding
+  and the organization owns exactly one account), the payments card states
+  the limitation and collects an explicit "based in the United States"
+  acknowledgement, and the country is stored on
+  `organizationStripeAccounts`. Widening the list is the entry point for
+  the cross-border payouts item in `TODO.md` §9; charging players in local
+  currencies is a separate, larger item there.
 - **Charge pattern** — **separate charges and transfers** (hold-and-release).
   Players pay through a Stripe-hosted Checkout Session on the platform
   account, tagged with the order's transfer group (`order:{orderId}`). No

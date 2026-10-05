@@ -4,9 +4,12 @@ import { ExternalLink, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@paper-pairings/backend/convex/_generated/api'
 import { mutationErrorMessage } from '@paper-pairings/core'
+import { SUPPORTED_STRIPE_COUNTRIES } from '@paper-pairings/shared/payment-fees'
 import { useOrganization } from './organization-context'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Field, FieldContent, FieldLabel } from '@/components/ui/field'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
 
@@ -43,6 +46,11 @@ export function OrganizationPaymentsCard() {
   )
 
   const [busy, setBusy] = useState<PaymentsBusy>(null)
+  // Stripe fixes a connected account's country at creation and the platform
+  // pays out in USD only, so the first connect asks the owner to confirm the
+  // organization is US-based instead of silently creating a US account that
+  // a non-US organizer could never finish onboarding.
+  const [confirmedUsBased, setConfirmedUsBased] = useState(false)
 
   // Stripe login links are single-use and short-lived, so one is minted per
   // click and followed immediately, like the onboarding link.
@@ -65,6 +73,8 @@ export function OrganizationPaymentsCard() {
     }
   }
 
+  // Serves both the first connect (country required) and "continue
+  // onboarding" (the account exists, so the country is ignored server-side).
   async function handleConnect() {
     if (!selectedOrganizationId) {
       return
@@ -74,6 +84,7 @@ export function OrganizationPaymentsCard() {
     try {
       const { url } = await createOnboardingLink({
         organizationId: selectedOrganizationId,
+        country: SUPPORTED_STRIPE_COUNTRIES[0],
       })
       window.location.assign(url)
     } catch (error) {
@@ -126,9 +137,35 @@ export function OrganizationPaymentsCard() {
           </p>
         ) : settings.connection === null ? (
           <>
+            <p className="text-sm text-muted-foreground">
+              Stripe payouts are currently available to organizations based in
+              the United States only. Onboarding asks for a US bank account and
+              US tax details, and the account&apos;s country cannot be changed
+              later. Support for other countries is planned.
+            </p>
+            <Field
+              orientation="horizontal"
+              data-disabled={!settings.canManage || busy !== null}
+            >
+              <Checkbox
+                id="stripe-us-based"
+                checked={confirmedUsBased}
+                onCheckedChange={(checked) =>
+                  setConfirmedUsBased(checked === true)
+                }
+                disabled={!settings.canManage || busy !== null}
+              />
+              <FieldContent>
+                <FieldLabel htmlFor="stripe-us-based">
+                  This organization is based in the United States
+                </FieldLabel>
+              </FieldContent>
+            </Field>
             <Button
               onClick={() => void handleConnect()}
-              disabled={!settings.canManage || busy !== null}
+              disabled={
+                !settings.canManage || busy !== null || !confirmedUsBased
+              }
             >
               {busy === 'connect' ? <Spinner data-icon="inline-start" /> : null}
               Connect Stripe
