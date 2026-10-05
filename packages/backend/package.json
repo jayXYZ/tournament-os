@@ -15,7 +15,7 @@
     "@convex-dev/rate-limiter": "^0.3.2",
     "@paper-pairings/shared": "workspace:*",
     "convex": "catalog:",
-    "stripe": "^22.5.0"
+    "stripe": "^23.0.0"
   },
   "devDependencies": {
     "@convex-dev/eslint-plugin": "^2.0.0",

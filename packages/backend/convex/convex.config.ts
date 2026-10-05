@@ -16,6 +16,11 @@ const app = defineApp({
     // unset (see convex/stripe/config.ts).
     STRIPE_SECRET_KEY: v.optional(v.string()),
     STRIPE_WEBHOOK_SECRET: v.optional(v.string()),
+    // Signing secret of the v2 thin-event destination for connected-account
+    // events (`/stripe/account-events`). Optional: without it the capability
+    // snapshot refreshes only on onboarding return and manual refresh — money
+    // movement re-checks live either way.
+    STRIPE_ACCOUNT_WEBHOOK_SECRET: v.optional(v.string()),
     // Web app origin for Stripe redirect URLs (Connect onboarding
     // return/refresh, Checkout success/cancel), e.g. https://example.com.
     // Stripe requires HTTPS for Account Link URLs even in test mode.

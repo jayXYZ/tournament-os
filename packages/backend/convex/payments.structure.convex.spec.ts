@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 
 import { expect, test } from "vitest";
 
@@ -77,6 +77,66 @@ test("the webhook route verifies signatures before any state change", () => {
   expect(httpSource).toMatch(/stripe-signature/);
   expect(httpSource).toMatch(/constructWebhookEvent/);
   expect(httpSource).toMatch(/status: 400/);
+});
+
+test("the account event route verifies thin-event signatures and re-reads live status", () => {
+  // Capability transitions arrive as v2 thin events on their own destination
+  // (own signing secret); the route trusts no payload snapshot and reads the
+  // live capability before overwriting ours.
+  expect(httpSource).toMatch(/path: "\/stripe\/account-events"/);
+  expect(httpSource).toMatch(/constructAccountEventNotification/);
+  expect(httpSource).toMatch(/requireStripeAccountWebhookSecret/);
+  expect(httpSource).toMatch(/retrieveTransfersCapabilityStatus/);
+  expect(clientSource).toMatch(/parseEventNotificationAsync/);
+});
+
+test("express-dashboard accounts get login links, never shared credentials", () => {
+  expect(clientSource).toMatch(/accounts\.createLoginLink/);
+  expect(connectSource).toMatch(
+    /enforceRateLimit\(ctx, "stripeDashboardLink"\)/,
+  );
+});
+
+test("the pinned API version is the installed SDK's latest", () => {
+  // `satisfies Stripe.LatestApiVersion` makes tsc the enforcer; this pins
+  // that the guard stays in place.
+  expect(clientSource).toMatch(
+    /STRIPE_API_VERSION =\s*"[0-9]{4}-[0-9]{2}-[0-9]{2}\.[a-z]+" satisfies Stripe\.LatestApiVersion/,
+  );
+});
+
+test("no Stripe API keys are committed in source", () => {
+  // Key exposure in repositories is the leading cause of Stripe key
+  // takeovers. Specs use obviously fake short stand-ins ("rk_test_fake").
+  const roots = [
+    new URL("./", import.meta.url),
+    new URL("../../../apps/web/src/", import.meta.url),
+    new URL("../../../packages/shared/src/", import.meta.url),
+  ];
+  const keyPattern = /\b[sr]k_(?:live|test)_[A-Za-z0-9]{16,}/;
+  const offenders: string[] = [];
+  const walk = (dir: URL) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name === "node_modules" || entry.name === "_generated") {
+        continue;
+      }
+      const child = new URL(
+        entry.isDirectory() ? `${entry.name}/` : entry.name,
+        dir,
+      );
+      if (entry.isDirectory()) {
+        walk(child);
+      } else if (/\.(ts|tsx|js|mjs|json|md)$/.test(entry.name)) {
+        if (keyPattern.test(readFileSync(child, "utf8"))) {
+          offenders.push(child.pathname);
+        }
+      }
+    }
+  };
+  for (const root of roots) {
+    walk(root);
+  }
+  expect(offenders).toEqual([]);
 });
 
 test("webhook mutations never call Stripe themselves", () => {

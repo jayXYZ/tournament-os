@@ -59,6 +59,7 @@ export const stripeTransfersCapabilityStatusValidator = v.union(
   v.literal("pending"),
   v.literal("active"),
   v.literal("restricted"),
+  v.literal("rejected"),
   v.literal("unsupported"),
 );
 

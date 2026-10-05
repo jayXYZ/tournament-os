@@ -28,6 +28,7 @@ type Env = {
   readonly CLERK_JWT_ISSUER_DOMAIN: string;
   readonly PLATFORM_FEE_PERCENT: string | undefined;
   readonly PROFILE_RESULTS_CURSOR_KEY: string | undefined;
+  readonly STRIPE_ACCOUNT_WEBHOOK_SECRET: string | undefined;
   readonly STRIPE_FEE_FIXED_CENTS: string | undefined;
   readonly STRIPE_FEE_PERCENT: string | undefined;
   readonly STRIPE_SECRET_KEY: string | undefined;
