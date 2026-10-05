@@ -613,6 +613,27 @@ organizer is paid exactly the entry cost per paid seat.
 - [ ] Reconcile the estimated processing fee against Stripe's actual
       per-charge fee (balance transactions) before scale — international
       cards cost more than the default 2.9% + 30¢ estimate
+- [x] Guard the hardcoded US account country (2026-10-05): a first connect
+      must name a country in `SUPPORTED_STRIPE_COUNTRIES` (US only) or it
+      is refused before any Stripe call; the payments card says so and
+      collects an explicit US-based acknowledgement; the country is stored
+      on `organizationStripeAccounts`
+- [ ] Cross-border payouts: let organizations outside the US connect and be
+      paid (players keep paying in USD). Small–medium: add a country picker
+      limited to Stripe's cross-border-payout recipient countries, widen
+      `SUPPORTED_STRIPE_COUNTRIES`, and confirm against a sandbox that a
+      non-US recipient account with `dashboard: "express"` accepts USD
+      transfers (Stripe converts at payout; decide who bears the ~1% FX
+      fee). Entry fees stay USD-denominated for the organizer.
+- [ ] Local-currency pricing: let an event charge players in the
+      organization's currency. Medium–large and separate from the above:
+      per-currency Stripe fee estimates and charge minimums in
+      `payment-fees` (today's 2.9% + 30¢ and $0.50 floor are US card
+      rates), zero-decimal currencies, a currency on entry-fee settings and
+      orders flowing into Checkout `price_data.currency`, transfers in a
+      currency the platform balance holds (or accepting conversion),
+      per-currency payout sums, and every `formatCents` call site
+      (`apps/web/src/lib/money.ts` is hardcoded to en-US/USD).
 
 ## 10. Design system and platform polish
 

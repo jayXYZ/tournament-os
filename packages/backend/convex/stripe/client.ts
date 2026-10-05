@@ -1,5 +1,7 @@
 import Stripe from "stripe";
 
+import type { StripeCountry } from "@paper-pairings/shared/payment-fees";
+
 // Every Stripe API call funnels through this gateway so behavioral specs can
 // mock one module and the rest of the payments code never touches the SDK.
 // It runs in Convex's default runtime — the fetch HTTP client replaces
@@ -41,6 +43,8 @@ export interface StripeGateway {
     displayName: string;
     // Required by Stripe whenever configuration.recipient is supplied.
     contactEmail: string;
+    // Fixed for the account's lifetime; see SUPPORTED_STRIPE_COUNTRIES.
+    country: StripeCountry;
   }): Promise<{ stripeAccountId: string }>;
   createOnboardingLink(args: {
     stripeAccountId: string;
@@ -127,11 +131,12 @@ export function getStripeGateway(secretKey: string): StripeGateway {
           display_name: args.displayName,
           contact_email: args.contactEmail,
           // Stripe requires the country up front when a recipient
-          // configuration is requested at creation. The platform charges and
-          // transfers in USD only (checkout/transfer currency below), so US
-          // is the one country it can pay out to today; hosted onboarding
-          // collects everything else.
-          identity: { country: "us" },
+          // configuration is requested at creation, and it cannot change
+          // afterwards. The caller has already checked it against
+          // SUPPORTED_STRIPE_COUNTRIES (US only while checkout and transfers
+          // are USD-only, see below); hosted onboarding collects everything
+          // else.
+          identity: { country: args.country },
           dashboard: "express",
           defaults: {
             responsibilities: {

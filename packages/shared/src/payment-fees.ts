@@ -97,3 +97,23 @@ export function validateEntryFeeCents(value: number): string | null {
   }
   return null;
 }
+
+// Countries whose organizations may connect a Stripe account. Lowercase
+// ISO 3166-1 alpha-2, as Accounts v2 `identity.country` takes it. The platform
+// charges and transfers in USD only, and a connected account's country is
+// fixed at creation — a non-US account would be stuck in onboarding (US bank
+// account, US tax id) with no way to recreate it under the one-account-per-
+// organization rule — so the onboarding action refuses anything outside this
+// list. Widening it is the first step of the cross-border payouts item in
+// TODO.md §9.
+export const SUPPORTED_STRIPE_COUNTRIES = ["us"] as const;
+export type StripeCountry = (typeof SUPPORTED_STRIPE_COUNTRIES)[number];
+
+export function isSupportedStripeCountry(
+  value: string,
+): value is StripeCountry {
+  return (SUPPORTED_STRIPE_COUNTRIES as readonly string[]).includes(value);
+}
+
+export const UNSUPPORTED_STRIPE_COUNTRY_MESSAGE =
+  "Stripe payouts are currently available to organizations based in the United States only";
