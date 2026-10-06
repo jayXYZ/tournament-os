@@ -647,10 +647,12 @@ organizer is paid exactly the entry cost per paid seat.
       (`docs/rate-limiting.md`)
 - [x] Committed `.env.example` contracts and typed Convex env declarations
       via `defineApp({ env })` (`docs/environment.md`)
-- [x] CI with four isolated jobs — test, checks (lint/typecheck/format),
-      native smoke export, and the lockfile dedupe check (isolated because
-      `pnpm dedupe --check` mutates `node_modules`; see the workflow
-      comment) — plus the local one-shot gate `pnpm check`
+- [x] CI on every branch push with three jobs — test, checks (single-copy
+      guard for react/react-dom/react-native/convex via
+      `scripts/check-single-version.js`, lint, typecheck, format), native
+      smoke export — plus the local one-shot gate `pnpm check`. Expo's
+      `expo install --check` runs weekly in `expo-drift.yml` and files an
+      issue, since it tracks npm release state rather than the commit.
 - [x] Backend ESLint at zero warnings
 - [x] Toolchain pins: Node 24 LTS, pnpm 11.9.0, workspace catalogs (react
       entries stay in lockstep with the `overrides` block), TypeScript 6
