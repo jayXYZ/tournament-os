@@ -171,7 +171,7 @@ export function OrganizationProfileView() {
             </form>
           </section>
 
-          <OrganizationPaymentsCard />
+          <OrganizationPaymentsCard key={organizationId} />
         </div>
 
         <aside className="flex flex-col divide-y divide-border [&>*+*]:pt-6">
