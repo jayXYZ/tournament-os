@@ -571,6 +571,14 @@ export default defineSchema({
     // Present only for confirmed entries. Mutations centralize transitions so
     // non-confirmed entries never carry a competitive state.
     participationStatus: v.optional(tournamentParticipationStatusValidator),
+    // Present (true) only on a pending application the organizer has yet to
+    // decide — the Registrations tab's review queue (CONTEXT.md "Review
+    // Queue"). A pending row without it is pending for another reason: an
+    // approved (or directly filed) entry awaiting its payment, which is a
+    // pending entry plus a live order (docs/payments.md) and is not review
+    // work. setRegistrationState keeps the flag in step with every
+    // transition, so the queue is an index range, never an order join.
+    awaitingReview: v.optional(v.literal(true)),
     // Set only when tournament progression changes an active player to
     // "eliminated". Rewinding that round can then restore exactly those
     // players without reviving voluntary drops or disqualifications.
@@ -616,9 +624,15 @@ export default defineSchema({
     ])
     // The Registrations tab's status filter and its pending-review count:
     // one entry status of a tournament in creation order, so a filtered
-    // list pages newest-first exactly like the unfiltered one. The index
-    // above would group confirmed rows by participation status first.
-    .index("by_tournamentId_and_entryStatus", ["tournamentId", "entryStatus"])
+    // list pages newest-first exactly like the unfiltered one (the index
+    // above would group confirmed rows by participation status first). The
+    // trailing column carves the review queue out of "pending" — it is set
+    // only there, so every other status reads as a plain prefix.
+    .index("by_tournamentId_and_entryStatus_and_awaitingReview", [
+      "tournamentId",
+      "entryStatus",
+      "awaitingReview",
+    ])
     .index("by_participantId_and_entryStatus_and_tournamentStartDate", [
       "participantId",
       "entryStatus",
@@ -626,12 +640,12 @@ export default defineSchema({
     ])
     // Organizer roster search over the denormalized name. tournamentId as a
     // filter field scopes matches to one event, so searching never requires
-    // loading that event's registration history; entryStatus lets the
-    // Registrations tab's status filter narrow a search the same way it
-    // narrows the paginated list (see searchRegistrations).
+    // loading that event's registration history; entryStatus and
+    // awaitingReview let the Registrations tab's filter narrow a search the
+    // same way it narrows the paginated list (see searchRegistrations).
     .searchIndex("search_playerName", {
       searchField: "playerName",
-      filterFields: ["tournamentId", "entryStatus"],
+      filterFields: ["tournamentId", "entryStatus", "awaitingReview"],
     }),
 
   // One decklist per registration, submitted by the player for the event.

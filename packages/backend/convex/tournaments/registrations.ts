@@ -52,7 +52,7 @@ import {
   requireTournament,
 } from "../model/tournaments";
 import { enforceRateLimit } from "../rateLimits";
-import { tournamentEntryStatusValidator } from "../validators";
+import { registrationFilterValidator } from "../validators";
 
 async function registrationRows(
   ctx: QueryCtx,
@@ -213,7 +213,7 @@ export const registerSelf = mutation({
     // admission shape serves the fresh insert and the reused row alike.
     const requiresApproval = tournament.registrationRequiresApproval;
     const admission = requiresApproval
-      ? { entryStatus: "pending" as const }
+      ? { entryStatus: "pending" as const, awaitingReview: true as const }
       : {
           entryStatus: "confirmed" as const,
           participationStatus: "active" as const,
@@ -386,15 +386,16 @@ export const listMyTournaments = query({
   },
 });
 
-// Every registration workflow record, newest first — or, under an entry
-// status filter, only the rows in that state (the Registrations tab's review
-// queue). Unlike confirmed participants, pending/cancelled/rejected rows are
-// not bounded by tournament capacity, so this organizer history must be
-// cursor-paginated; paginateRegistrationHistory picks the index.
+// Every registration workflow record, newest first — or, under a filter,
+// one slice of it: an entry status, or the review queue (see
+// registrationFilterValidator). Unlike confirmed participants,
+// pending/cancelled/rejected rows are not bounded by tournament capacity, so
+// this organizer history must be cursor-paginated;
+// paginateRegistrationHistory picks the index.
 export const listRegistrationPage = query({
   args: {
     tournamentId: v.id("tournaments"),
-    entryStatus: v.optional(tournamentEntryStatusValidator),
+    filter: v.optional(registrationFilterValidator),
     paginationOpts: paginationOptsValidator,
   },
   handler: async (ctx, args) => {
@@ -403,7 +404,7 @@ export const listRegistrationPage = query({
     const page = await paginateRegistrationHistory(
       ctx,
       args.tournamentId,
-      args.entryStatus,
+      args.filter,
       args.paginationOpts,
     );
     return {
@@ -415,23 +416,24 @@ export const listRegistrationPage = query({
 
 // The Registrations tab's notification count: how many applications await a
 // decision, so an organizer sees there is review work from anywhere in the
-// manager without opening the tab (see pendingReviewCount for the cap).
+// manager without opening the tab (see pendingReviewCount for the cap and
+// the lifecycle rule).
 export const getPendingReviewCount = query({
   args: { tournamentId: v.id("tournaments") },
   handler: async (ctx, args) => {
-    await requireOrganizerAccess(ctx, args.tournamentId);
-    return await pendingReviewCount(ctx, args.tournamentId);
+    const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
+    return await pendingReviewCount(ctx, tournament);
   },
 });
 
 // Organizer roster search across the full registration history, one page of
-// best matches; the optional entry status composes with the tab's filter
-// (see searchRegistrationHistory).
+// best matches; the optional filter composes with the search the same way
+// it narrows the list (see searchRegistrationHistory).
 export const searchRegistrations = query({
   args: {
     tournamentId: v.id("tournaments"),
     search: v.string(),
-    entryStatus: v.optional(tournamentEntryStatusValidator),
+    filter: v.optional(registrationFilterValidator),
   },
   handler: async (ctx, args) => {
     const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
@@ -439,7 +441,7 @@ export const searchRegistrations = query({
       ctx,
       args.tournamentId,
       args.search,
-      args.entryStatus,
+      args.filter,
     );
 
     return await registrationRows(ctx, tournament, matches);

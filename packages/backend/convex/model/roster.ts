@@ -243,6 +243,7 @@ export async function restoreEntry(
   if (isPaidEvent(tournament) && !holdsPaidOrder && !compedByBadge) {
     await setRegistrationState(ctx, registration._id, {
       entryStatus: "pending",
+      awaitingReview: false,
       updatedAt: now,
     });
     const order = await ensurePostApprovalOrder(ctx, {
@@ -325,12 +326,15 @@ export async function approveEntry(
       registration.participantId,
     ));
   if (isPaidEvent(tournament) && !compedByBadge) {
-    if (registration.entryStatus !== "pending") {
-      await setRegistrationState(ctx, registration._id, {
-        entryStatus: "pending",
-        updatedAt: now,
-      });
-    }
+    // The decision is made, so the row leaves the review queue even though
+    // its entry status stays "pending" for the payment — the same write
+    // whether the row was an undecided application or a waitlisted/rejected
+    // row re-entering "pending".
+    await setRegistrationState(ctx, registration._id, {
+      entryStatus: "pending",
+      awaitingReview: false,
+      updatedAt: now,
+    });
     const order = await ensurePostApprovalOrder(ctx, {
       tournament,
       registration,

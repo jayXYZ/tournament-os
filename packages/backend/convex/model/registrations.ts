@@ -1,7 +1,8 @@
-import type { PaginationOptions } from "convex/server";
+import type { IndexRangeBuilder, PaginationOptions } from "convex/server";
 
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
+import type { RegistrationFilter } from "../validators";
 import { ORGANIZER_LIST_PAGE_SIZE } from "./pagination";
 import { participantForUser, participantPublicIdentity } from "./participants";
 
@@ -441,16 +442,36 @@ export async function nonActiveParticipationStatuses(
   return byRegistrationId;
 }
 
+// The index range one Registrations tab filter stands for (see
+// registrationFilterValidator): an entry status is a plain prefix of
+// by_tournamentId_and_entryStatus_and_awaitingReview; the review queue is
+// the pending rows that carry the flag. Both the list and the count read
+// this, so "pending review" means the same rows everywhere.
+function registrationFilterRange(
+  q: IndexRangeBuilder<
+    Doc<"tournamentRegistrations">,
+    ["tournamentId", "entryStatus", "awaitingReview", "_creationTime"]
+  >,
+  tournamentId: Id<"tournaments">,
+  filter: RegistrationFilter,
+) {
+  const scoped = q.eq("tournamentId", tournamentId);
+  return filter === "awaiting_review"
+    ? scoped.eq("entryStatus", "pending").eq("awaitingReview", true)
+    : scoped.eq("entryStatus", filter);
+}
+
 // One page of a tournament's registration history, newest first — or, under
-// an entry status filter, only the rows in that state (the Registrations
-// tab's review queue: filtering to "pending" lists exactly the applications
-// awaiting a decision). The filter picks the index. Both walks are plain
-// index-equality prefixes with no post-index filter, so every row read is a
-// row returned, and both read newest-first: the unfiltered walk orders on
-// the startDate column, constant per tournament (reschedule syncs excepted,
-// transiently) and so effectively on _creationTime; the filtered walk
-// orders on _creationTime directly, so a filtered confirmed list is not
-// regrouped by participation status.
+// a filter, only that slice of it: one entry status, or the review queue
+// (the applications awaiting a decision). The filter picks the index. Both
+// walks are plain index-equality prefixes with no post-index filter, so
+// every row read is a row returned, and both read newest-first: the
+// unfiltered walk orders on the startDate column, constant per tournament
+// (reschedule syncs excepted, transiently) and so effectively on
+// _creationTime; the filtered walk orders on _creationTime directly (the
+// awaitingReview column is set only on the review queue, so a status
+// prefix never regroups), so a filtered confirmed list is not regrouped by
+// participation status.
 // No maximumRowsRead on either: a cap would buy no headroom — it would just
 // equal numItems and trip on every full page (rowsRead reaches the cap on
 // the same doc that fills the page), flagging a healthy page as
@@ -459,10 +480,10 @@ export async function nonActiveParticipationStatuses(
 export async function paginateRegistrationHistory(
   ctx: QueryCtx,
   tournamentId: Id<"tournaments">,
-  entryStatus: Doc<"tournamentRegistrations">["entryStatus"] | undefined,
+  filter: RegistrationFilter | undefined,
   paginationOpts: PaginationOptions,
 ) {
-  if (entryStatus === undefined) {
+  if (filter === undefined) {
     return await ctx.db
       .query("tournamentRegistrations")
       .withIndex("by_tournamentId_and_tournamentStartDate", (q) =>
@@ -473,8 +494,8 @@ export async function paginateRegistrationHistory(
   }
   return await ctx.db
     .query("tournamentRegistrations")
-    .withIndex("by_tournamentId_and_entryStatus", (q) =>
-      q.eq("tournamentId", tournamentId).eq("entryStatus", entryStatus),
+    .withIndex("by_tournamentId_and_entryStatus_and_awaitingReview", (q) =>
+      registrationFilterRange(q, tournamentId, filter),
     )
     .order("desc")
     .paginate(paginationOpts);
@@ -486,20 +507,27 @@ export async function paginateRegistrationHistory(
 // otherwise grow with a busy event's application churn.
 export const PENDING_REVIEW_COUNT_CAP = 99;
 
-// How many applications await the organizer's decision — every pending row
-// of the tournament, the same rows the Registrations tab's "Pending review"
-// filter lists (each carries an approve action while registration is open,
-// so the count never promises a decision the roster can't offer). `capped`
-// means at least cap + 1 rows exist and the caller should show the cap with
-// an overflow mark rather than an exact number.
+// How many applications await the organizer's decision — the review queue
+// (CONTEXT.md "Review Queue"), the same rows the Registrations tab's
+// "Pending review" filter lists. Entry decisions exist only while
+// registration is open (registrationApproveEffect and its siblings all
+// return null elsewhere), so outside that lifecycle the count is zero
+// whatever the rows say: a tournament that starts with undecided
+// applications still lists them under the filter, but the badge never
+// advertises work the organizer cannot act on. `capped` means at least
+// cap + 1 rows exist and the caller should show the cap with an overflow
+// mark rather than an exact number.
 export async function pendingReviewCount(
   ctx: QueryCtx,
-  tournamentId: Id<"tournaments">,
+  tournament: Doc<"tournaments">,
 ): Promise<{ count: number; capped: boolean }> {
+  if (tournament.lifecycle !== "registration") {
+    return { count: 0, capped: false };
+  }
   const rows = await ctx.db
     .query("tournamentRegistrations")
-    .withIndex("by_tournamentId_and_entryStatus", (q) =>
-      q.eq("tournamentId", tournamentId).eq("entryStatus", "pending"),
+    .withIndex("by_tournamentId_and_entryStatus_and_awaitingReview", (q) =>
+      registrationFilterRange(q, tournament._id, "awaiting_review"),
     )
     .take(PENDING_REVIEW_COUNT_CAP + 1);
   const capped = rows.length > PENDING_REVIEW_COUNT_CAP;
@@ -514,13 +542,13 @@ export async function pendingReviewCount(
 // are relevance-ordered and bounded to one page — the caller never has to
 // page older records in to find a player. Rows without a denormalized
 // playerName (legacy data) are absent from the index and cannot match. The
-// optional entry status narrows the search the same way it narrows
-// paginateRegistrationHistory, so a status filter and a search box compose.
+// optional filter narrows the search to the same rows it narrows
+// paginateRegistrationHistory to, so a filter and a search box compose.
 export async function searchRegistrationHistory(
   ctx: QueryCtx,
   tournamentId: Id<"tournaments">,
   search: string,
-  entryStatus: Doc<"tournamentRegistrations">["entryStatus"] | undefined,
+  filter: RegistrationFilter | undefined,
 ) {
   return await ctx.db
     .query("tournamentRegistrations")
@@ -528,9 +556,12 @@ export async function searchRegistrationHistory(
       const scoped = q
         .search("playerName", search)
         .eq("tournamentId", tournamentId);
-      return entryStatus === undefined
-        ? scoped
-        : scoped.eq("entryStatus", entryStatus);
+      if (filter === undefined) {
+        return scoped;
+      }
+      return filter === "awaiting_review"
+        ? scoped.eq("entryStatus", "pending").eq("awaitingReview", true)
+        : scoped.eq("entryStatus", filter);
     })
     .take(ORGANIZER_LIST_PAGE_SIZE);
 }
