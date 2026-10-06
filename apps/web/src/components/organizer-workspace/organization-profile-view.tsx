@@ -183,7 +183,7 @@ export function OrganizationProfileView() {
             </CardContent>
           </Card>
 
-          <OrganizationPaymentsCard />
+          <OrganizationPaymentsCard key={organizationId} />
         </div>
 
         <aside className="flex flex-col gap-6">
