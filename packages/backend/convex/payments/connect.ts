@@ -57,7 +57,6 @@ export const getOrganizationPaymentSettings = query({
       stripeConfigured: isStripeConfigured(),
       connection: account
         ? {
-            country: account.country,
             transfersCapabilityStatus: account.transfersCapabilityStatus,
             payoutsReady: account.payoutsReady,
             lastSyncedAt: account.lastSyncedAt,
