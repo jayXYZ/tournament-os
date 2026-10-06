@@ -242,12 +242,27 @@ export function RegistrationsView({
       ? lastSearchResults.current.rows
       : undefined
 
+  // Changing the status filter re-args the paginated query, which reports
+  // LoadingFirstPage again until the new list's first page lands. That is
+  // not the tab's first load, so it must not swap in the skeleton (which
+  // would unmount the Select the organizer just used): once any page has
+  // ever landed, a reload shows the table with a "loading" placeholder
+  // instead, the same way an in-flight search keeps its input mounted.
+  const [hasLoadedList, setHasLoadedList] = useState(false)
+  useEffect(() => {
+    if (status !== 'LoadingFirstPage') {
+      setHasLoadedList(true)
+    }
+  }, [status])
+  const listPending =
+    !searching && status === 'LoadingFirstPage' && hasLoadedList
+
   const rows = searching
     ? // On a cache miss the fallback is [] (with searchPending true), not
       // undefined: undefined would swap in the full loading skeleton and
       // unmount the search input mid-typing.
       (searchResults ?? cachedSearchRows ?? [])
-    : status === 'LoadingFirstPage'
+    : status === 'LoadingFirstPage' && !hasLoadedList
       ? undefined
       : results
 
@@ -273,9 +288,10 @@ export function RegistrationsView({
               onSearchTermChange: handleSearchTermChange,
             }}
             searchPending={searching && searchResults === undefined}
+            listPending={listPending}
             showPaymentColumn={(setup?.tournament.entryFeeCents ?? 0) > 0}
           />
-          {!searching ? (
+          {!searching && !listPending ? (
             <LoadMoreButton
               className="mt-4"
               status={status}
@@ -484,15 +500,20 @@ function RegistrationsTable({
   registrations,
   toolbar,
   searchPending,
+  listPending,
   showPaymentColumn,
 }: {
   registrations: Array<RegistrationRow> | undefined
   toolbar: RosterToolbarProps
+  // The current search term's results are still in flight.
   searchPending: boolean
+  // A filter change's first page is still in flight.
+  listPending: boolean
   showPaymentColumn: boolean
 }) {
   const { filter, searchTerm } = toolbar
   const searching = searchTerm.trim() !== ''
+  const pending = searchPending || listPending
   // `registrations` may still be the previous term's rows, kept on screen
   // (via RegistrationsView's lastSearchResults cache) so the table doesn't
   // flash empty on every keystroke. While that's true, those rows are not
@@ -502,10 +523,10 @@ function RegistrationsTable({
   const columns = useMemo(
     () =>
       getRegistrationColumns({
-        actionsDisabled: searchPending,
+        actionsDisabled: pending,
         showPaymentColumn,
       }),
-    [searchPending, showPaymentColumn],
+    [pending, showPaymentColumn],
   )
 
   if (registrations === undefined) {
@@ -513,11 +534,12 @@ function RegistrationsTable({
   }
 
   // While searching an empty page means "no match", not "no registrations",
-  // so keep the table (and its search box) on screen. An empty filtered
-  // list likewise keeps the toolbar, so the organizer can switch back off
-  // the filter, and names the filter in its empty state; only an event with
-  // no registrations at all has nothing to filter or search.
-  if (!searching && registrations.length === 0) {
+  // so keep the table (and its search box) on screen; while a filter's page
+  // is loading it means nothing yet. An empty filtered list likewise keeps
+  // the toolbar, so the organizer can switch back off the filter, and names
+  // the filter in its empty state; only an event with no registrations at
+  // all has nothing to filter or search.
+  if (!searching && !listPending && registrations.length === 0) {
     return (
       <div className="flex flex-col gap-2">
         {filter !== undefined ? <RosterToolbar {...toolbar} /> : null}
@@ -540,13 +562,16 @@ function RegistrationsTable({
       <DataTable
         columns={columns}
         data={registrations}
-        className={cn('min-w-[480px]', searchPending && 'opacity-60')}
-        // Until the current term's results arrive an empty page is
-        // inconclusive, so don't yet claim the player doesn't exist.
+        className={cn('min-w-[480px]', pending && 'opacity-60')}
+        // Until the current term's results (or the new filter's first page)
+        // arrive an empty page is inconclusive, so don't yet claim the
+        // player doesn't exist.
         noResultsLabel={
-          searchPending
-            ? 'Searching registrations…'
-            : 'No players match your search.'
+          listPending
+            ? 'Loading registrations…'
+            : searchPending
+              ? 'Searching registrations…'
+              : 'No players match your search.'
         }
         toolbar={() => <RosterToolbar {...toolbar} />}
       />

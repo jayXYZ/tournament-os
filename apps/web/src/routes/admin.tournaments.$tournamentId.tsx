@@ -21,7 +21,10 @@ function TournamentManagerLayout() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <TournamentManagerSubnav publicCode={publicCode} />
+      <TournamentManagerSubnav
+        publicCode={publicCode}
+        tournamentId={managed?.tournament._id}
+      />
 
       {managed ? (
         <TournamentProgressBar

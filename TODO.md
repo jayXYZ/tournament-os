@@ -336,14 +336,18 @@ claimed by one.
   - [x] Surface pending applications for organizer review (2026-09-16): the
         Registrations tab's toolbar gains an entry-status filter (All /
         Pending review / Waitlisted / Confirmed / Cancelled / Rejected)
-        applied server-side — `listRegistrationPage` walks the existing
-        `by_tournamentId_and_entryStatus_and_participationStatus` index
-        under a filter and `searchRegistrations` narrows on `entryStatus`
-        (now a search-index filter field), so the filter sees the whole
-        history rather than the pages loaded so far and composes with the
-        search box. Filtering to "Pending review" is the review queue: the
-        row menu's approve/waitlist/reject actions act in place, and each
-        filter has its own empty state
+        applied server-side — `listRegistrationPage` walks the new
+        `by_tournamentId_and_entryStatus` index under a filter (creation
+        order, so a filtered list pages newest-first like the unfiltered
+        one) and `searchRegistrations` narrows on `entryStatus` (now a
+        search-index filter field), so the filter sees the whole history
+        rather than the pages loaded so far and composes with the search
+        box. Filtering to "Pending review" is the review queue: the row
+        menu's approve/waitlist/reject actions act in place, and each
+        filter has its own empty state. The Registrations tab in the
+        manager subnav carries a count of applications awaiting a decision
+        (`getPendingReviewCount`, capped at 99+), so review work is visible
+        from anywhere in the manager
   - [x] Bar re-entry to a private event after organizer removal
         (launch-blocking, completed 2026-08-19): rejecting is the bar — the
         roster menu's "Reject registration" acts on a cancelled row (closing

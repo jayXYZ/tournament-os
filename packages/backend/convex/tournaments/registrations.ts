@@ -26,6 +26,7 @@ import {
   adjustConfirmedRegistrationCount,
   entryReviewActions,
   paginateRegistrationHistory,
+  pendingReviewCount,
   playerDisplayName,
   registrationDropEffect,
   registrationForUser,
@@ -409,6 +410,17 @@ export const listRegistrationPage = query({
       ...page,
       page: await registrationRows(ctx, tournament, page.page),
     };
+  },
+});
+
+// The Registrations tab's notification count: how many applications await a
+// decision, so an organizer sees there is review work from anywhere in the
+// manager without opening the tab (see pendingReviewCount for the cap).
+export const getPendingReviewCount = query({
+  args: { tournamentId: v.id("tournaments") },
+  handler: async (ctx, args) => {
+    await requireOrganizerAccess(ctx, args.tournamentId);
+    return await pendingReviewCount(ctx, args.tournamentId);
   },
 });
 

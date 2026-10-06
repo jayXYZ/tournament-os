@@ -446,13 +446,11 @@ export async function nonActiveParticipationStatuses(
 // tab's review queue: filtering to "pending" lists exactly the applications
 // awaiting a decision). The filter picks the index. Both walks are plain
 // index-equality prefixes with no post-index filter, so every row read is a
-// row returned, and both read newest-first. The unfiltered walk orders on
+// row returned, and both read newest-first: the unfiltered walk orders on
 // the startDate column, constant per tournament (reschedule syncs excepted,
-// transiently). The filtered walk orders on participationStatus then the
-// appended _creationTime: every non-confirmed state leaves
-// participationStatus unset, so those lists are purely newest-first, while
-// a filtered confirmed list groups by participation status and is
-// newest-first within each group.
+// transiently) and so effectively on _creationTime; the filtered walk
+// orders on _creationTime directly, so a filtered confirmed list is not
+// regrouped by participation status.
 // No maximumRowsRead on either: a cap would buy no headroom — it would just
 // equal numItems and trip on every full page (rowsRead reaches the cap on
 // the same doc that fills the page), flagging a healthy page as
@@ -475,11 +473,40 @@ export async function paginateRegistrationHistory(
   }
   return await ctx.db
     .query("tournamentRegistrations")
-    .withIndex("by_tournamentId_and_entryStatus_and_participationStatus", (q) =>
+    .withIndex("by_tournamentId_and_entryStatus", (q) =>
       q.eq("tournamentId", tournamentId).eq("entryStatus", entryStatus),
     )
     .order("desc")
     .paginate(paginationOpts);
+}
+
+// The pending-review count is a badge, not a ledger: past this many it reads
+// "99+", so the count reads at most one row beyond it. Pending rows are not
+// bounded by capacity (approval takes the seat), so an unbounded count could
+// otherwise grow with a busy event's application churn.
+export const PENDING_REVIEW_COUNT_CAP = 99;
+
+// How many applications await the organizer's decision — every pending row
+// of the tournament, the same rows the Registrations tab's "Pending review"
+// filter lists (each carries an approve action while registration is open,
+// so the count never promises a decision the roster can't offer). `capped`
+// means at least cap + 1 rows exist and the caller should show the cap with
+// an overflow mark rather than an exact number.
+export async function pendingReviewCount(
+  ctx: QueryCtx,
+  tournamentId: Id<"tournaments">,
+): Promise<{ count: number; capped: boolean }> {
+  const rows = await ctx.db
+    .query("tournamentRegistrations")
+    .withIndex("by_tournamentId_and_entryStatus", (q) =>
+      q.eq("tournamentId", tournamentId).eq("entryStatus", "pending"),
+    )
+    .take(PENDING_REVIEW_COUNT_CAP + 1);
+  const capped = rows.length > PENDING_REVIEW_COUNT_CAP;
+  return {
+    count: capped ? PENDING_REVIEW_COUNT_CAP : rows.length,
+    capped,
+  };
 }
 
 // Name search across the full registration history. The search index

@@ -614,6 +614,11 @@ export default defineSchema({
       "entryStatus",
       "participationStatus",
     ])
+    // The Registrations tab's status filter and its pending-review count:
+    // one entry status of a tournament in creation order, so a filtered
+    // list pages newest-first exactly like the unfiltered one. The index
+    // above would group confirmed rows by participation status first.
+    .index("by_tournamentId_and_entryStatus", ["tournamentId", "entryStatus"])
     .index("by_participantId_and_entryStatus_and_tournamentStartDate", [
       "participantId",
       "entryStatus",
