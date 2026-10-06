@@ -1,0 +1,68 @@
+name: expo-drift
+
+# `expo install --check` compares apps/native's Expo pins against the newest
+# SDK patch releases on npm. That is registry state, not repository state, so
+# it does not gate pull requests (see test.yml). Instead this runs weekly and
+# keeps one open issue current while the pins trail upstream.
+#
+# To bump: `pnpm --filter @paper-pairings/native exec expo install --fix`,
+# then restore `"expo": "catalog:"` in apps/native/package.json (the fix
+# writes a literal version) and raise the `expo` catalog range in
+# pnpm-workspace.yaml instead. New Expo packages may add config plugins that
+# the fix cannot write into the dynamic app.config.ts; add those by hand.
+on:
+  schedule:
+    # Mondays 09:00 UTC. Patches that landed over the weekend are then past
+    # pnpm's default one-day minimumReleaseAge.
+    - cron: "0 9 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Check Expo dependency versions
+        id: expo
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          pnpm --filter @paper-pairings/native exec expo install --check 2>&1 \
+            | grep -v '^env:' | tee expo-check.log
+      - name: Open or update the drift issue
+        if: steps.expo.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh label create expo-drift --force \
+            --description "apps/native Expo pins trail the newest SDK patches" \
+            --color "0E8A16"
+          body="$(printf '`expo install --check` on `%s` reports:\n\n```\n%s\n```\n\nSee the header comment in `.github/workflows/expo-drift.yml` for the bump procedure.' \
+            "${GITHUB_REF_NAME}" "$(cat expo-check.log)")"
+          existing="$(gh issue list --label expo-drift --state open --json number --jq '.[0].number')"
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+          else
+            gh issue create --title "Expo dependency pins trail upstream" \
+              --label expo-drift --body "$body"
+          fi
+      - name: Close the drift issue when the pins are current
+        if: steps.expo.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          for number in $(gh issue list --label expo-drift --state open --json number --jq '.[].number'); do
+            gh issue close "$number" --comment "\`expo install --check\` passes on \`${GITHUB_REF_NAME}\`."
+          done
