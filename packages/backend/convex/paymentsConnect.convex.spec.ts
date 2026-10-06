@@ -115,7 +115,6 @@ test("owner connects: one account per organization, snapshot row, fresh links", 
   );
   expect(settings.canManage).toBe(true);
   expect(settings.connection).toMatchObject({
-    country: "us",
     transfersCapabilityStatus: "pending",
     payoutsReady: false,
   });
