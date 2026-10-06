@@ -1,9 +1,16 @@
 name: test
 
+# Every branch runs CI on push, so long-lived feature branches (and the PRs
+# stacked on them) cannot accumulate drift that nobody sees until merge. A
+# pull_request trigger would re-run the same commit a second time, so it is
+# omitted; the push run's checks appear on the PR for that commit.
 on:
   push:
-    branches: [main]
-  pull_request:
+    branches: ["**"]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
@@ -32,13 +39,21 @@ jobs:
           node-version-file: ".nvmrc"
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Two copies of react / react-dom / react-native / convex split React
+      # context between module instances under the hoisted linker. The script
+      # reads the lockfile only, so it is safe to run beside other steps
+      # (unlike `pnpm dedupe --check`, which it replaces).
+      - run: pnpm check:deps
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm format:check
 
-  # Bundles the Expo app for every platform and verifies Expo-managed
-  # dependency versions, since the native package has no test script and
-  # would otherwise go completely unchecked.
+  # Bundles the Expo app for every platform, since the native package has no
+  # test script and would otherwise go completely unchecked. Expo's own
+  # dependency-version check (`expo install --check`) compares the pins to
+  # the newest patch releases on npm, so it fails on a schedule of Expo's
+  # choosing rather than on anything in the commit; it runs weekly in
+  # expo-drift.yml instead.
   native-smoke:
     runs-on: ubuntu-latest
     steps:
@@ -51,25 +66,4 @@ jobs:
           node-version-file: ".nvmrc"
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @paper-pairings/native exec expo install --check
       - run: pnpm --filter @paper-pairings/native run build
-
-  # Duplicate versions of one package split React context between module
-  # copies (e.g. convex/react during SSR); fail fast when the lockfile can be
-  # deduped. This MUST stay an isolated job with nothing after it: with
-  # nodeLinker: hoisted, `pnpm dedupe --check` silently strips packages out of
-  # node_modules even when the check passes (observed with pnpm 11.9.0), so
-  # any later step in the same job would run against a broken install.
-  lockfile:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      # pnpm/action-setup reads the pinned version from the root
-      # package.json "packageManager" field.
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: ".nvmrc"
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm dedupe --check
