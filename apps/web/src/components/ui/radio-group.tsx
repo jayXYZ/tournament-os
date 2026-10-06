@@ -26,7 +26,10 @@ function RadioGroupItem({
     <RadioGroupPrimitive.Item
       data-slot="radio-group-item"
       className={cn(
-        'group/radio-group-item peer relative flex aspect-square size-4 shrink-0 rounded-full border border-input outline-none after:absolute after:-inset-x-3 after:-inset-y-2 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 aria-invalid:aria-checked:border-primary dark:bg-input/30 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 data-checked:border-primary data-checked:bg-primary data-checked:text-primary-foreground dark:data-checked:bg-primary',
+        // Radix Themes Radio, size 2, variant "surface": the Checkbox's surface
+        // and hairline in a 16px circle, filling with the accent behind a white
+        // dot at 40% of its size when checked.
+        'group/radio-group-item peer relative flex aspect-square size-4 shrink-0 rounded-full bg-surface ring-1 ring-gray-a7 ring-inset transition-[background-color,box-shadow] duration-100 outline-none after:absolute after:-inset-x-3 after:-inset-y-2 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:bg-gray-a3 disabled:ring-gray-a6 aria-invalid:ring-red-a8 aria-invalid:focus-visible:outline-red-8 data-checked:bg-accent-brand data-checked:ring-0 data-checked:disabled:bg-gray-a3 data-checked:disabled:ring-1',
         className,
       )}
       {...props}
@@ -35,7 +38,7 @@ function RadioGroupItem({
         data-slot="radio-group-indicator"
         className="flex size-4 items-center justify-center"
       >
-        <span className="absolute top-1/2 left-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary-foreground" />
+        <span className="absolute top-1/2 left-1/2 size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white group-disabled/radio-group-item:bg-gray-a8" />
       </RadioGroupPrimitive.Indicator>
     </RadioGroupPrimitive.Item>
   )

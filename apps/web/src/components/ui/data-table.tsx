@@ -87,6 +87,7 @@ interface DataTableProps<TData, TValue> {
   columns: Array<ColumnDef<TData, TValue>>
   data: Array<TData>
   className?: string
+  size?: React.ComponentProps<typeof Table>['size']
   pageSize?: number
   pageSizeOptions?: Array<number>
   noResultsLabel?: React.ReactNode
@@ -113,6 +114,7 @@ export function DataTable<TData, TValue>({
   columns,
   data,
   className,
+  size,
   pageSize = 25,
   pageSizeOptions = DEFAULT_PAGE_SIZE_OPTIONS,
   noResultsLabel = 'No results.',
@@ -161,7 +163,7 @@ export function DataTable<TData, TValue>({
     <div className="flex flex-col gap-4">
       {toolbar ? toolbar(table) : null}
 
-      <Table className={className}>
+      <Table className={className} size={size}>
         <TableHeader>
           {table.getHeaderGroups().map((headerGroup) => (
             <TableRow key={headerGroup.id}>
@@ -186,7 +188,7 @@ export function DataTable<TData, TValue>({
             <TableRow>
               <TableCell
                 colSpan={columns.length}
-                className="h-24 text-center text-muted-foreground"
+                className="h-24 text-center text-gray-a11"
               >
                 {noResultsLabel}
               </TableCell>
@@ -220,7 +222,7 @@ export function DataTable<TData, TValue>({
       {showFooter ? (
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <p className="text-xs text-muted-foreground">Rows per page</p>
+            <p className="text-sm text-gray-a11">Rows per page</p>
             <Select
               value={String(currentPageSize)}
               onValueChange={(value) => table.setPageSize(Number(value))}
@@ -233,9 +235,9 @@ export function DataTable<TData, TValue>({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {pageSizeOptions.map((size) => (
-                  <SelectItem key={size} value={String(size)}>
-                    {size}
+                {pageSizeOptions.map((option) => (
+                  <SelectItem key={option} value={String(option)}>
+                    {option}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -243,7 +245,7 @@ export function DataTable<TData, TValue>({
           </div>
           {pageCount > 1 ? (
             <div className="flex items-center gap-2">
-              <p className="text-xs text-muted-foreground tabular-nums">
+              <p className="text-sm text-gray-a11 tabular-nums">
                 Page {table.getState().pagination.pageIndex + 1} of {pageCount}
               </p>
               <Button
@@ -282,7 +284,7 @@ export function DataTableColumnHeader<TData, TValue>({
   className?: string
 }) {
   if (!column.getCanSort()) {
-    return <span className={className}>{title}</span>
+    return <span className={cn('font-bold', className)}>{title}</span>
   }
 
   const sorted = column.getIsSorted()
@@ -292,7 +294,8 @@ export function DataTableColumnHeader<TData, TValue>({
       type="button"
       variant="ghost"
       size="sm"
-      className={cn('-ml-2 h-8', className)}
+      // A sortable header is a ghost button that keeps the header's weight.
+      className={cn('-ml-2 h-8 font-bold', className)}
       onClick={() => column.toggleSorting(sorted === 'asc')}
     >
       {title}

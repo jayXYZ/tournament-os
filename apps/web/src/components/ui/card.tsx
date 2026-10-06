@@ -12,7 +12,11 @@ function Card({
       data-slot="card"
       data-size={size}
       className={cn(
-        'group/card flex flex-col gap-(--card-spacing) overflow-hidden rounded-lg bg-card py-(--card-spacing) text-xs/relaxed text-card-foreground ring-1 ring-foreground/10 [--card-spacing:--spacing(4)] has-[>img:first-child]:pt-0 data-[size=sm]:[--card-spacing:--spacing(3)] *:[img:first-child]:rounded-t-lg *:[img:last-child]:rounded-b-lg',
+        // Radix Themes Card, variant "surface": the panel color at radius 4
+        // with a blended gray hairline that firms up on hover and active when
+        // the card is, or sits directly inside, a link or button. `default` is Themes size 2
+        // (16px padding), `sm` size 1 (12px).
+        'group/card flex flex-col gap-(--card-spacing) overflow-hidden rounded-(--radius-4) bg-card py-(--card-spacing) text-sm text-card-foreground shadow-[0_0_0_1px_var(--card-border)] transition-shadow duration-100 outline-none [--card-spacing:--spacing(4)] has-[>img:first-child]:pt-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-1 focus-visible:outline-ring data-[size=sm]:[--card-spacing:--spacing(3)] [&:is(a,button,label)]:hover:shadow-[0_0_0_1px_var(--card-border-hover)] [:is(a,button,label)>&]:hover:shadow-[0_0_0_1px_var(--card-border-hover)] [&:is(a,button,label)]:active:shadow-[0_0_0_1px_var(--card-border-active)] [:is(a,button,label)>&]:active:shadow-[0_0_0_1px_var(--card-border-active)] *:[img:first-child]:rounded-t-(--radius-4) *:[img:last-child]:rounded-b-(--radius-4)',
         className,
       )}
       {...props}
@@ -25,7 +29,7 @@ function CardHeader({ className, ...props }: React.ComponentProps<'div'>) {
     <div
       data-slot="card-header"
       className={cn(
-        'group/card-header @container/card-header grid auto-rows-min items-start gap-1 rounded-t-lg px-(--card-spacing) has-data-[slot=card-action]:grid-cols-[1fr_auto] has-data-[slot=card-description]:grid-rows-[auto_auto] [.border-b]:pb-(--card-spacing)',
+        'group/card-header @container/card-header grid auto-rows-min items-start gap-1 rounded-t-(--radius-4) px-(--card-spacing) has-data-[slot=card-action]:grid-cols-[1fr_auto] has-data-[slot=card-description]:grid-rows-[auto_auto] [.border-b]:pb-(--card-spacing)',
         className,
       )}
       {...props}
@@ -37,7 +41,7 @@ function CardTitle({ className, ...props }: React.ComponentProps<'div'>) {
   return (
     <div
       data-slot="card-title"
-      className={cn('font-heading text-sm font-medium', className)}
+      className={cn('font-heading text-sm font-bold', className)}
       {...props}
     />
   )
@@ -47,7 +51,7 @@ function CardDescription({ className, ...props }: React.ComponentProps<'div'>) {
   return (
     <div
       data-slot="card-description"
-      className={cn('text-xs/relaxed text-muted-foreground', className)}
+      className={cn('text-sm text-gray-a11', className)}
       {...props}
     />
   )
@@ -81,7 +85,7 @@ function CardFooter({ className, ...props }: React.ComponentProps<'div'>) {
     <div
       data-slot="card-footer"
       className={cn(
-        'flex items-center rounded-b-lg px-(--card-spacing) [.border-t]:pt-(--card-spacing)',
+        'flex items-center rounded-b-(--radius-4) px-(--card-spacing) [.border-t]:pt-(--card-spacing)',
         className,
       )}
       {...props}

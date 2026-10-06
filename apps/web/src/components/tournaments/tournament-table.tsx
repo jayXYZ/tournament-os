@@ -582,15 +582,17 @@ function isLastVisibleChild(
 // against the cell (which is `relative`) so the vertical rule spans the full
 // row height, including the row border, and chains into the next sibling.
 // The rule sits under the centre of the convention's chevron: the cell's
-// 12px padding plus half the 24px button.
+// 12px padding plus half the 24px button. Painted with the opaque gray step
+// rather than the alpha border token: the segments and the row border overlap
+// by a pixel, and alpha paint would stack darker where they meet.
 function TreeConnector({ last }: { last: boolean }) {
   return (
     <span aria-hidden="true" className="pointer-events-none">
-      <span className="absolute top-[-1px] left-[23px] h-[calc(50%+1px)] w-px bg-border" />
+      <span className="absolute top-[-1px] left-[23px] h-[calc(50%+1px)] w-px bg-gray-6" />
       {last ? null : (
-        <span className="absolute top-1/2 bottom-[-1px] left-[23px] w-px bg-border" />
+        <span className="absolute top-1/2 bottom-[-1px] left-[23px] w-px bg-gray-6" />
       )}
-      <span className="absolute top-1/2 left-[23px] h-px w-3 bg-border" />
+      <span className="absolute top-1/2 left-[23px] h-px w-3 bg-gray-6" />
     </span>
   )
 }
