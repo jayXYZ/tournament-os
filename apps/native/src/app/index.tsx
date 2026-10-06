@@ -38,7 +38,7 @@ export default function HomeScreen() {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.signedOut}>
-          <Text style={styles.brand}>Tournament OS</Text>
+          <Text style={styles.brand}>Paper Pairings</Text>
           <Text style={styles.tagline}>
             Sign in to follow your matches and standings live.
           </Text>
@@ -120,13 +120,13 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#0b0b0f",
+    backgroundColor: "#171514",
   },
   centered: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#0b0b0f",
+    backgroundColor: "#171514",
   },
   signedOut: {
     flex: 1,
@@ -135,12 +135,12 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   brand: {
-    color: "#fff",
+    color: "#EDE9E0",
     fontSize: 34,
     fontWeight: "800",
   },
   tagline: {
-    color: "#8b8b96",
+    color: "#B8B2A6",
     fontSize: 16,
     marginBottom: 12,
   },
@@ -150,7 +150,7 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
     alignItems: "center",
   },
-  buttonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
+  buttonText: { color: "#EDE9E0", fontSize: 16, fontWeight: "600" },
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -163,12 +163,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   greeting: {
-    color: "#fff",
+    color: "#EDE9E0",
     fontSize: 24,
     fontWeight: "700",
   },
   subtitle: {
-    color: "#8b8b96",
+    color: "#B8B2A6",
     fontSize: 14,
     marginTop: 2,
   },
@@ -178,18 +178,18 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   card: {
-    backgroundColor: "#16161d",
+    backgroundColor: "#262321",
     borderRadius: 14,
     padding: 16,
     gap: 4,
   },
   cardTitle: {
-    color: "#fff",
+    color: "#EDE9E0",
     fontSize: 17,
     fontWeight: "600",
   },
   cardOrg: {
-    color: "#8b8b96",
+    color: "#B8B2A6",
     fontSize: 14,
   },
   cardStatus: {
@@ -205,12 +205,12 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   emptyTitle: {
-    color: "#fff",
+    color: "#EDE9E0",
     fontSize: 18,
     fontWeight: "600",
   },
   emptyBody: {
-    color: "#8b8b96",
+    color: "#B8B2A6",
     fontSize: 14,
     textAlign: "center",
   },
