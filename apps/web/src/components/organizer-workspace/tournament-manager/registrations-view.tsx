@@ -23,6 +23,7 @@ import type {
   Doc,
   Id,
 } from '@tournament-os/backend/convex/_generated/dataModel'
+import type { EntryStatus } from '@/components/organizer-workspace/paid-event/roster-badges'
 import {
   entryStatusBadgeVariant,
   paymentBadge,
@@ -85,48 +86,42 @@ type RegistrationRow = {
 }
 
 type RegistrationStatus =
-  | Doc<'tournamentRegistrations'>['entryStatus']
+  | EntryStatus
   | NonNullable<Doc<'tournamentRegistrations'>['participationStatus']>
   | typeof MALFORMED_REGISTRATION_STATUS
 
 const REGISTRATION_PAGE_SIZE = 100
 
-type EntryStatus = Doc<'tournamentRegistrations'>['entryStatus']
-
-// The toolbar's status filter: one entry status, or 'all' for the whole
-// history. Filtering is server-side (both roster queries take the status),
-// so it sees every row, not just the pages loaded so far. 'all' is a
-// sentinel because the Select's value must be a string, and it is mapped to
-// an absent argument at the query boundary. Pending leads: a busy event's
-// applications awaiting review are what an organizer comes here to find.
-type RegistrationFilter = EntryStatus | 'all'
-
+// The toolbar's status filter: one entry status, or undefined for the whole
+// history — the same shape both roster queries take, so the filter is
+// server-side and sees every row, not just the pages loaded so far. The
+// Select needs a string per option, so each option carries its own value
+// string beside the status it stands for; the mapping lives only in the
+// Select. Pending leads the statuses: a busy event's applications awaiting
+// review are what an organizer comes here to find.
 const registrationFilterOptions: Array<{
-  value: RegistrationFilter
+  value: string
+  status: EntryStatus | undefined
   label: string
 }> = [
-  { value: 'all', label: 'All registrations' },
-  { value: 'pending', label: 'Pending review' },
-  { value: 'waitlisted', label: 'Waitlisted' },
-  { value: 'confirmed', label: 'Confirmed' },
-  { value: 'cancelled', label: 'Cancelled' },
-  { value: 'rejected', label: 'Rejected' },
+  { value: 'all', status: undefined, label: 'All registrations' },
+  { value: 'pending', status: 'pending', label: 'Pending review' },
+  { value: 'waitlisted', status: 'waitlisted', label: 'Waitlisted' },
+  { value: 'confirmed', status: 'confirmed', label: 'Confirmed' },
+  { value: 'cancelled', status: 'cancelled', label: 'Cancelled' },
+  { value: 'rejected', status: 'rejected', label: 'Rejected' },
 ]
 
-const registrationFilterValues = new Set<string>(
-  registrationFilterOptions.map((option) => option.value),
-)
-
-function isRegistrationFilter(value: string): value is RegistrationFilter {
-  return registrationFilterValues.has(value)
-}
-
-// What an empty filtered list means, per status — "no registrations yet"
-// would be wrong for a full roster with nothing pending.
-const emptyFilterCopy: Record<
-  EntryStatus,
+// What an empty list means, per filter — "no registrations yet" would be
+// wrong for a full roster with nothing pending.
+const emptyListCopy: Record<
+  EntryStatus | 'all',
   { title: string; description: string }
 > = {
+  all: {
+    title: 'No registrations yet',
+    description: 'Players who sign up for this tournament will appear here.',
+  },
   pending: {
     title: 'No applications awaiting review',
     description: 'New registration requests will appear here.',
@@ -141,12 +136,22 @@ const emptyFilterCopy: Record<
   },
   cancelled: {
     title: 'No cancelled registrations',
-    description: 'Players who withdraw or are removed will appear here.',
+    description: 'Players who drop or are removed will appear here.',
   },
   rejected: {
     title: 'No rejected registrations',
     description: 'Applications you decline will appear here.',
   },
+}
+
+// The toolbar's two server-side controls travel together: the status filter
+// and the search term both narrow the same queries, and the table renders
+// them side by side wherever it shows a toolbar.
+type RosterToolbarProps = {
+  filter: EntryStatus | undefined
+  onFilterChange: (filter: EntryStatus | undefined) => void
+  searchTerm: string
+  onSearchTermChange: (value: string) => void
 }
 
 const statusBadgeVariant: Record<
@@ -170,8 +175,9 @@ export function RegistrationsView({
 }: {
   tournamentId: Id<'tournaments'>
 }) {
-  const [filter, setFilter] = useState<RegistrationFilter>('all')
-  const entryStatus = filter === 'all' ? undefined : filter
+  const [entryStatus, setEntryStatus] = useState<EntryStatus | undefined>(
+    undefined,
+  )
   const { results, status, loadMore } = usePaginatedQuery(
     api.tournaments.registrations.listRegistrationPage,
     {
@@ -206,14 +212,18 @@ export function RegistrationsView({
   // entryStatus } — the stamp can't mislabel.
   const lastSearchResults = useRef<{
     tournamentId: Id<'tournaments'>
-    filter: RegistrationFilter
+    entryStatus: EntryStatus | undefined
     rows: Array<RegistrationRow>
   } | null>(null)
   useEffect(() => {
     if (searchResults !== undefined) {
-      lastSearchResults.current = { tournamentId, filter, rows: searchResults }
+      lastSearchResults.current = {
+        tournamentId,
+        entryStatus,
+        rows: searchResults,
+      }
     }
-  }, [searchResults, tournamentId, filter])
+  }, [searchResults, tournamentId, entryStatus])
 
   function handleSearchTermChange(value: string) {
     if (value.trim() === '') {
@@ -228,7 +238,7 @@ export function RegistrationsView({
   const cachedSearchRows =
     lastSearchResults.current !== null &&
     lastSearchResults.current.tournamentId === tournamentId &&
-    lastSearchResults.current.filter === filter
+    lastSearchResults.current.entryStatus === entryStatus
       ? lastSearchResults.current.rows
       : undefined
 
@@ -256,10 +266,12 @@ export function RegistrationsView({
         <CardContent>
           <RegistrationsTable
             registrations={rows}
-            filter={filter}
-            onFilterChange={setFilter}
-            searchTerm={searchTerm}
-            onSearchTermChange={handleSearchTermChange}
+            toolbar={{
+              filter: entryStatus,
+              onFilterChange: setEntryStatus,
+              searchTerm,
+              onSearchTermChange: handleSearchTermChange,
+            }}
             searchPending={searching && searchResults === undefined}
             showPaymentColumn={(setup?.tournament.entryFeeCents ?? 0) > 0}
           />
@@ -417,23 +429,69 @@ function getRegistrationColumns({
   ]
 }
 
-function RegistrationsTable({
-  registrations,
+// The search term drives a server-side query, so the input is controlled
+// from outside the table instead of binding to a TanStack column filter
+// (which would re-filter the server's matches). The status Select maps its
+// option string back to the entry status it stands for right here, so the
+// rest of the view only ever sees `EntryStatus | undefined`.
+function RosterToolbar({
   filter,
   onFilterChange,
   searchTerm,
   onSearchTermChange,
+}: RosterToolbarProps) {
+  const selected = registrationFilterOptions.find(
+    (option) => option.status === filter,
+  )
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <Input
+        aria-label="Search players..."
+        placeholder="Search players..."
+        value={searchTerm}
+        onChange={(event) => onSearchTermChange(event.target.value)}
+        className="max-w-xs"
+      />
+      <Select
+        value={selected?.value}
+        onValueChange={(value) => {
+          const option = registrationFilterOptions.find(
+            (candidate) => candidate.value === value,
+          )
+          if (option) {
+            onFilterChange(option.status)
+          }
+        }}
+      >
+        <SelectTrigger aria-label="Filter by status" className="w-44">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectGroup>
+            {registrationFilterOptions.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectGroup>
+        </SelectContent>
+      </Select>
+    </div>
+  )
+}
+
+function RegistrationsTable({
+  registrations,
+  toolbar,
   searchPending,
   showPaymentColumn,
 }: {
   registrations: Array<RegistrationRow> | undefined
-  filter: RegistrationFilter
-  onFilterChange: (filter: RegistrationFilter) => void
-  searchTerm: string
-  onSearchTermChange: (value: string) => void
+  toolbar: RosterToolbarProps
   searchPending: boolean
   showPaymentColumn: boolean
 }) {
+  const { filter, searchTerm } = toolbar
   const searching = searchTerm.trim() !== ''
   // `registrations` may still be the previous term's rows, kept on screen
   // (via RegistrationsView's lastSearchResults cache) so the table doesn't
@@ -457,49 +515,15 @@ function RegistrationsTable({
   // While searching an empty page means "no match", not "no registrations",
   // so keep the table (and its search box) on screen. An empty filtered
   // list likewise keeps the toolbar, so the organizer can switch back off
-  // the filter, and names the filter in its empty state.
-  if (!searching && registrations.length === 0 && filter === 'all') {
-    return (
-      <TableEmptyState
-        icon={ClipboardList}
-        title="No registrations yet"
-        description="Players who sign up for this tournament will appear here."
-      />
-    )
-  }
-
-  const filterSelect = (
-    <Select
-      value={filter}
-      onValueChange={(value) => {
-        if (isRegistrationFilter(value)) {
-          onFilterChange(value)
-        }
-      }}
-    >
-      <SelectTrigger aria-label="Filter by status" className="w-44">
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectGroup>
-          {registrationFilterOptions.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
-              {option.label}
-            </SelectItem>
-          ))}
-        </SelectGroup>
-      </SelectContent>
-    </Select>
-  )
-
-  if (!searching && registrations.length === 0 && filter !== 'all') {
+  // the filter, and names the filter in its empty state; only an event with
+  // no registrations at all has nothing to filter or search.
+  if (!searching && registrations.length === 0) {
     return (
       <div className="flex flex-col gap-2">
-        {filterSelect}
+        {filter !== undefined ? <RosterToolbar {...toolbar} /> : null}
         <TableEmptyState
           icon={ClipboardList}
-          title={emptyFilterCopy[filter].title}
-          description={emptyFilterCopy[filter].description}
+          {...emptyListCopy[filter ?? 'all']}
         />
       </div>
     )
@@ -524,22 +548,7 @@ function RegistrationsTable({
             ? 'Searching registrations…'
             : 'No players match your search.'
         }
-        // The search term drives a server-side query, so the input is
-        // controlled from outside the table instead of binding to a
-        // TanStack column filter (which would re-filter the server's
-        // matches).
-        toolbar={() => (
-          <div className="flex flex-wrap items-center gap-2">
-            <Input
-              aria-label="Search players..."
-              placeholder="Search players..."
-              value={searchTerm}
-              onChange={(event) => onSearchTermChange(event.target.value)}
-              className="max-w-xs"
-            />
-            {filterSelect}
-          </div>
-        )}
+        toolbar={() => <RosterToolbar {...toolbar} />}
       />
     </div>
   )

@@ -542,33 +542,18 @@ test("the organizer roster filters by entry status, in the list and in search", 
 
   // Filtered to pending: exactly the applications awaiting review, newest
   // first, each carrying its approve projection so the queue acts in place.
-  const pending = await organizer.query(
-    api.tournaments.registrations.listRegistrationPage,
-    {
-      tournamentId,
-      entryStatus: "pending",
-      paginationOpts: { numItems: 100, cursor: null },
-    },
-  );
-  expect(pending.isDone).toBe(true);
-  expect(pending.page.map((row) => row.registration._id)).toEqual(
+  const pending = await organizerRegistrationRows(t, tournamentId, "pending");
+  expect(pending.map((row) => row.registration._id)).toEqual(
     [...pendingIds].reverse(),
   );
-  expect(pending.page.every((row) => row.approveEffect === "pending")).toBe(
-    true,
-  );
+  expect(pending.every((row) => row.approveEffect === "pending")).toBe(true);
 
-  const waitlisted = await organizer.query(
-    api.tournaments.registrations.listRegistrationPage,
-    {
-      tournamentId,
-      entryStatus: "waitlisted",
-      paginationOpts: { numItems: 100, cursor: null },
-    },
+  const waitlisted = await organizerRegistrationRows(
+    t,
+    tournamentId,
+    "waitlisted",
   );
-  expect(waitlisted.page.map((row) => row.registration._id)).toEqual([
-    waitlistedId,
-  ]);
+  expect(waitlisted.map((row) => row.registration._id)).toEqual([waitlistedId]);
 
   // Search composes with the filter: every seeded name matches "Player",
   // but under the pending filter only the applications come back.
@@ -590,15 +575,12 @@ test("the organizer roster filters by entry status, in the list and in search", 
   await organizer.mutation(api.tournaments.registrations.approveRegistration, {
     registrationId: pendingIds[0],
   });
-  const afterApproval = await organizer.query(
-    api.tournaments.registrations.listRegistrationPage,
-    {
-      tournamentId,
-      entryStatus: "pending",
-      paginationOpts: { numItems: 100, cursor: null },
-    },
+  const afterApproval = await organizerRegistrationRows(
+    t,
+    tournamentId,
+    "pending",
   );
-  expect(afterApproval.page.map((row) => row.registration._id)).toEqual([
+  expect(afterApproval.map((row) => row.registration._id)).toEqual([
     pendingIds[1],
   ]);
 });
@@ -695,15 +677,18 @@ async function getRegistration(
 }
 
 // The roster rows exactly as the organizer's Registrations tab receives
-// them, review-action projections included.
+// them, review-action projections included — the whole history, or one
+// entry status of it, as the tab's filter would ask.
 async function organizerRegistrationRows(
   t: TestConvex<typeof schema>,
   tournamentId: Id<"tournaments">,
+  entryStatus?: Doc<"tournamentRegistrations">["entryStatus"],
 ) {
   const page = await t
     .withIdentity(organizerIdentity)
     .query(api.tournaments.registrations.listRegistrationPage, {
       tournamentId,
+      entryStatus,
       paginationOpts: { numItems: 100, cursor: null },
     });
   return page.page;

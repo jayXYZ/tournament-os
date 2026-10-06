@@ -13,7 +13,7 @@ import { logAuditEvent } from "../model/auditLog";
 import { inviteCodeGrantsAccess } from "../model/invites";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
 import { registrationsConcededByDrop } from "../model/matchResults";
-import { ORGANIZER_LIST_PAGE_SIZE, clampPageSize } from "../model/pagination";
+import { ORGANIZER_LIST_PAGE_SIZE, requirePageSize } from "../model/pagination";
 import {
   ensureParticipantForUser,
   participantForUser,
@@ -25,6 +25,7 @@ import { tiebreakRandom } from "../model/random";
 import {
   adjustConfirmedRegistrationCount,
   entryReviewActions,
+  paginateRegistrationHistory,
   playerDisplayName,
   registrationDropEffect,
   registrationForUser,
@@ -32,6 +33,7 @@ import {
   requireCapacityAvailable,
   requireRegistration,
   resolveRegistrationDisplayName,
+  searchRegistrationHistory,
 } from "../model/registrations";
 import {
   approveEntry,
@@ -385,10 +387,9 @@ export const listMyTournaments = query({
 
 // Every registration workflow record, newest first — or, under an entry
 // status filter, only the rows in that state (the Registrations tab's review
-// queue: filtering to "pending" lists exactly the applications awaiting a
-// decision instead of leaving the organizer to scan pages for them). Unlike
-// confirmed participants, pending/cancelled/rejected rows are not bounded by
-// tournament capacity, so this organizer history must be cursor-paginated.
+// queue). Unlike confirmed participants, pending/cancelled/rejected rows are
+// not bounded by tournament capacity, so this organizer history must be
+// cursor-paginated; paginateRegistrationHistory picks the index.
 export const listRegistrationPage = query({
   args: {
     tournamentId: v.id("tournaments"),
@@ -397,48 +398,13 @@ export const listRegistrationPage = query({
   },
   handler: async (ctx, args) => {
     const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
-    const paginationOpts = {
-      ...args.paginationOpts,
-      numItems: clampPageSize(
-        args.paginationOpts.numItems,
-        ORGANIZER_LIST_PAGE_SIZE,
-      ),
-    };
-    // Both walks are plain index-equality prefixes with no post-index filter,
-    // so every row read is a row returned, and both read newest-first. The
-    // unfiltered walk orders on the startDate column, constant per
-    // tournament (reschedule syncs excepted, transiently). The filtered walk
-    // orders on participationStatus then the appended _creationTime: every
-    // non-confirmed state leaves participationStatus unset, so those lists
-    // are purely newest-first, while a filtered confirmed list groups by
-    // participation status and is newest-first within each group.
-    // No maximumRowsRead on either: a cap would buy no headroom — it would
-    // just equal numItems and trip on every full page (rowsRead reaches the
-    // cap on the same doc that fills the page), flagging a healthy page as
-    // SplitRequired/SplitRecommended and making usePaginatedQuery split and
-    // re-issue it instead of settling.
-    const entryStatus = args.entryStatus;
-    const page =
-      entryStatus === undefined
-        ? await ctx.db
-            .query("tournamentRegistrations")
-            .withIndex("by_tournamentId_and_tournamentStartDate", (q) =>
-              q.eq("tournamentId", args.tournamentId),
-            )
-            .order("desc")
-            .paginate(paginationOpts)
-        : await ctx.db
-            .query("tournamentRegistrations")
-            .withIndex(
-              "by_tournamentId_and_entryStatus_and_participationStatus",
-              (q) =>
-                q
-                  .eq("tournamentId", args.tournamentId)
-                  .eq("entryStatus", entryStatus),
-            )
-            .order("desc")
-            .paginate(paginationOpts);
-
+    requirePageSize(args.paginationOpts.numItems, ORGANIZER_LIST_PAGE_SIZE);
+    const page = await paginateRegistrationHistory(
+      ctx,
+      args.tournamentId,
+      args.entryStatus,
+      args.paginationOpts,
+    );
     return {
       ...page,
       page: await registrationRows(ctx, tournament, page.page),
@@ -446,13 +412,9 @@ export const listRegistrationPage = query({
   },
 });
 
-// Organizer roster search across the full registration history. The search
-// index prefix-matches the last term, which suits name-as-you-type, and
-// results are relevance-ordered and bounded to one page — the client never
-// has to page older records in to find a player. Rows without a denormalized
-// playerName (legacy data) are absent from the index and cannot match. The
-// optional entry status narrows the search the same way it narrows
-// listRegistrationPage, so the tab's status filter and search box compose.
+// Organizer roster search across the full registration history, one page of
+// best matches; the optional entry status composes with the tab's filter
+// (see searchRegistrationHistory).
 export const searchRegistrations = query({
   args: {
     tournamentId: v.id("tournaments"),
@@ -461,18 +423,12 @@ export const searchRegistrations = query({
   },
   handler: async (ctx, args) => {
     const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
-    const entryStatus = args.entryStatus;
-    const matches = await ctx.db
-      .query("tournamentRegistrations")
-      .withSearchIndex("search_playerName", (q) => {
-        const scoped = q
-          .search("playerName", args.search)
-          .eq("tournamentId", args.tournamentId);
-        return entryStatus === undefined
-          ? scoped
-          : scoped.eq("entryStatus", entryStatus);
-      })
-      .take(ORGANIZER_LIST_PAGE_SIZE);
+    const matches = await searchRegistrationHistory(
+      ctx,
+      args.tournamentId,
+      args.search,
+      args.entryStatus,
+    );
 
     return await registrationRows(ctx, tournament, matches);
   },

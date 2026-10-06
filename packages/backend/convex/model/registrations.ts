@@ -1,5 +1,8 @@
+import type { PaginationOptions } from "convex/server";
+
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
+import { ORGANIZER_LIST_PAGE_SIZE } from "./pagination";
 import { participantForUser, participantPublicIdentity } from "./participants";
 
 // Hard ceiling on players (and therefore matches) per tournament. Bounds every
@@ -436,6 +439,73 @@ export async function nonActiveParticipationStatuses(
     }
   }
   return byRegistrationId;
+}
+
+// One page of a tournament's registration history, newest first — or, under
+// an entry status filter, only the rows in that state (the Registrations
+// tab's review queue: filtering to "pending" lists exactly the applications
+// awaiting a decision). The filter picks the index. Both walks are plain
+// index-equality prefixes with no post-index filter, so every row read is a
+// row returned, and both read newest-first. The unfiltered walk orders on
+// the startDate column, constant per tournament (reschedule syncs excepted,
+// transiently). The filtered walk orders on participationStatus then the
+// appended _creationTime: every non-confirmed state leaves
+// participationStatus unset, so those lists are purely newest-first, while
+// a filtered confirmed list groups by participation status and is
+// newest-first within each group.
+// No maximumRowsRead on either: a cap would buy no headroom — it would just
+// equal numItems and trip on every full page (rowsRead reaches the cap on
+// the same doc that fills the page), flagging a healthy page as
+// SplitRequired/SplitRecommended and making usePaginatedQuery split and
+// re-issue it instead of settling.
+export async function paginateRegistrationHistory(
+  ctx: QueryCtx,
+  tournamentId: Id<"tournaments">,
+  entryStatus: Doc<"tournamentRegistrations">["entryStatus"] | undefined,
+  paginationOpts: PaginationOptions,
+) {
+  if (entryStatus === undefined) {
+    return await ctx.db
+      .query("tournamentRegistrations")
+      .withIndex("by_tournamentId_and_tournamentStartDate", (q) =>
+        q.eq("tournamentId", tournamentId),
+      )
+      .order("desc")
+      .paginate(paginationOpts);
+  }
+  return await ctx.db
+    .query("tournamentRegistrations")
+    .withIndex("by_tournamentId_and_entryStatus_and_participationStatus", (q) =>
+      q.eq("tournamentId", tournamentId).eq("entryStatus", entryStatus),
+    )
+    .order("desc")
+    .paginate(paginationOpts);
+}
+
+// Name search across the full registration history. The search index
+// prefix-matches the last term, which suits name-as-you-type, and results
+// are relevance-ordered and bounded to one page — the caller never has to
+// page older records in to find a player. Rows without a denormalized
+// playerName (legacy data) are absent from the index and cannot match. The
+// optional entry status narrows the search the same way it narrows
+// paginateRegistrationHistory, so a status filter and a search box compose.
+export async function searchRegistrationHistory(
+  ctx: QueryCtx,
+  tournamentId: Id<"tournaments">,
+  search: string,
+  entryStatus: Doc<"tournamentRegistrations">["entryStatus"] | undefined,
+) {
+  return await ctx.db
+    .query("tournamentRegistrations")
+    .withSearchIndex("search_playerName", (q) => {
+      const scoped = q
+        .search("playerName", search)
+        .eq("tournamentId", tournamentId);
+      return entryStatus === undefined
+        ? scoped
+        : scoped.eq("entryStatus", entryStatus);
+    })
+    .take(ORGANIZER_LIST_PAGE_SIZE);
 }
 
 // Structural over tournaments and conventions — both carry the same
