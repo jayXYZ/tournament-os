@@ -16,6 +16,7 @@ const gatewayState = vi.hoisted(() => ({
     organizationId: string;
     displayName: string;
     contactEmail?: string;
+    country: string;
   }>,
   createOnboardingLinkCalls: [] as Array<{
     stripeAccountId: string;
@@ -39,6 +40,7 @@ vi.mock("./stripe/client", () => ({
       organizationId: string;
       displayName: string;
       contactEmail?: string;
+      country: string;
     }) => {
       gatewayState.createRecipientAccountCalls.push(args);
       return { stripeAccountId: "acct_test_1" };
@@ -89,6 +91,7 @@ test("owner connects: one account per organization, snapshot row, fresh links", 
     api.payments.connect.createOnboardingLink,
     {
       organizationId,
+      country: "us",
     },
   );
   expect(first.url).toBe("https://connect.stripe.test/onboarding");
@@ -98,6 +101,7 @@ test("owner connects: one account per organization, snapshot row, fresh links", 
     organizationId,
     displayName: "Test Org",
     contactEmail: organizerIdentity.email,
+    country: "us",
   });
   expect(gatewayState.createOnboardingLinkCalls[0]).toEqual({
     stripeAccountId: "acct_test_1",
@@ -116,7 +120,8 @@ test("owner connects: one account per organization, snapshot row, fresh links", 
   });
 
   // A second link (expired-link re-entry) reuses the recorded account
-  // instead of minting another one.
+  // instead of minting another one; the country is only read on a
+  // first connect, so the re-entry need not repeat it.
   await asOwner.action(api.payments.connect.createOnboardingLink, {
     organizationId,
   });
@@ -131,6 +136,7 @@ test("refresh snapshots the live transfers capability", async () => {
 
   await asOwner.action(api.payments.connect.createOnboardingLink, {
     organizationId,
+    country: "us",
   });
 
   gatewayState.nextCapabilityStatus = "active";
@@ -163,6 +169,7 @@ test("account events overwrite the snapshot by connected account id", async () =
 
   await asOwner.action(api.payments.connect.createOnboardingLink, {
     organizationId,
+    country: "us",
   });
 
   // The thin-event route (http.ts) re-reads the live capability and lands
@@ -207,6 +214,7 @@ test("the owner opens the Express dashboard through a fresh login link", async (
 
   await asOwner.action(api.payments.connect.createOnboardingLink, {
     organizationId,
+    country: "us",
   });
   const link = await asOwner.action(api.payments.connect.createDashboardLink, {
     organizationId,
@@ -263,6 +271,7 @@ test("admins can read payment settings but not manage the connection", async () 
   await expect(
     asAdmin.action(api.payments.connect.createOnboardingLink, {
       organizationId,
+      country: "us",
     }),
   ).rejects.toThrow("Unauthorized");
   await expect(
@@ -297,4 +306,47 @@ test("non-members cannot read payment settings", async () => {
       organizationId,
     }),
   ).rejects.toThrow("Unauthorized");
+});
+
+test("a first connect outside the supported countries never reaches Stripe", async () => {
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const asOwner = t.withIdentity(organizerIdentity);
+
+  // The account's country is fixed at creation and the platform is USD-only,
+  // so an unsupported country is refused before any account is minted —
+  // otherwise the organization would own a connected account that can never
+  // finish onboarding.
+  await expect(
+    asOwner.action(api.payments.connect.createOnboardingLink, {
+      organizationId,
+      country: "gb",
+    }),
+  ).rejects.toThrow("United States only");
+
+  // Omitting the country on a first connect is refused the same way: the UI
+  // must collect an explicit acknowledgement.
+  await expect(
+    asOwner.action(api.payments.connect.createOnboardingLink, {
+      organizationId,
+    }),
+  ).rejects.toThrow("Confirm the organization's country");
+
+  expect(gatewayState.createRecipientAccountCalls).toHaveLength(0);
+  expect(gatewayState.createOnboardingLinkCalls).toHaveLength(0);
+  const settings = await asOwner.query(
+    api.payments.connect.getOrganizationPaymentSettings,
+    { organizationId },
+  );
+  expect(settings.connection).toBeNull();
+
+  // Country codes are case-insensitive on the way in and stored lowercase,
+  // as Accounts v2 identity.country takes them.
+  await asOwner.action(api.payments.connect.createOnboardingLink, {
+    organizationId,
+    country: "US",
+  });
+  expect(gatewayState.createRecipientAccountCalls[0]).toMatchObject({
+    country: "us",
+  });
 });

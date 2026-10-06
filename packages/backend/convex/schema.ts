@@ -109,6 +109,9 @@ export default defineSchema({
   organizationStripeAccounts: defineTable({
     organizationId: v.id("organizations"),
     stripeAccountId: v.string(),
+    // The account's Accounts v2 identity.country, fixed at creation; one of
+    // SUPPORTED_STRIPE_COUNTRIES (shared/payment-fees).
+    country: v.string(),
     transfersCapabilityStatus: stripeTransfersCapabilityStatusValidator,
     // Denormalized transfersCapabilityStatus === "active" so guards and UI
     // read one boolean.

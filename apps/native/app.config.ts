@@ -48,6 +48,7 @@ const config: ExpoConfig = {
     "@clerk/expo",
     "@sentry/react-native",
     "expo-web-browser",
+    "expo-image",
   ],
   experiments: {
     typedRoutes: true,

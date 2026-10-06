@@ -1,3 +1,8 @@
+import {
+  isSupportedStripeCountry,
+  type StripeCountry,
+  UNSUPPORTED_STRIPE_COUNTRY_MESSAGE,
+} from "@paper-pairings/shared/payment-fees";
 import { v } from "convex/values";
 
 import { internal } from "../_generated/api";
@@ -62,7 +67,10 @@ export const getOrganizationPaymentSettings = query({
 });
 
 export const beginStripeOnboarding = internalMutation({
-  args: { organizationId: v.id("organizations") },
+  args: {
+    organizationId: v.id("organizations"),
+    country: v.optional(v.string()),
+  },
   handler: async (ctx, args) => {
     await enforceRateLimit(ctx, "stripeOnboarding");
     const { organization, user } = await requirePaymentsPermission(
@@ -74,18 +82,41 @@ export const beginStripeOnboarding = internalMutation({
       args.organizationId,
     );
 
-    // Stripe refuses a recipient-configured account without a contact email,
-    // so a first-time connect needs one; a re-entry for an existing account
-    // never creates anything.
-    if (!existing && !user.email) {
+    // A re-entry for an existing account never creates anything, so the
+    // first-connect requirements below only apply when there is no account.
+    if (existing) {
+      return {
+        existingStripeAccountId: existing.stripeAccountId,
+        organizationName: organization.name,
+        contactEmail: user.email ?? null,
+        country: null,
+      };
+    }
+
+    // Stripe refuses a recipient-configured account without a contact email.
+    if (!user.email) {
       throw new Error(
         "Add an email address to your account before connecting Stripe",
       );
     }
+    // The country is fixed once the account exists and the platform is
+    // USD-only, so an unsupported country is refused here — before any
+    // Stripe call — instead of minting an account that can never finish
+    // onboarding. The UI collects it as an explicit acknowledgement.
+    if (!args.country) {
+      throw new Error(
+        "Confirm the organization's country before connecting Stripe",
+      );
+    }
+    const country = args.country.toLowerCase();
+    if (!isSupportedStripeCountry(country)) {
+      throw new Error(UNSUPPORTED_STRIPE_COUNTRY_MESSAGE);
+    }
     return {
-      existingStripeAccountId: existing?.stripeAccountId ?? null,
+      existingStripeAccountId: null,
       organizationName: organization.name,
-      contactEmail: user.email ?? null,
+      contactEmail: user.email,
+      country,
     };
   },
 });
@@ -94,6 +125,7 @@ export const recordStripeAccountCreated = internalMutation({
   args: {
     organizationId: v.id("organizations"),
     stripeAccountId: v.string(),
+    country: v.string(),
   },
   handler: async (ctx, args) => {
     const { user } = await requirePaymentsPermission(ctx, args.organizationId);
@@ -111,6 +143,7 @@ export const recordStripeAccountCreated = internalMutation({
     await ctx.db.insert("organizationStripeAccounts", {
       organizationId: args.organizationId,
       stripeAccountId: args.stripeAccountId,
+      country: args.country,
       transfersCapabilityStatus: "pending",
       payoutsReady: false,
       lastSyncedAt: now,
@@ -209,9 +242,14 @@ export const beginStripeDashboardLink = internalMutation({
 // Mints a Stripe-hosted onboarding link for the organization's connected
 // account, creating the account first if this is the organization's first
 // visit. The same action serves "connect", "continue onboarding", and the
-// refresh_url re-entry (Stripe links are single-use and short-lived).
+// refresh_url re-entry (Stripe links are single-use and short-lived). A
+// first-time connect must name the organization's country (checked against
+// SUPPORTED_STRIPE_COUNTRIES); re-entries ignore it.
 export const createOnboardingLink = action({
-  args: { organizationId: v.id("organizations") },
+  args: {
+    organizationId: v.id("organizations"),
+    country: v.optional(v.string()),
+  },
   handler: async (ctx, args): Promise<{ url: string }> => {
     const secretKey = requireStripeSecretKey();
     const origin = requireWebAppOrigin();
@@ -221,29 +259,32 @@ export const createOnboardingLink = action({
       existingStripeAccountId: string | null;
       organizationName: string;
       contactEmail: string | null;
+      country: StripeCountry | null;
     } = await ctx.runMutation(internal.payments.connect.beginStripeOnboarding, {
       organizationId: args.organizationId,
+      country: args.country,
     });
 
     let stripeAccountId = begin.existingStripeAccountId;
     if (!stripeAccountId) {
-      if (!begin.contactEmail) {
+      if (!begin.contactEmail || !begin.country) {
         // Unreachable: the begin mutation refuses a first-time connect
-        // without an email. Kept so the gateway contract stays non-optional.
-        throw new Error(
-          "Add an email address to your account before connecting Stripe",
-        );
+        // without an email or a supported country. Kept so the gateway
+        // contract stays non-optional.
+        throw new Error("Stripe onboarding is missing required details");
       }
       const created = await gateway.createRecipientAccount({
         organizationId: args.organizationId,
         displayName: begin.organizationName,
         contactEmail: begin.contactEmail,
+        country: begin.country,
       });
       const recorded: { stripeAccountId: string } = await ctx.runMutation(
         internal.payments.connect.recordStripeAccountCreated,
         {
           organizationId: args.organizationId,
           stripeAccountId: created.stripeAccountId,
+          country: begin.country,
         },
       );
       stripeAccountId = recorded.stripeAccountId;

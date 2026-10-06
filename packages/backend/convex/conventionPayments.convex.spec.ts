@@ -99,6 +99,7 @@ async function seedPaidConvention(
     await ctx.db.insert("organizationStripeAccounts", {
       organizationId,
       stripeAccountId: "acct_test_ready",
+      country: "us",
       transfersCapabilityStatus: "active",
       payoutsReady: true,
       lastSyncedAt: now,
