@@ -1,9 +1,10 @@
 import { Link } from '@tanstack/react-router'
 import { AuthLoading, Authenticated, Unauthenticated } from 'convex/react'
-import { ArrowLeft, LogIn, Swords } from 'lucide-react'
+import { ArrowLeft, LogIn } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useAppAuth } from '@/lib/use-app-auth'
 
+import { BrandMark } from '@/components/shared/brand-mark'
 import { Button } from '@/components/ui/button'
 
 export function AdminAuthGate({
@@ -35,11 +36,9 @@ function SignedOutAdmin({ description }: { description: string }) {
     <section className="flex min-h-svh flex-col bg-stone-950 text-stone-50">
       <header className="flex min-h-16 items-center justify-between border-b border-white/10 px-4 sm:px-6">
         <div className="flex items-center gap-3">
-          <div className="flex size-9 items-center justify-center rounded-md bg-emerald-300 text-stone-950">
-            <Swords className="size-5" />
-          </div>
+          <BrandMark variant="knockout" className="size-9" />
           <div>
-            <p className="text-sm font-semibold leading-none">Tournament OS</p>
+            <p className="text-sm font-semibold leading-none">Paper Pairings</p>
             <p className="mt-1 text-xs text-stone-400">Organization controls</p>
           </div>
         </div>
