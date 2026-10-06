@@ -56,6 +56,9 @@ type DataTableFilterBase = {
 export type DataTableOptionsFilterDef = DataTableFilterBase & {
   kind?: 'options'
   options: Array<DataTableFilterOption>
+  // Holds at most one option: picking a second replaces the first. For a
+  // filter the server answers one value at a time (an index prefix, say).
+  single?: boolean
   value?: Array<string>
   onChange?: (value: Array<string>) => void
 }
@@ -348,7 +351,9 @@ export function DataTableFilter({
     writeFilterValue(
       filter,
       checked
-        ? [...selected, value]
+        ? filter.single
+          ? [value]
+          : [...selected, value]
         : selected.filter((current) => current !== value),
     )
   }

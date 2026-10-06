@@ -1,5 +1,6 @@
 import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
+import type { Infer } from "convex/values";
 
 import type { Doc, Id } from "../_generated/dataModel";
 import {
@@ -49,7 +50,34 @@ import {
   requireTournament,
 } from "../model/tournaments";
 import { enforceRateLimit } from "../rateLimits";
-import { tournamentEntryStatusValidator } from "../validators";
+import { registrationStatusFilterValidator } from "../validators";
+
+type RegistrationStatusFilter = Infer<typeof registrationStatusFilterValidator>;
+
+// The index columns a status filter pins. Participation statuses only exist
+// on confirmed entries, so they pin entryStatus too; every other value is an
+// entry status on its own. Either way the result is a prefix of
+// by_tournamentId_and_entryStatus_and_participationStatus, and the same two
+// fields are filter fields on search_playerName.
+function registrationStatusIndexKey(status: RegistrationStatusFilter): {
+  entryStatus: Doc<"tournamentRegistrations">["entryStatus"];
+  participationStatus?: NonNullable<
+    Doc<"tournamentRegistrations">["participationStatus"]
+  >;
+} {
+  switch (status) {
+    case "pending":
+    case "waitlisted":
+    case "cancelled":
+    case "rejected":
+      return { entryStatus: status };
+    case "active":
+    case "dropped":
+    case "eliminated":
+    case "disqualified":
+      return { entryStatus: "confirmed", participationStatus: status };
+  }
+}
 
 async function registrationRows(
   ctx: QueryCtx,
@@ -383,16 +411,16 @@ export const listMyTournaments = query({
   },
 });
 
-// Every registration workflow record, newest first — or, under an entry
-// status filter, only the rows in that state (the Registrations tab's review
-// queue: filtering to "pending" lists exactly the applications awaiting a
-// decision instead of leaving the organizer to scan pages for them). Unlike
-// confirmed participants, pending/cancelled/rejected rows are not bounded by
-// tournament capacity, so this organizer history must be cursor-paginated.
+// Every registration workflow record, newest first — or, under a status
+// filter, only the rows in that state (the Registrations tab's review queue:
+// filtering to "pending" lists exactly the applications awaiting a decision
+// instead of leaving the organizer to scan pages for them). Unlike confirmed
+// participants, pending/cancelled/rejected rows are not bounded by tournament
+// capacity, so this organizer history must be cursor-paginated.
 export const listRegistrationPage = query({
   args: {
     tournamentId: v.id("tournaments"),
-    entryStatus: v.optional(tournamentEntryStatusValidator),
+    status: v.optional(registrationStatusFilterValidator),
     paginationOpts: paginationOptsValidator,
   },
   handler: async (ctx, args) => {
@@ -408,18 +436,20 @@ export const listRegistrationPage = query({
     // so every row read is a row returned, and both read newest-first. The
     // unfiltered walk orders on the startDate column, constant per
     // tournament (reschedule syncs excepted, transiently). The filtered walk
-    // orders on participationStatus then the appended _creationTime: every
-    // non-confirmed state leaves participationStatus unset, so those lists
-    // are purely newest-first, while a filtered confirmed list groups by
-    // participation status and is newest-first within each group.
+    // pins entryStatus, and for a participation status also
+    // participationStatus, so what remains is the appended _creationTime:
+    // purely newest-first.
     // No maximumRowsRead on either: a cap would buy no headroom — it would
     // just equal numItems and trip on every full page (rowsRead reaches the
     // cap on the same doc that fills the page), flagging a healthy page as
     // SplitRequired/SplitRecommended and making usePaginatedQuery split and
     // re-issue it instead of settling.
-    const entryStatus = args.entryStatus;
+    const key =
+      args.status === undefined
+        ? undefined
+        : registrationStatusIndexKey(args.status);
     const page =
-      entryStatus === undefined
+      key === undefined
         ? await ctx.db
             .query("tournamentRegistrations")
             .withIndex("by_tournamentId_and_tournamentStartDate", (q) =>
@@ -431,10 +461,14 @@ export const listRegistrationPage = query({
             .query("tournamentRegistrations")
             .withIndex(
               "by_tournamentId_and_entryStatus_and_participationStatus",
-              (q) =>
-                q
+              (q) => {
+                const byEntry = q
                   .eq("tournamentId", args.tournamentId)
-                  .eq("entryStatus", entryStatus),
+                  .eq("entryStatus", key.entryStatus);
+                return key.participationStatus === undefined
+                  ? byEntry
+                  : byEntry.eq("participationStatus", key.participationStatus);
+              },
             )
             .order("desc")
             .paginate(paginationOpts);
@@ -451,26 +485,33 @@ export const listRegistrationPage = query({
 // results are relevance-ordered and bounded to one page — the client never
 // has to page older records in to find a player. Rows without a denormalized
 // playerName (legacy data) are absent from the index and cannot match. The
-// optional entry status narrows the search the same way it narrows
+// optional status narrows the search the same way it narrows
 // listRegistrationPage, so the tab's status filter and search box compose.
 export const searchRegistrations = query({
   args: {
     tournamentId: v.id("tournaments"),
     search: v.string(),
-    entryStatus: v.optional(tournamentEntryStatusValidator),
+    status: v.optional(registrationStatusFilterValidator),
   },
   handler: async (ctx, args) => {
     const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
-    const entryStatus = args.entryStatus;
+    const key =
+      args.status === undefined
+        ? undefined
+        : registrationStatusIndexKey(args.status);
     const matches = await ctx.db
       .query("tournamentRegistrations")
       .withSearchIndex("search_playerName", (q) => {
         const scoped = q
           .search("playerName", args.search)
           .eq("tournamentId", args.tournamentId);
-        return entryStatus === undefined
-          ? scoped
-          : scoped.eq("entryStatus", entryStatus);
+        if (key === undefined) {
+          return scoped;
+        }
+        const byEntry = scoped.eq("entryStatus", key.entryStatus);
+        return key.participationStatus === undefined
+          ? byEntry
+          : byEntry.eq("participationStatus", key.participationStatus);
       })
       .take(ORGANIZER_LIST_PAGE_SIZE);
 
