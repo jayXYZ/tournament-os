@@ -137,6 +137,53 @@ async function seedPaidTournament(
   return tournamentId;
 }
 
+// The review queue as the organizer's Registrations tab sees it — the
+// badge count, the "Pending review" filter (list and search), and the
+// unfiltered history for contrast — reduced to each row's entry and payment
+// state.
+async function reviewQueue(
+  t: TestConvex<typeof schema>,
+  tournamentId: Id<"tournaments">,
+) {
+  const asOwner = t.withIdentity(organizerIdentity);
+  const summarize = (
+    rows: Array<{
+      registration: Doc<"tournamentRegistrations">;
+      paymentStatus: Doc<"paymentOrders">["status"] | null;
+    }>,
+  ) =>
+    rows.map((row) => ({
+      entryStatus: row.registration.entryStatus,
+      paymentStatus: row.paymentStatus,
+    }));
+  const count = await asOwner.query(
+    api.tournaments.registrations.getPendingReviewCount,
+    { tournamentId },
+  );
+  const listed = await asOwner.query(
+    api.tournaments.registrations.listRegistrationPage,
+    {
+      tournamentId,
+      filter: "awaiting_review",
+      paginationOpts: { numItems: 100, cursor: null },
+    },
+  );
+  const searched = await asOwner.query(
+    api.tournaments.registrations.searchRegistrations,
+    { tournamentId, search: "Player", filter: "awaiting_review" },
+  );
+  const history = await asOwner.query(
+    api.tournaments.registrations.listRegistrationPage,
+    { tournamentId, paginationOpts: { numItems: 100, cursor: null } },
+  );
+  return {
+    count,
+    listed: summarize(listed.page),
+    searched: summarize(searched),
+    history: summarize(history.page),
+  };
+}
+
 async function latestOrderFor(
   t: TestConvex<typeof schema>,
   tournamentId: Id<"tournaments">,
@@ -237,6 +284,15 @@ test("direct paid registration: checkout, webhook confirm, idempotent redelivery
   });
   const beforeConfirm = await tournamentDoc(t, tournamentId);
   expect(beforeConfirm.confirmedRegistrationCount).toBe(0);
+  // The pending row a direct checkout files is awaiting its payment, not a
+  // decision — approval is off — so it is in the history but not the
+  // review queue, and the badge stays quiet.
+  expect(await reviewQueue(t, tournamentId)).toEqual({
+    count: { count: 0, capped: false },
+    listed: [],
+    searched: [],
+    history: [{ entryStatus: "pending", paymentStatus: "awaiting_payment" }],
+  });
 
   await completePayment(t, order, "one");
   order = await latestOrderFor(t, tournamentId, 1);
@@ -772,6 +828,14 @@ test("approval mode: apply free, approval requests payment, payment seats", asyn
     }),
   ).rejects.toThrow("pending organizer approval");
 
+  // Until the organizer decides, the application is the review queue.
+  expect(await reviewQueue(t, tournamentId)).toEqual({
+    count: { count: 1, capped: false },
+    listed: [{ entryStatus: "pending", paymentStatus: null }],
+    searched: [{ entryStatus: "pending", paymentStatus: null }],
+    history: [{ entryStatus: "pending", paymentStatus: null }],
+  });
+
   await asOwner.mutation(api.tournaments.registrations.approveRegistration, {
     registrationId,
   });
@@ -782,6 +846,15 @@ test("approval mode: apply free, approval requests payment, payment seats", asyn
   expect(
     (await tournamentDoc(t, tournamentId)).confirmedRegistrationCount,
   ).toBe(0);
+  // Approval leaves the entry pending for its payment, but the decision is
+  // made: the row leaves the queue, the badge, and the filtered search,
+  // and the unfiltered history shows it with its payment state instead.
+  expect(await reviewQueue(t, tournamentId)).toEqual({
+    count: { count: 0, capped: false },
+    listed: [],
+    searched: [],
+    history: [{ entryStatus: "pending", paymentStatus: "requires_payment" }],
+  });
   let order = await latestOrderFor(t, tournamentId, 1);
   expect(order).toMatchObject({
     purpose: "post_approval",

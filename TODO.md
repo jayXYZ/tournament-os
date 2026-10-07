@@ -333,11 +333,26 @@ claimed by one.
         approval mode, and their open applications in the home listing with
         a status badge (listMyTournaments now includes pending/waitlisted
         rows)
-  - [ ] Surface pending applications for organizer review: the
-        approve/waitlist/reject actions live on the chronologically
-        paginated, searchable Registrations table, so on a busy event
-        finding what awaits review means scanning pages — add a
-        pending-applications filter or queue view to the tab
+  - [x] Surface pending applications for organizer review (2026-09-16): the
+        Registrations tab's toolbar gains a filter (All / Pending review /
+        Waitlisted / Confirmed / Cancelled / Rejected) applied server-side
+        — `listRegistrationPage` walks the new
+        `by_tournamentId_and_entryStatus_and_awaitingReview` index under a
+        filter (creation order, so a filtered list pages newest-first like
+        the unfiltered one) and `searchRegistrations` narrows on the same
+        columns (now search-index filter fields), so the filter sees the
+        whole history rather than the pages loaded so far and composes
+        with the search box. "Pending review" is the review queue
+        (CONTEXT.md "Review Queue"): a pending row carries `awaitingReview`
+        only until the organizer decides it, so an approved entry awaiting
+        its payment on a paid event — or one filed by a direct checkout —
+        is pending without being review work. The row menu's
+        approve/waitlist/reject actions act in place, and each filter has
+        its own empty state. The Registrations tab in the manager subnav
+        carries a count of applications awaiting a decision
+        (`getPendingReviewCount`, capped at 99+, zero once the tournament
+        leaves the registration lifecycle and the decisions with it), so
+        review work is visible from anywhere in the manager
   - [x] Bar re-entry to a private event after organizer removal
         (launch-blocking, completed 2026-08-19): rejecting is the bar — the
         roster menu's "Reject registration" acts on a cancelled row (closing

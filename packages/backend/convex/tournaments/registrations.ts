@@ -13,7 +13,7 @@ import { logAuditEvent } from "../model/auditLog";
 import { inviteCodeGrantsAccess } from "../model/invites";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
 import { registrationsConcededByDrop } from "../model/matchResults";
-import { ORGANIZER_LIST_PAGE_SIZE, clampPageSize } from "../model/pagination";
+import { ORGANIZER_LIST_PAGE_SIZE, requirePageSize } from "../model/pagination";
 import {
   ensureParticipantForUser,
   participantForUser,
@@ -25,6 +25,8 @@ import { tiebreakRandom } from "../model/random";
 import {
   adjustConfirmedRegistrationCount,
   entryReviewActions,
+  paginateRegistrationHistory,
+  pendingReviewCount,
   playerDisplayName,
   registrationDropEffect,
   registrationForUser,
@@ -32,6 +34,7 @@ import {
   requireCapacityAvailable,
   requireRegistration,
   resolveRegistrationDisplayName,
+  searchRegistrationHistory,
 } from "../model/registrations";
 import {
   approveEntry,
@@ -49,6 +52,7 @@ import {
   requireTournament,
 } from "../model/tournaments";
 import { enforceRateLimit } from "../rateLimits";
+import { registrationFilterValidator } from "../validators";
 
 async function registrationRows(
   ctx: QueryCtx,
@@ -209,7 +213,7 @@ export const registerSelf = mutation({
     // admission shape serves the fresh insert and the reused row alike.
     const requiresApproval = tournament.registrationRequiresApproval;
     const admission = requiresApproval
-      ? { entryStatus: "pending" as const }
+      ? { entryStatus: "pending" as const, awaitingReview: true as const }
       : {
           entryStatus: "confirmed" as const,
           participationStatus: "active" as const,
@@ -382,39 +386,27 @@ export const listMyTournaments = query({
   },
 });
 
-// Every registration workflow record, newest first. Unlike confirmed
-// participants, pending/cancelled/rejected rows are not bounded by tournament
-// capacity, so this organizer history must be cursor-paginated.
+// Every registration workflow record, newest first — or, under a filter,
+// one slice of it: an entry status, or the review queue (see
+// registrationFilterValidator). Unlike confirmed participants,
+// pending/cancelled/rejected rows are not bounded by tournament capacity, so
+// this organizer history must be cursor-paginated;
+// paginateRegistrationHistory picks the index.
 export const listRegistrationPage = query({
   args: {
     tournamentId: v.id("tournaments"),
+    filter: v.optional(registrationFilterValidator),
     paginationOpts: paginationOptsValidator,
   },
   handler: async (ctx, args) => {
     const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
-    // Prefix query on the compound index; the startDate column is constant
-    // per tournament (reschedule syncs excepted, transiently), so this still
-    // reads newest-registration-first.
-    // No maximumRowsRead: this walk is a plain index-equality prefix with no
-    // post-index filter, so every row read is a row returned. A cap here
-    // would buy no headroom — it would just equal numItems and trip on every
-    // full page (rowsRead reaches the cap on the same doc that fills the
-    // page), flagging a healthy page as SplitRequired/SplitRecommended and
-    // making usePaginatedQuery split and re-issue it instead of settling.
-    const page = await ctx.db
-      .query("tournamentRegistrations")
-      .withIndex("by_tournamentId_and_tournamentStartDate", (q) =>
-        q.eq("tournamentId", args.tournamentId),
-      )
-      .order("desc")
-      .paginate({
-        ...args.paginationOpts,
-        numItems: clampPageSize(
-          args.paginationOpts.numItems,
-          ORGANIZER_LIST_PAGE_SIZE,
-        ),
-      });
-
+    requirePageSize(args.paginationOpts.numItems, ORGANIZER_LIST_PAGE_SIZE);
+    const page = await paginateRegistrationHistory(
+      ctx,
+      args.tournamentId,
+      args.filter,
+      args.paginationOpts,
+    );
     return {
       ...page,
       page: await registrationRows(ctx, tournament, page.page),
@@ -422,23 +414,35 @@ export const listRegistrationPage = query({
   },
 });
 
-// Organizer roster search across the full registration history. The search
-// index prefix-matches the last term, which suits name-as-you-type, and
-// results are relevance-ordered and bounded to one page — the client never
-// has to page older records in to find a player. Rows without a denormalized
-// playerName (legacy data) are absent from the index and cannot match.
-export const searchRegistrations = query({
-  args: { tournamentId: v.id("tournaments"), search: v.string() },
+// The Registrations tab's notification count: how many applications await a
+// decision, so an organizer sees there is review work from anywhere in the
+// manager without opening the tab (see pendingReviewCount for the cap and
+// the lifecycle rule).
+export const getPendingReviewCount = query({
+  args: { tournamentId: v.id("tournaments") },
   handler: async (ctx, args) => {
     const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
-    const matches = await ctx.db
-      .query("tournamentRegistrations")
-      .withSearchIndex("search_playerName", (q) =>
-        q
-          .search("playerName", args.search)
-          .eq("tournamentId", args.tournamentId),
-      )
-      .take(ORGANIZER_LIST_PAGE_SIZE);
+    return await pendingReviewCount(ctx, tournament);
+  },
+});
+
+// Organizer roster search across the full registration history, one page of
+// best matches; the optional filter composes with the search the same way
+// it narrows the list (see searchRegistrationHistory).
+export const searchRegistrations = query({
+  args: {
+    tournamentId: v.id("tournaments"),
+    search: v.string(),
+    filter: v.optional(registrationFilterValidator),
+  },
+  handler: async (ctx, args) => {
+    const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
+    const matches = await searchRegistrationHistory(
+      ctx,
+      args.tournamentId,
+      args.search,
+      args.filter,
+    );
 
     return await registrationRows(ctx, tournament, matches);
   },

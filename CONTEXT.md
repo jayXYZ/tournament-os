@@ -165,6 +165,12 @@ URL-embedded, human-readable form)
 A registration's admission state (pending, waitlisted, confirmed, cancelled,
 rejected). Independent of competitive state.
 
+**Review Queue**:
+The pending applications an organizer has yet to decide (approve, reject, or
+waitlist). A pending entry that is instead awaiting its payment — approved on
+a paid event, or filed by a direct checkout — is not in the queue.
+_Avoid_: pending list (ambiguous between the queue and every pending row)
+
 **Participation Status**:
 A confirmed player's competitive state (active, dropped, eliminated,
 disqualified).
