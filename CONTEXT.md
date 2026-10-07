@@ -1,4 +1,4 @@
-# Tournament OS — Competitive Engine
+# Paper Pairings — Competitive Engine
 
 Shared language for the tournament engine — pairing, scoring, standings, and
 progression — plus the container tier above it (conventions and the events

@@ -1,4 +1,4 @@
-# Tournament OS roadmap
+# Paper Pairings roadmap
 
 This roadmap was audited against the current implementation and reordered to
 build reusable domain foundations before client polish or provider-specific
