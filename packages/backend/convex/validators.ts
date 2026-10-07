@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { type Infer, v } from "convex/values";
 
 import {
   invitationStatuses,
@@ -128,6 +128,23 @@ export const tournamentEntryStatusValidator = v.union(
   v.literal("cancelled"),
   v.literal("rejected"),
 );
+
+// The Registrations tab's filter: one entry status of a tournament's
+// history, except that "pending" is replaced by the review queue —
+// "awaiting_review" lists only the applications the organizer has yet to
+// decide (CONTEXT.md "Review Queue"). A pending row awaiting its payment
+// (an approved or directly filed entry on a paid event) is not review work
+// and has no filter of its own; it shows in the unfiltered history with its
+// payment badge. listRegistrationPage and searchRegistrations share this so
+// a filter and a search term always narrow the same rows.
+export const registrationFilterValidator = v.union(
+  v.literal("awaiting_review"),
+  v.literal("waitlisted"),
+  v.literal("confirmed"),
+  v.literal("cancelled"),
+  v.literal("rejected"),
+);
+export type RegistrationFilter = Infer<typeof registrationFilterValidator>;
 
 // Competitive eligibility after an entry is confirmed. "active" means the
 // player remains eligible to be paired; it is initialized on confirmation so
