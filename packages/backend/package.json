@@ -1,5 +1,5 @@
 {
-  "name": "@tournament-os/backend",
+  "name": "@paper-pairings/backend",
   "version": "0.1.0",
   "private": true,
   "description": "Convex backend (schema, functions, generated API) shared by the web and mobile apps.",
@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@convex-dev/rate-limiter": "^0.3.2",
-    "@tournament-os/shared": "workspace:*",
+    "@paper-pairings/shared": "workspace:*",
     "convex": "catalog:",
     "stripe": "^22.5.0"
   },

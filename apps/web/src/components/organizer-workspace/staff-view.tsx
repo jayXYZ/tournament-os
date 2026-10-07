@@ -3,10 +3,10 @@ import { useMutation, useQuery } from 'convex/react'
 import { Users } from 'lucide-react'
 import { toast } from 'sonner'
 
-import { api } from '@tournament-os/backend/convex/_generated/api'
-import { canInviteMembers } from '@tournament-os/shared/organizer-utils'
+import { api } from '@paper-pairings/backend/convex/_generated/api'
+import { canInviteMembers } from '@paper-pairings/shared/organizer-utils'
 import { useOrganization } from './organization-context'
-import type { OrganizerInviteRole } from '@tournament-os/shared/organizer-utils'
+import type { OrganizerInviteRole } from '@paper-pairings/shared/organizer-utils'
 import type { FormEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import {

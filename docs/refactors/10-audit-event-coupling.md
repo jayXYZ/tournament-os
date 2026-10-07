@@ -2,10 +2,10 @@
 
 ## Context for the agent
 
-You are working in `tournament-os`; the backend is Convex in
+You are working in `paper-pairings`; the backend is Convex in
 `packages/backend`. **Read
 `packages/backend/convex/_generated/ai/guidelines.md` first.**
-Pre-production. Verify with `pnpm --filter @tournament-os/backend test`
+Pre-production. Verify with `pnpm --filter @paper-pairings/backend test`
 (audit specs: `tournaments-audit-log.convex.spec.ts`).
 
 **Important: this task starts with a policy decision, not code.** Some of the

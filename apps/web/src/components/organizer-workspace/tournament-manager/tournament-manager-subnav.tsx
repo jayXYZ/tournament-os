@@ -10,8 +10,8 @@ import {
 import { useLocation, useSearch } from '@tanstack/react-router'
 import { useQuery } from 'convex/react'
 
-import { api } from '@tournament-os/backend/convex/_generated/api'
-import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
+import { api } from '@paper-pairings/backend/convex/_generated/api'
+import type { Id } from '@paper-pairings/backend/convex/_generated/dataModel'
 import type { WorkspaceSubnavItem } from '@/components/shared/workspace-subnav'
 import { WorkspaceSubnav } from '@/components/shared/workspace-subnav'
 import { parseRoundSelectionSearch } from '@/components/tournaments'

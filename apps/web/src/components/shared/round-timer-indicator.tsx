@@ -1,7 +1,7 @@
 import { Timer } from 'lucide-react'
-import { useRoundTimer } from '@tournament-os/core'
+import { useRoundTimer } from '@paper-pairings/core'
 
-import type { RoundTimer } from '@tournament-os/core'
+import type { RoundTimer } from '@paper-pairings/core'
 import { cn } from '@/lib/utils'
 
 // Compact read-only live countdown for the tournament's round timer, shared by

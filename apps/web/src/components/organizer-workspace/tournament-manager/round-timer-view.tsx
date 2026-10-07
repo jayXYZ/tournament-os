@@ -3,7 +3,7 @@ import { useMutation, useQuery } from 'convex/react'
 import { Minus, Pause, Play, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 
-import { api } from '@tournament-os/backend/convex/_generated/api'
+import { api } from '@paper-pairings/backend/convex/_generated/api'
 import {
   DEFAULT_ROUND_DURATION_MS,
   MAX_ROUND_DURATION_MS,
@@ -11,13 +11,13 @@ import {
   durationMsToMinutes,
   formatTimer,
   minutesToDurationMs,
-} from '@tournament-os/shared/timer-utils'
-import { mutationErrorMessage, useRoundTimer } from '@tournament-os/core'
+} from '@paper-pairings/shared/timer-utils'
+import { mutationErrorMessage, useRoundTimer } from '@paper-pairings/core'
 
 import { inProgressRound } from './pairings-board'
 import { activeRoundTimer } from './round-timer-chip'
 import type { FormEvent } from 'react'
-import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
+import type { Id } from '@paper-pairings/backend/convex/_generated/dataModel'
 import type { PairingsBoard } from './pairings-board'
 import { Button } from '@/components/ui/button'
 import {

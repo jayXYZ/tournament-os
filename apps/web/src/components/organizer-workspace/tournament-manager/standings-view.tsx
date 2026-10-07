@@ -1,16 +1,16 @@
 import { useQuery } from 'convex/react'
 import { Trophy } from 'lucide-react'
 
-import { api } from '@tournament-os/backend/convex/_generated/api'
+import { api } from '@paper-pairings/backend/convex/_generated/api'
 import {
   displayPlayerName,
   formatPercent,
   formatRecord,
   standingStatusLabel,
-} from '@tournament-os/core'
+} from '@paper-pairings/core'
 import type { ColumnDef } from '@tanstack/react-table'
 import type { FunctionReturnType } from 'convex/server'
-import type { Id } from '@tournament-os/backend/convex/_generated/dataModel'
+import type { Id } from '@paper-pairings/backend/convex/_generated/dataModel'
 import type { RoundSelection } from '@/components/tournaments'
 import { TableEmptyState } from '@/components/shared/table-empty-state'
 import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'

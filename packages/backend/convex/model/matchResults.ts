@@ -1,4 +1,4 @@
-import { requiredGameWins } from "@tournament-os/shared/match-structure";
+import { requiredGameWins } from "@paper-pairings/shared/match-structure";
 
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";

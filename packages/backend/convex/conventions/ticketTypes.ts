@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 
-import { computeOrderBreakdown } from "@tournament-os/shared/payment-fees";
+import { computeOrderBreakdown } from "@paper-pairings/shared/payment-fees";
 
 import type { Doc } from "../_generated/dataModel";
 import { mutation, query, type MutationCtx } from "../_generated/server";

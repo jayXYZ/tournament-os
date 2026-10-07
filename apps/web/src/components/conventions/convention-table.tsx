@@ -2,7 +2,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { CalendarDays, Ticket } from 'lucide-react'
 
 import { formatConventionDateRange } from './convention-display'
-import type { Doc } from '@tournament-os/backend/convex/_generated/dataModel'
+import type { Doc } from '@paper-pairings/backend/convex/_generated/dataModel'
 import { TournamentLifecycleBadge } from '@/components/tournaments'
 import { TableEmptyState } from '@/components/shared/table-empty-state'
 import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'

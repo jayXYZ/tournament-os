@@ -1,6 +1,6 @@
 import { BadgeCheck, Clock, ReceiptText } from 'lucide-react'
 import type { ReactNode } from 'react'
-import type { Doc } from '@tournament-os/backend/convex/_generated/dataModel'
+import type { Doc } from '@paper-pairings/backend/convex/_generated/dataModel'
 import { Button } from '@/components/ui/button'
 import {
   Empty,

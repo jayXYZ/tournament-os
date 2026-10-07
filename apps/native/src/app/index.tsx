@@ -1,5 +1,5 @@
 import { AuthView, UserButton } from "@clerk/expo/native";
-import { useConvexAuthReadiness, useMyTournaments } from "@tournament-os/core";
+import { useConvexAuthReadiness, useMyTournaments } from "@paper-pairings/core";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
@@ -38,7 +38,7 @@ export default function HomeScreen() {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.signedOut}>
-          <Text style={styles.brand}>Tournament OS</Text>
+          <Text style={styles.brand}>Paper Pairings</Text>
           <Text style={styles.tagline}>
             Sign in to follow your matches and standings live.
           </Text>

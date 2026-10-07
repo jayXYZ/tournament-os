@@ -1,7 +1,7 @@
 import { useMutation } from 'convex/react'
 
-import { api } from '@tournament-os/backend/convex/_generated/api'
-import type { Doc } from '@tournament-os/backend/convex/_generated/dataModel'
+import { api } from '@paper-pairings/backend/convex/_generated/api'
+import type { Doc } from '@paper-pairings/backend/convex/_generated/dataModel'
 import { EventVisibilitySelect } from '@/components/organizer-workspace/paid-event/visibility-select'
 
 export function VisibilitySelect({

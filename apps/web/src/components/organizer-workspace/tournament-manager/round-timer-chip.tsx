@@ -4,7 +4,7 @@ import { Timer } from 'lucide-react'
 import {
   DEFAULT_ROUND_DURATION_MS,
   formatTimer,
-} from '@tournament-os/shared/timer-utils'
+} from '@paper-pairings/shared/timer-utils'
 
 import { inProgressRound } from './pairings-board'
 import type { PairingsBoard } from './pairings-board'

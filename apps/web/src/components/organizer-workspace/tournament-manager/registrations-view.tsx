@@ -11,19 +11,19 @@ import {
   UserX,
 } from 'lucide-react'
 
-import { api } from '@tournament-os/backend/convex/_generated/api'
-import { displayPlayerName } from '@tournament-os/core'
+import { api } from '@paper-pairings/backend/convex/_generated/api'
+import { displayPlayerName } from '@paper-pairings/core'
 import {
   MALFORMED_REGISTRATION_STATUS,
   effectiveRegistrationStatus,
-} from '@tournament-os/shared/registration-status'
+} from '@paper-pairings/shared/registration-status'
 import { toast } from 'sonner'
 import type { ColumnDef } from '@tanstack/react-table'
 import type { FunctionArgs } from 'convex/server'
 import type {
   Doc,
   Id,
-} from '@tournament-os/backend/convex/_generated/dataModel'
+} from '@paper-pairings/backend/convex/_generated/dataModel'
 import type { EntryStatus } from '@/components/organizer-workspace/paid-event/roster-badges'
 import {
   entryStatusBadgeVariant,

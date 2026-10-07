@@ -33,7 +33,7 @@ export function PublicSiteHeader({
             <Swords className="size-5" aria-hidden="true" />
           </div>
           <div>
-            <p className="text-sm font-semibold leading-none">Tournament OS</p>
+            <p className="text-sm font-semibold leading-none">Paper Pairings</p>
             <p className="mt-1 text-xs text-muted-foreground">{subtitle}</p>
           </div>
         </div>

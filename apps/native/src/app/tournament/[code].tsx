@@ -10,12 +10,12 @@ import {
   useMyCurrentMatch,
   usePlayerTournamentAccess,
   useRoundTimer,
-} from "@tournament-os/core";
+} from "@paper-pairings/core";
 import type {
   CurrentMatchDescription,
   PlayerTournamentEvent,
   RoundTimer,
-} from "@tournament-os/core";
+} from "@paper-pairings/core";
 import { useLocalSearchParams, useNavigation } from "expo-router";
 import { useEffect, useState } from "react";
 import {
@@ -33,7 +33,7 @@ export default function TournamentScreen() {
   const { code } = useLocalSearchParams<{ code: string }>();
   // The shared access ladder needs the app's own auth signal; Convex
   // readiness alone cannot distinguish "signed out" from "token still
-  // propagating" (see @tournament-os/core player-access.ts).
+  // propagating" (see @paper-pairings/core player-access.ts).
   const { user, isLoaded } = useUser();
   const access = usePlayerTournamentAccess(code ?? "", {
     user: user ?? null,
@@ -162,7 +162,7 @@ function RoundCountdown({ timer }: { timer: RoundTimer | null | undefined }) {
   );
 }
 
-// Renders the shared Player View description (see @tournament-os/core
+// Renders the shared Player View description (see @paper-pairings/core
 // player-view.ts) — state branching and copy live in the presenter, this
 // component owns only the native styling. The report action is not yet
 // wired on native, so a reportable match reads as informational for now.

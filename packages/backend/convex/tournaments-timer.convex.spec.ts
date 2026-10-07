@@ -8,7 +8,7 @@ import {
   MAX_ROUND_DURATION_MS,
   MAX_TIMER_ADJUST_MS,
   MIN_ROUND_DURATION_MS,
-} from "@tournament-os/shared/timer-utils";
+} from "@paper-pairings/shared/timer-utils";
 
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
