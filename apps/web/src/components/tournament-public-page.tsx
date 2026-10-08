@@ -242,7 +242,13 @@ function TournamentDetails({
       </CardContent>
       <CardFooter>
         <p className="text-xs text-muted-foreground">
-          Pairings and standings will be available here once the event begins.
+          {tournament.lifecycle === 'in_progress'
+            ? 'The event is under way. Pairings and standings are in your player view.'
+            : tournament.lifecycle === 'completed'
+              ? 'This event has finished. Final standings are in the player view.'
+              : tournament.lifecycle === 'cancelled'
+                ? 'This event was cancelled.'
+                : 'Pairings and standings appear in your player view once the event begins.'}
         </p>
       </CardFooter>
     </Card>
@@ -340,7 +346,7 @@ function RegistrationPanel({
         params={{ tournamentId: String(tournament.publicCode) }}
       >
         <Swords data-icon="inline-start" />
-        Open player controller
+        Open my player view
       </Link>
     </Button>
   )

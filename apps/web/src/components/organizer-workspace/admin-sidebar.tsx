@@ -1,7 +1,7 @@
 import { Link, useLocation } from '@tanstack/react-router'
 import {
-  ArrowLeft,
   Building2,
+  DoorOpen,
   LogOut,
   Tent,
   Trophy,
@@ -11,6 +11,7 @@ import {
 import { AdminBreadcrumb, viewFromPathname } from './admin-breadcrumb'
 import { useAppAuth } from '@/lib/use-app-auth'
 
+import { ModeToggle } from '@/components/mode-toggle'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -39,7 +40,7 @@ export function AdminSidebar() {
   const view = viewFromPathname(useLocation().pathname)
 
   return (
-    <Sidebar variant="inset" collapsible="icon">
+    <Sidebar collapsible="icon">
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupLabel>Admin</SidebarGroupLabel>
@@ -101,10 +102,10 @@ export function AdminSidebar() {
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton asChild tooltip="Player view">
+            <SidebarMenuButton asChild tooltip="Leave admin">
               <Link to="/">
-                <ArrowLeft />
-                <span>Player view</span>
+                <DoorOpen />
+                <span>Leave admin</span>
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -119,7 +120,7 @@ export function AdminHeader() {
   const { user, signOut } = useAppAuth()
 
   return (
-    <header className="flex min-h-14 items-center justify-between gap-3 border-b border-border bg-background px-4 md:rounded-t-xl sm:px-6">
+    <header className="flex min-h-14 items-center justify-between gap-3 border-b border-border bg-background px-4 sm:px-6">
       <div className="flex items-center gap-2">
         <SidebarTrigger />
         <Separator
@@ -128,11 +129,14 @@ export function AdminHeader() {
         />
         <AdminBreadcrumb />
       </div>
-      <UserMenu
-        email={user?.email ?? undefined}
-        name={user?.firstName ?? undefined}
-        onSignOut={() => void signOut()}
-      />
+      <div className="flex items-center gap-2">
+        <ModeToggle />
+        <UserMenu
+          email={user?.email ?? undefined}
+          name={user?.firstName ?? undefined}
+          onSignOut={() => void signOut()}
+        />
+      </div>
     </header>
   )
 }

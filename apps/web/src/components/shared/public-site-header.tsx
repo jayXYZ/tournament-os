@@ -1,6 +1,7 @@
-import { Swords } from 'lucide-react'
 import type { ReactNode } from 'react'
 
+import { ModeToggle } from '@/components/mode-toggle'
+import { BrandMark } from '@/components/shared/brand-mark'
 import { cn } from '@/lib/utils'
 
 // Width tokens shared by the header rail and SiteShell's content column, so
@@ -29,17 +30,16 @@ export function PublicSiteHeader({
         )}
       >
         <div className="flex items-center gap-3">
-          <div className="flex size-9 items-center justify-center rounded-md bg-primary text-primary-foreground">
-            <Swords className="size-5" aria-hidden="true" />
-          </div>
+          <BrandMark className="size-9" />
           <div>
             <p className="text-sm font-semibold leading-none">Paper Pairings</p>
             <p className="mt-1 text-xs text-muted-foreground">{subtitle}</p>
           </div>
         </div>
-        {actions ? (
-          <div className="flex items-center gap-2">{actions}</div>
-        ) : null}
+        <div className="flex items-center gap-2">
+          {actions}
+          <ModeToggle />
+        </div>
       </div>
     </header>
   )

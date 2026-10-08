@@ -16,10 +16,12 @@ import {
   requireCurrentPhase,
   requirePhase,
 } from "../model/phases";
+import { ZERO_PARTICIPATION_COUNTS } from "../model/participation";
 import {
   analyzeProgression,
   completeRound as completeRoundTransition,
   generateNextRound as generateNextRoundTransition,
+  liveRoundSummary,
   loadPhaseBoards,
   publishPairings as publishPairingsTransition,
   rewindLatestRound as rewindLatestRoundTransition,
@@ -294,9 +296,26 @@ export const getPairingsBoard = query({
   handler: async (ctx, args) => {
     const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
     const phaseBoards = await loadPhaseBoards(ctx, args.tournamentId);
-    const { nextStep, actions } = await analyzeProgression(ctx, tournament, {
-      phaseBoards,
-    });
+    const { facts, nextStep, actions } = await analyzeProgression(
+      ctx,
+      tournament,
+      { phaseBoards },
+    );
+
+    // Who is still playing. Both counts are denormalized on the tournament
+    // row this query already holds (the participation module keeps the
+    // tally current), so the overview's "31 playing, 1 dropped" line costs
+    // no extra reads — every manager route subscribes to this board, and
+    // after a cut the non-active roster it would otherwise scan is nearly the
+    // whole field.
+    const counts = tournament.participationCounts ?? ZERO_PARTICIPATION_COUNTS;
+    const field = {
+      confirmed: tournament.confirmedRegistrationCount,
+      active:
+        tournament.confirmedRegistrationCount -
+        (counts.dropped + counts.eliminated + counts.disqualified),
+      ...counts,
+    };
 
     // Derived from the same boards progression analyzes, so the timeline the
     // clients render can never disagree with nextStep.
@@ -309,6 +328,8 @@ export const getPairingsBoard = query({
       })),
       nextStep,
       rewind: actions.rewind,
+      liveRound: liveRoundSummary(facts),
+      field,
     };
   },
 });

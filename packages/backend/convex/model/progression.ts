@@ -364,6 +364,62 @@ export async function analyzeProgression(
   };
 }
 
+// The in-progress round's result progress, for the organizer overview's live
+// band. Derived from the facts progression already loaded — no extra reads —
+// so the counts can never disagree with nextStep's completeRound gate:
+// tableCount - resultsIn is exactly unreportedMatchCount.
+export type LiveRoundSummary = {
+  roundId: Id<"tournamentRounds">;
+  roundNumber: number;
+  // Matches with two seated players. Byes are counted apart: they have no
+  // table and carry an awarded result from pairing time (CONTEXT.md "Bye").
+  tableCount: number;
+  byeCount: number;
+  resultsIn: number;
+  // Player-reported results no organizer has confirmed or overridden. They
+  // count toward completion (CONTEXT.md "Reported Result"), so they are a
+  // review item rather than a blocker.
+  unconfirmedCount: number;
+};
+
+export function liveRoundSummary(
+  facts: ProgressionFacts,
+): LiveRoundSummary | null {
+  const { round, matchesWithPlayers } = facts;
+  if (
+    !round ||
+    round.roundStatus !== "in_progress" ||
+    matchesWithPlayers === null
+  ) {
+    return null;
+  }
+  let tableCount = 0;
+  let byeCount = 0;
+  let resultsIn = 0;
+  let unconfirmedCount = 0;
+  for (const { match, players } of matchesWithPlayers) {
+    if (players.some((player) => player.isBye)) {
+      byeCount += 1;
+      continue;
+    }
+    tableCount += 1;
+    if (match.matchStatus === "completed") {
+      resultsIn += 1;
+      if (match.reportedByRegistrationId !== undefined) {
+        unconfirmedCount += 1;
+      }
+    }
+  }
+  return {
+    roundId: round._id,
+    roundNumber: round.roundNumber,
+    tableCount,
+    byeCount,
+    resultsIn,
+    unconfirmedCount,
+  };
+}
+
 function disallowed(reason: string): { allowed: false; reason: string } {
   return { allowed: false, reason };
 }

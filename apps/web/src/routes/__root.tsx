@@ -6,6 +6,7 @@ import {
   useRouteContext,
 } from '@tanstack/react-router'
 import { ClerkProvider, useAuth } from '@clerk/tanstack-react-start'
+import { shadcn } from '@clerk/themes'
 import { TanStackRouterDevtools } from '@tanstack/react-router-devtools'
 import { createServerFn } from '@tanstack/react-start'
 import * as React from 'react'
@@ -14,6 +15,7 @@ import { ConvexProviderWithClerk } from 'convex/react-clerk'
 import type { ConvexQueryClient } from '@convex-dev/react-query'
 import type { ConvexReactClient } from 'convex/react'
 import type { QueryClient } from '@tanstack/react-query'
+import { ThemeProvider } from '@/components/theme-provider'
 import appCss from '@/styles/app.css?url'
 
 const fetchClerkAuth = createServerFn({ method: 'GET' }).handler(async () => {
@@ -68,6 +70,7 @@ export const Route = createRootRouteWithContext<{
         sizes: '16x16',
         href: '/favicon-16x16.png',
       },
+      { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
       { rel: 'manifest', href: '/site.webmanifest' },
       { rel: 'icon', href: '/favicon.ico' },
     ],
@@ -92,7 +95,9 @@ function RootComponent() {
   const context = useRouteContext({ from: Route.id })
 
   return (
-    <ClerkProvider>
+    // The shadcn theme reads this app's CSS tokens, so Clerk's widgets follow
+    // the light/dark toggle along with everything else.
+    <ClerkProvider appearance={{ theme: shadcn }}>
       <ConvexProviderWithClerk client={context.convexClient} useAuth={useAuth}>
         <RootDocument>
           <Outlet />
@@ -104,12 +109,19 @@ function RootComponent() {
 
 function RootDocument({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className="h-full antialiased font-sans">
+    // suppressHydrationWarning: the ThemeProvider's pre-hydration script adds
+    // the theme class before React hydrates, so the html class attribute
+    // legitimately differs from the server-rendered markup.
+    <html
+      lang="en"
+      className="h-full antialiased font-sans"
+      suppressHydrationWarning
+    >
       <head>
         <HeadContent />
       </head>
       <body className="min-h-full flex flex-col">
-        {children}
+        <ThemeProvider>{children}</ThemeProvider>
         <TanStackRouterDevtools position="bottom-right" />
         <Scripts />
       </body>

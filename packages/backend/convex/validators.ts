@@ -160,6 +160,14 @@ export const tournamentParticipationStatusValidator = v.union(
   v.literal("disqualified"),
 );
 
+// A tournament's tally of confirmed entrants in each non-active status
+// (tournaments.participationCounts); "active" is confirmed minus the sum.
+export const participationCountsValidator = v.object({
+  dropped: v.number(),
+  eliminated: v.number(),
+  disqualified: v.number(),
+});
+
 export const tournamentPhaseStatusValidator = v.union(
   v.literal("upcoming"),
   v.literal("in_progress"),

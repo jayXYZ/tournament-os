@@ -1,4 +1,8 @@
-import { Outlet, createFileRoute } from '@tanstack/react-router'
+import {
+  Outlet,
+  createFileRoute,
+  useChildMatches,
+} from '@tanstack/react-router'
 import { useQuery } from 'convex/react'
 
 import { api } from '@paper-pairings/backend/convex/_generated/api'
@@ -18,6 +22,17 @@ function TournamentManagerLayout() {
   const managed = useQuery(api.tournaments.lifecycle.getManagedTournament, {
     publicCode,
   })
+  // The overview renders the progress strip itself, expanded into the live
+  // status band beneath the event's heading; every other route gets the
+  // compact strip here so the timeline stays the round selector everywhere.
+  // Asked of the router's matched route tree rather than the URL text, so a
+  // trailing slash, base path, or param encoding cannot show both at once.
+  const isOverview = useChildMatches({
+    select: (matches) =>
+      matches.some(
+        (match) => match.routeId === '/admin/tournaments/$tournamentId/',
+      ),
+  })
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -26,7 +41,7 @@ function TournamentManagerLayout() {
         tournamentId={managed?.tournament._id}
       />
 
-      {managed ? (
+      {managed && !isOverview ? (
         <TournamentProgressBar
           tournamentId={managed.tournament._id}
           publicCode={publicCode}
@@ -40,7 +55,11 @@ function TournamentManagerLayout() {
           <p className="text-sm text-muted-foreground">Tournament not found.</p>
         ) : (
           <ManagedTournamentProvider
-            value={{ publicCode, tournamentId: managed.tournament._id }}
+            value={{
+              publicCode,
+              tournamentId: managed.tournament._id,
+              tournament: managed.tournament,
+            }}
           >
             <Outlet />
           </ManagedTournamentProvider>

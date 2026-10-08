@@ -15,6 +15,7 @@ import {
   paymentRefundKindValidator,
   paymentRefundReasonValidator,
   paymentRefundStatusValidator,
+  participationCountsValidator,
   payoutTransferStatusValidator,
   tournamentPhaseBestOfValidator,
   membershipStatusValidator,
@@ -494,6 +495,13 @@ export default defineSchema({
     // Confirmed entries occupy capacity and remain part of the historical
     // field even after a later competitive drop or elimination.
     confirmedRegistrationCount: v.number(),
+    // How many of those confirmed entries have left active play, by status.
+    // Kept current by model/participation.ts — the one writer of a
+    // registration's participationStatus — so the organizer board every
+    // manager route subscribes to can report the field without scanning the
+    // non-active registrations (nearly the whole roster after a cut). Absent
+    // reads as all zero; the active count is confirmed minus the sum.
+    participationCounts: v.optional(participationCountsValidator),
     // Deterministic seed for pairing's within-bracket shuffle, so pairings are
     // reproducible and auditable. Optional for rows created before it existed;
     // readers fall back to publicCode.

@@ -9,11 +9,13 @@ import {
 } from "./standings";
 
 // The player-participation module: the one place that knows how a change to a
-// player's participation reaches BOTH copies of that fact — the registration
-// row (the source of truth) and the participationStatus denormalized onto the
+// player's participation reaches EVERY copy of that fact — the registration
+// row (the source of truth), the participationStatus denormalized onto the
 // player's row in the tournament's latest completed round's standings, which
 // is what every player's standings query reads (see getLatestStandings in
-// tournaments/player.ts). Callers name the participation change they want: a
+// tournaments/player.ts), and the per-status tally on the tournament row that
+// the organizer board reads (participationCounts in schema.ts). Callers name
+// the participation change they want: a
 // single transition through setRegistrationState, a round's eliminations
 // through eliminatePlayers, a cut through eliminateNonQualifiers, or a
 // rewind's unwind through restoreEliminationsForRewind. How the standings
@@ -83,18 +85,108 @@ type StandingsRowRef = Pick<
   "_id" | "participationStatus"
 >;
 
+type NonActiveStatus = "dropped" | "eliminated" | "disqualified";
+
+// The third copy of a participation fact: the tournament's tally of confirmed
+// entrants per non-active status (tournaments.participationCounts), which the
+// organizer board reads in place of scanning the non-active roster.
+export type ParticipationCounts = Record<NonActiveStatus, number>;
+
+export const ZERO_PARTICIPATION_COUNTS: ParticipationCounts = {
+  dropped: 0,
+  eliminated: 0,
+  disqualified: 0,
+};
+
+// The tally a registration row contributes to, or undefined for none: an
+// active player, or an entry that is not confirmed (whose participationStatus
+// is cleared — see patchRegistrationRow).
+function countedStatus(
+  row: Pick<
+    Doc<"tournamentRegistrations">,
+    "entryStatus" | "participationStatus"
+  >,
+): NonActiveStatus | undefined {
+  if (
+    row.entryStatus !== "confirmed" ||
+    row.participationStatus === undefined ||
+    row.participationStatus === "active"
+  ) {
+    return undefined;
+  }
+  return row.participationStatus;
+}
+
+// Accumulates the tally changes of one operation's transitions so the
+// tournament row is patched once at the end. Batches patch registrations
+// concurrently (mapAsyncInBatches), and a get-then-patch of the tournament
+// inside each would interleave across awaits and lose increments; the
+// synchronous += here cannot.
+class ParticipationCountDelta {
+  readonly counts: ParticipationCounts = { ...ZERO_PARTICIPATION_COUNTS };
+
+  record(from: NonActiveStatus | undefined, to: NonActiveStatus | undefined) {
+    if (from === to) {
+      return;
+    }
+    if (from !== undefined) {
+      this.counts[from] -= 1;
+    }
+    if (to !== undefined) {
+      this.counts[to] += 1;
+    }
+  }
+
+  // Applies the accumulated change to the tournament. Read fresh rather than
+  // from a caller's held Doc: the same transaction may already have patched
+  // the tournament (a lifecycle change, the seat counter), and a stale base
+  // would write the tally back wrong. Clamped like the seat counter so a
+  // tally can never go negative.
+  async apply(ctx: MutationCtx, tournamentId: Id<"tournaments">) {
+    const delta = this.counts;
+    if (
+      delta.dropped === 0 &&
+      delta.eliminated === 0 &&
+      delta.disqualified === 0
+    ) {
+      return;
+    }
+    const tournament = await ctx.db.get(tournamentId);
+    if (!tournament) {
+      throw new Error("Tournament not found");
+    }
+    const current = tournament.participationCounts ?? ZERO_PARTICIPATION_COUNTS;
+    await ctx.db.patch(tournamentId, {
+      participationCounts: {
+        dropped: Math.max(0, current.dropped + delta.dropped),
+        eliminated: Math.max(0, current.eliminated + delta.eliminated),
+        disqualified: Math.max(0, current.disqualified + delta.disqualified),
+      },
+      updatedAt: Date.now(),
+    });
+  }
+}
+
 // Writes the registration-row half of a transition. Every operation in this
 // module funnels through here, so the transition contract (the union typing
 // above) is enforced in exactly one place; what varies per operation is only
-// how the standings copy is repaired afterwards.
+// how the standings copy is repaired afterwards. The row is read first so the
+// transition's effect on the tournament's tally is recorded from its real
+// prior state, not a Doc a caller may hold stale.
 async function patchRegistrationRow(
   ctx: MutationCtx,
   registrationId: Id<"tournamentRegistrations">,
   update: RegistrationStateArgs,
+  delta: ParticipationCountDelta,
 ): Promise<{
   participationStatus: Doc<"tournamentRegistrations">["participationStatus"];
   updatedAt: number;
+  tournamentId: Id<"tournaments">;
 }> {
+  const existing = await ctx.db.get(registrationId);
+  if (!existing) {
+    throw new Error("Registration not found");
+  }
   const {
     updatedAt = Date.now(),
     eliminatedByRoundId,
@@ -128,7 +220,15 @@ async function patchRegistrationRow(
       : { eliminatedByRoundId: eliminatedByRoundId ?? undefined }),
     updatedAt,
   });
-  return { participationStatus, updatedAt };
+  delta.record(
+    countedStatus(existing),
+    countedStatus({ entryStatus: update.entryStatus, participationStatus }),
+  );
+  return {
+    participationStatus,
+    updatedAt,
+    tournamentId: existing.tournamentId,
+  };
 }
 
 // Writes a new participation status through to a standings row, or returns
@@ -216,17 +316,16 @@ export async function setRegistrationState(
   registrationId: Id<"tournamentRegistrations">,
   update: RegistrationStateArgs,
 ) {
-  const { participationStatus, updatedAt } = await patchRegistrationRow(
-    ctx,
-    registrationId,
-    update,
-  );
+  const delta = new ParticipationCountDelta();
+  const { participationStatus, updatedAt, tournamentId } =
+    await patchRegistrationRow(ctx, registrationId, update, delta);
   await syncStatusOntoStandingsRow(
     ctx,
     participationStatus,
     updatedAt,
     await latestStandingsRowFor(ctx, registrationId),
   );
+  await delta.apply(ctx, tournamentId);
 }
 
 function standingsRowsByPlayer(
@@ -269,13 +368,18 @@ async function lookupStandingsRowsFor(
 // Applies one transition to a batch of registrations, repairing each player's
 // standings copy from the held rows. A player absent from the map has no row
 // in the latest completed round — exactly what the per-player lookup finds
-// for a player with no standings at all.
+// for a player with no standings at all. The tally change lands on the
+// tournament once, after the batch.
 async function applyStateBatch(
   ctx: MutationCtx,
   registrations: Doc<"tournamentRegistrations">[],
   update: RegistrationStateArgs,
   rows: Map<Id<"tournamentRegistrations">, StandingsRowRef>,
 ) {
+  if (registrations.length === 0) {
+    return;
+  }
+  const delta = new ParticipationCountDelta();
   await mapAsyncInBatches(
     registrations,
     DATABASE_IO_BATCH_SIZE,
@@ -284,6 +388,7 @@ async function applyStateBatch(
         ctx,
         registration._id,
         update,
+        delta,
       );
       const synced = await syncStatusOntoStandingsRow(
         ctx,
@@ -299,6 +404,7 @@ async function applyStateBatch(
       }
     },
   );
+  await delta.apply(ctx, registrations[0].tournamentId);
 }
 
 // Dropped players whose elimination is not yet on record. Rows already
@@ -507,28 +613,40 @@ export async function restoreEliminationsForRewind(
       sourceIds.has(registration.eliminatedByRoundId),
   );
   const now = Date.now();
+  const delta = new ParticipationCountDelta();
   await mapAsyncInBatches(
     restored,
     DATABASE_IO_BATCH_SIZE,
     async (registration) =>
-      await patchRegistrationRow(ctx, registration._id, {
-        entryStatus: "confirmed",
-        participationStatus: "active",
-        updatedAt: now,
-      }),
+      await patchRegistrationRow(
+        ctx,
+        registration._id,
+        {
+          entryStatus: "confirmed",
+          participationStatus: "active",
+          updatedAt: now,
+        },
+        delta,
+      ),
   );
   await mapAsyncInBatches(
     clearedDrops,
     DATABASE_IO_BATCH_SIZE,
     async (registration) =>
-      await patchRegistrationRow(ctx, registration._id, {
-        entryStatus: "confirmed",
-        participationStatus: "dropped",
-        // null clears the preserved elimination the rewind just undid.
-        eliminatedByRoundId: null,
-        updatedAt: now,
-      }),
+      await patchRegistrationRow(
+        ctx,
+        registration._id,
+        {
+          entryStatus: "confirmed",
+          participationStatus: "dropped",
+          // null clears the preserved elimination the rewind just undid.
+          eliminatedByRoundId: null,
+          updatedAt: now,
+        },
+        delta,
+      ),
   );
+  await delta.apply(ctx, tournament._id);
   if (rounds.reopenedRound) {
     await deleteStandingsForReopenedRound(
       ctx,
