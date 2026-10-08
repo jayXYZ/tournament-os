@@ -19,8 +19,11 @@ import { palette } from "@/lib/palette";
 // an aborted hold snaps back without feeling like a penalty.
 const REWIND_FACTOR = 3;
 const SUCCESS_DISPLAY_MS = 1400;
+// How long a screen-reader activation stays armed waiting for the confirming
+// second activation before the button quietly disarms.
+const ARMED_TIMEOUT_MS = 5000;
 
-type HoldPhase = "idle" | "holding" | "pending" | "success";
+type HoldPhase = "idle" | "holding" | "armed" | "pending" | "success";
 
 /**
  * A button for actions too consequential for a single tap. The user must
@@ -32,10 +35,18 @@ type HoldPhase = "idle" | "holding" | "pending" | "success";
  *
  * `onConfirm` must reject (rethrow) on failure so the success state is
  * skipped — surface the error yourself (e.g. a toast) before rethrowing.
+ *
+ * Screen readers cannot hold: their double-tap lands as a press-in/press-out
+ * a few ms apart. For them the button is two-step instead — the first
+ * activation arms it and announces what is about to happen, the second
+ * confirms — so the deliberate gesture survives without a dialog. A
+ * double-tap-and-hold still passes a real touch through to the pressable
+ * and completes an ordinary hold.
  */
 export function HoldButton({
   label,
   successLabel,
+  accessibilityDescription,
   onConfirm,
   holdDuration = 800,
   disabled = false,
@@ -44,6 +55,12 @@ export function HoldButton({
   label: string;
   /** Shown on the button once `onConfirm` resolves; omit to skip the flash. */
   successLabel?: string;
+  /**
+   * What confirming will do, read to screen-reader users when the first
+   * activation arms the button, e.g. "You win 2–1". Should match whatever
+   * preview a sighted user sees beside the button.
+   */
+  accessibilityDescription?: string;
   onConfirm: () => Promise<unknown> | unknown;
   /** Milliseconds the button must be held before the action fires. */
   holdDuration?: number;
@@ -68,6 +85,8 @@ export function HoldButton({
   // Under reduce motion the hold is timed rather than animated; this is the
   // timer that fires the action, cleared by an early release.
   const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Disarms an armed (screen-reader) button that never got its second tap.
+  const armedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reduceMotion = useReducedMotion();
 
   // Keep latest callbacks/props readable from stable animation callbacks.
@@ -75,9 +94,11 @@ export function HoldButton({
   // gesture and animation callbacks, never during render.
   const onConfirmRef = useRef(onConfirm);
   const successLabelRef = useRef(successLabel);
+  const descriptionRef = useRef(accessibilityDescription);
   useEffect(() => {
     onConfirmRef.current = onConfirm;
     successLabelRef.current = successLabel;
+    descriptionRef.current = accessibilityDescription;
   });
 
   const setPhase = useCallback((next: HoldPhase) => {
@@ -118,8 +139,22 @@ export function HoldButton({
     }
   }, []);
 
+  const clearArmedTimer = useCallback(() => {
+    if (armedTimerRef.current) {
+      clearTimeout(armedTimerRef.current);
+      armedTimerRef.current = null;
+    }
+  }, []);
+
+  const disarm = useCallback(() => {
+    clearArmedTimer();
+    if (phaseRef.current !== "armed") return;
+    retract();
+  }, [clearArmedTimer, retract]);
+
   const complete = useCallback(() => {
     clearHoldTimer();
+    clearArmedTimer();
     progress.stopAnimation();
     progress.setValue(1);
     const confirmed = successLabelRef.current;
@@ -141,7 +176,7 @@ export function HoldButton({
           if (mountedRef.current) retract();
         },
       );
-  }, [clearHoldTimer, progress, retract, setPhase]);
+  }, [clearArmedTimer, clearHoldTimer, progress, retract, setPhase]);
 
   function press() {
     if (disabled) return;
@@ -149,8 +184,11 @@ export function HoldButton({
     if (current === "pending" || current === "success") return;
     // A new press must start from zero: pressing during a rewind (early
     // release or the post-success retract) must not resume from the residual
-    // fill, or the action could fire after a near-zero hold.
+    // fill, or the action could fire after a near-zero hold. A real touch
+    // while armed (a double-tap-and-hold pass-through) likewise restarts as
+    // an ordinary hold rather than confirming.
     clearHoldTimer();
+    clearArmedTimer();
     progress.stopAnimation();
     progress.setValue(0);
     setPhase("holding");
@@ -177,13 +215,34 @@ export function HoldButton({
 
   // Screen readers turn a double-tap into a press-in/press-out a few ms
   // apart, which can never complete a hold. They activate the button through
-  // the "activate" action instead, and the double-tap itself stands in for
-  // the deliberate gesture.
+  // the "activate" action instead, and a single activation would make this
+  // the one control on the screen with no second step. So the first
+  // activation arms: the face inverts as if held, and the reader hears what
+  // confirming will do. The second activation, within ARMED_TIMEOUT_MS,
+  // completes; otherwise the button disarms on its own.
   function activate() {
     if (disabled) return;
     const current = phaseRef.current;
     if (current === "pending" || current === "success") return;
-    complete();
+    if (current === "armed") {
+      complete();
+      return;
+    }
+    clearHoldTimer();
+    progress.stopAnimation();
+    progress.setValue(1);
+    setPhase("armed");
+    clearArmedTimer();
+    armedTimerRef.current = setTimeout(() => {
+      armedTimerRef.current = null;
+      disarm();
+    }, ARMED_TIMEOUT_MS);
+    const description = descriptionRef.current;
+    AccessibilityInfo.announceForAccessibility(
+      description
+        ? `${description}. Double tap again to confirm.`
+        : "Double tap again to confirm.",
+    );
   }
 
   const release = useCallback(() => {
@@ -201,12 +260,23 @@ export function HoldButton({
       progress.stopAnimation();
       if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
       if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
+      if (armedTimerRef.current) clearTimeout(armedTimerRef.current);
     };
   }, [progress]);
 
   useEffect(() => {
-    if (disabled) release();
-  }, [disabled, release]);
+    if (disabled) {
+      release();
+      disarm();
+    }
+  }, [disabled, disarm, release]);
+
+  // The armed announcement described a specific outcome; if that changes
+  // underneath (a count stepped while armed), the confirmation no longer
+  // covers it, so start over.
+  useEffect(() => {
+    disarm();
+  }, [accessibilityDescription, disarm]);
 
   // The fill breathes while the action is in flight, like the web's
   // hold-pending-pulse keyframes.
@@ -237,6 +307,7 @@ export function HoldButton({
   }, [phase, pulse, reduceMotion]);
 
   const busy = phase === "pending" || phase === "success";
+  const armed = phase === "armed";
   const fillWidth = progress.interpolate({
     inputRange: [0, 1],
     outputRange: [0, width],
@@ -246,8 +317,12 @@ export function HoldButton({
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
-      accessibilityHint="Double tap to confirm"
-      accessibilityState={{ disabled: disabled || busy, busy }}
+      accessibilityHint={
+        armed
+          ? "Double tap again to confirm"
+          : "Double tap to arm, then again to confirm"
+      }
+      accessibilityState={{ disabled: disabled || busy, busy, selected: armed }}
       accessibilityActions={[{ name: "activate" }]}
       // iOS VoiceOver routes a double-tap through onAccessibilityTap; TalkBack
       // uses the "activate" action. Wire both so screen readers can submit.
@@ -268,7 +343,11 @@ export function HoldButton({
       >
         <Animated.View style={[styles.overlayFace, { width, opacity: pulse }]}>
           <Text style={styles.overlayLabel}>
-            {phase === "success" ? `✓ ${confirmedLabel}` : label}
+            {phase === "success"
+              ? `✓ ${confirmedLabel}`
+              : armed
+                ? "Double tap again to confirm"
+                : label}
           </Text>
         </Animated.View>
       </Animated.View>
