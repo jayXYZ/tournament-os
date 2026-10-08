@@ -154,7 +154,11 @@ function CurrentMatch({
 
   if (action && description.kind === "card") {
     return (
+      // Keyed so a re-pair or structure change mid-entry remounts the
+      // scoreboard: stepper counts entered for one match must never be
+      // submitted against another, or past a new best-of ceiling.
       <ReportResultScoreboard
+        key={`${action.matchId}:${action.bestOf}`}
         action={action}
         label={description.label}
         title={description.title}

@@ -168,6 +168,17 @@ export function HoldButton({
     });
   }
 
+  // Screen readers turn a double-tap into a press-in/press-out a few ms
+  // apart, which can never complete a hold. They activate the button through
+  // the "activate" action instead, and the double-tap itself stands in for
+  // the deliberate gesture.
+  function activate() {
+    if (disabled) return;
+    const current = phaseRef.current;
+    if (current === "pending" || current === "success") return;
+    complete();
+  }
+
   const release = useCallback(() => {
     clearHoldTimer();
     if (phaseRef.current !== "holding") return;
@@ -228,8 +239,12 @@ export function HoldButton({
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
-      accessibilityHint="Press and hold to confirm"
+      accessibilityHint="Double tap to confirm"
       accessibilityState={{ disabled: disabled || busy, busy }}
+      accessibilityActions={[{ name: "activate" }]}
+      onAccessibilityAction={(event) => {
+        if (event.nativeEvent.actionName === "activate") activate();
+      }}
       disabled={disabled && !busy}
       onPressIn={press}
       onPressOut={release}
