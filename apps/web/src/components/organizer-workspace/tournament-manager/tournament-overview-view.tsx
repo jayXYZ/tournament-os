@@ -204,8 +204,12 @@ function StateCard({
       break
     case 'between-rounds':
       title = `${describeCurrentRound(board)} complete`
+      // A later phase with its own player meeting is seated before it is
+      // paired, so the card names that step rather than the next round.
       text =
-        'Standings are posted. Generate the next round when the room is ready; drops made now are reflected in the new pairings.'
+        board.nextStep.kind === 'startPlayerMeeting'
+          ? 'Standings are posted. Start the player meeting to seat the next phase; the seats fix who made the cut, and its first round is paired from them.'
+          : 'Standings are posted. Generate the next round when the room is ready; drops made now are reflected in the new pairings.'
       action = (
         <Button asChild type="button" variant="outline">
           <Link to="/admin/tournaments/$tournamentId/standings" params={params}>
