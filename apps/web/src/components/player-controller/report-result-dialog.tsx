@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { describeResultPreview, useReportResult } from '@paper-pairings/core'
 import {
   MAX_GAME_DRAWS,
-  requiredGameWins,
+  maxGameWinsGiven,
 } from '@paper-pairings/shared/match-structure'
 import { Minus, Plus } from 'lucide-react'
 import { toast } from 'sonner'
@@ -34,12 +34,15 @@ export function ReportResultDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
-  const maxGameWins = requiredGameWins(bestOf)
   const reportResult = useReportResult()
   const { busy, run } = useBusyAction()
   const [myGameWins, setMyGameWins] = useState(0)
   const [opponentGameWins, setOpponentGameWins] = useState(0)
   const [gameDraws, setGameDraws] = useState(0)
+  // Each side's ceiling depends on the other's count, so a scoreline the
+  // backend would reject (2–2 in a best-of-3) can't be entered.
+  const myMaxGameWins = maxGameWinsGiven(bestOf, opponentGameWins)
+  const opponentMaxGameWins = maxGameWinsGiven(bestOf, myGameWins)
 
   async function handleSubmit() {
     await run(async () => {
@@ -71,14 +74,14 @@ export function ReportResultDialog({
           <GameWinsStepper
             label="You"
             value={myGameWins}
-            max={maxGameWins}
+            max={myMaxGameWins}
             onChange={setMyGameWins}
             disabled={busy}
           />
           <GameWinsStepper
             label={opponentName}
             value={opponentGameWins}
-            max={maxGameWins}
+            max={opponentMaxGameWins}
             onChange={setOpponentGameWins}
             disabled={busy}
           />

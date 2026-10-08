@@ -57,7 +57,7 @@ export function ReportResultScoreboard({
   const [drawsRevealed, setDrawsRevealed] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  // Rejections rethrow so the hold button skips its success flash; the
+  // Rejections rethrow so the hold button rewinds for another try; the
   // message goes to the screen's toast first (rate-limited rejections get
   // the retry-later treatment from mutationErrorMessage).
   //
@@ -154,9 +154,11 @@ export function ReportResultScoreboard({
             opponentName,
           )}
         </Text>
+        {/* No successLabel: the mutation resolves only once the current-match
+            query reflects the report, so this card has already unmounted by
+            then and the screen's toast is the confirmation. */}
         <HoldButton
           label="Hold to submit result"
-          successLabel="Reported"
           disabled={busy}
           onConfirm={submit}
         />

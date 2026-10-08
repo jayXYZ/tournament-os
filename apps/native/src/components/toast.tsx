@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { Animated, Easing, StyleSheet, Text } from "react-native";
+import {
+  AccessibilityInfo,
+  Animated,
+  Easing,
+  Platform,
+  StyleSheet,
+  Text,
+} from "react-native";
 
 import { palette } from "@/lib/palette";
 
@@ -58,6 +65,11 @@ export function Toast({
         if (finished) setVisible(null);
       });
       return;
+    }
+    // accessibilityLiveRegion is Android-only; VoiceOver needs an explicit
+    // announcement or a screen-reader user never hears the toast.
+    if (Platform.OS === "ios") {
+      AccessibilityInfo.announceForAccessibility(toast.text);
     }
     reveal.setValue(0);
     Animated.timing(reveal, {

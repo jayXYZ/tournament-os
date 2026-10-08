@@ -6,7 +6,7 @@ import { api } from '@paper-pairings/backend/convex/_generated/api'
 import { displayPlayerName } from '@paper-pairings/core'
 import {
   MAX_GAME_DRAWS,
-  requiredGameWins,
+  maxGameWinsGiven,
 } from '@paper-pairings/shared/match-structure'
 import type { BestOf } from '@paper-pairings/shared/match-structure'
 import type { FormEvent } from 'react'
@@ -39,7 +39,6 @@ export function EnterResultDialog({
   const recordMatchResult = useMutation(
     api.tournaments.rounds.recordMatchResult,
   )
-  const maxGameWins = requiredGameWins(bestOf)
   const playerOne = row.players.at(0)
   const playerTwo = row.players.at(1)
 
@@ -52,6 +51,11 @@ export function EnterResultDialog({
   )
   const [gameDraws, setGameDraws] = useState(String(playerOne?.gameDraws ?? 0))
   const [note, setNote] = useState('')
+  // Each side's ceiling depends on the other's count, so the browser's own
+  // validation blocks a scoreline the backend would reject (2–2 in a
+  // best-of-3) before it is submitted.
+  const playerOneMaxWins = maxGameWinsGiven(bestOf, Number(playerTwoWins) || 0)
+  const playerTwoMaxWins = maxGameWinsGiven(bestOf, Number(playerOneWins) || 0)
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -108,7 +112,7 @@ export function EnterResultDialog({
                   onChange={(event) => setPlayerOneWins(event.target.value)}
                   type="number"
                   min={0}
-                  max={maxGameWins}
+                  max={playerOneMaxWins}
                   disabled={busy}
                   required
                 />
@@ -123,7 +127,7 @@ export function EnterResultDialog({
                   onChange={(event) => setPlayerTwoWins(event.target.value)}
                   type="number"
                   min={0}
-                  max={maxGameWins}
+                  max={playerTwoMaxWins}
                   disabled={busy}
                   required
                 />

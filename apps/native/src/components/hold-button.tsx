@@ -25,8 +25,10 @@ type HoldPhase = "idle" | "holding" | "pending" | "success";
 /**
  * A button for actions too consequential for a single tap. The user must
  * hold it for `holdDuration` ms while an inversion sweep fills the face;
- * releasing early rewinds. When the hold completes, `onConfirm` runs and the
- * button confirms success in place before resetting.
+ * releasing early rewinds. When the hold completes, `onConfirm` runs and,
+ * given a `successLabel`, the button confirms success in place before
+ * resetting. Omit `successLabel` when a successful action unmounts the
+ * button (the screen confirms it some other way): the flash could never show.
  *
  * `onConfirm` must reject (rethrow) on failure so the success state is
  * skipped — surface the error yourself (e.g. a toast) before rethrowing.
@@ -40,8 +42,8 @@ export function HoldButton({
   style,
 }: {
   label: string;
-  /** Shown on the button once `onConfirm` resolves. */
-  successLabel: string;
+  /** Shown on the button once `onConfirm` resolves; omit to skip the flash. */
+  successLabel?: string;
   onConfirm: () => Promise<unknown> | unknown;
   /** Milliseconds the button must be held before the action fires. */
   holdDuration?: number;
@@ -120,13 +122,18 @@ export function HoldButton({
     clearHoldTimer();
     progress.stopAnimation();
     progress.setValue(1);
-    setConfirmedLabel(successLabelRef.current);
+    const confirmed = successLabelRef.current;
+    setConfirmedLabel(confirmed ?? "");
     setPhase("pending");
     Promise.resolve()
       .then(() => onConfirmRef.current())
       .then(
         () => {
           if (!mountedRef.current) return;
+          if (confirmed === undefined) {
+            retract();
+            return;
+          }
           setPhase("success");
           resetTimerRef.current = setTimeout(retract, SUCCESS_DISPLAY_MS);
         },
