@@ -153,7 +153,9 @@ settings, keys, and connected accounts from each other and from live mode.
   then `pnpm --filter @paper-pairings/backend exec convex env set STRIPE_WEBHOOK_SECRET <whsec_… from listen>`.
 - Forward thin account events in a second listener (snapshot and thin events
   cannot share one destination):
-  `stripe listen --events 'v2.core.account[configuration.recipient].capability_status_updated,v2.core.account[requirements].updated' --forward-to <dev-deployment>.convex.site/stripe/account-events`.
+  `stripe listen --thin-events 'v2.core.account[configuration.recipient].capability_status_updated,v2.core.account[requirements].updated' --forward-thin-to <dev-deployment>.convex.site/stripe/account-events`.
+  `--events`/`--forward-to` only carry snapshot events, so thin events need
+  these dedicated flags.
   The CLI uses one signing secret for every listener on the account, so set
   `STRIPE_ACCOUNT_WEBHOOK_SECRET` to the same value as
   `STRIPE_WEBHOOK_SECRET` (`stripe listen --print-secret` prints it without

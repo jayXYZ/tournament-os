@@ -6,16 +6,12 @@ import {
 import { v } from "convex/values";
 
 import { internal } from "../_generated/api";
-import type { Doc } from "../_generated/dataModel";
-import {
-  action,
-  internalMutation,
-  query,
-  type MutationCtx,
-} from "../_generated/server";
+import { action, internalMutation, query } from "../_generated/server";
 import { requireActiveMembership } from "../model/access";
 import {
+  applyStripeAccountStatus,
   requirePaymentsPermission,
+  stripeAccountByStripeAccountId,
   stripeAccountForOrganization,
 } from "../model/stripeAccounts";
 import { enforceRateLimit } from "../rateLimits";
@@ -167,22 +163,6 @@ export const beginStripeStatusRefresh = internalMutation({
   },
 });
 
-// The one writer of the capability snapshot, shared by the manual refresh and
-// the account event destination.
-async function applyAccountStatus(
-  ctx: MutationCtx,
-  account: Doc<"organizationStripeAccounts">,
-  transfersCapabilityStatus: TransfersCapabilityStatus,
-) {
-  const now = Date.now();
-  await ctx.db.patch(account._id, {
-    transfersCapabilityStatus,
-    payoutsReady: transfersCapabilityStatus === "active",
-    lastSyncedAt: now,
-    updatedAt: now,
-  });
-}
-
 export const recordStripeAccountStatus = internalMutation({
   args: {
     organizationId: v.id("organizations"),
@@ -196,7 +176,11 @@ export const recordStripeAccountStatus = internalMutation({
     if (!account) {
       throw new Error("Stripe account not found");
     }
-    await applyAccountStatus(ctx, account, args.transfersCapabilityStatus);
+    await applyStripeAccountStatus(
+      ctx,
+      account,
+      args.transfersCapabilityStatus,
+    );
     return null;
   },
 });
@@ -212,16 +196,18 @@ export const recordStripeAccountStatusByAccountId = internalMutation({
     transfersCapabilityStatus: stripeTransfersCapabilityStatusValidator,
   },
   handler: async (ctx, args) => {
-    const account = await ctx.db
-      .query("organizationStripeAccounts")
-      .withIndex("by_stripeAccountId", (q) =>
-        q.eq("stripeAccountId", args.stripeAccountId),
-      )
-      .unique();
+    const account = await stripeAccountByStripeAccountId(
+      ctx,
+      args.stripeAccountId,
+    );
     if (!account) {
       return false;
     }
-    await applyAccountStatus(ctx, account, args.transfersCapabilityStatus);
+    await applyStripeAccountStatus(
+      ctx,
+      account,
+      args.transfersCapabilityStatus,
+    );
     return true;
   },
 });
