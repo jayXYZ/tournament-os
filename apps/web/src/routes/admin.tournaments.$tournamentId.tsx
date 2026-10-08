@@ -1,4 +1,8 @@
-import { Outlet, createFileRoute, useLocation } from '@tanstack/react-router'
+import {
+  Outlet,
+  createFileRoute,
+  useChildMatches,
+} from '@tanstack/react-router'
 import { useQuery } from 'convex/react'
 
 import { api } from '@paper-pairings/backend/convex/_generated/api'
@@ -21,9 +25,14 @@ function TournamentManagerLayout() {
   // The overview renders the progress strip itself, expanded into the live
   // status band beneath the event's heading; every other route gets the
   // compact strip here so the timeline stays the round selector everywhere.
-  const pathname = useLocation().pathname
-  const isOverview =
-    pathname.replace(/\/$/, '') === `/admin/tournaments/${publicCode}`
+  // Asked of the router's matched route tree rather than the URL text, so a
+  // trailing slash, base path, or param encoding cannot show both at once.
+  const isOverview = useChildMatches({
+    select: (matches) =>
+      matches.some(
+        (match) => match.routeId === '/admin/tournaments/$tournamentId/',
+      ),
+  })
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">

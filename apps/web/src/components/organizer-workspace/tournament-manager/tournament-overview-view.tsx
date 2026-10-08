@@ -37,6 +37,7 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+import { formatCents } from '@/lib/money'
 
 // The organizer's answer to "where are we?": the event's name, the live
 // status band with the one next action, the timeline, then what needs doing
@@ -319,11 +320,4 @@ function Detail({ label, children }: { label: string; children: ReactNode }) {
       <dd className="font-medium text-foreground">{children}</dd>
     </div>
   )
-}
-
-function formatCents(cents: number) {
-  return (cents / 100).toLocaleString('en-US', {
-    style: 'currency',
-    currency: 'USD',
-  })
 }

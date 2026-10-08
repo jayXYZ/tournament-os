@@ -112,11 +112,9 @@ export function OutstandingTablesCard({
             {byes.length === 1 ? 'Bye this round: ' : 'Byes this round: '}
             <span className="font-medium text-foreground">
               {byes
-                .map((row) =>
-                  displayPlayerName(
-                    row.players.find((player) => !player.isBye)?.playerName,
-                  ),
-                )
+                // A bye match has one player row, itself flagged isBye
+                // (validators.ts), so the player is that row.
+                .map((row) => displayPlayerName(row.players.at(0)?.playerName))
                 .join(', ')}
             </span>
             . Awarded as a win, no table.

@@ -283,6 +283,15 @@ export function TournamentProgressBar({
 
   const activeProgress = activeRoundProgress(board)
   const betweenTarget = betweenRoundTarget(board)
+  // Named once, in order, so a phase and the section after it (which cites
+  // it as "rounds set after X") agree on what it is called: an unnamed
+  // bracket takes its name from the cut before it (phaseLabel).
+  const phaseNames = board.phases.map((phaseBoard, phaseIndex) =>
+    phaseLabel(
+      phaseBoard.phase,
+      phaseIndex > 0 ? board.phases[phaseIndex - 1].phase : undefined,
+    ),
+  )
   // Clearing the search params lets the pairings/standings views fall back
   // to the newly current phase and round.
   const onAdvanced = () => void navigate({ to: '.', search: {}, replace: true })
@@ -293,9 +302,8 @@ export function TournamentProgressBar({
         <PhaseSection
           key={phaseBoard.phase._id}
           phaseBoard={phaseBoard}
-          previousPhaseBoard={
-            phaseIndex > 0 ? board.phases[phaseIndex - 1] : undefined
-          }
+          phaseName={phaseNames[phaseIndex]}
+          previousPhaseName={phaseIndex > 0 ? phaseNames[phaseIndex - 1] : null}
           publicCode={publicCode}
           currentSelection={currentSelection}
           activeProgress={activeProgress}
@@ -510,7 +518,8 @@ function AdvanceStepButton({
 
 function PhaseSection({
   phaseBoard,
-  previousPhaseBoard,
+  phaseName,
+  previousPhaseName,
   publicCode,
   currentSelection,
   activeProgress,
@@ -518,7 +527,8 @@ function PhaseSection({
   betweenRoundSlotIndex,
 }: {
   phaseBoard: PhaseBoard
-  previousPhaseBoard: PhaseBoard | undefined
+  phaseName: string
+  previousPhaseName: string | null
   publicCode: string
   currentSelection: CurrentTimelineSelection | null
   activeProgress: ActiveRoundProgress | null
@@ -532,10 +542,6 @@ function PhaseSection({
     return null
   }
 
-  const phaseName = phaseLabel(phase, previousPhaseBoard?.phase)
-  const previousPhaseName = previousPhaseBoard
-    ? phaseLabel(previousPhaseBoard.phase)
-    : null
   const upcoming = phase.phaseStatus === 'upcoming'
 
   return (

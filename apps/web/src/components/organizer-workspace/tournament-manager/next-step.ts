@@ -50,8 +50,13 @@ export function describeNextStep(board: PairingsBoard): NextStepDescription {
         body: 'setup',
       }
     case 'startPlayerMeeting':
+      // A meeting is pending before the event (the first phase's) or between
+      // phases (a cut's), and the headline follows the lifecycle like the body.
       return {
-        headline: `Registration open, ${field.confirmed} of ${tournament.playerCapacity}`,
+        headline:
+          tournament.lifecycle === 'in_progress'
+            ? `${roundHeadline} complete`
+            : `Registration open, ${field.confirmed} of ${tournament.playerCapacity}`,
         actionLabel: 'Hold to start player meeting',
         successLabel: 'Meeting started',
         hint: step.ready
@@ -142,10 +147,42 @@ export function describeNextStep(board: PairingsBoard): NextStepDescription {
   }
 }
 
+export type RoundPosition = {
+  // The phase's name as the timeline shows it.
+  phaseName: string
+  // 1-based within the phase. Round numbers are global across the
+  // tournament, so this counts from the phase's timeline start
+  // (model/phases.ts).
+  roundInPhase: number
+  // null while the phase's length is still unresolved.
+  planned: number | null
+}
+
+// Where a round sits in its phase. The one derivation the headline and the
+// live band's Round cell both read, so "Round 3 of 5" can never disagree with
+// the "3 of 5" figure beside it.
+export function roundPosition(
+  board: PairingsBoard,
+  round: PairingsBoard['phases'][number]['rounds'][number],
+): RoundPosition {
+  const phaseIndex = board.phases.findIndex(
+    (phaseBoard) => phaseBoard.phase._id === round.tournamentPhaseId,
+  )
+  const phaseBoard = board.phases[phaseIndex]
+  const start = phaseBoard.timeline.startRoundNumber ?? round.roundNumber
+  return {
+    phaseName: phaseLabel(
+      phaseBoard.phase,
+      phaseIndex > 0 ? board.phases[phaseIndex - 1].phase : undefined,
+    ),
+    roundInPhase: round.roundNumber - start + 1,
+    planned: phaseBoard.timeline.plannedRoundCount,
+  }
+}
+
 // "Round 3 of 5" for a single-phase event; "Swiss, round 3 of 5" once phases
-// need naming. Round numbers are global across the tournament, so a phase's
-// position is counted from its timeline start (model/phases.ts). Falls back
-// to the latest round when nothing is in progress (between rounds).
+// need naming. Falls back to the latest round when nothing is in progress
+// (between rounds).
 export function describeCurrentRound(board: PairingsBoard) {
   const round =
     inProgressRound(board) ??
@@ -153,17 +190,7 @@ export function describeCurrentRound(board: PairingsBoard) {
   if (!round) {
     return 'Round 1'
   }
-  const phaseIndex = board.phases.findIndex(
-    (phaseBoard) => phaseBoard.phase._id === round.tournamentPhaseId,
-  )
-  const phaseBoard = board.phases[phaseIndex]
-  const start = phaseBoard.timeline.startRoundNumber ?? round.roundNumber
-  const planned = phaseBoard.timeline.plannedRoundCount
-  const roundInPhase = round.roundNumber - start + 1
-  const label = phaseLabel(
-    phaseBoard.phase,
-    phaseIndex > 0 ? board.phases[phaseIndex - 1].phase : undefined,
-  )
+  const { phaseName, roundInPhase, planned } = roundPosition(board, round)
   const position =
     planned === null
       ? `round ${roundInPhase}`
@@ -171,5 +198,5 @@ export function describeCurrentRound(board: PairingsBoard) {
   if (board.phases.length === 1) {
     return position.replace('round', 'Round')
   }
-  return `${label}, ${position}`
+  return `${phaseName}, ${position}`
 }
