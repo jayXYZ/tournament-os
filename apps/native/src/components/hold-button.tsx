@@ -249,6 +249,9 @@ export function HoldButton({
       accessibilityHint="Double tap to confirm"
       accessibilityState={{ disabled: disabled || busy, busy }}
       accessibilityActions={[{ name: "activate" }]}
+      // iOS VoiceOver routes a double-tap through onAccessibilityTap; TalkBack
+      // uses the "activate" action. Wire both so screen readers can submit.
+      onAccessibilityTap={activate}
       onAccessibilityAction={(event) => {
         if (event.nativeEvent.actionName === "activate") activate();
       }}
