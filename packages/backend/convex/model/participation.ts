@@ -27,6 +27,7 @@ type RegistrationStateUpdate =
       entryStatus: "confirmed";
       participationStatus: "eliminated";
       eliminatedByRoundId: Id<"tournamentRounds">;
+      awaitingReview?: never;
     }
   | {
       entryStatus: "confirmed";
@@ -44,14 +45,27 @@ type RegistrationStateUpdate =
       // them, so an existing elimination record is a fact about *when* they
       // left, not something disqualification supersedes.
       eliminatedByRoundId?: Id<"tournamentRounds"> | null;
+      awaitingReview?: never;
     }
   | {
       entryStatus: "confirmed";
       participationStatus: "active";
       eliminatedByRoundId?: never;
+      awaitingReview?: never;
     }
   | {
-      entryStatus: "pending" | "waitlisted" | "cancelled" | "rejected";
+      // A pending row must say what it waits on: the organizer's decision
+      // (true — the review queue, CONTEXT.md "Review Queue") or, once
+      // decided or when no decision is required, its payment (false). The
+      // flag is stored only when true, so the queue is one index range.
+      entryStatus: "pending";
+      awaitingReview: boolean;
+      participationStatus?: never;
+      eliminatedByRoundId?: never;
+    }
+  | {
+      entryStatus: "waitlisted" | "cancelled" | "rejected";
+      awaitingReview?: never;
       participationStatus?: never;
       eliminatedByRoundId?: never;
     };
@@ -173,7 +187,12 @@ async function patchRegistrationRow(
   if (!existing) {
     throw new Error("Registration not found");
   }
-  const { updatedAt = Date.now(), eliminatedByRoundId, ...fields } = update;
+  const {
+    updatedAt = Date.now(),
+    eliminatedByRoundId,
+    awaitingReview,
+    ...fields
+  } = update;
   // A drop or disqualification that doesn't mention eliminatedByRoundId
   // keeps the row's existing stamp (see RegistrationStateUpdate); every
   // other transition writes the field explicitly — eliminations set it, all
@@ -191,6 +210,11 @@ async function patchRegistrationRow(
   await ctx.db.patch(registrationId, {
     ...fields,
     participationStatus,
+    // Only an undecided pending application carries the flag; every other
+    // transition clears it, so a row leaving the review queue leaves it on
+    // disk too.
+    awaitingReview:
+      update.entryStatus === "pending" && awaitingReview ? true : undefined,
     ...(keepExistingElimination
       ? {}
       : { eliminatedByRoundId: eliminatedByRoundId ?? undefined }),

@@ -26,6 +26,10 @@ const gatewayState = vi.hoisted(() => ({
   retrieveStatusCalls: [] as Array<{ stripeAccountId: string }>,
   dashboardLinkCalls: [] as Array<{ stripeAccountId: string }>,
   nextCapabilityStatus: "pending" as string,
+  // When set, each status read parks here until the test releases it with a
+  // status — how a test interleaves two syncs' reads and commits.
+  deferStatusReads: false,
+  parkedStatusReads: [] as Array<(status: string) => void>,
 }));
 
 vi.mock("./stripe/config", () => ({
@@ -57,6 +61,13 @@ vi.mock("./stripe/client", () => ({
       stripeAccountId: string;
     }) => {
       gatewayState.retrieveStatusCalls.push(args);
+      if (gatewayState.deferStatusReads) {
+        return await new Promise<TransfersCapabilityStatus>((resolve) => {
+          gatewayState.parkedStatusReads.push((status) =>
+            resolve(status as TransfersCapabilityStatus),
+          );
+        });
+      }
       return gatewayState.nextCapabilityStatus as TransfersCapabilityStatus;
     },
     createDashboardLoginLink: async (args: { stripeAccountId: string }) => {
@@ -72,6 +83,8 @@ beforeEach(() => {
   gatewayState.retrieveStatusCalls = [];
   gatewayState.dashboardLinkCalls = [];
   gatewayState.nextCapabilityStatus = "pending";
+  gatewayState.deferStatusReads = false;
+  gatewayState.parkedStatusReads = [];
 });
 
 const adminIdentity = {
@@ -176,9 +189,13 @@ test("account events overwrite the snapshot by connected account id", async () =
   // here with the account id Stripe named — no organization in the payload.
   const recorded = await t.mutation(
     internal.payments.connect.recordStripeAccountStatusByAccountId,
-    { stripeAccountId: "acct_test_1", transfersCapabilityStatus: "active" },
+    {
+      stripeAccountId: "acct_test_1",
+      transfersCapabilityStatus: "active",
+      observedAt: Date.now(),
+    },
   );
-  expect(recorded).toBe(true);
+  expect(recorded).toBe("applied");
 
   const settings = await asOwner.query(
     api.payments.connect.getOrganizationPaymentSettings,
@@ -196,9 +213,128 @@ test("account events overwrite the snapshot by connected account id", async () =
     {
       stripeAccountId: "acct_unknown",
       transfersCapabilityStatus: "restricted",
+      observedAt: Date.now(),
     },
   );
-  expect(ignored).toBe(false);
+  expect(ignored).toBe("unknown");
+});
+
+test("a capability read older than the stored snapshot never overwrites it", async () => {
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const asOwner = t.withIdentity(organizerIdentity);
+
+  await asOwner.action(api.payments.connect.createOnboardingLink, {
+    organizationId,
+    country: "us",
+  });
+  const connectedAt = Date.now();
+
+  // Two thin-event deliveries overlap: the later read (active) commits
+  // first, then the earlier read (pending) arrives at the writer.
+  const laterRead = connectedAt + 2_000;
+  const earlierRead = connectedAt + 1_000;
+  expect(
+    await t.mutation(
+      internal.payments.connect.recordStripeAccountStatusByAccountId,
+      {
+        stripeAccountId: "acct_test_1",
+        transfersCapabilityStatus: "active",
+        observedAt: laterRead,
+      },
+    ),
+  ).toBe("applied");
+  expect(
+    await t.mutation(
+      internal.payments.connect.recordStripeAccountStatusByAccountId,
+      {
+        stripeAccountId: "acct_test_1",
+        transfersCapabilityStatus: "pending",
+        observedAt: earlierRead,
+      },
+    ),
+  ).toBe("stale");
+
+  const settings = await asOwner.query(
+    api.payments.connect.getOrganizationPaymentSettings,
+    { organizationId },
+  );
+  expect(settings.connection).toMatchObject({
+    transfersCapabilityStatus: "active",
+    payoutsReady: true,
+    lastSyncedAt: laterRead,
+  });
+
+  // A genuinely newer read still lands, so the guard never freezes the row.
+  expect(
+    await t.mutation(
+      internal.payments.connect.recordStripeAccountStatusByAccountId,
+      {
+        stripeAccountId: "acct_test_1",
+        transfersCapabilityStatus: "restricted",
+        observedAt: laterRead + 1_000,
+      },
+    ),
+  ).toBe("applied");
+  const after = await asOwner.query(
+    api.payments.connect.getOrganizationPaymentSettings,
+    { organizationId },
+  );
+  expect(after.connection).toMatchObject({
+    transfersCapabilityStatus: "restricted",
+    payoutsReady: false,
+  });
+});
+
+test("a delayed manual refresh does not roll back a newer sync", async () => {
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const asOwner = t.withIdentity(organizerIdentity);
+
+  await asOwner.action(api.payments.connect.createOnboardingLink, {
+    organizationId,
+    country: "us",
+  });
+
+  // Refresh A's Stripe read starts (and stalls) before an account event's
+  // read begins and commits "active".
+  gatewayState.deferStatusReads = true;
+  const refreshA = asOwner.action(api.payments.connect.refreshAccountStatus, {
+    organizationId,
+  });
+  await vi.waitFor(() =>
+    expect(gatewayState.parkedStatusReads).toHaveLength(1),
+  );
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  expect(
+    await t.mutation(
+      internal.payments.connect.recordStripeAccountStatusByAccountId,
+      {
+        stripeAccountId: "acct_test_1",
+        transfersCapabilityStatus: "active",
+        observedAt: Date.now(),
+      },
+    ),
+  ).toBe("applied");
+
+  // A's stale read finally returns "pending" and reaches the writer last.
+  gatewayState.parkedStatusReads[0]!("pending");
+  const result = await refreshA;
+
+  // The stored status stands, and the caller is told the stored status
+  // rather than its own stale read.
+  expect(result).toEqual({
+    transfersCapabilityStatus: "active",
+    payoutsReady: true,
+  });
+  const settings = await asOwner.query(
+    api.payments.connect.getOrganizationPaymentSettings,
+    { organizationId },
+  );
+  expect(settings.connection).toMatchObject({
+    transfersCapabilityStatus: "active",
+    payoutsReady: true,
+  });
 });
 
 test("the owner opens the Express dashboard through a fresh login link", async () => {

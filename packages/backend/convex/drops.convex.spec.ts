@@ -329,6 +329,9 @@ test("dropWouldConcede tracks the concession rule on the player view and roster"
     throw new Error("Expected a visible match");
   }
   expect(paired.dropWouldConcede).toBe(true);
+  // Swiss serves the draw rule with the match so entry controls can gate
+  // on it (brackets send false; see model/phases.ts phaseAllowsMatchDraws).
+  expect(paired.match.allowDraws).toBe(true);
 
   // The bye holder's result is already awarded — nothing to concede.
   const byeView = await t

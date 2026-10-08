@@ -118,6 +118,9 @@ function OverviewBody({
       )
     : undefined
   const bestOf = phaseBoard?.phase.bestOf ?? DEFAULT_BEST_OF
+  // The phase-type draw rule (model/phases.ts requireValidMatchResult):
+  // brackets never end in a draw, so result entry refuses one up front.
+  const allowDraws = phaseBoard?.phase.phaseType !== 'single_elimination'
   const tournamentId = board.tournament._id
 
   const liveRound =
@@ -133,6 +136,7 @@ function OverviewBody({
           roundId={liveRound._id}
           roundLabel={describeCurrentRound(board)}
           bestOf={bestOf}
+          allowDraws={allowDraws}
           publicCode={publicCode}
         />
       ) : (
@@ -144,7 +148,11 @@ function OverviewBody({
       )}
       <div className="flex flex-col gap-4">
         {liveRound ? (
-          <UnconfirmedResultsCard roundId={liveRound._id} bestOf={bestOf} />
+          <UnconfirmedResultsCard
+            roundId={liveRound._id}
+            bestOf={bestOf}
+            allowDraws={allowDraws}
+          />
         ) : null}
         <RecentActivityCard
           tournamentId={tournamentId}

@@ -38,11 +38,13 @@ export function OutstandingTablesCard({
   roundId,
   roundLabel,
   bestOf,
+  allowDraws,
   publicCode,
 }: {
   roundId: Id<'tournamentRounds'>
   roundLabel: string
   bestOf: BestOf
+  allowDraws: boolean
   publicCode: string
 }) {
   const pairings = useQuery(api.tournaments.rounds.listRoundPairings, {
@@ -103,7 +105,12 @@ export function OutstandingTablesCard({
         ) : (
           <ul className="divide-y divide-border">
             {outstanding.map((row) => (
-              <LedgerRow key={row.match._id} row={row} bestOf={bestOf} />
+              <LedgerRow
+                key={row.match._id}
+                row={row}
+                bestOf={bestOf}
+                allowDraws={allowDraws}
+              />
             ))}
           </ul>
         )}
@@ -125,7 +132,15 @@ export function OutstandingTablesCard({
   )
 }
 
-function LedgerRow({ row, bestOf }: { row: PairingRow; bestOf: BestOf }) {
+function LedgerRow({
+  row,
+  bestOf,
+  allowDraws,
+}: {
+  row: PairingRow
+  bestOf: BestOf
+  allowDraws: boolean
+}) {
   const [entering, setEntering] = useState(false)
   return (
     <li className="flex items-center gap-4 py-2.5">
@@ -148,6 +163,7 @@ function LedgerRow({ row, bestOf }: { row: PairingRow; bestOf: BestOf }) {
         <EnterResultDialog
           row={row}
           bestOf={bestOf}
+          allowDraws={allowDraws}
           open={entering}
           onOpenChange={setEntering}
         />
@@ -162,9 +178,11 @@ function LedgerRow({ row, bestOf }: { row: PairingRow; bestOf: BestOf }) {
 export function UnconfirmedResultsCard({
   roundId,
   bestOf,
+  allowDraws,
 }: {
   roundId: Id<'tournamentRounds'>
   bestOf: BestOf
+  allowDraws: boolean
 }) {
   const pairings = useQuery(api.tournaments.rounds.listRoundPairings, {
     roundId,
@@ -190,7 +208,12 @@ export function UnconfirmedResultsCard({
       <CardContent>
         <ul className="divide-y divide-border">
           {unconfirmed.map((row) => (
-            <UnconfirmedRow key={row.match._id} row={row} bestOf={bestOf} />
+            <UnconfirmedRow
+              key={row.match._id}
+              row={row}
+              bestOf={bestOf}
+              allowDraws={allowDraws}
+            />
           ))}
         </ul>
       </CardContent>
@@ -198,7 +221,15 @@ export function UnconfirmedResultsCard({
   )
 }
 
-function UnconfirmedRow({ row, bestOf }: { row: PairingRow; bestOf: BestOf }) {
+function UnconfirmedRow({
+  row,
+  bestOf,
+  allowDraws,
+}: {
+  row: PairingRow
+  bestOf: BestOf
+  allowDraws: boolean
+}) {
   const [editing, setEditing] = useState(false)
   const reporter = row.players.find(
     (player) => player.playerId === row.match.reportedByRegistrationId,
@@ -233,6 +264,7 @@ function UnconfirmedRow({ row, bestOf }: { row: PairingRow; bestOf: BestOf }) {
         <EnterResultDialog
           row={row}
           bestOf={bestOf}
+          allowDraws={allowDraws}
           open={editing}
           onOpenChange={setEditing}
         />

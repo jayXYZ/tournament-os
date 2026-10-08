@@ -5,6 +5,11 @@ name: expo-drift
 # it does not gate pull requests (see test.yml). Instead this runs weekly and
 # keeps one open issue current while the pins trail upstream.
 #
+# The issue tracks the default branch only. A manual run from another branch
+# still prints the check result but leaves the issue alone, so a dependency
+# bump on an unmerged branch cannot close the issue while the default branch
+# remains outdated.
+#
 # To bump: `pnpm --filter @paper-pairings/native exec expo install --fix`,
 # then restore `"expo": "catalog:"` in apps/native/package.json (the fix
 # writes a literal version) and raise the `expo` catalog range in
@@ -40,7 +45,7 @@ jobs:
           pnpm --filter @paper-pairings/native exec expo install --check 2>&1 \
             | grep -v '^env:' | tee expo-check.log
       - name: Open or update the drift issue
-        if: steps.expo.outcome == 'failure'
+        if: steps.expo.outcome == 'failure' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -58,7 +63,7 @@ jobs:
               --label expo-drift --body "$body"
           fi
       - name: Close the drift issue when the pins are current
-        if: steps.expo.outcome == 'success'
+        if: steps.expo.outcome == 'success' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}

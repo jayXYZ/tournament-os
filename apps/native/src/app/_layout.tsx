@@ -1,22 +1,15 @@
 import { ClerkProvider, useAuth } from "@clerk/expo";
 import { tokenCache } from "@clerk/expo/token-cache";
-import { Geist_500Medium } from "@expo-google-fonts/geist";
 import * as Sentry from "@sentry/react-native";
 import { ConvexProviderWithClerk } from "convex/react-clerk";
-import { useFonts } from "expo-font";
 import { DarkTheme, Stack, ThemeProvider } from "expo-router";
-import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import * as SystemUI from "expo-system-ui";
 import { useEffect } from "react";
 
 import { convex } from "@/lib/convex";
 import { palette } from "@/lib/palette";
-import { fonts } from "@/lib/typography";
-
-// Holds the splash until the fonts below are registered; called at module
-// scope so it lands before expo-router's own auto-hide.
-SplashScreen.preventAutoHideAsync();
+import { useNumeralFont } from "@/lib/typography";
 
 // No-ops when EXPO_PUBLIC_SENTRY_DSN is unset (local dev without monitoring).
 const sentryDsn = process.env.EXPO_PUBLIC_SENTRY_DSN;
@@ -60,18 +53,12 @@ if (!envPublishableKey) {
 const publishableKey: string = envPublishableKey;
 
 function RootLayout() {
-  // The scoreboard numerals need Geist (see lib/typography.ts); everything
-  // else is the platform font. A load failure still lets the app render —
-  // the numerals fall back to the platform font rather than blocking start.
-  const [fontsLoaded, fontError] = useFonts({
-    [fonts.numeral]: Geist_500Medium,
-  });
-  const fontsReady = fontsLoaded || fontError !== null;
-  useEffect(() => {
-    if (fontsReady) {
-      SplashScreen.hideAsync();
-    }
-  }, [fontsReady]);
+  // Starts the scoreboard's numeral face loading at launch (see
+  // lib/typography.ts). Nothing here waits on it: auth, Convex, and the
+  // first screen mount right away and expo-router hides the splash as soon
+  // as navigation is ready. The scoreboard picks the face up itself once
+  // it is registered.
+  useNumeralFont();
 
   // Paints the native root window background at runtime. The window sits below
   // React Navigation entirely, so it's what shows through during swipe-back and
@@ -81,10 +68,6 @@ function RootLayout() {
   useEffect(() => {
     SystemUI.setBackgroundColorAsync(palette.background);
   }, []);
-
-  if (!fontsReady) {
-    return null;
-  }
 
   return (
     <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
