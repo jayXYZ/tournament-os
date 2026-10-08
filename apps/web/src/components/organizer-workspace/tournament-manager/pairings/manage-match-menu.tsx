@@ -20,10 +20,12 @@ import {
 export function ManageMatchMenu({
   row,
   bestOf,
+  allowDraws,
   canEditPairings,
 }: {
   row: PairingRow
   bestOf: BestOf
+  allowDraws: boolean
   canEditPairings: boolean
 }) {
   const isBye = row.players.some((player) => player.isBye)
@@ -95,6 +97,7 @@ export function ManageMatchMenu({
         <EnterResultDialog
           row={row}
           bestOf={bestOf}
+          allowDraws={allowDraws}
           open={enteringResult}
           onOpenChange={setEnteringResult}
         />

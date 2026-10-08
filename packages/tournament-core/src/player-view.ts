@@ -9,6 +9,8 @@ export type CurrentMatchAction = {
   kind: "report";
   matchId: MyActiveMatch["match"]["_id"];
   bestOf: MyActiveMatch["match"]["bestOf"];
+  /** Whether equal game wins is a legal result in this phase. */
+  allowDraws: MyActiveMatch["match"]["allowDraws"];
   opponentName: string;
 };
 
@@ -134,8 +136,28 @@ export function reportAction(
     kind: "report",
     matchId: match._id,
     bestOf: match.bestOf,
+    allowDraws: match.allowDraws,
     opponentName: opponent?.name ?? "Opponent",
   };
+}
+
+// The live read of a result as it is entered — the scoreline the report
+// will record, phrased from the reporter's seat — shown above the submit
+// control on every reporting surface so the two clients never word it
+// differently.
+export function describeResultPreview(
+  myGameWins: number,
+  opponentGameWins: number,
+  gameDraws: number,
+  opponentName: string,
+): string {
+  if (myGameWins > opponentGameWins) {
+    return `You win ${formatGameScoreline(myGameWins, opponentGameWins, gameDraws)}`;
+  }
+  if (myGameWins < opponentGameWins) {
+    return `${opponentName} wins ${formatGameScoreline(opponentGameWins, myGameWins, gameDraws)}`;
+  }
+  return `Draw ${formatGameScoreline(myGameWins, opponentGameWins, gameDraws)}`;
 }
 
 // The drop confirmation dialog's description. The concession half reads the

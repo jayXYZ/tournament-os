@@ -1,27 +1,17 @@
 import { useUser } from "@clerk/expo";
-import { AuthView } from "@clerk/expo/native";
 import {
   describeCurrentMatch,
-  describeHeaderBadge,
-  displayPlayerName,
-  formatRecord,
-  standingStatusLabel,
-  useLatestStandings,
   useMyCurrentMatch,
   usePlayerTournamentAccess,
-  useRoundTimer,
 } from "@paper-pairings/core";
 import type {
   CurrentMatchDescription,
   PlayerTournamentEvent,
-  RoundTimer,
 } from "@paper-pairings/core";
 import { useLocalSearchParams, useNavigation } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import {
   ActivityIndicator,
-  Modal,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -29,6 +19,18 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { Badge } from "@/components/badge";
+import { ReportResultScoreboard } from "@/components/report-result-scoreboard";
+import { SignInButton } from "@/components/sign-in-button";
+import { Toast, useToast } from "@/components/toast";
+import { palette } from "@/lib/palette";
+
+// The match page: the viewer's current match — the report scoreboard while
+// it is live, the result card once it lands. The Figma "Player / App bar"
+// (event name + round timer) and the tab bar are still to come as custom
+// chrome; until then the native stack header carries only the event name
+// (see components/round-timer-pill.tsx for why the timer is not in it), and
+// standings stay off this page.
 export default function TournamentScreen() {
   const { code } = useLocalSearchParams<{ code: string }>();
   // The shared access ladder needs the app's own auth signal; Convex
@@ -39,7 +41,6 @@ export default function TournamentScreen() {
     user: user ?? null,
     loading: !isLoaded,
   });
-  const [authOpen, setAuthOpen] = useState(false);
 
   // Update the header title once the event resolves. Done via setOptions
   // (not a <Stack.Screen> rendered inside the route) — rendering a navigator
@@ -60,7 +61,7 @@ export default function TournamentScreen() {
     return (
       <SafeAreaView style={styles.container} edges={["bottom"]}>
         <View style={styles.centered}>
-          <ActivityIndicator />
+          <ActivityIndicator color={palette.mutedForeground} />
         </View>
       </SafeAreaView>
     );
@@ -76,9 +77,7 @@ export default function TournamentScreen() {
     );
   }
 
-  // Signed out (a deep link can land here without a session). Note Convex
-  // also treats Clerk sessions with pending tasks (e.g. MFA) as signed out;
-  // AuthView completes those tasks too.
+  // Signed out (a deep link can land here without a session).
   if (access.state === "signedOut") {
     return (
       <SafeAreaView style={styles.container} edges={["bottom"]}>
@@ -87,19 +86,8 @@ export default function TournamentScreen() {
           <Text style={styles.muted}>
             Sign in to see your pairings and standings for this tournament.
           </Text>
-          <Pressable style={styles.button} onPress={() => setAuthOpen(true)}>
-            <Text style={styles.buttonText}>Sign in</Text>
-          </Pressable>
+          <SignInButton style={styles.signInButton} />
         </View>
-
-        <Modal
-          visible={authOpen}
-          presentationStyle="pageSheet"
-          animationType="slide"
-          onRequestClose={() => setAuthOpen(false)}
-        >
-          <AuthView onDismiss={() => setAuthOpen(false)} />
-        </Modal>
       </SafeAreaView>
     );
   }
@@ -124,57 +112,63 @@ export default function TournamentScreen() {
 // queries reject anything less (the server's requireRegisteredPlayer).
 function TournamentContent({ event }: { event: PlayerTournamentEvent }) {
   const current = useMyCurrentMatch(event.tournament._id);
-  const standings = useLatestStandings(event.tournament._id);
-  const badge = describeHeaderBadge(current);
+  const { toast, show, dismiss } = useToast();
 
   return (
     <SafeAreaView style={styles.container} edges={["bottom"]}>
       <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Current round</Text>
-          {badge ? <Text style={styles.headerBadge}>{badge.label}</Text> : null}
-        </View>
-        <RoundCountdown timer={event.tournament.roundTimer} />
-        <CurrentMatch current={current} />
-
-        <Text style={[styles.sectionTitle, styles.sectionGap]}>Standings</Text>
-        <Standings standings={standings} />
+        <CurrentMatch
+          current={current}
+          onReported={() => show("Result reported.")}
+          onReportError={(message) => show(message, "destructive")}
+        />
       </ScrollView>
+      <Toast toast={toast} onDismiss={dismiss} />
     </SafeAreaView>
-  );
-}
-
-// Live round timer, ticked locally against the Convex-synced anchors carried
-// on the public event query — the same source web reads. Hidden while no
-// timer is set; overtime counts up in red.
-function RoundCountdown({ timer }: { timer: RoundTimer | null | undefined }) {
-  const { phase, remainingMs, formatted } = useRoundTimer(timer);
-  if (phase === "idle") {
-    return null;
-  }
-
-  const overtime = remainingMs < 0;
-  return (
-    <Text style={[styles.countdown, overtime && styles.countdownOvertime]}>
-      {phase === "paused" ? "Timer paused · " : ""}
-      {formatted}
-    </Text>
   );
 }
 
 // Renders the shared Player View description (see @paper-pairings/core
 // player-view.ts) — state branching and copy live in the presenter, this
-// component owns only the native styling. The report action is not yet
-// wired on native, so a reportable match reads as informational for now.
+// component owns only the native styling. While the viewer's match is
+// reportable the scoreboard takes the card's place: the current round is the
+// report surface, as in the web player controller's design direction. Once
+// the result lands the query flips to completed and the card returns with
+// the scoreline and its provenance badge.
 function CurrentMatch({
   current,
+  onReported,
+  onReportError,
 }: {
   current: ReturnType<typeof useMyCurrentMatch>;
+  onReported: () => void;
+  onReportError: (message: string) => void;
 }) {
   const description = describeCurrentMatch(current);
 
   if (description.kind === "loading") {
     return <Text style={styles.muted}>Loading…</Text>;
+  }
+
+  // The presenter carries the report action on the card itself, so the
+  // availability rule lives in one place.
+  if (description.kind === "card" && description.action) {
+    const { action } = description;
+    return (
+      // Keyed so a re-pair or structure change mid-entry remounts the
+      // scoreboard: stepper counts entered for one match must never be
+      // submitted against another, or past a new best-of ceiling.
+      <ReportResultScoreboard
+        key={`${action.matchId}:${action.bestOf}`}
+        action={action}
+        label={description.label}
+        title={description.title}
+        subtitle={description.subtitle}
+        body={description.body}
+        onReported={onReported}
+        onError={onReportError}
+      />
+    );
   }
 
   if (description.kind === "status") {
@@ -208,7 +202,9 @@ function DescriptionCard({
         <View style={styles.resultRow}>
           <Text style={styles.scoreline}>{description.scoreline}</Text>
           {description.badge ? (
-            <Text style={styles.resultBadge}>{description.badge.label}</Text>
+            <Badge tone={description.badge.tone}>
+              {description.badge.label}
+            </Badge>
           ) : null}
         </View>
       ) : null}
@@ -219,47 +215,8 @@ function DescriptionCard({
   );
 }
 
-function Standings({
-  standings,
-}: {
-  standings: ReturnType<typeof useLatestStandings>;
-}) {
-  if (standings === undefined) {
-    return <Text style={styles.muted}>Loading…</Text>;
-  }
-  if (standings === null) {
-    return <Text style={styles.muted}>No standings published yet.</Text>;
-  }
-
-  return (
-    <View style={styles.card}>
-      <Text style={styles.cardLabel}>After round {standings.roundNumber}</Text>
-      {standings.rows.map((row) => {
-        const statusLabel = standingStatusLabel(row);
-        return (
-          <View
-            key={`${row.rank}-${row.name ?? "anon"}`}
-            style={[styles.row, row.isMe && styles.rowMe]}
-          >
-            <Text style={styles.rank}>{row.rank}</Text>
-            <Text style={styles.name} numberOfLines={1}>
-              {displayPlayerName(row.name)}
-            </Text>
-            {statusLabel ? (
-              <Text style={styles.playoffStatus}>{statusLabel}</Text>
-            ) : null}
-            <Text style={styles.record}>
-              {formatRecord(row.matchWins, row.matchLosses, row.matchDraws)}
-            </Text>
-          </View>
-        );
-      })}
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0b0b0f" },
+  container: { flex: 1, backgroundColor: palette.background },
   content: { padding: 20, gap: 12 },
   centered: { flex: 1, alignItems: "center", justifyContent: "center" },
   signedOut: {
@@ -268,63 +225,32 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     gap: 12,
   },
-  signedOutTitle: { color: "#fff", fontSize: 22, fontWeight: "700" },
-  button: {
-    backgroundColor: "#5b6bff",
-    borderRadius: 12,
-    paddingVertical: 15,
-    alignItems: "center",
-    marginTop: 12,
-  },
-  buttonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
-  sectionHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  sectionTitle: {
-    color: "#8b8b96",
-    fontSize: 13,
+  signedOutTitle: {
+    color: palette.foreground,
+    fontSize: 22,
     fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
   },
-  sectionGap: { marginTop: 12 },
-  headerBadge: { color: "#7c8cff", fontSize: 13, fontWeight: "600" },
-  muted: { color: "#8b8b96", fontSize: 15 },
-  card: { backgroundColor: "#16161d", borderRadius: 14, padding: 16, gap: 6 },
-  cardLabel: { color: "#7c8cff", fontSize: 13, fontWeight: "600" },
-  cardTitle: { color: "#fff", fontSize: 20, fontWeight: "700" },
-  cardSubtitle: { color: "#8b8b96", fontSize: 16 },
+  signInButton: { marginTop: 12 },
+  muted: { color: palette.mutedForeground, fontSize: 15 },
+  card: {
+    backgroundColor: palette.card,
+    borderRadius: 14,
+    padding: 16,
+    gap: 6,
+  },
+  // The card eyebrow; web renders it as CardDescription (muted text).
+  cardLabel: {
+    color: palette.mutedForeground,
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  cardTitle: { color: palette.foreground, fontSize: 20, fontWeight: "700" },
+  cardSubtitle: { color: palette.mutedForeground, fontSize: 16 },
   resultRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
   },
-  scoreline: { color: "#fff", fontSize: 17, fontWeight: "600" },
-  resultBadge: { color: "#8b8b96", fontSize: 13, fontWeight: "600" },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 8,
-    gap: 12,
-  },
-  rowMe: {
-    backgroundColor: "#1f2030",
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    marginHorizontal: -8,
-  },
-  countdown: {
-    color: "#cfcfd6",
-    fontSize: 17,
-    fontWeight: "600",
-    fontVariant: ["tabular-nums"],
-  },
-  countdownOvertime: { color: "#ff6b6b" },
-  rank: { color: "#8b8b96", fontSize: 15, width: 28 },
-  name: { color: "#fff", fontSize: 15, flex: 1 },
-  playoffStatus: { color: "#8b8b96", fontSize: 12 },
-  record: { color: "#cfcfd6", fontSize: 15, fontVariant: ["tabular-nums"] },
+  scoreline: { color: palette.foreground, fontSize: 17, fontWeight: "600" },
 });

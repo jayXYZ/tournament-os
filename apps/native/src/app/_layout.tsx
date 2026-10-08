@@ -8,6 +8,8 @@ import * as SystemUI from "expo-system-ui";
 import { useEffect } from "react";
 
 import { convex } from "@/lib/convex";
+import { palette } from "@/lib/palette";
+import { useNumeralFont } from "@/lib/typography";
 
 // No-ops when EXPO_PUBLIC_SENTRY_DSN is unset (local dev without monitoring).
 const sentryDsn = process.env.EXPO_PUBLIC_SENTRY_DSN;
@@ -19,8 +21,6 @@ if (sentryDsn) {
   });
 }
 
-const APP_BACKGROUND = "#0b0b0f";
-
 // react-native-screens paints each native screen container with the navigation
 // theme's `colors.background`. expo-router defaults to the light theme (white),
 // which is what's exposed during swipe-back and in the seam between screens
@@ -30,8 +30,12 @@ const navigationTheme = {
   ...DarkTheme,
   colors: {
     ...DarkTheme.colors,
-    background: APP_BACKGROUND,
-    card: APP_BACKGROUND,
+    primary: palette.primary,
+    background: palette.background,
+    card: palette.background,
+    text: palette.foreground,
+    border: palette.border,
+    notification: palette.destructive,
   },
 };
 
@@ -49,13 +53,20 @@ if (!envPublishableKey) {
 const publishableKey: string = envPublishableKey;
 
 function RootLayout() {
+  // Starts the scoreboard's numeral face loading at launch (see
+  // lib/typography.ts). Nothing here waits on it: auth, Convex, and the
+  // first screen mount right away and expo-router hides the splash as soon
+  // as navigation is ready. The scoreboard picks the face up itself once
+  // it is registered.
+  useNumeralFont();
+
   // Paints the native root window background at runtime. The window sits below
   // React Navigation entirely, so it's what shows through during swipe-back and
-  // in the seam between screens mid-transition. `app.json`'s backgroundColor
+  // in the seam between screens mid-transition. `app.config.ts`'s backgroundColor
   // covers the same surface but only after a native rebuild; this applies on a
   // JS reload too.
   useEffect(() => {
-    SystemUI.setBackgroundColorAsync(APP_BACKGROUND);
+    SystemUI.setBackgroundColorAsync(palette.background);
   }, []);
 
   return (
@@ -68,7 +79,7 @@ function RootLayout() {
               headerShown: false,
               // Belt-and-suspenders for the screen interiors; the theme above
               // is what actually covers the swipe-back area and the seam.
-              contentStyle: { backgroundColor: APP_BACKGROUND },
+              contentStyle: { backgroundColor: palette.background },
             }}
           >
             <Stack.Screen name="index" />
@@ -77,8 +88,8 @@ function RootLayout() {
               options={{
                 headerShown: true,
                 title: "Tournament",
-                headerStyle: { backgroundColor: APP_BACKGROUND },
-                headerTintColor: "#fff",
+                headerStyle: { backgroundColor: palette.background },
+                headerTintColor: palette.foreground,
               }}
             />
           </Stack>

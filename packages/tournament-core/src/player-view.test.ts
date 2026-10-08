@@ -4,6 +4,7 @@ import {
   describeCurrentMatch,
   describeDropConfirmation,
   describeHeaderBadge,
+  describeResultPreview,
   reportAction,
 } from "./player-view.ts";
 import type { MyActiveMatch, MyCurrentMatch } from "./types.ts";
@@ -43,6 +44,7 @@ function activeMatch(overrides: {
       reportedByRegistrationId: null,
       currentResultKind: "played",
       bestOf: 3,
+      allowDraws: true,
       ...overrides.match,
     },
     me: {
@@ -177,9 +179,18 @@ test("an upcoming match carries the report action payload", () => {
       kind: "report",
       matchId: "match-1",
       bestOf: 3,
+      allowDraws: true,
       opponentName: "Alice",
     },
   });
+});
+
+test("reportAction carries the phase's draw rule to the entry controls", () => {
+  expect(
+    reportAction(
+      activeMatch({ match: { matchStatus: "upcoming", allowDraws: false } }),
+    ),
+  ).toMatchObject({ kind: "report", allowDraws: false });
 });
 
 test("the final round is flagged in the card label", () => {
@@ -339,4 +350,13 @@ test("a drop with nothing to concede gets the plain confirmation", () => {
     describeDropConfirmation(currentMatch({ kind: "between_rounds", round })),
   ).toBe(plain);
   expect(describeDropConfirmation(undefined)).toBe(plain);
+});
+
+test("the result preview names the winner from the reporter's seat", () => {
+  expect(describeResultPreview(2, 1, 0, "Alice")).toBe("You win 2–1");
+  // The opponent's line is their scoreline, not the reporter's mirrored one.
+  expect(describeResultPreview(1, 2, 0, "Alice")).toBe("Alice wins 2–1");
+  expect(describeResultPreview(0, 0, 0, "Alice")).toBe("Draw 0–0");
+  // Drawn games only appear once there are any.
+  expect(describeResultPreview(1, 1, 1, "Alice")).toBe("Draw 1–1–1");
 });
