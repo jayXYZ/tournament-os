@@ -1,10 +1,11 @@
 // A phase's Match Structure (see CONTEXT.md): best-of-1, -3, or -5, where
 // "best of X" is shorthand for first to ⌈X/2⌉ game wins. A match that ends
 // before either player gets there goes to whichever player has more game
-// wins, and equal game wins is a match draw (single elimination forbids
-// match draws — a phase-type rule enforced by the backend, not here).
-// These helpers are the single definition of what a structure permits,
-// shared by backend validation and client entry controls.
+// wins, and equal game wins is a match draw. Whether a match draw is a
+// legal result is the phase's call, not the structure's: Swiss allows it,
+// single elimination forbids it (see matchDrawError). These helpers are the
+// single definition of what a structure permits, shared by backend
+// validation and client entry controls.
 
 export const bestOfOptions = [1, 3, 5] as const;
 
@@ -40,6 +41,22 @@ export function maxGameWinsGiven(
 // instead of a structure-derived one: a timed round cannot realistically
 // produce more (see CONTEXT.md "Match Structure").
 export const MAX_GAME_DRAWS = 3;
+
+// Why equal game wins cannot be submitted when the phase forbids match
+// draws, or null when the scoreline is decisive or draws are allowed. The
+// phase type decides `allowDraws` (single elimination forbids match draws)
+// and passes the answer along as a flag, so clients can gate the submit
+// control on it without knowing the phase-type vocabulary.
+export function matchDrawError(
+  allowDraws: boolean,
+  playerOneGameWins: number,
+  playerTwoGameWins: number,
+): string | null {
+  if (allowDraws || playerOneGameWins !== playerTwoGameWins) {
+    return null;
+  }
+  return "Single-elimination matches cannot end in a draw";
+}
 
 // Why a scoreline cannot be a real result under the structure, or null when
 // it is valid. Non-drawn games never exceed X, nobody wins more games than

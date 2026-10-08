@@ -17,10 +17,11 @@ import { Badge } from '@/components/ui/badge'
 import { DataTable, DataTableColumnHeader } from '@/components/ui/data-table'
 
 // Built per render because the manage cell needs the round's phase match
-// structure to bound result entry, and whether the round's pairings are
-// still organizer-editable.
+// structure and draw rule to bound result entry, and whether the round's
+// pairings are still organizer-editable.
 function buildPairingColumns(
   bestOf: BestOf,
+  allowDraws: boolean,
   canEditPairings: boolean,
 ): Array<ColumnDef<PairingRow>> {
   return [
@@ -69,6 +70,7 @@ function buildPairingColumns(
         <ManageMatchMenu
           row={row.original}
           bestOf={bestOf}
+          allowDraws={allowDraws}
           canEditPairings={canEditPairings}
         />
       ),
@@ -79,18 +81,20 @@ function buildPairingColumns(
 export function PairingsTable({
   roundId,
   bestOf,
+  allowDraws,
   canEditPairings,
 }: {
   roundId: Id<'tournamentRounds'>
   bestOf: BestOf
+  allowDraws: boolean
   canEditPairings: boolean
 }) {
   const pairings = useQuery(api.tournaments.rounds.listRoundPairings, {
     roundId,
   })
   const columns = useMemo(
-    () => buildPairingColumns(bestOf, canEditPairings),
-    [bestOf, canEditPairings],
+    () => buildPairingColumns(bestOf, allowDraws, canEditPairings),
+    [bestOf, allowDraws, canEditPairings],
   )
 
   if (pairings === undefined) {

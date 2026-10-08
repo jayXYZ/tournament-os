@@ -6,6 +6,7 @@ import { api } from '@paper-pairings/backend/convex/_generated/api'
 import { displayPlayerName } from '@paper-pairings/core'
 import {
   MAX_GAME_DRAWS,
+  matchDrawError,
   maxGameWinsGiven,
 } from '@paper-pairings/shared/match-structure'
 import type { BestOf } from '@paper-pairings/shared/match-structure'
@@ -28,11 +29,14 @@ import { useBusyAction } from '@/hooks/use-busy-action'
 export function EnterResultDialog({
   row,
   bestOf,
+  allowDraws,
   open,
   onOpenChange,
 }: {
   row: PairingRow
   bestOf: BestOf
+  /** Whether equal game wins is a legal result in this phase. */
+  allowDraws: boolean
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
@@ -56,6 +60,13 @@ export function EnterResultDialog({
   // best-of-3) before it is submitted.
   const playerOneMaxWins = maxGameWinsGiven(bestOf, Number(playerTwoWins) || 0)
   const playerTwoMaxWins = maxGameWinsGiven(bestOf, Number(playerOneWins) || 0)
+  // Equal counts can't be made unreachable by the caps, so where the phase
+  // forbids draws the save waits for a decisive scoreline and says why.
+  const drawError = matchDrawError(
+    allowDraws,
+    Number.parseInt(playerOneWins, 10),
+    Number.parseInt(playerTwoWins, 10),
+  )
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -164,8 +175,14 @@ export function EnterResultDialog({
             </div>
           </FieldGroup>
 
+          {drawError ? (
+            <p role="status" className="text-sm text-muted-foreground">
+              {drawError}
+            </p>
+          ) : null}
+
           <DialogFooter>
-            <Button type="submit" disabled={busy}>
+            <Button type="submit" disabled={busy || drawError !== null}>
               {busy ? <Spinner data-icon="inline-start" /> : null}
               Save result
             </Button>

@@ -44,6 +44,7 @@ function activeMatch(overrides: {
       reportedByRegistrationId: null,
       currentResultKind: "played",
       bestOf: 3,
+      allowDraws: true,
       ...overrides.match,
     },
     me: {
@@ -178,9 +179,18 @@ test("an upcoming match carries the report action payload", () => {
       kind: "report",
       matchId: "match-1",
       bestOf: 3,
+      allowDraws: true,
       opponentName: "Alice",
     },
   });
+});
+
+test("reportAction carries the phase's draw rule to the entry controls", () => {
+  expect(
+    reportAction(
+      activeMatch({ match: { matchStatus: "upcoming", allowDraws: false } }),
+    ),
+  ).toMatchObject({ kind: "report", allowDraws: false });
 });
 
 test("the final round is flagged in the card label", () => {

@@ -6,6 +6,7 @@ import {
 import type { CurrentMatchAction } from "@paper-pairings/core";
 import {
   MAX_GAME_DRAWS,
+  matchDrawError,
   maxGameWinsGiven,
 } from "@paper-pairings/shared/match-structure";
 import { useState } from "react";
@@ -28,10 +29,16 @@ import { palette } from "@/lib/palette";
 // games hide behind a one-line prompt, and submitting is a hold, not a tap —
 // a reported result counts the moment it lands (there is no opponent
 // confirmation), so the deliberate gesture stands in for a confirm step.
+//
+// The header is the presenter's card copy verbatim (label, title, subtitle,
+// body), so the live-match card reads the same here as on the web even
+// though the scoreboard replaces the card's report button.
 export function ReportResultScoreboard({
   action,
   label,
   title,
+  subtitle,
+  body,
   onReported,
   onError,
 }: {
@@ -40,10 +47,14 @@ export function ReportResultScoreboard({
   label: string;
   /** The presenter's card title, e.g. "Table 4". */
   title: string;
+  /** The presenter's card subtitle, e.g. "vs Alice". */
+  subtitle: string | null;
+  /** The presenter's card body: what to do before reporting. */
+  body: string | null;
   onReported: () => void;
   onError: (message: string) => void;
 }) {
-  const { matchId, bestOf, opponentName } = action;
+  const { matchId, bestOf, allowDraws, opponentName } = action;
   const reportResult = useReportResult();
   const [myGameWins, setMyGameWins] = useState(0);
   const [opponentGameWins, setOpponentGameWins] = useState(0);
@@ -53,6 +64,10 @@ export function ReportResultScoreboard({
   // allows, the other side's "+" goes dark instead of the hold failing.
   const myMaxGameWins = maxGameWinsGiven(bestOf, opponentGameWins);
   const opponentMaxGameWins = maxGameWinsGiven(bestOf, myGameWins);
+  // Equal counts can't be made unreachable by the caps (0–0 is where entry
+  // starts), so where the phase forbids draws the hold stays disabled until
+  // the scoreline is decisive and the preview line says why.
+  const drawError = matchDrawError(allowDraws, myGameWins, opponentGameWins);
   const [gameDraws, setGameDraws] = useState(0);
   const [drawsRevealed, setDrawsRevealed] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -89,12 +104,14 @@ export function ReportResultScoreboard({
     myGameWins < opponentGameWins ? "trailing" : "leading";
   const opponentTone: NumeralTone =
     opponentGameWins < myGameWins ? "trailing" : "leading";
-  const preview = describeResultPreview(
-    myGameWins,
-    opponentGameWins,
-    gameDraws,
-    opponentName,
-  );
+  const preview =
+    drawError ??
+    describeResultPreview(
+      myGameWins,
+      opponentGameWins,
+      gameDraws,
+      opponentName,
+    );
 
   return (
     <View style={styles.root}>
@@ -103,6 +120,8 @@ export function ReportResultScoreboard({
       <View style={styles.stepHeader}>
         <Text style={styles.label}>{label}</Text>
         <Text style={styles.title}>{title}</Text>
+        {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+        {body ? <Text style={styles.body}>{body}</Text> : null}
       </View>
 
       <View style={styles.scoreboard}>
@@ -152,7 +171,12 @@ export function ReportResultScoreboard({
       </View>
 
       <View style={styles.footer}>
-        <Text style={styles.preview}>{preview}</Text>
+        <Text
+          accessibilityLiveRegion="polite"
+          style={[styles.preview, drawError !== null && styles.previewMuted]}
+        >
+          {preview}
+        </Text>
         {/* No successLabel: the mutation resolves only once the current-match
             query reflects the report, so this card has already unmounted by
             then and the screen's toast is the confirmation. The preview is
@@ -161,7 +185,7 @@ export function ReportResultScoreboard({
         <HoldButton
           label="Hold to submit result"
           accessibilityDescription={preview}
-          disabled={busy}
+          disabled={busy || drawError !== null}
           onConfirm={submit}
         />
       </View>
@@ -476,6 +500,19 @@ const styles = StyleSheet.create({
     lineHeight: 28,
     textAlign: "center",
   },
+  subtitle: {
+    color: palette.foreground,
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: "center",
+  },
+  body: {
+    color: palette.mutedForeground,
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: "center",
+    marginTop: 6,
+  },
   scoreboard: { gap: 12 },
   columns: { flexDirection: "row", alignItems: "flex-start" },
   column: { flex: 1, alignItems: "center", gap: COLUMN_GAP },
@@ -595,4 +632,5 @@ const styles = StyleSheet.create({
     lineHeight: 28,
     textAlign: "center",
   },
+  previewMuted: { color: palette.mutedForeground, fontSize: 16 },
 });

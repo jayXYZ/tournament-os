@@ -99,6 +99,7 @@ function DescriptionCard({
               <ReportResultDialog
                 matchId={action.matchId}
                 bestOf={action.bestOf}
+                allowDraws={action.allowDraws}
                 opponentName={action.opponentName}
                 open={reporting}
                 onOpenChange={setReporting}

@@ -5,6 +5,7 @@ import {
   bestOfOptions,
   gameWinsEntryError,
   isBestOf,
+  matchDrawError,
   maxGameWinsGiven,
   requiredGameWins,
 } from "./match-structure";
@@ -93,5 +94,23 @@ describe("gameWinsEntryError", () => {
     expect(gameWinsEntryError(3, 0, 0, 4)).toMatch(/at most 3 drawn games/);
     expect(gameWinsEntryError(3, 0, 0, -1)).toMatch(/whole number/);
     expect(gameWinsEntryError(3, 0, 0, 1.5)).toMatch(/whole number/);
+  });
+});
+
+describe("matchDrawError", () => {
+  it("passes decisive scorelines and any scoreline where draws are allowed", () => {
+    expect(matchDrawError(true, 1, 1)).toBeNull();
+    expect(matchDrawError(true, 0, 0)).toBeNull();
+    expect(matchDrawError(false, 2, 1)).toBeNull();
+    expect(matchDrawError(false, 0, 1)).toBeNull();
+  });
+
+  it("rejects equal game wins when draws are forbidden, 0–0 included", () => {
+    expect(matchDrawError(false, 1, 1)).toBe(
+      "Single-elimination matches cannot end in a draw",
+    );
+    expect(matchDrawError(false, 0, 0)).toBe(
+      "Single-elimination matches cannot end in a draw",
+    );
   });
 });
