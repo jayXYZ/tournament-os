@@ -14,6 +14,9 @@ export type OverviewBody =
   | 'unpublished-pairings'
   | 'live'
   | 'between-rounds'
+  // The last round is complete and only completing the event remains, so
+  // the body must not send the organizer to generate another round.
+  | 'final-round-complete'
   | 'finished'
   | 'cancelled'
 
@@ -85,7 +88,11 @@ export function describeNextStep(board: PairingsBoard): NextStepDescription {
         headline: `${roundHeadline} paired`,
         actionLabel: 'Hold to publish pairings',
         successLabel: 'Pairings published',
-        hint: 'Players cannot see their tables until pairings are published.',
+        // Blocked when a broken pairing left players unpaired; the reason
+        // names how many, which is what the organizer has to fix.
+        hint: step.ready
+          ? 'Players cannot see their tables until pairings are published.'
+          : step.reason,
         body: 'unpublished-pairings',
       }
     case 'startTimer':
@@ -126,7 +133,7 @@ export function describeNextStep(board: PairingsBoard): NextStepDescription {
         hint: step.ready
           ? 'Posts final standings and closes the event.'
           : step.reason,
-        body: 'between-rounds',
+        body: 'final-round-complete',
       }
     case 'tournamentCompleted':
       return {

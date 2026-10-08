@@ -218,6 +218,18 @@ function StateCard({
         </Button>
       )
       break
+    case 'final-round-complete':
+      title = `${describeCurrentRound(board)} complete`
+      text =
+        'Standings are posted and no rounds remain. Complete the tournament to post final standings and close the event.'
+      action = (
+        <Button asChild type="button" variant="outline">
+          <Link to="/admin/tournaments/$tournamentId/standings" params={params}>
+            Standings
+          </Link>
+        </Button>
+      )
+      break
     case 'finished':
       title = 'Tournament complete'
       text = 'Final standings are posted and the event is closed.'
