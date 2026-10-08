@@ -60,6 +60,16 @@ export function ReportResultScoreboard({
   // Rejections rethrow so the hold button skips its success flash; the
   // message goes to the screen's toast first (rate-limited rejections get
   // the retry-later treatment from mutationErrorMessage).
+  //
+  // TODO: holding at 0–0 is how a player reports an intentional draw, but
+  // it is also one hold away from an accidental report. When the entry is a
+  // 0–0 draw, prompt before submitting: "Was this an intentional draw?" and
+  // record the draw count that matches the answer. Confirm the MTR's
+  // encodings first: it is unclear which of 0–0–3 and 0–0–1 is the
+  // intentional draw. Older judge guidance gives intentional draws as
+  // 0–0–3 (WER's draw button entered 0–0–1), and an unintentional draw at
+  // time as the games actually played. Mirror the prompt in the web
+  // report dialog.
   async function submit() {
     setBusy(true);
     try {
