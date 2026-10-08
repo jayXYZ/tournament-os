@@ -16,10 +16,10 @@ import { palette } from "@/lib/palette";
 
 export type ToastTone = "default" | "destructive";
 
+// Each `show` call creates a fresh object, and identity is what the toast
+// compares, so repeating the same text still restarts the timer and the
+// entrance animation.
 export type ToastMessage = {
-  // Fresh per `show` call so repeating the same text still restarts the
-  // timer and the entrance animation.
-  id: number;
   text: string;
   tone: ToastTone;
 };
@@ -29,7 +29,7 @@ const DISPLAY_MS = 2800;
 export function useToast() {
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const show = useCallback((text: string, tone: ToastTone = "default") => {
-    setToast({ id: Date.now(), text, tone });
+    setToast({ text, tone });
   }, []);
   const dismiss = useCallback(() => setToast(null), []);
   return { toast, show, dismiss };
