@@ -20,7 +20,7 @@ import {
 } from "react-native";
 
 import { HoldButton } from "@/components/hold-button";
-import { fonts } from "@/lib/typography";
+import { useNumeralFont } from "@/lib/typography";
 import { palette } from "@/lib/palette";
 
 // The player's report surface while their match is live, from the Figma
@@ -58,6 +58,7 @@ export function ReportResultScoreboard({
   const reportResult = useReportResult();
   const [myGameWins, setMyGameWins] = useState(0);
   const [opponentGameWins, setOpponentGameWins] = useState(0);
+  const numeralFont = useNumeralFont();
   // Each side's ceiling depends on the other's count, so the steppers can
   // never build a scoreline the backend's gameWinsEntryError would reject
   // (2–2 in a best-of-3): once one side reaches a total the structure
@@ -135,7 +136,7 @@ export function ReportResultScoreboard({
             onChange={setMyGameWins}
           />
           <View style={styles.divider}>
-            <Text style={styles.dash}>–</Text>
+            <Text style={[styles.dash, numeralFont]}>–</Text>
           </View>
           <ScoreColumn
             label={opponentName}
@@ -220,6 +221,7 @@ function ScoreColumn({
 }) {
   const canIncrement = !disabled && value < max;
   const canDecrement = !disabled && value > 0;
+  const numeralFont = useNumeralFont();
   // Which half is under a finger right now: its glyph brightens so the
   // signpost answers the touch, not just the count.
   const [held, setHeld] = useState<Half | null>(null);
@@ -271,6 +273,7 @@ function ScoreColumn({
           {...hiddenFromReader}
           style={[
             styles.glyph,
+            numeralFont,
             !canIncrement && styles.glyphDisabled,
             held === "upper" && styles.glyphHeld,
           ]}
@@ -281,6 +284,7 @@ function ScoreColumn({
           {...hiddenFromReader}
           style={[
             styles.numeral,
+            numeralFont,
             tone === "trailing" && styles.numeralTrailing,
           ]}
         >
@@ -290,6 +294,7 @@ function ScoreColumn({
           {...hiddenFromReader}
           style={[
             styles.glyph,
+            numeralFont,
             !canDecrement && styles.glyphDisabled,
             held === "lower" && styles.glyphHeld,
           ]}
@@ -524,7 +529,6 @@ const styles = StyleSheet.create({
   },
   stepper: { alignSelf: "stretch", alignItems: "center" },
   glyph: {
-    fontFamily: fonts.numeral,
     fontSize: GLYPH_SIZE,
     lineHeight: GLYPH_HEIGHT,
     color: palette.mutedForeground,
@@ -534,7 +538,6 @@ const styles = StyleSheet.create({
   glyphDisabled: { opacity: 0.4 },
   glyphHeld: { color: palette.foreground },
   numeral: {
-    fontFamily: fonts.numeral,
     fontSize: NUMERAL_SIZE,
     lineHeight: NUMERAL_HEIGHT,
     color: palette.foreground,
@@ -568,7 +571,6 @@ const styles = StyleSheet.create({
   pressedTint: { backgroundColor: palette.secondary },
   divider: { width: 48, paddingTop: DASH_OFFSET, alignItems: "center" },
   dash: {
-    fontFamily: fonts.numeral,
     fontSize: DASH_SIZE,
     lineHeight: DASH_HEIGHT,
     color: palette.mutedForeground,

@@ -11,8 +11,12 @@ import {
 import { palette } from "@/lib/palette";
 
 // Native stand-in for the web's sonner toasts: one message at a time, slid
-// up from the bottom of the screen and dismissed on its own. Mount <Toast>
-// once at the end of a screen so it floats above the content.
+// down from the top of the screen and dismissed on its own. Mount <Toast>
+// once at the end of a screen, inside the area below its header, so it
+// floats above the content. It sits at the top rather than the bottom
+// because the bottom is where the hold button lives: a failure toast there
+// would cover the control the player is about to retry, and on a phone
+// with a home indicator it would overlap that too.
 
 export type ToastTone = "default" | "destructive";
 
@@ -100,7 +104,7 @@ export function Toast({
             {
               translateY: reveal.interpolate({
                 inputRange: [0, 1],
-                outputRange: [12, 0],
+                outputRange: [-12, 0],
               }),
             },
           ],
@@ -120,9 +124,9 @@ export function Toast({
 const styles = StyleSheet.create({
   toast: {
     position: "absolute",
+    top: 12,
     left: 16,
     right: 16,
-    bottom: 24,
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
