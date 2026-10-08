@@ -163,6 +163,8 @@ function CurrentMatch({
         action={action}
         label={description.label}
         title={description.title}
+        subtitle={description.subtitle}
+        body={description.body}
         onReported={onReported}
         onError={onReportError}
       />
