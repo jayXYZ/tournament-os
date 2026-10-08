@@ -96,7 +96,11 @@ suites are `paymentsConnect` / `entryFeeSettings` / `paymentsCheckout` /
     `v2.core.account[configuration.recipient].capability_status_updated` and
     `v2.core.account[requirements].updated`; the route re-reads the live
     transfers capability and overwrites the organization's snapshot, so the
-    payments card and the entry-fee gate stay current without polling.
+    payments card and the entry-fee gate stay current without polling. Every
+    snapshot write (this route and the manual refresh) is stamped with the
+    time its Stripe read began, and the shared model-layer writer drops a
+    read older than the stored snapshot, so overlapping syncs cannot commit
+    an outdated status over a newer one.
     Idempotent by construction (a snapshot overwrite), so no event
     bookkeeping.
 - **Guards** — the entry fee freezes once any order exists; hard deletion
@@ -153,7 +157,9 @@ settings, keys, and connected accounts from each other and from live mode.
   then `pnpm --filter @paper-pairings/backend exec convex env set STRIPE_WEBHOOK_SECRET <whsec_… from listen>`.
 - Forward thin account events in a second listener (snapshot and thin events
   cannot share one destination):
-  `stripe listen --events 'v2.core.account[configuration.recipient].capability_status_updated,v2.core.account[requirements].updated' --forward-to <dev-deployment>.convex.site/stripe/account-events`.
+  `stripe listen --thin-events 'v2.core.account[configuration.recipient].capability_status_updated,v2.core.account[requirements].updated' --forward-thin-to <dev-deployment>.convex.site/stripe/account-events`.
+  `--events`/`--forward-to` only carry snapshot events, so thin events need
+  these dedicated flags.
   The CLI uses one signing secret for every listener on the account, so set
   `STRIPE_ACCOUNT_WEBHOOK_SECRET` to the same value as
   `STRIPE_WEBHOOK_SECRET` (`stripe listen --print-secret` prints it without

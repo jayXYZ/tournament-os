@@ -1,4 +1,4 @@
-# Tournament OS roadmap
+# Paper Pairings roadmap
 
 This roadmap was audited against the current implementation and reordered to
 build reusable domain foundations before client polish or provider-specific
@@ -334,16 +334,25 @@ claimed by one.
         a status badge (listMyTournaments now includes pending/waitlisted
         rows)
   - [x] Surface pending applications for organizer review (2026-09-16): the
-        Registrations tab's toolbar gains an entry-status filter (All /
-        Pending review / Waitlisted / Confirmed / Cancelled / Rejected)
-        applied server-side — `listRegistrationPage` walks the existing
-        `by_tournamentId_and_entryStatus_and_participationStatus` index
-        under a filter and `searchRegistrations` narrows on `entryStatus`
-        (now a search-index filter field), so the filter sees the whole
-        history rather than the pages loaded so far and composes with the
-        search box. Filtering to "Pending review" is the review queue: the
-        row menu's approve/waitlist/reject actions act in place, and each
-        filter has its own empty state
+        Registrations tab's toolbar gains a filter (All / Pending review /
+        Waitlisted / Confirmed / Cancelled / Rejected) applied server-side
+        — `listRegistrationPage` walks the new
+        `by_tournamentId_and_entryStatus_and_awaitingReview` index under a
+        filter (creation order, so a filtered list pages newest-first like
+        the unfiltered one) and `searchRegistrations` narrows on the same
+        columns (now search-index filter fields), so the filter sees the
+        whole history rather than the pages loaded so far and composes
+        with the search box. "Pending review" is the review queue
+        (CONTEXT.md "Review Queue"): a pending row carries `awaitingReview`
+        only until the organizer decides it, so an approved entry awaiting
+        its payment on a paid event — or one filed by a direct checkout —
+        is pending without being review work. The row menu's
+        approve/waitlist/reject actions act in place, and each filter has
+        its own empty state. The Registrations tab in the manager subnav
+        carries a count of applications awaiting a decision
+        (`getPendingReviewCount`, capped at 99+, zero once the tournament
+        leaves the registration lifecycle and the decisions with it), so
+        review work is visible from anywhere in the manager
   - [x] Bar re-entry to a private event after organizer removal
         (launch-blocking, completed 2026-08-19): rejecting is the bar — the
         roster menu's "Reject registration" acts on a cancelled row (closing
@@ -666,7 +675,8 @@ organizer is paid exactly the entry cost per paid seat.
       (`docs/rate-limiting.md`)
 - [x] Committed `.env.example` contracts and typed Convex env declarations
       via `defineApp({ env })` (`docs/environment.md`)
-- [x] CI on every branch push with three jobs — test, checks (single-copy
+- [x] CI on pull requests (against the merge ref) and pushes to `main`, with
+      three jobs — test, checks (single-copy
       guard for react/react-dom/react-native/convex via
       `scripts/check-single-version.js`, lint, typecheck, format), native
       smoke export — plus the local one-shot gate `pnpm check`. Expo's

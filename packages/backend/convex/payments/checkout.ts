@@ -183,6 +183,7 @@ export const beginEntryCheckout = internalMutation({
       } else if (registration.entryStatus === "cancelled") {
         await setRegistrationState(ctx, registration._id, {
           entryStatus: "pending",
+          awaitingReview: false,
           playerName: playerDisplayName(user),
           tournamentStartDate: tournament.startDate,
           updatedAt: Date.now(),

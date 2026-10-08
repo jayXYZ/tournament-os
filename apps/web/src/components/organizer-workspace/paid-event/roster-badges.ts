@@ -2,19 +2,20 @@ import type { Doc } from '@paper-pairings/backend/convex/_generated/dataModel'
 
 type RosterBadgeVariant = 'default' | 'secondary' | 'destructive' | 'outline'
 
+// The entry-status vocabulary both registration tables share (CONTEXT.md
+// "Entry Status"), spelled once for every roster-side map and filter.
+export type EntryStatus = Doc<'tournamentRegistrations'>['entryStatus']
+
 // Entry-status → badge variant, shared by the tournament and badge rosters
-// (the tournament roster layers its participation statuses on top). Both
-// registration tables use the same entry-status vocabulary.
-export const entryStatusBadgeVariant: Record<
-  Doc<'tournamentRegistrations'>['entryStatus'],
-  RosterBadgeVariant
-> = {
-  confirmed: 'default',
-  pending: 'outline',
-  waitlisted: 'outline',
-  cancelled: 'secondary',
-  rejected: 'destructive',
-}
+// (the tournament roster layers its participation statuses on top).
+export const entryStatusBadgeVariant: Record<EntryStatus, RosterBadgeVariant> =
+  {
+    confirmed: 'default',
+    pending: 'outline',
+    waitlisted: 'outline',
+    cancelled: 'secondary',
+    rejected: 'destructive',
+  }
 
 // Order status → labeled roster badge, shared so both rosters show the same
 // friendly labels ("Payment due", never a raw "requires_payment").

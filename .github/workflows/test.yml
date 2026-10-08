@@ -1,12 +1,16 @@
 name: test
 
-# Every branch runs CI on push, so long-lived feature branches (and the PRs
-# stacked on them) cannot accumulate drift that nobody sees until merge. A
-# pull_request trigger would re-run the same commit a second time, so it is
-# omitted; the push run's checks appear on the PR for that commit.
+# pull_request runs check out GitHub's synthetic merge of the branch with its
+# current base, so they validate the integration rather than the branch head:
+# two branches that each pass on their own can still fail once combined when
+# the base has moved. The push run on main then confirms what actually landed.
+# `edited` is included because retargeting a PR to a new base (how a stacked
+# PR is landed) rebuilds the merge ref without firing `synchronize`.
 on:
   push:
-    branches: ["**"]
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

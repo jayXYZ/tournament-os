@@ -7,9 +7,9 @@
 // admission-mode tests at the bottom cover the production way in
 // (registerSelf filing a pending application when the tournament requires
 // approval); the verb-focused tests above seed applications directly via
-// ctx.db — the same shape registerSelf writes: an entry status and no
-// participation status — so each transition is pinned independently of the
-// filing path.
+// ctx.db — the same shape registerSelf writes: an entry status, the
+// review-queue flag on a pending one, and no participation status — so
+// each transition is pinned independently of the filing path.
 import type { TestConvex } from "convex-test";
 import { expect, test } from "vitest";
 
@@ -17,6 +17,7 @@ import { api } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { TournamentAuditEvent } from "./model/auditLog";
 import schema from "./schema";
+import type { RegistrationFilter } from "./validators";
 import {
   insertLinkedParticipant,
   organizerIdentity,
@@ -542,39 +543,28 @@ test("the organizer roster filters by entry status, in the list and in search", 
 
   // Filtered to pending: exactly the applications awaiting review, newest
   // first, each carrying its approve projection so the queue acts in place.
-  const pending = await organizer.query(
-    api.tournaments.registrations.listRegistrationPage,
-    {
-      tournamentId,
-      entryStatus: "pending",
-      paginationOpts: { numItems: 100, cursor: null },
-    },
+  const pending = await organizerRegistrationRows(
+    t,
+    tournamentId,
+    "awaiting_review",
   );
-  expect(pending.isDone).toBe(true);
-  expect(pending.page.map((row) => row.registration._id)).toEqual(
+  expect(pending.map((row) => row.registration._id)).toEqual(
     [...pendingIds].reverse(),
   );
-  expect(pending.page.every((row) => row.approveEffect === "pending")).toBe(
-    true,
-  );
+  expect(pending.every((row) => row.approveEffect === "pending")).toBe(true);
 
-  const waitlisted = await organizer.query(
-    api.tournaments.registrations.listRegistrationPage,
-    {
-      tournamentId,
-      entryStatus: "waitlisted",
-      paginationOpts: { numItems: 100, cursor: null },
-    },
+  const waitlisted = await organizerRegistrationRows(
+    t,
+    tournamentId,
+    "waitlisted",
   );
-  expect(waitlisted.page.map((row) => row.registration._id)).toEqual([
-    waitlistedId,
-  ]);
+  expect(waitlisted.map((row) => row.registration._id)).toEqual([waitlistedId]);
 
   // Search composes with the filter: every seeded name matches "Player",
   // but under the pending filter only the applications come back.
   const searched = await organizer.query(
     api.tournaments.registrations.searchRegistrations,
-    { tournamentId, search: "Player", entryStatus: "pending" },
+    { tournamentId, search: "Player", filter: "awaiting_review" },
   );
   expect(new Set(searched.map((row) => row.registration._id))).toEqual(
     new Set(pendingIds),
@@ -586,21 +576,179 @@ test("the organizer roster filters by entry status, in the list and in search", 
   expect(unfilteredSearch).toHaveLength(5);
 
   // The filter tracks state changes: approving an application moves it out
-  // of the pending queue.
+  // of the pending queue, and deciding the last one empties the queue.
   await organizer.mutation(api.tournaments.registrations.approveRegistration, {
     registrationId: pendingIds[0],
   });
-  const afterApproval = await organizer.query(
-    api.tournaments.registrations.listRegistrationPage,
-    {
-      tournamentId,
-      entryStatus: "pending",
-      paginationOpts: { numItems: 100, cursor: null },
-    },
+  const afterApproval = await organizerRegistrationRows(
+    t,
+    tournamentId,
+    "awaiting_review",
   );
-  expect(afterApproval.page.map((row) => row.registration._id)).toEqual([
+  expect(afterApproval.map((row) => row.registration._id)).toEqual([
     pendingIds[1],
   ]);
+  await organizer.mutation(api.tournaments.registrations.rejectRegistration, {
+    registrationId: pendingIds[1],
+  });
+  expect(
+    await organizerRegistrationRows(t, tournamentId, "awaiting_review"),
+  ).toEqual([]);
+  // The decided rows did not vanish — they moved to their new filters.
+  expect(
+    (await organizerRegistrationRows(t, tournamentId, "confirmed")).map(
+      (row) => row.registration._id,
+    ),
+  ).toContain(pendingIds[0]);
+  expect(
+    (await organizerRegistrationRows(t, tournamentId, "rejected")).map(
+      (row) => row.registration._id,
+    ),
+  ).toEqual([pendingIds[1]]);
+});
+
+test("a filtered list pages newest-first by cursor, whatever the participation status", async () => {
+  const t = createConvexTest();
+  const { tournamentId } = await seedOpenTournament(t);
+  const organizer = t.withIdentity(organizerIdentity);
+  const confirmedIds = [
+    await registerPlayer(t, tournamentId, 1),
+    await registerPlayer(t, tournamentId, 2),
+    await registerPlayer(t, tournamentId, 3),
+  ];
+  // The middle seat changes participation status. Were the filtered walk
+  // keyed on participationStatus (as the roster's other index is), this row
+  // would regroup to one end of the list instead of staying in its
+  // registration slot. Stamped directly: a real drop before play would
+  // cancel the entry (registrationDropEffect), leaving no confirmed row to
+  // misplace.
+  await t.run(async (ctx) => {
+    await ctx.db.patch(confirmedIds[1], { participationStatus: "dropped" });
+  });
+  const newestFirst = [...confirmedIds].reverse();
+
+  expect(
+    (await organizerRegistrationRows(t, tournamentId, "confirmed")).map(
+      (row) => row.registration._id,
+    ),
+  ).toEqual(newestFirst);
+
+  // The same order survives a cursor walk one row at a time: each page picks
+  // up exactly where the previous continueCursor left off, and the walk ends
+  // where the rows do.
+  const walked: Array<Id<"tournamentRegistrations">> = [];
+  let cursor: string | null = null;
+  for (let page = 0; page < 10; page += 1) {
+    // Annotated so the cursor fed back in below doesn't make the page's
+    // type circular.
+    const result: {
+      page: Array<{ registration: Doc<"tournamentRegistrations"> }>;
+      isDone: boolean;
+      continueCursor: string;
+    } = await organizer.query(
+      api.tournaments.registrations.listRegistrationPage,
+      {
+        tournamentId,
+        filter: "confirmed",
+        paginationOpts: { numItems: 1, cursor },
+      },
+    );
+    walked.push(...result.page.map((row) => row.registration._id));
+    if (result.isDone) {
+      break;
+    }
+    cursor = result.continueCursor;
+  }
+  expect(walked).toEqual(newestFirst);
+
+  // A page beyond the organizer list ceiling is refused rather than quietly
+  // resized: paginationOpts must reach the walk unchanged.
+  await expect(
+    organizer.query(api.tournaments.registrations.listRegistrationPage, {
+      tournamentId,
+      paginationOpts: { numItems: 101, cursor: null },
+    }),
+  ).rejects.toThrow("Page size must be between 1 and 100");
+});
+
+test("the pending-review count follows the queue and caps as a badge", async () => {
+  const t = createConvexTest();
+  const { tournamentId } = await seedOpenTournament(t, { playerCapacity: 200 });
+  const organizer = t.withIdentity(organizerIdentity);
+  const count = async () =>
+    await organizer.query(api.tournaments.registrations.getPendingReviewCount, {
+      tournamentId,
+    });
+
+  expect(await count()).toEqual({ count: 0, capped: false });
+
+  // Only pending rows count: a confirmed seat and a waitlisted application
+  // are not awaiting a decision.
+  await registerPlayer(t, tournamentId, 1);
+  await seedApplication(t, tournamentId, 2, "waitlisted");
+  const pendingIds = [
+    await seedApplication(t, tournamentId, 3, "pending"),
+    await seedApplication(t, tournamentId, 4, "pending"),
+  ];
+  expect(await count()).toEqual({ count: 2, capped: false });
+
+  // Deciding an application takes it off the count, either way.
+  await organizer.mutation(api.tournaments.registrations.approveRegistration, {
+    registrationId: pendingIds[0],
+  });
+  expect(await count()).toEqual({ count: 1, capped: false });
+  await organizer.mutation(api.tournaments.registrations.rejectRegistration, {
+    registrationId: pendingIds[1],
+  });
+  expect(await count()).toEqual({ count: 0, capped: false });
+
+  // Past the badge cap the count stops at the cap and says so, reading at
+  // most one row beyond it rather than the whole queue.
+  await seedApplications(t, tournamentId, 100, 198, "pending");
+  expect(await count()).toEqual({ count: 99, capped: false });
+  await seedApplications(t, tournamentId, 199, 199, "pending");
+  expect(await count()).toEqual({ count: 99, capped: true });
+
+  // The count is organizer-only, like the roster it summarizes.
+  await expect(
+    t
+      .withIdentity(playerIdentity(1))
+      .query(api.tournaments.registrations.getPendingReviewCount, {
+        tournamentId,
+      }),
+  ).rejects.toThrow("Unauthorized");
+});
+
+test("the pending-review count is zero once the tournament leaves registration", async () => {
+  const t = createConvexTest();
+  const { tournamentId } = await seedOpenTournament(t);
+  const organizer = t.withIdentity(organizerIdentity);
+  const count = async () =>
+    await organizer.query(api.tournaments.registrations.getPendingReviewCount, {
+      tournamentId,
+    });
+  const pendingId = await seedApplication(t, tournamentId, 1, "pending");
+  expect(await count()).toEqual({ count: 1, capped: false });
+
+  // The event starts with the application undecided (stamped directly, as
+  // the lifecycle test above does). The row is still pending — and the
+  // filter still lists it — but approve, reject, and waitlist are all gone,
+  // so the badge stops advertising work the organizer cannot do.
+  await t.run(async (ctx) => {
+    await ctx.db.patch(tournamentId, { lifecycle: "in_progress" });
+  });
+  expect(await count()).toEqual({ count: 0, capped: false });
+  const listed = await organizerRegistrationRows(
+    t,
+    tournamentId,
+    "awaiting_review",
+  );
+  expect(listed.map((row) => row.registration._id)).toEqual([pendingId]);
+  expect(listed[0]).toMatchObject({
+    approveEffect: null,
+    rejectEffect: null,
+    waitlistEffect: null,
+  });
 });
 
 // A published tournament sitting in the "registration" lifecycle — the only
@@ -663,11 +811,56 @@ async function seedApplication(
       participantId,
       tournamentStartDate: tournament.startDate,
       entryStatus,
+      ...(entryStatus === "pending" ? { awaitingReview: true as const } : {}),
       playerName: playerIdentity(playerNumber).name,
       createdAt: now,
       tiebreakRandom: playerNumber,
       updatedAt: now,
     });
+  });
+}
+
+// seedApplication for a numbered range of players in one transaction — the
+// volume the badge cap needs, without a round trip per row.
+async function seedApplications(
+  t: TestConvex<typeof schema>,
+  tournamentId: Id<"tournaments">,
+  firstPlayerNumber: number,
+  lastPlayerNumber: number,
+  entryStatus: "pending" | "waitlisted",
+): Promise<void> {
+  await t.run(async (ctx) => {
+    const tournament = await ctx.db.get(tournamentId);
+    if (!tournament) {
+      throw new Error("Tournament not found in test setup");
+    }
+    for (
+      let playerNumber = firstPlayerNumber;
+      playerNumber <= lastPlayerNumber;
+      playerNumber += 1
+    ) {
+      const identity = playerIdentity(playerNumber);
+      const userId = await ctx.db.insert("users", {
+        tokenIdentifier: identity.tokenIdentifier,
+        publicCode: playerNumber,
+        email: identity.email,
+        name: identity.name,
+        updatedAt: Date.now(),
+      });
+      const participantId = await insertLinkedParticipant(ctx, userId);
+      const now = Date.now();
+      await ctx.db.insert("tournamentRegistrations", {
+        tournamentId,
+        participantId,
+        tournamentStartDate: tournament.startDate,
+        entryStatus,
+        ...(entryStatus === "pending" ? { awaitingReview: true as const } : {}),
+        playerName: identity.name,
+        createdAt: now,
+        tiebreakRandom: playerNumber,
+        updatedAt: now,
+      });
+    }
   });
 }
 
@@ -695,15 +888,19 @@ async function getRegistration(
 }
 
 // The roster rows exactly as the organizer's Registrations tab receives
-// them, review-action projections included.
+// them, review-action projections included — the whole history, or one
+// slice of it (an entry status, or the review queue), as the tab's filter
+// would ask.
 async function organizerRegistrationRows(
   t: TestConvex<typeof schema>,
   tournamentId: Id<"tournaments">,
+  filter?: RegistrationFilter,
 ) {
   const page = await t
     .withIdentity(organizerIdentity)
     .query(api.tournaments.registrations.listRegistrationPage, {
       tournamentId,
+      filter,
       paginationOpts: { numItems: 100, cursor: null },
     });
   return page.page;

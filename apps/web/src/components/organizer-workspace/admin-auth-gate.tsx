@@ -39,7 +39,7 @@ function SignedOutAdmin({ description }: { description: string }) {
             <Swords className="size-5" />
           </div>
           <div>
-            <p className="text-sm font-semibold leading-none">Tournament OS</p>
+            <p className="text-sm font-semibold leading-none">Paper Pairings</p>
             <p className="mt-1 text-xs text-stone-400">Organization controls</p>
           </div>
         </div>
