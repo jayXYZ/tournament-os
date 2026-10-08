@@ -21,6 +21,21 @@ export function requiredGameWins(bestOf: BestOf): number {
   return (bestOf + 1) / 2;
 }
 
+// The most game wins one side can still be given once the other side's
+// count is known: nobody wins more games than the match requires, and
+// non-drawn games never exceed X. Entry controls cap their steppers with
+// this so a scoreline gameWinsEntryError would reject (2–2 in a best-of-3,
+// 1–1 in a best-of-1) is unreachable rather than rejected on submit.
+export function maxGameWinsGiven(
+  bestOf: BestOf,
+  otherGameWins: number,
+): number {
+  return Math.max(
+    0,
+    Math.min(requiredGameWins(bestOf), bestOf - otherGameWins),
+  );
+}
+
 // Drawn games never count toward X, so they get a flat sanity ceiling
 // instead of a structure-derived one: a timed round cannot realistically
 // produce more (see CONTEXT.md "Match Structure").

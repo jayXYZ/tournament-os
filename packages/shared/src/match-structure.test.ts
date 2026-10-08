@@ -5,6 +5,7 @@ import {
   bestOfOptions,
   gameWinsEntryError,
   isBestOf,
+  maxGameWinsGiven,
   requiredGameWins,
 } from "./match-structure";
 
@@ -23,6 +24,34 @@ describe("requiredGameWins", () => {
     expect(requiredGameWins(1)).toBe(1);
     expect(requiredGameWins(3)).toBe(2);
     expect(requiredGameWins(5)).toBe(3);
+  });
+});
+
+describe("maxGameWinsGiven", () => {
+  it("caps a side at the required wins while the other side is behind", () => {
+    expect(maxGameWinsGiven(3, 0)).toBe(2);
+    expect(maxGameWinsGiven(3, 1)).toBe(2);
+    expect(maxGameWinsGiven(5, 2)).toBe(3);
+    expect(maxGameWinsGiven(1, 0)).toBe(1);
+  });
+
+  it("keeps non-drawn games within the match length", () => {
+    expect(maxGameWinsGiven(3, 2)).toBe(1);
+    expect(maxGameWinsGiven(1, 1)).toBe(0);
+    expect(maxGameWinsGiven(5, 3)).toBe(2);
+  });
+
+  it("never leaves a scoreline gameWinsEntryError rejects reachable", () => {
+    for (const bestOf of bestOfOptions) {
+      const required = requiredGameWins(bestOf);
+      for (let other = 0; other <= required; other += 1) {
+        const max = maxGameWinsGiven(bestOf, other);
+        for (let wins = 0; wins <= max; wins += 1) {
+          expect(gameWinsEntryError(bestOf, wins, other)).toBeNull();
+        }
+        expect(gameWinsEntryError(bestOf, max + 1, other)).not.toBeNull();
+      }
+    }
   });
 });
 

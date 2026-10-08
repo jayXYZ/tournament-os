@@ -6,7 +6,7 @@ import {
 import type { CurrentMatchAction } from "@paper-pairings/core";
 import {
   MAX_GAME_DRAWS,
-  requiredGameWins,
+  maxGameWinsGiven,
 } from "@paper-pairings/shared/match-structure";
 import { useState } from "react";
 import {
@@ -44,10 +44,15 @@ export function ReportResultScoreboard({
   onError: (message: string) => void;
 }) {
   const { matchId, bestOf, opponentName } = action;
-  const maxGameWins = requiredGameWins(bestOf);
   const reportResult = useReportResult();
   const [myGameWins, setMyGameWins] = useState(0);
   const [opponentGameWins, setOpponentGameWins] = useState(0);
+  // Each side's ceiling depends on the other's count, so the steppers can
+  // never build a scoreline the backend's gameWinsEntryError would reject
+  // (2–2 in a best-of-3): once one side reaches a total the structure
+  // allows, the other side's "+" goes dark instead of the hold failing.
+  const myMaxGameWins = maxGameWinsGiven(bestOf, opponentGameWins);
+  const opponentMaxGameWins = maxGameWinsGiven(bestOf, myGameWins);
   const [gameDraws, setGameDraws] = useState(0);
   const [drawsRevealed, setDrawsRevealed] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -89,7 +94,7 @@ export function ReportResultScoreboard({
           <ScoreColumn
             label="You"
             value={myGameWins}
-            max={maxGameWins}
+            max={myMaxGameWins}
             tone={myTone}
             disabled={busy}
             onChange={setMyGameWins}
@@ -100,7 +105,7 @@ export function ReportResultScoreboard({
           <ScoreColumn
             label={opponentName}
             value={opponentGameWins}
-            max={maxGameWins}
+            max={opponentMaxGameWins}
             tone={opponentTone}
             disabled={busy}
             onChange={setOpponentGameWins}

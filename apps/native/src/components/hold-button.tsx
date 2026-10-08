@@ -63,6 +63,9 @@ export function HoldButton({
   const [width, setWidth] = useState(0);
   const mountedRef = useRef(false);
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Under reduce motion the hold is timed rather than animated; this is the
+  // timer that fires the action, cleared by an early release.
+  const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reduceMotion = useReducedMotion();
 
   // Keep latest callbacks/props readable from stable animation callbacks.
@@ -106,7 +109,15 @@ export function HoldButton({
     rewind(() => {});
   }, [rewind, setPhase]);
 
+  const clearHoldTimer = useCallback(() => {
+    if (holdTimerRef.current) {
+      clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = null;
+    }
+  }, []);
+
   const complete = useCallback(() => {
+    clearHoldTimer();
     progress.stopAnimation();
     progress.setValue(1);
     setConfirmedLabel(successLabelRef.current);
@@ -123,7 +134,7 @@ export function HoldButton({
           if (mountedRef.current) retract();
         },
       );
-  }, [progress, retract, setPhase]);
+  }, [clearHoldTimer, progress, retract, setPhase]);
 
   function press() {
     if (disabled) return;
@@ -132,9 +143,21 @@ export function HoldButton({
     // A new press must start from zero: pressing during a rewind (early
     // release or the post-success retract) must not resume from the residual
     // fill, or the action could fire after a near-zero hold.
+    clearHoldTimer();
     progress.stopAnimation();
     progress.setValue(0);
     setPhase("holding");
+    if (reduceMotion) {
+      // No sweep: the face inverts at once as a static "held" state and a
+      // plain timer keeps the same deliberate delay before the action fires.
+      // Releasing early clears the timer and snaps the fill back.
+      progress.setValue(1);
+      holdTimerRef.current = setTimeout(() => {
+        holdTimerRef.current = null;
+        if (phaseRef.current === "holding") complete();
+      }, holdDuration);
+      return;
+    }
     Animated.timing(progress, {
       toValue: 1,
       duration: holdDuration,
@@ -146,11 +169,12 @@ export function HoldButton({
   }
 
   const release = useCallback(() => {
+    clearHoldTimer();
     if (phaseRef.current !== "holding") return;
     rewind(() => {
       if (phaseRef.current === "holding") setPhase("idle");
     });
-  }, [rewind, setPhase]);
+  }, [clearHoldTimer, rewind, setPhase]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -158,6 +182,7 @@ export function HoldButton({
       mountedRef.current = false;
       progress.stopAnimation();
       if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+      if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
     };
   }, [progress]);
 
