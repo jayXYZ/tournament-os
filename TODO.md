@@ -640,7 +640,8 @@ organizer is paid exactly the entry cost per paid seat.
       (`docs/rate-limiting.md`)
 - [x] Committed `.env.example` contracts and typed Convex env declarations
       via `defineApp({ env })` (`docs/environment.md`)
-- [x] CI on every branch push with three jobs — test, checks (single-copy
+- [x] CI on pull requests (against the merge ref) and pushes to `main`, with
+      three jobs — test, checks (single-copy
       guard for react/react-dom/react-native/convex via
       `scripts/check-single-version.js`, lint, typecheck, format), native
       smoke export — plus the local one-shot gate `pnpm check`. Expo's
