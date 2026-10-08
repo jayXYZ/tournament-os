@@ -23,8 +23,23 @@ suites are `paymentsConnect` / `entryFeeSettings` / `paymentsCheckout` /
   through Stripe-hosted Account Links from the organization page. "Linking an
   existing Stripe account" via OAuth is a deprecated v1 pattern and
   deliberately unsupported. Capability status is snapshotted on the
-  onboarding return route and on manual refresh; money movement never trusts
-  the snapshot — the payout re-checks the live capability first.
+  onboarding return route, on manual refresh, and whenever Stripe pushes a
+  connected-account event (see Webhooks); money movement never trusts the
+  snapshot — the payout re-checks the live capability first. Organizers
+  reach their Express Dashboard (balance, upcoming payouts, bank account)
+  through single-use login links minted in-app (`createDashboardLink`),
+  the access path Stripe prescribes for `dashboard: "express"`.
+- **Supported countries: US only.** Accounts v2 requires `identity.country`
+  at creation and never lets it change; Checkout and transfers are USD-only.
+  `SUPPORTED_STRIPE_COUNTRIES` (`@paper-pairings/shared/payment-fees`) is
+  the one list: the first-connect action refuses any other country before
+  calling Stripe (a wrongly-countried account could never finish onboarding
+  and the organization owns exactly one account), the payments card states
+  the limitation and collects an explicit "based in the United States"
+  acknowledgement, and the country is stored on
+  `organizationStripeAccounts`. Widening the list is the entry point for
+  the cross-border payouts item in `TODO.md` §9; charging players in local
+  currencies is a separate, larger item there.
 - **Charge pattern** — **separate charges and transfers** (hold-and-release).
   Players pay through a Stripe-hosted Checkout Session on the platform
   account, tagged with the order's transfer group (`order:{orderId}`). No
@@ -65,16 +80,29 @@ suites are `paymentsConnect` / `entryFeeSettings` / `paymentsCheckout` /
   tournament is a child of the convention. Blocked payouts (refunds
   settling, account not payouts-ready) and exhausted-retry failures surface
   on the event's settings page with an owner-only retry.
-- **Webhooks** — single signed endpoint,
-  `POST <deployment>.convex.site/stripe/events`. Fulfillment happens only
-  here; success pages just watch the order reactively. Every handler is a
-  single internalMutation, idempotent via the processed-event table plus
-  status guards. Handled events: `checkout.session.completed`,
-  `checkout.session.async_payment_succeeded`,
-  `checkout.session.async_payment_failed`, `checkout.session.expired`,
-  `refund.updated`, `refund.failed` (executor reconciliation), and
-  `charge.dispute.created` (v1 policy: mark the order disputed and exclude
-  it from the payout).
+- **Webhooks** — two signed endpoints, one per Stripe event format.
+  - Snapshot events: `POST <deployment>.convex.site/stripe/events`.
+    Fulfillment happens only here; success pages just watch the order
+    reactively. Every handler is a single internalMutation, idempotent via
+    the processed-event table plus status guards. Handled events:
+    `checkout.session.completed`, `checkout.session.async_payment_succeeded`,
+    `checkout.session.async_payment_failed`, `checkout.session.expired`,
+    `refund.updated`, `refund.failed` (executor reconciliation), and
+    `charge.dispute.created` (v1 policy: mark the order disputed and exclude
+    it from the payout).
+  - Thin events (v2): `POST <deployment>.convex.site/stripe/account-events`,
+    a separate event destination with its own signing secret
+    (`STRIPE_ACCOUNT_WEBHOOK_SECRET`). Subscribed to
+    `v2.core.account[configuration.recipient].capability_status_updated` and
+    `v2.core.account[requirements].updated`; the route re-reads the live
+    transfers capability and overwrites the organization's snapshot, so the
+    payments card and the entry-fee gate stay current without polling. Every
+    snapshot write (this route and the manual refresh) is stamped with the
+    time its Stripe read began, and the shared model-layer writer drops a
+    read older than the stored snapshot, so overlapping syncs cannot commit
+    an outdated status over a newer one.
+    Idempotent by construction (a snapshot overwrite), so no event
+    bookkeeping.
 - **Guards** — the entry fee freezes once any order exists; hard deletion
   refuses while any player money is unsettled (cancel to refund, or complete
   to pay out, first).
@@ -92,21 +120,51 @@ One-time Stripe dashboard steps (human-only):
    at [dashboard.stripe.com/settings/connect/platform-profile](https://dashboard.stripe.com/settings/connect/platform-profile);
    confirm Accounts v2 access for the account.
 2. Create a [restricted key](https://docs.stripe.com/keys/restricted-api-keys)
-   scoped to Connect accounts, Checkout Sessions, PaymentIntents (read),
-   Refunds, and Transfers.
-3. Register the webhook endpoint
-   (`https://<prod-deployment>.convex.site/stripe/events`) for the events
-   listed above and note its signing secret.
+   with exactly these rows (first column, "this account"; the second
+   "connected accounts" column stays None — every call is made on the
+   platform account). The Accounts v2 rows are separate from Connect's v1
+   "Accounts" row, which does not cover `/v2/core/accounts`
+   ([permissions reference](https://docs.stripe.com/keys/permissions-reference)).
+   - Accounts v2 → **Accounts v2: Read**, **Recipient Configuration: Write**
+     (v2 account create/retrieve and v2 account links)
+   - Connect → **Login Links: Write**, **Transfers: Write**
+   - Checkout → **Checkout Sessions: Write**
+   - Core → **PaymentIntents: Read**, **Charges and Refunds: Write**
+     Give it an [access policy](https://docs.stripe.com/keys#access-policies)
+     if the deployment's egress is predictable.
+3. Register the snapshot webhook endpoint
+   (`https://<prod-deployment>.convex.site/stripe/events`) for the snapshot
+   events listed above and note its signing secret.
+4. Register a second event destination with **thin events** enabled
+   (Workbench → Webhooks → Add destination → Advanced → "Use thin events";
+   events from **Your account**) at
+   `https://<prod-deployment>.convex.site/stripe/account-events` for the
+   two `v2.core.account[…]` events listed above, and note its signing
+   secret.
 
 Then set the Convex env vars (see [environment.md](./environment.md)):
-`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `WEB_APP_ORIGIN`, and
-optionally the three fee overrides.
+`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_ACCOUNT_WEBHOOK_SECRET`,
+`WEB_APP_ORIGIN`, and optionally the three fee overrides.
+
+Use a [sandbox](https://docs.stripe.com/sandboxes) per environment (local,
+CI, preview) rather than the account's shared test mode: sandboxes isolate
+settings, keys, and connected accounts from each other and from live mode.
 
 ## Local development
 
-- Forward webhooks:
+- Forward snapshot webhooks:
   `stripe listen --forward-to <dev-deployment>.convex.site/stripe/events`,
   then `pnpm --filter @paper-pairings/backend exec convex env set STRIPE_WEBHOOK_SECRET <whsec_… from listen>`.
+- Forward thin account events in a second listener (snapshot and thin events
+  cannot share one destination):
+  `stripe listen --thin-events 'v2.core.account[configuration.recipient].capability_status_updated,v2.core.account[requirements].updated' --forward-thin-to <dev-deployment>.convex.site/stripe/account-events`.
+  `--events`/`--forward-to` only carry snapshot events, so thin events need
+  these dedicated flags.
+  The CLI uses one signing secret for every listener on the account, so set
+  `STRIPE_ACCOUNT_WEBHOOK_SECRET` to the same value as
+  `STRIPE_WEBHOOK_SECRET` (`stripe listen --print-secret` prints it without
+  starting a listener). Without this listener, status still refreshes on
+  onboarding return and the card's refresh button.
 - Pay with [test cards](https://docs.stripe.com/testing) (`4242 4242 4242
 4242` succeeds).
 - Stripe requires HTTPS for Account Link return/refresh URLs even in test

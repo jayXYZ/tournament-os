@@ -30,6 +30,19 @@ export function requireStripeWebhookSecret() {
   return secret;
 }
 
+// The v2 thin-event destination that keeps connected-account status fresh
+// (payments/connect.ts). Separate from the snapshot endpoint's secret because
+// Stripe issues thin events from their own destination with its own key.
+export function requireStripeAccountWebhookSecret() {
+  const secret = env.STRIPE_ACCOUNT_WEBHOOK_SECRET;
+  if (!secret) {
+    throw new Error(
+      "Payments are not configured: set STRIPE_ACCOUNT_WEBHOOK_SECRET on this deployment",
+    );
+  }
+  return secret;
+}
+
 export function requireWebAppOrigin() {
   const origin = env.WEB_APP_ORIGIN;
   if (!origin) {

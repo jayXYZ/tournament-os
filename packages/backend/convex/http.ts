@@ -4,6 +4,7 @@ import { internal } from "./_generated/api";
 import { httpAction } from "./_generated/server";
 import { getStripeGateway } from "./stripe/client";
 import {
+  requireStripeAccountWebhookSecret,
   requireStripeSecretKey,
   requireStripeWebhookSecret,
 } from "./stripe/config";
@@ -136,6 +137,61 @@ http.route({
       default:
         // Unsubscribed event types are acknowledged, not errors.
         break;
+    }
+
+    return new Response(null, { status: 200 });
+  }),
+});
+
+// Connected-account status, pushed by Stripe. v2 Accounts emit thin events
+// from their own event destination (separate signing secret), so this is a
+// second route rather than more cases above. Subscribed types:
+// `v2.core.account[configuration.recipient].capability_status_updated` and
+// `v2.core.account[requirements].updated`. A thin event carries only ids, so
+// the handler re-reads the live transfers capability and overwrites the
+// snapshot — naturally idempotent, no processed-event bookkeeping needed.
+// Overlapping deliveries (or a delivery racing the manual refresh) can commit
+// in reverse order of their reads, so each write carries the time its read
+// began and the model-layer freshness guard drops the older one. The
+// snapshot only drives UI and the entry-fee gate; the payout re-checks live.
+http.route({
+  path: "/stripe/account-events",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const signature = request.headers.get("stripe-signature");
+    if (!signature) {
+      return new Response("Missing signature", { status: 400 });
+    }
+    const payload = await request.text();
+    const gateway = getStripeGateway(requireStripeSecretKey());
+
+    let notification;
+    try {
+      notification = await gateway.constructAccountEventNotification({
+        payload,
+        signature,
+        secret: requireStripeAccountWebhookSecret(),
+      });
+    } catch {
+      return new Response("Invalid signature", { status: 400 });
+    }
+
+    if (
+      notification.type.startsWith("v2.core.account") &&
+      notification.stripeAccountId
+    ) {
+      const observedAt = Date.now();
+      const status = await gateway.retrieveTransfersCapabilityStatus({
+        stripeAccountId: notification.stripeAccountId,
+      });
+      await ctx.runMutation(
+        internal.payments.connect.recordStripeAccountStatusByAccountId,
+        {
+          stripeAccountId: notification.stripeAccountId,
+          transfersCapabilityStatus: status,
+          observedAt,
+        },
+      );
     }
 
     return new Response(null, { status: 200 });

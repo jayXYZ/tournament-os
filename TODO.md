@@ -602,19 +602,47 @@ organizer is paid exactly the entry cost per paid seat.
       overloading registration status: no new entry statuses — "awaiting
       payment" is a pending entry plus a live order, seats move only through
       the webhook, and hard deletion refuses while money is unsettled
-- [ ] Verify the flow end-to-end against Stripe test mode (blocked on
-      human-only dashboard setup: platform profile with the negative-balance
-      liability acknowledgment, a restricted key + webhook endpoint, and the
-      payment env vars — see `docs/payments.md`)
-- [ ] Subscribe a v2 event destination for
-      `v2.core.account[requirements].updated` so connected-account status
-      stays fresh without polling (v1 polls on onboarding return and
-      re-checks live before every transfer, so staleness never moves money)
+- [x] Verify the flow end-to-end against a Stripe sandbox (2026-10-04):
+      hosted Connect onboarding → thin-event status sync → paid Checkout
+      registrations fulfilled by webhook → player-cancel full refund with the
+      organizer-absorbed fee → completion payout sweep (two transfers,
+      `source_transaction`-anchored, absorbed fee deducted). Surfaced and
+      fixed two account-creation requirements (`contact_email`,
+      `identity.country`) and the Accounts v2 restricted-key permission.
+- [x] Subscribe a v2 thin-event destination
+      (`/stripe/account-events`, `STRIPE_ACCOUNT_WEBHOOK_SECRET`) for
+      `v2.core.account[configuration.recipient].capability_status_updated`
+      and `v2.core.account[requirements].updated` so connected-account
+      status stays fresh without polling; the payout still re-checks live
+      before every transfer
+- [x] Give organizers Express Dashboard access through in-app single-use
+      login links (`createDashboardLink`)
 - [ ] Build the dispute workflow beyond v1's record-and-exclude (evidence
       submission, post-payout clawback via transfer reversals)
 - [ ] Reconcile the estimated processing fee against Stripe's actual
       per-charge fee (balance transactions) before scale — international
       cards cost more than the default 2.9% + 30¢ estimate
+- [x] Guard the hardcoded US account country (2026-10-05): a first connect
+      must name a country in `SUPPORTED_STRIPE_COUNTRIES` (US only) or it
+      is refused before any Stripe call; the payments card says so and
+      collects an explicit US-based acknowledgement; the country is stored
+      on `organizationStripeAccounts`
+- [ ] Cross-border payouts: let organizations outside the US connect and be
+      paid (players keep paying in USD). Small–medium: add a country picker
+      limited to Stripe's cross-border-payout recipient countries, widen
+      `SUPPORTED_STRIPE_COUNTRIES`, and confirm against a sandbox that a
+      non-US recipient account with `dashboard: "express"` accepts USD
+      transfers (Stripe converts at payout; decide who bears the ~1% FX
+      fee). Entry fees stay USD-denominated for the organizer.
+- [ ] Local-currency pricing: let an event charge players in the
+      organization's currency. Medium–large and separate from the above:
+      per-currency Stripe fee estimates and charge minimums in
+      `payment-fees` (today's 2.9% + 30¢ and $0.50 floor are US card
+      rates), zero-decimal currencies, a currency on entry-fee settings and
+      orders flowing into Checkout `price_data.currency`, transfers in a
+      currency the platform balance holds (or accepting conversion),
+      per-currency payout sums, and every `formatCents` call site
+      (`apps/web/src/lib/money.ts` is hardcoded to en-US/USD).
 
 ## 10. Design system and platform polish
 

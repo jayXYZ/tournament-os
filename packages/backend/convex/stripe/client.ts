@@ -1,5 +1,7 @@
 import Stripe from "stripe";
 
+import type { StripeCountry } from "@paper-pairings/shared/payment-fees";
+
 // Every Stripe API call funnels through this gateway so behavioral specs can
 // mock one module and the rest of the payments code never touches the SDK.
 // It runs in Convex's default runtime — the fetch HTTP client replaces
@@ -11,21 +13,38 @@ import Stripe from "stripe";
 // owns fees and losses) and are paid by separate charges and transfers, so
 // no account here ever accepts payments itself.
 
-export const STRIPE_API_VERSION = "2026-07-29.dahlia";
+// Pinned to the installed SDK's version: stripe-node's types reflect only
+// its latest API version, so `satisfies` fails typecheck the moment the SDK
+// moves on without this constant following.
+export const STRIPE_API_VERSION =
+  "2026-09-30.endive" satisfies Stripe.LatestApiVersion;
 
+// Mirrors Stripe's recipient `stripe_transfers` capability status enum
+// (validators.ts stripeTransfersCapabilityStatusValidator stores it).
 export type TransfersCapabilityStatus =
   | "pending"
   | "active"
   | "restricted"
+  | "rejected"
   | "unsupported";
 
 export type StripeWebhookEvent = Stripe.Event;
+
+// A verified v2 thin event notification, reduced to what the account-status
+// route acts on: the event type and the connected account it concerns.
+export type StripeAccountEventNotification = {
+  type: string;
+  stripeAccountId: string | null;
+};
 
 export interface StripeGateway {
   createRecipientAccount(args: {
     organizationId: string;
     displayName: string;
-    contactEmail?: string;
+    // Required by Stripe whenever configuration.recipient is supplied.
+    contactEmail: string;
+    // Fixed for the account's lifetime; see SUPPORTED_STRIPE_COUNTRIES.
+    country: StripeCountry;
   }): Promise<{ stripeAccountId: string }>;
   createOnboardingLink(args: {
     stripeAccountId: string;
@@ -35,6 +54,12 @@ export interface StripeGateway {
   retrieveTransfersCapabilityStatus(args: {
     stripeAccountId: string;
   }): Promise<TransfersCapabilityStatus>;
+  // Single-use login link into the connected account's Express Dashboard
+  // (balance, upcoming payouts, bank account) — the access path Stripe
+  // prescribes for dashboard: "express" accounts.
+  createDashboardLoginLink(args: {
+    stripeAccountId: string;
+  }): Promise<{ url: string }>;
   createCheckoutSession(args: {
     orderId: string;
     productName: string;
@@ -80,6 +105,14 @@ export interface StripeGateway {
     signature: string;
     secret: string;
   }): Promise<StripeWebhookEvent>;
+  // Verifies and parses a v2 thin event notification (the account event
+  // destination). Thin events carry only ids — the route re-reads the live
+  // account rather than trusting any payload snapshot.
+  constructAccountEventNotification(args: {
+    payload: string;
+    signature: string;
+    secret: string;
+  }): Promise<StripeAccountEventNotification>;
 }
 
 export function getStripeGateway(secretKey: string): StripeGateway {
@@ -97,6 +130,13 @@ export function getStripeGateway(secretKey: string): StripeGateway {
         {
           display_name: args.displayName,
           contact_email: args.contactEmail,
+          // Stripe requires the country up front when a recipient
+          // configuration is requested at creation, and it cannot change
+          // afterwards. The caller has already checked it against
+          // SUPPORTED_STRIPE_COUNTRIES (US only while checkout and transfers
+          // are USD-only, see below); hosted onboarding collects everything
+          // else.
+          identity: { country: args.country },
           dashboard: "express",
           defaults: {
             responsibilities: {
@@ -126,7 +166,9 @@ export function getStripeGateway(secretKey: string): StripeGateway {
         use_case: {
           type: "account_onboarding",
           account_onboarding: {
-            configurations: ["recipient"],
+            // Onboarding collects for every configuration on the account —
+            // only `recipient` here, so no selection is needed (the API no
+            // longer takes one).
             // Collect everything up front so the organizer finishes
             // onboarding in one pass instead of being pulled back for more
             // information after their first payout.
@@ -149,6 +191,11 @@ export function getStripeGateway(secretKey: string): StripeGateway {
         account.configuration?.recipient?.capabilities?.stripe_balance
           ?.stripe_transfers?.status ?? "pending"
       );
+    },
+
+    async createDashboardLoginLink(args) {
+      const link = await stripe.accounts.createLoginLink(args.stripeAccountId);
+      return { url: link.url };
     },
 
     async createCheckoutSession(args) {
@@ -192,9 +239,11 @@ export function getStripeGateway(secretKey: string): StripeGateway {
 
     async retrieveCheckoutSessionStatus(args) {
       const session = await stripe.checkout.sessions.retrieve(args.sessionId);
-      // A null status never occurs for payment-mode sessions; "open" is the
-      // safe fallback (callers refuse to supersede an open session).
-      return session.status ?? "open";
+      // Stripe types the status as an open enum; anything but the two dead
+      // states reads as "open", the safe fallback (callers refuse to
+      // supersede an open session).
+      const status: string = session.status ?? "open";
+      return status === "complete" || status === "expired" ? status : "open";
     },
 
     async retrievePaymentIntentCharge(args) {
@@ -251,6 +300,26 @@ export function getStripeGateway(secretKey: string): StripeGateway {
         undefined,
         Stripe.createSubtleCryptoProvider(),
       );
+    },
+
+    async constructAccountEventNotification(args) {
+      const notification = await stripe.parseEventNotificationAsync(
+        args.payload,
+        args.signature,
+        args.secret,
+        undefined,
+        Stripe.createSubtleCryptoProvider(),
+      );
+      // Not every notification type in the SDK's union carries a
+      // related_object; narrow structurally.
+      const related: { id?: unknown } | null =
+        "related_object" in notification
+          ? (notification.related_object as { id?: unknown } | null)
+          : null;
+      return {
+        type: notification.type,
+        stripeAccountId: typeof related?.id === "string" ? related.id : null,
+      };
     },
   };
 }
