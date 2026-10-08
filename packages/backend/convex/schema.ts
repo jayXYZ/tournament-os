@@ -116,7 +116,10 @@ export default defineSchema({
     // Denormalized transfersCapabilityStatus === "active" so guards and UI
     // read one boolean.
     payoutsReady: v.boolean(),
-    lastSyncedAt: v.number(),
+    // When the stored snapshot's Stripe read began; absent until the first
+    // sync (the row is created "pending" before any read). The model-layer
+    // writer uses it as a freshness guard against out-of-order syncs.
+    lastSyncedAt: v.optional(v.number()),
     createdBy: v.id("users"),
     updatedAt: v.number(),
   })

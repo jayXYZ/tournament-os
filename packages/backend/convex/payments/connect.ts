@@ -11,6 +11,7 @@ import { requireActiveMembership } from "../model/access";
 import {
   applyStripeAccountStatus,
   requirePaymentsPermission,
+  type StripeAccountStatusSnapshot,
   stripeAccountByStripeAccountId,
   stripeAccountForOrganization,
 } from "../model/stripeAccounts";
@@ -142,7 +143,8 @@ export const recordStripeAccountCreated = internalMutation({
       country: args.country,
       transfersCapabilityStatus: "pending",
       payoutsReady: false,
-      lastSyncedAt: now,
+      // No Stripe read yet; the onboarding return route's refresh sets it.
+      lastSyncedAt: undefined,
       createdBy: user._id,
       updatedAt: now,
     });
@@ -163,10 +165,14 @@ export const beginStripeStatusRefresh = internalMutation({
   },
 });
 
+// `observedAt` is when the caller's Stripe read began (see
+// applyStripeAccountStatus); the returned snapshot is what the row holds
+// afterwards, which is newer than the read when the read was stale.
 export const recordStripeAccountStatus = internalMutation({
   args: {
     organizationId: v.id("organizations"),
     transfersCapabilityStatus: stripeTransfersCapabilityStatusValidator,
+    observedAt: v.number(),
   },
   handler: async (ctx, args) => {
     const account = await stripeAccountForOrganization(
@@ -176,12 +182,10 @@ export const recordStripeAccountStatus = internalMutation({
     if (!account) {
       throw new Error("Stripe account not found");
     }
-    await applyStripeAccountStatus(
-      ctx,
-      account,
-      args.transfersCapabilityStatus,
-    );
-    return null;
+    return await applyStripeAccountStatus(ctx, account, {
+      transfersCapabilityStatus: args.transfersCapabilityStatus,
+      observedAt: args.observedAt,
+    });
   },
 });
 
@@ -189,26 +193,32 @@ export const recordStripeAccountStatus = internalMutation({
 // names the connected account, not the organization. An account this
 // deployment never recorded (another environment's, or an abandoned
 // concurrent-onboarding loser) is ignored, not an error — Stripe should not
-// retry it.
+// retry it. A read older than the stored snapshot is "stale" (also not an
+// error: the newer status already stands).
 export const recordStripeAccountStatusByAccountId = internalMutation({
   args: {
     stripeAccountId: v.string(),
     transfersCapabilityStatus: stripeTransfersCapabilityStatusValidator,
+    observedAt: v.number(),
   },
+  returns: v.union(
+    v.literal("applied"),
+    v.literal("stale"),
+    v.literal("unknown"),
+  ),
   handler: async (ctx, args) => {
     const account = await stripeAccountByStripeAccountId(
       ctx,
       args.stripeAccountId,
     );
     if (!account) {
-      return false;
+      return "unknown";
     }
-    await applyStripeAccountStatus(
-      ctx,
-      account,
-      args.transfersCapabilityStatus,
-    );
-    return true;
+    const snapshot = await applyStripeAccountStatus(ctx, account, {
+      transfersCapabilityStatus: args.transfersCapabilityStatus,
+      observedAt: args.observedAt,
+    });
+    return snapshot.applied ? "applied" : "stale";
   },
 });
 
@@ -308,9 +318,10 @@ export const createDashboardLink = action({
 });
 
 // Re-reads the connected account's transfers capability from Stripe and
-// stores the snapshot. Fired by the onboarding return route, the card's
-// refresh button, and the account event destination (http.ts); the payout
-// path re-checks live regardless.
+// stores the snapshot. Fired by the onboarding return route and the card's
+// refresh button (the account event destination in http.ts shares the
+// writer); the payout path re-checks live regardless. Returns the stored
+// snapshot, which is this read unless a newer sync landed first.
 export const refreshAccountStatus = action({
   args: { organizationId: v.id("organizations") },
   handler: async (
@@ -331,20 +342,24 @@ export const refreshAccountStatus = action({
       throw new Error("Connect a Stripe account first");
     }
 
+    // Stamped before the read so a sync whose read began later always wins
+    // the freshness guard, however the two commits interleave.
+    const observedAt = Date.now();
     const status = await gateway.retrieveTransfersCapabilityStatus({
       stripeAccountId: begin.stripeAccountId,
     });
-    await (ctx.runMutation(
+    const snapshot: StripeAccountStatusSnapshot = await ctx.runMutation(
       internal.payments.connect.recordStripeAccountStatus,
       {
         organizationId: args.organizationId,
         transfersCapabilityStatus: status,
+        observedAt,
       },
-    ) satisfies Promise<null>);
+    );
 
     return {
-      transfersCapabilityStatus: status,
-      payoutsReady: status === "active",
+      transfersCapabilityStatus: snapshot.transfersCapabilityStatus,
+      payoutsReady: snapshot.payoutsReady,
     };
   },
 });

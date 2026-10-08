@@ -96,7 +96,11 @@ suites are `paymentsConnect` / `entryFeeSettings` / `paymentsCheckout` /
     `v2.core.account[configuration.recipient].capability_status_updated` and
     `v2.core.account[requirements].updated`; the route re-reads the live
     transfers capability and overwrites the organization's snapshot, so the
-    payments card and the entry-fee gate stay current without polling.
+    payments card and the entry-fee gate stay current without polling. Every
+    snapshot write (this route and the manual refresh) is stamped with the
+    time its Stripe read began, and the shared model-layer writer drops a
+    read older than the stored snapshot, so overlapping syncs cannot commit
+    an outdated status over a newer one.
     Idempotent by construction (a snapshot overwrite), so no event
     bookkeeping.
 - **Guards** — the entry fee freezes once any order exists; hard deletion
