@@ -154,8 +154,11 @@ export function DataTable<TData, TValue>({
   const pageCount = table.getPageCount()
   const currentPageSize = table.getState().pagination.pageSize
   // Only surface pagination controls once there are more rows than the smallest
-  // page size — small tables shouldn't carry an empty footer.
-  const showFooter = data.length > pageSizeOptions[0]
+  // page size — small tables shouldn't carry an empty footer. Count nested rows
+  // too: pagination slices the flattened expanded rows, so a handful of parents
+  // with many children can still overflow a page.
+  const showFooter =
+    table.getCoreRowModel().flatRows.length > pageSizeOptions[0]
 
   return (
     <div className="flex flex-col gap-4">
