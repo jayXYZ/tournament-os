@@ -33,6 +33,7 @@ import type {
 } from '@/components/ui/data-table-toolbar'
 
 import { formatConventionDateRange } from '@/components/conventions/convention-display'
+import { SectionHeader } from '@/components/shared/section-header'
 import { TableEmptyState } from '@/components/shared/table-empty-state'
 import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'
 import { Badge } from '@/components/ui/badge'
@@ -51,12 +52,28 @@ import { cn } from '@/lib/utils'
 
 export type TournamentTableVariant = 'public' | 'registered' | 'manage'
 
+// The columns the table reads from a tournament. Narrower than the document
+// so the manage list can arrive projected (listForOrganization sends only
+// these) while the other lists still pass whole documents.
+export type TournamentTableTournament = Pick<
+  Doc<'tournaments'>,
+  | '_id'
+  | 'name'
+  | 'publicCode'
+  | 'format'
+  | 'lifecycle'
+  | 'startDate'
+  | 'playerCapacity'
+  | 'isTestEvent'
+  | 'conventionId'
+>
+
 export type TournamentTableItem = {
   key: string
   organizationName?: string | null
   registeredCount?: number
   registration?: Doc<'tournamentRegistrations'>
-  tournament: Doc<'tournaments'>
+  tournament: TournamentTableTournament
 }
 
 // A convention listed in the same table as tournaments. Its child events
@@ -102,8 +119,8 @@ export function TournamentTable({
     [variant, grouped],
   )
   const rows = React.useMemo(
-    () => (items ? buildRows(items, conventions ?? []) : undefined),
-    [items, conventions],
+    () => (items ? buildRows(items, conventions ?? [], variant) : undefined),
+    [items, conventions, variant],
   )
   // The manage list holds every lifecycle the organization has ever run, so
   // it opens narrowed to the events still in play; widening the Status chip
@@ -111,17 +128,72 @@ export function TournamentTable({
   // arrive scoped by the server and start unfiltered. The same codec that
   // reads the URL supplies the uncontrolled table's starting point.
   const controlled = search !== undefined && onSearchChange !== undefined
+
+  // The search box answers from local state and reaches the URL after a
+  // pause. Every navigation re-runs the root route's beforeLoad (a server
+  // round trip) and useSearch only reflects the new value once that
+  // settles, so an input bound straight to the URL would lag a keystroke
+  // behind and drop characters typed in the meantime. Chip changes still
+  // write at once; only typing waits.
+  const urlQuery = search?.q ?? ''
+  const [query, setQuery] = React.useState(urlQuery)
+  const writeTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  // The last q this table wrote, so the URL catching up with its own write
+  // is not mistaken for an external change and allowed to undo newer typing.
+  const lastWrittenQuery = React.useRef(urlQuery)
+  React.useEffect(() => {
+    if (urlQuery !== lastWrittenQuery.current) {
+      // The back button or a pasted link changed the URL under the table.
+      lastWrittenQuery.current = urlQuery
+      setQuery(urlQuery)
+    }
+  }, [urlQuery])
+  React.useEffect(
+    () => () => {
+      // Leaving the page discards a pending write rather than navigating
+      // back to this route to deliver it.
+      if (writeTimer.current !== null) {
+        clearTimeout(writeTimer.current)
+      }
+    },
+    [],
+  )
+
   const columnFilters = React.useMemo<ColumnFiltersState>(
-    () => columnFiltersFromSearch(search ?? {}, variant),
-    [search, variant],
+    () =>
+      columnFiltersFromSearch(
+        controlled ? { ...search, q: query || undefined } : {},
+        variant,
+      ),
+    [controlled, search, query, variant],
   )
   const handleColumnFiltersChange = React.useCallback<
     OnChangeFn<ColumnFiltersState>
   >(
     (updater) => {
+      if (!onSearchChange) {
+        return
+      }
       const next =
         typeof updater === 'function' ? updater(columnFilters) : updater
-      onSearchChange?.(searchFromColumnFilters(next, variant))
+      const params = searchFromColumnFilters(next, variant)
+      const nextQuery = params.q ?? ''
+      setQuery(nextQuery)
+      if (writeTimer.current !== null) {
+        clearTimeout(writeTimer.current)
+      }
+      const write = () => {
+        writeTimer.current = null
+        lastWrittenQuery.current = nextQuery
+        onSearchChange(params)
+      }
+      const current = searchFromColumnFilters(columnFilters, variant)
+      if (sameChipFilters(params, current)) {
+        writeTimer.current = setTimeout(write, SEARCH_URL_WRITE_DELAY_MS)
+      } else {
+        // A chip change carries any pending search text along with it.
+        write()
+      }
     },
     [columnFilters, onSearchChange, variant],
   )
@@ -233,11 +305,32 @@ const formatFilterOptions: Array<DataTableFilterOption> = tournamentFormats.map(
   }),
 )
 
-// Conventions and standalone tournaments share the top level, ordered by
-// start date; each convention's children keep the order they arrived in.
+// How long typing may pause before the search text reaches the URL.
+const SEARCH_URL_WRITE_DELAY_MS = 300
+
+// Whether two search states agree on everything but the search text.
+function sameChipFilters(
+  left: TournamentTableSearchParams,
+  right: TournamentTableSearchParams,
+) {
+  return (
+    left.status === right.status &&
+    left.format === right.format &&
+    left.from === right.from &&
+    left.to === right.to
+  )
+}
+
+// Conventions and standalone tournaments share the top level, merged in the
+// order their servers chose: the manage list arrives newest start first and
+// is capped per lifecycle on that assumption, so an organization with a long
+// history sees its current events on page one; the public and registered
+// lists arrive soonest first. Each convention's children keep their arrival
+// order.
 function buildRows(
   items: Array<TournamentTableItem>,
   conventions: Array<TournamentTableConvention>,
+  variant: TournamentTableVariant,
 ): Array<TournamentTableRow> {
   const parents = new Map<string, ConventionRow>(
     conventions.map((entry) => [
@@ -257,8 +350,9 @@ function buildRows(
       standalone.push(row)
     }
   }
+  const direction = variant === 'manage' ? -1 : 1
   return [...parents.values(), ...standalone].sort(
-    (left, right) => rowStartDate(left) - rowStartDate(right),
+    (left, right) => direction * (rowStartDate(left) - rowStartDate(right)),
   )
 }
 
@@ -300,10 +394,7 @@ function TournamentSection({
   const title = sectionTitle[variant]
   return (
     <section className="flex flex-col gap-4">
-      <div>
-        {title ? <h2 className="text-sm font-medium">{title}</h2> : null}
-        <p className="text-xs/relaxed text-muted-foreground">{description}</p>
-      </div>
+      <SectionHeader title={title} description={description} />
       {children}
     </section>
   )
@@ -494,7 +585,18 @@ function buildTournamentColumns(
 function ConventionNameCell({ row }: { row: Row<TournamentTableRow> }) {
   const { convention, events } = row.original as ConventionRow
   const expanded = row.getIsExpanded()
-  const count = events.length
+  // The table filters from leaf rows, so a convention can stay listed with
+  // some or none of its events matching. `row.subRows` is the filtered set:
+  // the count and the chevron describe what expanding will actually show,
+  // with the total alongside once a filter has hidden any.
+  const visible = row.subRows.length
+  const total = events.length
+  const count =
+    visible === total
+      ? total === 1
+        ? '1 event'
+        : `${total} events`
+      : `${visible} of ${total} events`
   return (
     <div className="flex min-w-0 items-center gap-2">
       <Button
@@ -508,7 +610,7 @@ function ConventionNameCell({ row }: { row: Row<TournamentTableRow> }) {
             ? `Collapse ${convention.name} events`
             : `Expand ${convention.name} events`
         }
-        disabled={count === 0}
+        disabled={visible === 0}
         onClick={(event) => {
           event.stopPropagation()
           row.toggleExpanded()
@@ -517,9 +619,7 @@ function ConventionNameCell({ row }: { row: Row<TournamentTableRow> }) {
         {expanded ? <ChevronDown /> : <ChevronRight />}
       </Button>
       <p className="font-medium text-foreground">{convention.name}</p>
-      <span className="text-muted-foreground">
-        {count === 1 ? '1 event' : `${count} events`}
-      </span>
+      <span className="text-muted-foreground">{count}</span>
       {convention.isTestEvent ? <Badge variant="outline">Test</Badge> : null}
     </div>
   )
@@ -566,16 +666,36 @@ function TournamentNameCell({
 
 // Whether no sibling follows this row on the rendered page, so the vertical
 // tree line can stop at the row's midpoint instead of running off the
-// bottom. Uses the paginated, sorted, filtered rows so it tracks what is
-// actually on screen.
+// bottom. Reads the paginated, sorted, filtered rows so it tracks what is
+// actually on screen. The scan runs once per row model (its array identity
+// changes whenever filtering, sorting, or paging does) rather than once per
+// cell, so a page of nested rows stays linear to render.
+const lastVisibleChildIds = new WeakMap<
+  ReadonlyArray<Row<TournamentTableRow>>,
+  Set<string>
+>()
+
 function isLastVisibleChild(
   row: Row<TournamentTableRow>,
   table: TanstackTable<TournamentTableRow>,
 ) {
   const rows = table.getRowModel().rows
-  const index = rows.findIndex((candidate) => candidate.id === row.id)
-  const next = rows.at(index + 1)
-  return next === undefined || next.depth < row.depth
+  const cached = lastVisibleChildIds.get(rows)
+  if (cached !== undefined) {
+    return cached.has(row.id)
+  }
+  const ids = new Set<string>()
+  rows.forEach((candidate, index) => {
+    const next = rows.at(index + 1)
+    if (
+      candidate.depth > 0 &&
+      (next === undefined || next.depth < candidate.depth)
+    ) {
+      ids.add(candidate.id)
+    }
+  })
+  lastVisibleChildIds.set(rows, ids)
+  return ids.has(row.id)
 }
 
 // The ├─ / └─ lines that tie a nested event to its convention. Positioned
@@ -656,7 +776,7 @@ function TournamentTableAction({
   variant,
 }: {
   publicCode: string
-  tournament: Doc<'tournaments'>
+  tournament: TournamentTableTournament
   variant: TournamentTableVariant
 }) {
   if (variant === 'manage') {

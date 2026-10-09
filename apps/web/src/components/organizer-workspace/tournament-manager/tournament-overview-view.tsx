@@ -23,6 +23,7 @@ import type { ReactNode } from 'react'
 import type { Id } from '@paper-pairings/backend/convex/_generated/dataModel'
 import type { PairingsBoard } from './pairings-board'
 import type { OverviewBody } from './next-step'
+import { SectionHeader } from '@/components/shared/section-header'
 import {
   TournamentLifecycleBadge,
   TournamentVisibilityBadge,
@@ -230,12 +231,7 @@ function StateCard({
 
   return (
     <section className="flex flex-col gap-4">
-      <div>
-        <h2 className="text-sm font-medium">{title}</h2>
-        {text ? (
-          <p className="text-xs/relaxed text-muted-foreground">{text}</p>
-        ) : null}
-      </div>
+      <SectionHeader title={title} description={text} />
       {action ? <div>{action}</div> : null}
     </section>
   )

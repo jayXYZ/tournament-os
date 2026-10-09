@@ -1,3 +1,4 @@
+import { SectionHeader } from '@/components/shared/section-header'
 import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'
 
 // Placeholder for a page section still waiting on its query. Same shape as
@@ -11,10 +12,7 @@ export function LoadingCard({
 }) {
   return (
     <section className="flex flex-col gap-4">
-      <div>
-        <h2 className="text-sm font-medium">{title}</h2>
-        <p className="text-xs/relaxed text-muted-foreground">{description}</p>
-      </div>
+      <SectionHeader title={title} description={description} />
       <TableLoadingSkeleton />
     </section>
   )

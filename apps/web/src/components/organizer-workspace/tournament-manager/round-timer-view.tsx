@@ -19,6 +19,7 @@ import { activeRoundTimer } from './round-timer-chip'
 import type { FormEvent } from 'react'
 import type { Id } from '@paper-pairings/backend/convex/_generated/dataModel'
 import type { PairingsBoard } from './pairings-board'
+import { SectionHeader } from '@/components/shared/section-header'
 import { Button } from '@/components/ui/button'
 import { Field, FieldDescription, FieldLabel } from '@/components/ui/field'
 import { HoldButton } from '@/components/ui/hold-button'
@@ -106,15 +107,10 @@ function TimerCard({ board }: { board: PairingsBoard }) {
 
   return (
     <section className="flex flex-col gap-4">
-      <div>
-        <h2 className="text-sm font-medium">
-          {currentRound ? currentRound.roundName : 'No round in progress'}
-        </h2>
-        <p className="text-xs/relaxed text-muted-foreground">
-          Everyone viewing the event page or player controller sees this timer
-          live.
-        </p>
-      </div>
+      <SectionHeader
+        title={currentRound ? currentRound.roundName : 'No round in progress'}
+        description="Everyone viewing the event page or player controller sees this timer live."
+      />
       <div className="flex flex-col items-center gap-6 py-6">
         <div className="flex flex-col items-center gap-1">
           <p
@@ -295,12 +291,10 @@ function RoundLengthCard({
 
   return (
     <section className="flex flex-col gap-4">
-      <div>
-        <h2 className="text-sm font-medium">Round length</h2>
-        <p className="text-xs/relaxed text-muted-foreground">
-          Pre-fills the timer when you start a round.
-        </p>
-      </div>
+      <SectionHeader
+        title="Round length"
+        description="Pre-fills the timer when you start a round."
+      />
       <div>
         <form onSubmit={handleSubmit} className="flex items-end gap-2">
           <Field className="w-24">

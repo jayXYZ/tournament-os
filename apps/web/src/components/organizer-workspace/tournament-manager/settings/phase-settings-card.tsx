@@ -14,6 +14,7 @@ import type {
   Doc,
   Id,
 } from '@paper-pairings/backend/convex/_generated/dataModel'
+import { SectionHeader } from '@/components/shared/section-header'
 import { TournamentPhaseEditor } from '@/components/tournaments/tournament-phase-editor'
 import { Button } from '@/components/ui/button'
 import { FieldGroup } from '@/components/ui/field'
@@ -75,14 +76,14 @@ export function PhaseSettingsCard({
 
   return (
     <section className="flex flex-col gap-4">
-      <div>
-        <h2 className="text-sm font-medium">Phase settings</h2>
-        <p className="text-xs/relaxed text-muted-foreground">
-          {locked
+      <SectionHeader
+        title="Phase settings"
+        description={
+          locked
             ? 'Phase structure is locked after tournament play begins.'
-            : 'Add, remove, reorder, and configure phases before tournament play begins. Structural changes to a phase with a started player meeting reset its seating.'}
-        </p>
-      </div>
+            : 'Add, remove, reorder, and configure phases before tournament play begins. Structural changes to a phase with a started player meeting reset its seating.'
+        }
+      />
       <div>
         <form onSubmit={handleSubmit}>
           <FieldGroup>

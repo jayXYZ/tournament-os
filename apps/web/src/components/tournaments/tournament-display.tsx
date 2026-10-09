@@ -38,15 +38,20 @@ const tournamentLifecycles: Record<
   cancelled: { label: 'Cancelled', tone: 'danger' },
 }
 
-// One filter chip option per lifecycle, in workflow order, each carrying
-// the badge's dot so the popover reads like the Status column.
-export const tournamentLifecycleFilterOptions: Array<DataTableFilterOption> = (
-  Object.keys(tournamentLifecycles) as Array<TournamentLifecycle>
-).map((lifecycle) => ({
-  value: lifecycle,
-  label: tournamentLifecycles[lifecycle].label,
-  dotClassName: statusDotToneClassName[tournamentLifecycles[lifecycle].tone],
-}))
+// Every lifecycle in workflow order: the Status chip's options and the
+// values the URL codec accepts, so the two can never disagree.
+export const tournamentLifecycleValues = Object.keys(
+  tournamentLifecycles,
+) as Array<TournamentLifecycle>
+
+// One filter chip option per lifecycle, each carrying the badge's dot so the
+// popover reads like the Status column.
+export const tournamentLifecycleFilterOptions: Array<DataTableFilterOption> =
+  tournamentLifecycleValues.map((lifecycle) => ({
+    value: lifecycle,
+    label: tournamentLifecycles[lifecycle].label,
+    dotClassName: statusDotToneClassName[tournamentLifecycles[lifecycle].tone],
+  }))
 
 // The lifecycles an organizer is still working: what the manage table shows
 // until they widen the Status filter to finished events.

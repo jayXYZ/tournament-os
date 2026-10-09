@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 
 import { api } from '@paper-pairings/backend/convex/_generated/api'
 import type { Doc } from '@paper-pairings/backend/convex/_generated/dataModel'
+import { SectionHeader } from '@/components/shared/section-header'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
@@ -73,15 +74,10 @@ export function InviteLinkCard({
 
   return (
     <section className="flex flex-col gap-4">
-      <div>
-        <h2 className="text-sm font-medium">Invite link</h2>
-        <p className="text-xs/relaxed text-muted-foreground">
-          Anyone with the link (or its code) can view this event and register,
-          even while the event is private — it&apos;s how you let players into
-          an invite-only event. Regenerating or disabling it kills every
-          previously shared link.
-        </p>
-      </div>
+      <SectionHeader
+        title="Invite link"
+        description="Anyone with the link (or its code) can view this event and register, even while the event is private — it's how you let players into an invite-only event. Regenerating or disabling it kills every previously shared link."
+      />
       <div>
         {invite ? (
           <div className="flex flex-wrap items-center gap-2">

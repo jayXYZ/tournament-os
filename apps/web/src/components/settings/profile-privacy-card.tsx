@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 
 import { api } from '@paper-pairings/backend/convex/_generated/api'
 import type { Doc } from '@paper-pairings/backend/convex/_generated/dataModel'
+import { SectionHeader } from '@/components/shared/section-header'
 import { Button } from '@/components/ui/button'
 import {
   Field,
@@ -55,13 +56,10 @@ export function ProfilePrivacyCard({ me }: { me: Doc<'users'> }) {
 
   return (
     <section className="flex flex-col gap-4">
-      <div>
-        <h2 className="text-sm font-medium">Profile privacy</h2>
-        <p className="text-xs/relaxed text-muted-foreground">
-          Control what other players see when they open your public profile
-          page.
-        </p>
-      </div>
+      <SectionHeader
+        title="Profile privacy"
+        description="Control what other players see when they open your public profile page."
+      />
       <div className="grid gap-4">
         <Field orientation="horizontal" data-disabled={busy}>
           <FieldContent>

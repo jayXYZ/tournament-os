@@ -1,5 +1,8 @@
 import { tournamentFormats } from '@paper-pairings/shared/tournament-creation-utils'
-import { activeTournamentLifecycles } from './tournament-display'
+import {
+  activeTournamentLifecycles,
+  tournamentLifecycleValues,
+} from './tournament-display'
 import type { ColumnFiltersState } from '@tanstack/react-table'
 import type { TournamentFormat } from '@paper-pairings/shared/tournament-creation-utils'
 import type { TournamentLifecycle } from './tournament-display'
@@ -25,14 +28,6 @@ export type TournamentTableSearchParams = {
 
 export const ALL_STATUSES = 'all'
 
-const lifecycles: ReadonlyArray<TournamentLifecycle> = [
-  'setup',
-  'registration',
-  'in_progress',
-  'completed',
-  'cancelled',
-]
-
 // validateSearch: keeps only well-formed values so a hand-edited URL can
 // never put the table in a state its chips cannot show.
 export function parseTournamentTableSearch(
@@ -45,7 +40,7 @@ export function parseTournamentTableSearch(
   if (search.status === ALL_STATUSES) {
     params.status = ALL_STATUSES
   } else {
-    const status = parseList(search.status, lifecycles)
+    const status = parseList(search.status, tournamentLifecycleValues)
     if (status.length > 0) {
       params.status = status.join(',')
     }
@@ -115,7 +110,7 @@ function statusFilterFromSearch(
   if (status === undefined) {
     return variant === 'manage' ? activeTournamentLifecycles : []
   }
-  return parseList(status, lifecycles)
+  return parseList(status, tournamentLifecycleValues)
 }
 
 // Column filters → search params, the inverse of columnFiltersFromSearch.

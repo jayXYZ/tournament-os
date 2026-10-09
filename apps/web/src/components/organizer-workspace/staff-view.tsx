@@ -8,6 +8,7 @@ import { canInviteMembers } from '@paper-pairings/shared/organizer-utils'
 import { useOrganization } from './organization-context'
 import type { OrganizerInviteRole } from '@paper-pairings/shared/organizer-utils'
 import type { FormEvent } from 'react'
+import { SectionHeader } from '@/components/shared/section-header'
 import { WorkspacePageHeader } from '@/components/shared/workspace-page-header'
 import { Button } from '@/components/ui/button'
 import {
@@ -85,12 +86,10 @@ export function StaffView() {
 
       <div className="grid gap-8 xl:grid-cols-[1fr_360px]">
         <section className="flex flex-col gap-4">
-          <div>
-            <h2 className="text-sm font-medium">Members</h2>
-            <p className="text-xs/relaxed text-muted-foreground">
-              Mirrored organization memberships for the selected workspace.
-            </p>
-          </div>
+          <SectionHeader
+            title="Members"
+            description="Mirrored organization memberships for the selected workspace."
+          />
           {/* The member list frames itself like a table so it reads as the
               page's main content rather than as a boxed aside. */}
           <div className="divide-y divide-border rounded-lg border border-border">
@@ -126,19 +125,21 @@ export function StaffView() {
 
         <aside className="flex flex-col divide-y divide-border [&>*+*]:pt-6">
           <section className="pb-6">
-            <h2 className="text-sm font-medium">Current access</h2>
-            <p className="text-xs/relaxed capitalize text-muted-foreground">
-              {activeMembership?.role ?? 'No org'}
-            </p>
+            <SectionHeader
+              title="Current access"
+              description={
+                <span className="capitalize">
+                  {activeMembership?.role ?? 'No org'}
+                </span>
+              }
+            />
           </section>
 
           <section className="flex flex-col gap-4 pb-6">
-            <div>
-              <h2 className="text-sm font-medium">Invite staff</h2>
-              <p className="text-xs/relaxed text-muted-foreground">
-                Owners and admins can invite staff to this workspace.
-              </p>
-            </div>
+            <SectionHeader
+              title="Invite staff"
+              description="Owners and admins can invite staff to this workspace."
+            />
             <form onSubmit={handleInvite}>
               <FieldGroup>
                 <Field>
@@ -187,7 +188,7 @@ export function StaffView() {
           </section>
 
           <section className="flex flex-col gap-3">
-            <h2 className="text-sm font-medium">Invitations</h2>
+            <SectionHeader title="Invitations" />
             {(invitations ?? []).map((invitation) => (
               <div key={invitation._id} className="border-b border-border pb-3">
                 <p className="truncate text-sm font-medium">

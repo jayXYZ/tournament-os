@@ -14,6 +14,7 @@ import {
 import type { Id } from '@paper-pairings/backend/convex/_generated/dataModel'
 import type { BestOf } from '@paper-pairings/shared/match-structure'
 import type { PairingRow } from './pairings/pairing-row'
+import { SectionHeader } from '@/components/shared/section-header'
 import { Button } from '@/components/ui/button'
 import {
   Empty,
@@ -58,28 +59,30 @@ export function OutstandingTablesCard({
 
   return (
     <section className="flex flex-col gap-4">
-      <div>
-        <h2 className="text-sm font-medium">
-          {outstanding.length === 0
+      <SectionHeader
+        title={
+          outstanding.length === 0
             ? 'All tables reported'
-            : `Waiting on ${outstanding.length} ${outstanding.length === 1 ? 'table' : 'tables'}`}
-        </h2>
-        <p className="text-xs/relaxed text-muted-foreground">
-          {roundLabel}, {tables.length}{' '}
-          {tables.length === 1 ? 'table' : 'tables'}
-          {byes.length > 0
-            ? `, ${byes.length} ${byes.length === 1 ? 'bye' : 'byes'}`
-            : ''}
-          .{' '}
-          <Link
-            to="/admin/tournaments/$tournamentId/pairings"
-            params={{ tournamentId: publicCode }}
-            className="underline underline-offset-4 hover:text-foreground"
-          >
-            All pairings
-          </Link>
-        </p>
-      </div>
+            : `Waiting on ${outstanding.length} ${outstanding.length === 1 ? 'table' : 'tables'}`
+        }
+        description={
+          <>
+            {roundLabel}, {tables.length}{' '}
+            {tables.length === 1 ? 'table' : 'tables'}
+            {byes.length > 0
+              ? `, ${byes.length} ${byes.length === 1 ? 'bye' : 'byes'}`
+              : ''}
+            .{' '}
+            <Link
+              to="/admin/tournaments/$tournamentId/pairings"
+              params={{ tournamentId: publicCode }}
+              className="underline underline-offset-4 hover:text-foreground"
+            >
+              All pairings
+            </Link>
+          </>
+        }
+      />
       <div className="flex flex-col gap-4">
         {outstanding.length === 0 ? (
           <Empty className="py-8">
@@ -175,13 +178,10 @@ export function UnconfirmedResultsCard({
 
   return (
     <section className="flex flex-col gap-4">
-      <div>
-        <h2 className="text-sm font-medium">Needs a look</h2>
-        <p className="text-xs/relaxed text-muted-foreground">
-          Reported by one player and not yet confirmed. Each counts toward
-          completing the round unless you change it.
-        </p>
-      </div>
+      <SectionHeader
+        title="Needs a look"
+        description="Reported by one player and not yet confirmed. Each counts toward completing the round unless you change it."
+      />
       <div>
         <ul className="divide-y divide-border">
           {unconfirmed.map((row) => (

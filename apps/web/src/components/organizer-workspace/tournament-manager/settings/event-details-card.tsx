@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { api } from '@paper-pairings/backend/convex/_generated/api'
 import type { FormEvent } from 'react'
 import type { Doc } from '@paper-pairings/backend/convex/_generated/dataModel'
+import { SectionHeader } from '@/components/shared/section-header'
 import { Button } from '@/components/ui/button'
 import { FieldGroup } from '@/components/ui/field'
 import { Spinner } from '@/components/ui/spinner'
@@ -47,13 +48,10 @@ export function EventDetailsCard({
 
   return (
     <section className="flex flex-col gap-4">
-      <div>
-        <h2 className="text-sm font-medium">Event details</h2>
-        <p className="text-xs/relaxed text-muted-foreground">
-          Description, prizes, and logistics shown on the public event page.
-          Editable at any time, even after the event starts.
-        </p>
-      </div>
+      <SectionHeader
+        title="Event details"
+        description="Description, prizes, and logistics shown on the public event page. Editable at any time, even after the event starts."
+      />
       <div>
         <form onSubmit={handleSubmit}>
           <FieldGroup>

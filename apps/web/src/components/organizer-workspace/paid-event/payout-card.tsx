@@ -5,6 +5,7 @@ import { mutationErrorMessage } from '@paper-pairings/core'
 import { canManageOrganizationPayments } from '@paper-pairings/shared/organizer-utils'
 import type { FunctionReturnType } from 'convex/server'
 import type { api } from '@paper-pairings/backend/convex/_generated/api'
+import { SectionHeader } from '@/components/shared/section-header'
 import { formatCents } from '@/lib/money'
 import { useOrganization } from '@/components/organizer-workspace/organization-context'
 import { Badge } from '@/components/ui/badge'
@@ -67,12 +68,7 @@ export function PaidEventPayoutCard({
 
   return (
     <section className="flex flex-col gap-4">
-      <div>
-        <h2 className="text-sm font-medium">{copy.title}</h2>
-        <p className="text-xs/relaxed text-muted-foreground">
-          {copy.description}
-        </p>
-      </div>
+      <SectionHeader title={copy.title} description={copy.description} />
       <div className="flex flex-col gap-3">
         {!completed ? (
           <p className="text-sm text-muted-foreground">{copy.pendingMessage}</p>

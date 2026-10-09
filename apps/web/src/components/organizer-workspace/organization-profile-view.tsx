@@ -11,6 +11,7 @@ import type { FormEvent } from 'react'
 
 import type { OrganizationProfileImageDetails } from '@paper-pairings/shared/organization-profile-image'
 import type { Id } from '@paper-pairings/backend/convex/_generated/dataModel'
+import { SectionHeader } from '@/components/shared/section-header'
 import { WorkspacePageHeader } from '@/components/shared/workspace-page-header'
 import { Button } from '@/components/ui/button'
 import {
@@ -133,12 +134,10 @@ export function OrganizationProfileView() {
       <div className="grid gap-8 xl:grid-cols-[1fr_360px]">
         <div className="flex flex-col divide-y divide-border [&>*+*]:pt-6">
           <section className="flex flex-col gap-4 pb-6">
-            <div>
-              <h2 className="text-sm font-medium">Details</h2>
-              <p className="text-xs/relaxed text-muted-foreground">
-                Update the selected organization workspace profile.
-              </p>
-            </div>
+            <SectionHeader
+              title="Details"
+              description="Update the selected organization workspace profile."
+            />
             <form onSubmit={handleUpdateProfile}>
               <FieldGroup>
                 <Field>
@@ -176,12 +175,10 @@ export function OrganizationProfileView() {
 
         <aside className="flex flex-col divide-y divide-border [&>*+*]:pt-6">
           <section className="flex flex-col gap-4 pb-6">
-            <div>
-              <h2 className="text-sm font-medium">Profile picture</h2>
-              <p className="text-xs/relaxed text-muted-foreground">
-                PNG, JPEG, or WebP up to 2 MB.
-              </p>
-            </div>
+            <SectionHeader
+              title="Profile picture"
+              description="PNG, JPEG, or WebP up to 2 MB."
+            />
             <div
               className="flex size-28 items-center justify-center overflow-hidden rounded-md border border-border bg-muted bg-cover bg-center"
               style={
@@ -226,12 +223,10 @@ export function OrganizationProfileView() {
           </section>
 
           <section className="flex flex-col gap-4">
-            <div>
-              <h2 className="text-sm font-medium">Archive organization</h2>
-              <p className="text-xs/relaxed text-muted-foreground">
-                Archive hides this workspace without deleting historical data.
-              </p>
-            </div>
+            <SectionHeader
+              title="Archive organization"
+              description="Archive hides this workspace without deleting historical data."
+            />
             <form onSubmit={handleArchiveOrganization}>
               <FieldGroup>
                 <Field>

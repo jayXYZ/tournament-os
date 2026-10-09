@@ -30,5 +30,6 @@ export type { TournamentTableSearchParams } from './tournament-table-search'
 export type {
   TournamentTableConvention,
   TournamentTableItem,
+  TournamentTableTournament,
   TournamentTableVariant,
 } from './tournament-table'

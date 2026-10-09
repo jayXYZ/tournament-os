@@ -28,11 +28,20 @@ import type {
   DataTableFilterDef,
   DataTableFilterOption,
 } from '@/components/ui/data-table-toolbar'
+import {
+  paymentFilterOptions,
+  paymentLabel,
+  paymentStatusPresentation,
+} from '@/components/organizer-workspace/paid-event/roster-badges'
 import { ConfirmActionDialog } from '@/components/shared/confirm-action-dialog'
 import { LoadMoreButton } from '@/components/shared/load-more-button'
+import { SectionHeader } from '@/components/shared/section-header'
 import { TableEmptyState } from '@/components/shared/table-empty-state'
 import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'
-import { StatusDot } from '@/components/shared/status-dot'
+import {
+  StatusDot,
+  statusDotToneClassName,
+} from '@/components/shared/status-dot'
 import { Button } from '@/components/ui/button'
 import {
   DataTable,
@@ -73,23 +82,6 @@ type RegistrationRow = {
   paymentStatus: Doc<'paymentOrders'>['status'] | null
 }
 
-type PaymentStatus = NonNullable<RegistrationRow['paymentStatus']>
-
-const paymentPresentation: Record<
-  PaymentStatus,
-  { label: string; tone: StatusTone }
-> = {
-  requires_payment: { label: 'Payment due', tone: 'warning' },
-  awaiting_payment: { label: 'In checkout', tone: 'warning' },
-  paid: { label: 'Paid', tone: 'live' },
-  expired: { label: 'Unpaid', tone: 'muted' },
-  failed: { label: 'Failed', tone: 'danger' },
-  canceled: { label: 'Unpaid', tone: 'muted' },
-  refunded: { label: 'Refunded', tone: 'muted' },
-  partially_refunded: { label: 'Entry refunded', tone: 'muted' },
-  disputed: { label: 'Disputed', tone: 'danger' },
-}
-
 type RegistrationStatus =
   | Doc<'tournamentRegistrations'>['entryStatus']
   | NonNullable<Doc<'tournamentRegistrations'>['participationStatus']>
@@ -113,15 +105,6 @@ const statusTone: Record<RegistrationStatus, StatusTone> = {
   // Malformed data only (see effectiveRegistrationStatus); flagged distinctly
   // rather than folded into "confirmed" so it can't misread as good standing.
   [MALFORMED_REGISTRATION_STATUS]: 'warning',
-}
-
-const toneDotClassName: Record<StatusTone, string> = {
-  live: 'bg-round-live',
-  accent: 'bg-accent-brand',
-  neutral: 'bg-foreground',
-  muted: 'bg-muted-foreground',
-  warning: 'bg-round-pairings',
-  danger: 'bg-destructive',
 }
 
 // The status chip's value: one effective status, or none for the whole
@@ -154,7 +137,7 @@ const statusFilterOptions: Array<DataTableFilterOption> = (
 ).map((status) => ({
   value: status,
   label: statusFilterLabel[status],
-  dotClassName: toneDotClassName[statusTone[status]],
+  dotClassName: statusDotToneClassName[statusTone[status]],
 }))
 
 function isRegistrationStatusFilter(
@@ -204,14 +187,6 @@ const emptyFilterCopy: Record<
     description: 'Applications you decline will appear here.',
   },
 }
-
-const paymentFilterOptions: Array<DataTableFilterOption> = (
-  Object.keys(paymentPresentation) as Array<PaymentStatus>
-).map((status) => ({
-  value: status,
-  label: paymentPresentation[status].label,
-  dotClassName: toneDotClassName[paymentPresentation[status].tone],
-}))
 
 export function RegistrationsView({
   tournamentId,
@@ -307,12 +282,10 @@ export function RegistrationsView({
 
   return (
     <section className="flex flex-col gap-4">
-      <div>
-        <h2 className="text-sm font-medium">Player registrations</h2>
-        <p className="text-xs/relaxed text-muted-foreground">
-          Review and manage the players signed up for this tournament.
-        </p>
-      </div>
+      <SectionHeader
+        title="Player registrations"
+        description="Review and manage the players signed up for this tournament."
+      />
       <div>
         <RegistrationsTable
           registrations={rows}
@@ -414,7 +387,10 @@ function getRegistrationColumns({
     ? [
         {
           id: 'payment',
-          accessorFn: (row) => row.paymentStatus ?? '',
+          // The label, not the raw status, so the Payment chip's merged
+          // options (see paymentFilterOptions) match every row they cover.
+          accessorFn: (row) =>
+            row.paymentStatus ? paymentLabel(row.paymentStatus) : '',
           header: ({ column }) => (
             <DataTableColumnHeader column={column} title="Payment" />
           ),
@@ -425,7 +401,7 @@ function getRegistrationColumns({
             if (!paymentStatus) {
               return <span className="text-muted-foreground">—</span>
             }
-            const { label, tone } = paymentPresentation[paymentStatus]
+            const { label, tone } = paymentStatusPresentation[paymentStatus]
             return <StatusDot tone={tone}>{label}</StatusDot>
           },
         },

@@ -9,6 +9,7 @@ import { api } from '@paper-pairings/backend/convex/_generated/api'
 
 import { ProfilePrivacyCard } from '@/components/settings/profile-privacy-card'
 import { LoadingCard } from '@/components/shared/loading-card'
+import { SectionHeader } from '@/components/shared/section-header'
 import { SiteShell, SiteShellBackLink } from '@/components/shared/site-shell'
 import { Button } from '@/components/ui/button'
 import { useEnsureUserRow } from '@/hooks/use-ensure-user-row'
@@ -61,13 +62,10 @@ function SettingsContent() {
 function AccountSetupFailedCard({ onRetry }: { onRetry: () => void }) {
   return (
     <section className="flex flex-col gap-4">
-      <div>
-        <h2 className="text-sm font-medium">Couldn&apos;t load your account</h2>
-        <p className="text-xs/relaxed text-muted-foreground">
-          Something went wrong while setting up your player account. Check your
-          connection and try again.
-        </p>
-      </div>
+      <SectionHeader
+        title="Couldn't load your account"
+        description="Something went wrong while setting up your player account. Check your connection and try again."
+      />
       <div>
         <Button type="button" onClick={onRetry}>
           <RotateCcw data-icon="inline-start" />
@@ -83,13 +81,10 @@ function SignedOutSettings() {
 
   return (
     <section className="flex flex-col gap-4">
-      <div>
-        <h2 className="text-sm font-medium">Sign in to manage your settings</h2>
-        <p className="text-xs/relaxed text-muted-foreground">
-          Profile privacy and tournament history controls are tied to your
-          player account.
-        </p>
-      </div>
+      <SectionHeader
+        title="Sign in to manage your settings"
+        description="Profile privacy and tournament history controls are tied to your player account."
+      />
       <div>
         <Button
           type="button"

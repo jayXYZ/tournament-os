@@ -119,8 +119,20 @@ export const listForOrganization = query({
     const rows = perLifecycle
       .flat()
       .sort((left, right) => right.startDate - left.startDate);
+    // Only the columns the table renders. This query is reactive and can
+    // hold up to five lifecycles' worth of rows, so every write to any of
+    // the organization's tournaments (a registration count, a round timer
+    // tick) would otherwise re-send whole documents to every open tab.
     return rows.map((tournament) => ({
-      ...tournament,
+      _id: tournament._id,
+      name: tournament.name,
+      publicCode: tournament.publicCode,
+      format: tournament.format,
+      lifecycle: tournament.lifecycle,
+      startDate: tournament.startDate,
+      playerCapacity: tournament.playerCapacity,
+      isTestEvent: tournament.isTestEvent,
+      conventionId: tournament.conventionId,
       registeredCount: tournament.confirmedRegistrationCount,
     }));
   },
