@@ -107,7 +107,9 @@ function statusFilterFromSearch(
   status: string | undefined,
   variant: TournamentTableVariant,
 ): Array<TournamentLifecycle> {
-  if (status === ALL_STATUSES) {
+  // The public schedule has no Status chip (its list is registration-only),
+  // so a status in the URL would narrow the table with nothing to clear it.
+  if (variant === 'public' || status === ALL_STATUSES) {
     return []
   }
   if (status === undefined) {

@@ -39,6 +39,15 @@ describe('columnFiltersFromSearch', () => {
     expect(columnFiltersFromSearch({}, 'public')).toEqual([])
   })
 
+  test('public ignores a status in the URL since it has no chip to clear it', () => {
+    expect(columnFiltersFromSearch({ status: 'completed' }, 'public')).toEqual(
+      [],
+    )
+    expect(
+      columnFiltersFromSearch({ status: 'completed' }, 'registered'),
+    ).toEqual([{ id: 'status', value: ['completed'] }])
+  })
+
   test('the sentinel means no status filter at all', () => {
     expect(columnFiltersFromSearch({ status: ALL_STATUSES }, 'manage')).toEqual(
       [],
