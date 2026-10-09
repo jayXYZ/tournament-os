@@ -87,13 +87,21 @@ export const tournamentVisibilityValidator = v.union(
 // (never publicly viewable regardless of visibility; named to avoid clashing
 // with the Magic "draft" format); "registration" means published and open for
 // registration.
+export const tournamentLifecycles = [
+  "setup",
+  "registration",
+  "in_progress",
+  "completed",
+  "cancelled",
+] as const;
+export type TournamentLifecycle = (typeof tournamentLifecycles)[number];
 export const tournamentLifecycleValidator = v.union(
   v.literal("setup"),
   v.literal("registration"),
   v.literal("in_progress"),
   v.literal("completed"),
   v.literal("cancelled"),
-);
+) satisfies { type: TournamentLifecycle };
 
 // Conventions have no "in_progress" stage (ADR 0004): "registration" spans
 // the whole live run — publish opens it, and the organizer's explicit

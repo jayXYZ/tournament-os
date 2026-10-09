@@ -745,6 +745,60 @@ test("listForOrganization returns every tournament for one organization, newest 
   ]);
 });
 
+test("listForOrganization keeps a live event reachable behind a long completed history", async () => {
+  const t = createConvexTest();
+  const now = Date.now();
+  const { organizationId, userId } = await seedOrganizer(t);
+
+  const inProgressId = await t.run(async (ctx) => {
+    const base = {
+      organizationId,
+      createdBy: userId,
+      publicCode: 100_001,
+      playerCapacity: 32,
+      format: "standard" as const,
+      visibility: "public" as const,
+      isTestEvent: false,
+      autoPublishPairings: false,
+      decklistRequired: false,
+      registrationRequiresApproval: false,
+      confirmedRegistrationCount: 0,
+      updatedAt: now,
+    };
+    const inProgress = await ctx.db.insert("tournaments", {
+      ...base,
+      name: "Running Now",
+      lifecycle: "in_progress",
+      startDate: now - 60_000,
+    });
+    // More completed events than any single-lifecycle bound, all dated after
+    // the running one so a shared newest-first cap would discard it.
+    for (let index = 0; index < 250; index += 1) {
+      await ctx.db.insert("tournaments", {
+        ...base,
+        name: `Completed ${index}`,
+        lifecycle: "completed",
+        startDate: now + (index + 1) * 60_000,
+      });
+    }
+    return inProgress;
+  });
+
+  const tournaments = await t
+    .withIdentity(organizerIdentity)
+    .query(api.tournaments.lifecycle.listForOrganization, {
+      organizationId,
+    });
+
+  const lifecycles = new Set(tournaments.map((row) => row.lifecycle));
+  expect(lifecycles).toEqual(new Set(["in_progress", "completed"]));
+  expect(tournaments.at(-1)?._id).toBe(inProgressId);
+  // Completed history is bounded, newest first.
+  const completed = tournaments.filter((row) => row.lifecycle === "completed");
+  expect(completed).toHaveLength(200);
+  expect(completed[0]?.name).toBe("Completed 249");
+});
+
 test("createTournamentWithPhases creates an unpublished public tournament with one dynamic Swiss phase", async () => {
   const t = createConvexTest();
   const now = Date.now();

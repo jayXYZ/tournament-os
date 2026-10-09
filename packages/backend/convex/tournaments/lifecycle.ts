@@ -50,6 +50,7 @@ import {
 import {
   tournamentCreationArgs,
   tournamentFormatValidator,
+  tournamentLifecycles,
   tournamentPhaseBestOfValidator,
   tournamentPhaseCutoffValidator,
   tournamentPhaseRoundModeValidator,
@@ -86,6 +87,11 @@ export const listUpcomingPublic = query({
   },
 });
 
+// Newest events the organizer's table receives per lifecycle. Live and
+// upcoming lifecycles never approach this; it bounds the completed and
+// cancelled history the "all statuses" view can scroll back through.
+const ORGANIZATION_LIST_LIMIT_PER_LIFECYCLE = 200;
+
 export const listForOrganization = query({
   args: { organizationId: v.id("organizations") },
   handler: async (ctx, args) => {
@@ -94,14 +100,25 @@ export const listForOrganization = query({
     // Every lifecycle, newest start first. The organizer's table filters by
     // status on the client, so completed and cancelled events stay
     // reachable and an event that has already started never drops out of
-    // the list the moment its start time passes.
-    const rows = await ctx.db
-      .query("tournaments")
-      .withIndex("by_organizationId_and_startDate", (q) =>
-        q.eq("organizationId", args.organizationId),
-      )
-      .order("desc")
-      .take(200);
+    // the list the moment its start time passes. Each lifecycle is bounded
+    // on its own: one shared cap would let a long completed history push a
+    // live or upcoming event out of the table entirely.
+    const perLifecycle = await Promise.all(
+      tournamentLifecycles.map((lifecycle) =>
+        ctx.db
+          .query("tournaments")
+          .withIndex("by_organizationId_and_lifecycle_and_startDate", (q) =>
+            q
+              .eq("organizationId", args.organizationId)
+              .eq("lifecycle", lifecycle),
+          )
+          .order("desc")
+          .take(ORGANIZATION_LIST_LIMIT_PER_LIFECYCLE),
+      ),
+    );
+    const rows = perLifecycle
+      .flat()
+      .sort((left, right) => right.startDate - left.startDate);
     return rows.map((tournament) => ({
       ...tournament,
       registeredCount: tournament.confirmedRegistrationCount,
