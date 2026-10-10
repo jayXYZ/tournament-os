@@ -10,14 +10,8 @@ import {
 import type { AuditEventRow } from './audit-event-text'
 import type { Id } from '@paper-pairings/backend/convex/_generated/dataModel'
 import { LoadMoreButton } from '@/components/shared/load-more-button'
+import { SectionHeader } from '@/components/shared/section-header'
 import { Badge } from '@/components/ui/badge'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
 import {
   Empty,
   EmptyDescription,
@@ -42,50 +36,45 @@ export function AuditLogView({
 
   return (
     <section className="flex flex-col gap-4">
-      <Card>
-        <CardHeader>
-          <CardTitle>Activity</CardTitle>
-          <CardDescription>
-            Every result entry, edit, drop, and lifecycle change, newest first —
-            for resolving disputes after the fact.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {status === 'LoadingFirstPage' ? (
-            <div className="flex flex-col gap-3">
-              <Skeleton className="h-12" />
-              <Skeleton className="h-12" />
-              <Skeleton className="h-12" />
-            </div>
-          ) : results.length === 0 ? (
-            <Empty>
-              <EmptyHeader>
-                <EmptyMedia variant="icon">
-                  <ScrollText />
-                </EmptyMedia>
-                <EmptyTitle>No activity yet</EmptyTitle>
-                <EmptyDescription>
-                  Actions taken on this tournament will appear here.
-                </EmptyDescription>
-              </EmptyHeader>
-            </Empty>
-          ) : (
-            <>
-              <ul className="divide-y">
-                {results.map((row) => (
-                  <AuditEventItem key={row._id} row={row} />
-                ))}
-              </ul>
-              <LoadMoreButton
-                className="mt-4"
-                status={status}
-                onLoadMore={() => loadMore(PAGE_SIZE)}
-                label="Load older entries"
-              />
-            </>
-          )}
-        </CardContent>
-      </Card>
+      <SectionHeader
+        title="Activity"
+        description="Every result entry, edit, drop, and lifecycle change, newest first — for resolving disputes after the fact."
+      />
+      <div>
+        {status === 'LoadingFirstPage' ? (
+          <div className="flex flex-col gap-3">
+            <Skeleton className="h-12" />
+            <Skeleton className="h-12" />
+            <Skeleton className="h-12" />
+          </div>
+        ) : results.length === 0 ? (
+          <Empty>
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <ScrollText />
+              </EmptyMedia>
+              <EmptyTitle>No activity yet</EmptyTitle>
+              <EmptyDescription>
+                Actions taken on this tournament will appear here.
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        ) : (
+          <>
+            <ul className="divide-y">
+              {results.map((row) => (
+                <AuditEventItem key={row._id} row={row} />
+              ))}
+            </ul>
+            <LoadMoreButton
+              className="mt-4"
+              status={status}
+              onLoadMore={() => loadMore(PAGE_SIZE)}
+              label="Load older entries"
+            />
+          </>
+        )}
+      </div>
     </section>
   )
 }

@@ -3,12 +3,15 @@ import {
   validateEntryFeeCents,
 } from "@paper-pairings/shared/payment-fees";
 
+import type { WithoutSystemFields } from "convex/server";
+
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { feeConfigFromEnv } from "../stripe/config";
 import type { MoneyRowOwner } from "./paidEventOwner";
 import {
   moneyRowOwnerColumns,
+  parseMoneyRowEntry,
   ownerOrdersQuery,
   ownerPayoutsQuery,
   ownerRefundsForParticipantQuery,
@@ -142,6 +145,51 @@ export async function latestOrderForRegistration(
       .order("desc")
       .take(1)
   ).at(0);
+}
+
+// The one way to change an order after createEntryOrder: the patch, then
+// the registration's mirrored payment status (schema.ts
+// tournamentRegistrations.paymentStatus) brought back in step with the
+// newest order. Routing every writer through here is what lets the roster
+// filter on the mirror without ever joining the orders table. The patch is
+// the whole writable row, not just status, so a writer never has to decide
+// whether its change needs the sync — it always runs, and it is cheap: one
+// indexed read and a write only when the mirror actually moved.
+export async function patchOrder(
+  ctx: MutationCtx,
+  order: Doc<"paymentOrders">,
+  patch: Partial<WithoutSystemFields<Doc<"paymentOrders">>>,
+) {
+  await ctx.db.patch(order._id, patch);
+  await syncRegistrationPaymentStatus(ctx, order);
+}
+
+// Re-derives a tournament registration's mirrored payment status from its
+// newest order, so a patch to an older order (a late dispute on a refunded
+// charge, say) can never overwrite the state of the one that matters. Badge
+// rows (conventionRegistrations) keep no mirror — their roster still joins
+// per row — so a convention order is a no-op here.
+export async function syncRegistrationPaymentStatus(
+  ctx: MutationCtx,
+  order: Pick<
+    Doc<"paymentOrders">,
+    "tournamentId" | "conventionId" | "registrationId"
+  >,
+) {
+  const entry = parseMoneyRowEntry(order);
+  if (entry.kind !== "tournament") {
+    return;
+  }
+  const registration = await ctx.db.get(entry.registrationId);
+  if (!registration) {
+    return;
+  }
+  const latest = await latestOrderForRegistration(ctx, entry.registrationId);
+  if (registration.paymentStatus !== latest?.status) {
+    await ctx.db.patch(entry.registrationId, {
+      paymentStatus: latest?.status,
+    });
+  }
 }
 
 // The registration's payable order, if one is live: at most one order per
@@ -401,7 +449,9 @@ export async function createEntryOrder(
     status: "requires_payment",
     updatedAt: now,
   });
-  return (await ctx.db.get(orderId))!;
+  const order = (await ctx.db.get(orderId))!;
+  await syncRegistrationPaymentStatus(ctx, order);
+  return order;
 }
 
 // The payable order approval requests on a paid event: reuses the

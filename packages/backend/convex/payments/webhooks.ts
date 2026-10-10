@@ -10,7 +10,7 @@ import {
   registrationForOrder,
   withdrawPendingEntry,
 } from "../model/paidEvents";
-import { isOpenOrderStatus } from "../model/payments";
+import { isOpenOrderStatus, patchOrder } from "../model/payments";
 import { queueRefund } from "./refunds";
 
 // Stripe webhook fulfillment (invoked from http.ts). Each handler performs
@@ -155,7 +155,7 @@ export const handleCheckoutCompleted = internalMutation({
     }
 
     const now = Date.now();
-    await ctx.db.patch(order._id, {
+    await patchOrder(ctx, order, {
       status: "paid",
       stripeCheckoutSessionId: args.sessionId,
       stripePaymentIntentId: args.stripePaymentIntentId ?? undefined,
@@ -234,13 +234,13 @@ async function closeUnpaidSession(
   const now = Date.now();
   const entry = await registrationForOrder(ctx, order);
   if (order.purpose === "post_approval") {
-    await ctx.db.patch(order._id, {
+    await patchOrder(ctx, order, {
       status: "requires_payment",
       stripeCheckoutSessionId: undefined,
       updatedAt: now,
     });
   } else {
-    await ctx.db.patch(order._id, {
+    await patchOrder(ctx, order, {
       status: args.closedStatus,
       updatedAt: now,
     });
@@ -286,7 +286,7 @@ export const handleDisputeCreated = internalMutation({
     if (!order || order.status === "disputed") {
       return null;
     }
-    await ctx.db.patch(order._id, {
+    await patchOrder(ctx, order, {
       status: "disputed",
       updatedAt: Date.now(),
     });

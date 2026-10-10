@@ -629,7 +629,7 @@ test("listMyTournaments returns every confirmed seat for ongoing and upcoming ev
   expect(anonymous).toEqual([]);
 });
 
-test("listUpcomingForOrganization returns active future tournaments for one organization", async () => {
+test("listForOrganization returns every tournament for one organization, newest start first", async () => {
   const t = createConvexTest();
   const now = Date.now();
   const { organizationId, userId } = await seedOrganizer(t);
@@ -658,21 +658,21 @@ test("listUpcomingForOrganization returns active future tournaments for one orga
       updatedAt: now,
     };
 
-    await ctx.db.insert("tournaments", {
+    const pastSetup = await ctx.db.insert("tournaments", {
       ...base,
       name: "Past Setup",
       visibility: "public",
       lifecycle: "setup",
       startDate: now - 60_000,
     });
-    await ctx.db.insert("tournaments", {
+    const cancelled = await ctx.db.insert("tournaments", {
       ...base,
       name: "Future Cancelled",
       visibility: "public",
       lifecycle: "cancelled",
       startDate: now + 45_000,
     });
-    await ctx.db.insert("tournaments", {
+    const completed = await ctx.db.insert("tournaments", {
       ...base,
       name: "Future Completed",
       visibility: "public",
@@ -709,25 +709,94 @@ test("listUpcomingForOrganization returns active future tournaments for one orga
       startDate: now + 150_000,
     });
 
-    return { publicTournament, setupTournament, inProgressTournament };
+    return {
+      pastSetup,
+      cancelled,
+      completed,
+      publicTournament,
+      setupTournament,
+      inProgressTournament,
+    };
   });
 
   const tournaments = await t
     .withIdentity(organizerIdentity)
-    .query(api.tournaments.lifecycle.listUpcomingForOrganization, {
+    .query(api.tournaments.lifecycle.listForOrganization, {
       organizationId,
     });
 
+  // Every lifecycle and every start date belongs to the organizer, newest
+  // start first; only the other organization's event is missing.
   expect(tournaments.map((tournament) => tournament._id)).toEqual([
-    rows.publicTournament,
-    rows.setupTournament,
     rows.inProgressTournament,
+    rows.setupTournament,
+    rows.publicTournament,
+    rows.completed,
+    rows.cancelled,
+    rows.pastSetup,
   ]);
   expect(tournaments.map((tournament) => tournament.name)).toEqual([
-    "Public Event",
-    "Unpublished Setup",
     "In Progress Event",
+    "Unpublished Setup",
+    "Public Event",
+    "Future Completed",
+    "Future Cancelled",
+    "Past Setup",
   ]);
+});
+
+test("listForOrganization keeps a live event reachable behind a long completed history", async () => {
+  const t = createConvexTest();
+  const now = Date.now();
+  const { organizationId, userId } = await seedOrganizer(t);
+
+  const inProgressId = await t.run(async (ctx) => {
+    const base = {
+      organizationId,
+      createdBy: userId,
+      publicCode: 100_001,
+      playerCapacity: 32,
+      format: "standard" as const,
+      visibility: "public" as const,
+      isTestEvent: false,
+      autoPublishPairings: false,
+      decklistRequired: false,
+      registrationRequiresApproval: false,
+      confirmedRegistrationCount: 0,
+      updatedAt: now,
+    };
+    const inProgress = await ctx.db.insert("tournaments", {
+      ...base,
+      name: "Running Now",
+      lifecycle: "in_progress",
+      startDate: now - 60_000,
+    });
+    // More completed events than any single-lifecycle bound, all dated after
+    // the running one so a shared newest-first cap would discard it.
+    for (let index = 0; index < 250; index += 1) {
+      await ctx.db.insert("tournaments", {
+        ...base,
+        name: `Completed ${index}`,
+        lifecycle: "completed",
+        startDate: now + (index + 1) * 60_000,
+      });
+    }
+    return inProgress;
+  });
+
+  const tournaments = await t
+    .withIdentity(organizerIdentity)
+    .query(api.tournaments.lifecycle.listForOrganization, {
+      organizationId,
+    });
+
+  const lifecycles = new Set(tournaments.map((row) => row.lifecycle));
+  expect(lifecycles).toEqual(new Set(["in_progress", "completed"]));
+  expect(tournaments.at(-1)?._id).toBe(inProgressId);
+  // Completed history is bounded, newest first.
+  const completed = tournaments.filter((row) => row.lifecycle === "completed");
+  expect(completed).toHaveLength(200);
+  expect(completed[0]?.name).toBe("Completed 249");
 });
 
 test("createTournamentWithPhases creates an unpublished public tournament with one dynamic Swiss phase", async () => {

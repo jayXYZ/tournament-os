@@ -5,17 +5,11 @@ import { mutationErrorMessage } from '@paper-pairings/core'
 import { canManageOrganizationPayments } from '@paper-pairings/shared/organizer-utils'
 import type { FunctionReturnType } from 'convex/server'
 import type { api } from '@paper-pairings/backend/convex/_generated/api'
+import { SectionHeader } from '@/components/shared/section-header'
 import { formatCents } from '@/lib/money'
 import { useOrganization } from '@/components/organizer-workspace/organization-context'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
 import { Spinner } from '@/components/ui/spinner'
 
 type PayoutSummary = FunctionReturnType<
@@ -73,12 +67,9 @@ export function PaidEventPayoutCard({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{copy.title}</CardTitle>
-        <CardDescription>{copy.description}</CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
+    <section className="flex flex-col gap-4">
+      <SectionHeader title={copy.title} description={copy.description} />
+      <div className="flex flex-col gap-3">
         {!completed ? (
           <p className="text-sm text-muted-foreground">{copy.pendingMessage}</p>
         ) : payout === undefined ? (
@@ -146,7 +137,7 @@ export function PaidEventPayoutCard({
             )}
           </>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   )
 }

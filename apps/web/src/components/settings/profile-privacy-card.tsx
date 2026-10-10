@@ -5,15 +5,8 @@ import { toast } from 'sonner'
 
 import { api } from '@paper-pairings/backend/convex/_generated/api'
 import type { Doc } from '@paper-pairings/backend/convex/_generated/dataModel'
+import { SectionHeader } from '@/components/shared/section-header'
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
 import {
   Field,
   FieldContent,
@@ -62,15 +55,12 @@ export function ProfilePrivacyCard({ me }: { me: Doc<'users'> }) {
   const historyDisabled = busy || !profileVisible
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Profile privacy</CardTitle>
-        <CardDescription>
-          Control what other players see when they open your public profile
-          page.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="grid gap-4">
+    <section className="flex flex-col gap-4">
+      <SectionHeader
+        title="Profile privacy"
+        description="Control what other players see when they open your public profile page."
+      />
+      <div className="grid gap-4">
         <Field orientation="horizontal" data-disabled={busy}>
           <FieldContent>
             <FieldLabel htmlFor="settings-profile-visible">
@@ -111,8 +101,8 @@ export function ProfilePrivacyCard({ me }: { me: Doc<'users'> }) {
             aria-label="Show tournament history"
           />
         </Field>
-      </CardContent>
-      <CardFooter>
+      </div>
+      <div>
         <Button asChild type="button" variant="outline">
           <Link
             to="/users/$publicCode"
@@ -122,7 +112,7 @@ export function ProfilePrivacyCard({ me }: { me: Doc<'users'> }) {
             View public profile
           </Link>
         </Button>
-      </CardFooter>
-    </Card>
+      </div>
+    </section>
   )
 }

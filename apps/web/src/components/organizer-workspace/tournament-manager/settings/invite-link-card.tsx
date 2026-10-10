@@ -4,14 +4,8 @@ import { toast } from 'sonner'
 
 import { api } from '@paper-pairings/backend/convex/_generated/api'
 import type { Doc } from '@paper-pairings/backend/convex/_generated/dataModel'
+import { SectionHeader } from '@/components/shared/section-header'
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
 import { useBusyAction } from '@/hooks/use-busy-action'
@@ -79,17 +73,12 @@ export function InviteLinkCard({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Invite link</CardTitle>
-        <CardDescription>
-          Anyone with the link (or its code) can view this event and register,
-          even while the event is private — it&apos;s how you let players into
-          an invite-only event. Regenerating or disabling it kills every
-          previously shared link.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
+    <section className="flex flex-col gap-4">
+      <SectionHeader
+        title="Invite link"
+        description="Anyone with the link (or its code) can view this event and register, even while the event is private — it's how you let players into an invite-only event. Regenerating or disabling it kills every previously shared link."
+      />
+      <div>
         {invite ? (
           <div className="flex flex-wrap items-center gap-2">
             <Input
@@ -128,7 +117,7 @@ export function InviteLinkCard({
             Create invite link
           </Button>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   )
 }

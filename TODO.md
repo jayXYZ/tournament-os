@@ -334,21 +334,24 @@ claimed by one.
         a status badge (listMyTournaments now includes pending/waitlisted
         rows)
   - [x] Surface pending applications for organizer review (2026-09-16): the
-        Registrations tab's toolbar gains a filter (All / Pending review /
-        Waitlisted / Confirmed / Cancelled / Rejected) applied server-side
-        — `listRegistrationPage` walks the new
-        `by_tournamentId_and_entryStatus_and_awaitingReview` index under a
-        filter (creation order, so a filtered list pages newest-first like
-        the unfiltered one) and `searchRegistrations` narrows on the same
-        columns (now search-index filter fields), so the filter sees the
-        whole history rather than the pages loaded so far and composes
-        with the search box. "Pending review" is the review queue
-        (CONTEXT.md "Review Queue"): a pending row carries `awaitingReview`
-        only until the organizer decides it, so an approved entry awaiting
-        its payment on a paid event — or one filed by a direct checkout —
-        is pending without being review work. The row menu's
-        approve/waitlist/reject actions act in place, and each filter has
-        its own empty state. The Registrations tab in the manager subnav
+        Registrations tab's toolbar gains a single-select status chip
+        (Pending review / Waitlisted / Confirmed / Active / Eliminated /
+        Dropped / Disqualified / Cancelled / Rejected) applied server-side —
+        `listRegistrationPage` walks the
+        `by_tournamentId_and_entryStatus_and_awaitingReview` index under an
+        entry-status filter (creation order, so a filtered list pages
+        newest-first like the unfiltered one) and the existing
+        `by_tournamentId_and_entryStatus_and_participationStatus` index
+        under a participation status's prefix, and `searchRegistrations`
+        narrows on the same columns (now search-index filter fields), so the
+        filter sees the whole history rather than the pages loaded so far
+        and composes with the search box. "Pending review" is the review
+        queue (CONTEXT.md "Review Queue"): a pending row carries
+        `awaitingReview` only until the organizer decides it, so an approved
+        entry awaiting its payment on a paid event — or one filed by a
+        direct checkout — is pending without being review work. The row
+        menu's approve/waitlist/reject actions act in place, and each filter
+        has its own empty state. The Registrations tab in the manager subnav
         carries a count of applications awaiting a decision
         (`getPendingReviewCount`, capped at 99+, zero once the tournament
         leaves the registration lifecycle and the decisions with it), so
@@ -478,8 +481,8 @@ separate concerns. Model them explicitly before adding more boolean settings.
   - [ ] Show the location on public and player-facing event surfaces
   - [ ] Add indexes/read models needed for later location filtering
 - [ ] Add upcoming-tournament filters
-  - [ ] Format
-  - [ ] Date range
+  - [x] Format (Format chip on the public schedule and organizer tables)
+  - [x] Date range (Start date chip under More filters)
   - [ ] Location
 - [ ] Finish decklist submission and publishing
   - [x] Store one structured decklist per confirmed registration

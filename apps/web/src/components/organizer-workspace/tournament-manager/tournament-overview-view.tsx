@@ -23,19 +23,13 @@ import type { ReactNode } from 'react'
 import type { Id } from '@paper-pairings/backend/convex/_generated/dataModel'
 import type { PairingsBoard } from './pairings-board'
 import type { OverviewBody } from './next-step'
+import { SectionHeader } from '@/components/shared/section-header'
 import {
   TournamentLifecycleBadge,
   TournamentVisibilityBadge,
   formatTournamentDateLong,
 } from '@/components/tournaments'
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { formatCents } from '@/lib/money'
 
@@ -93,8 +87,8 @@ export function TournamentOverviewView({
         <OverviewBody board={board} publicCode={publicCode} />
       ) : (
         <div className="grid gap-4 lg:grid-cols-[1.55fr_1fr]">
-          <Skeleton className="h-64 rounded-xl" />
-          <Skeleton className="h-64 rounded-xl" />
+          <Skeleton className="h-64" />
+          <Skeleton className="h-64" />
         </div>
       )}
 
@@ -130,7 +124,7 @@ function OverviewBody({
       : null
 
   return (
-    <div className="grid items-start gap-4 lg:grid-cols-[1.55fr_1fr]">
+    <div className="grid items-start gap-8 lg:grid-cols-[1.55fr_1fr]">
       {liveRound ? (
         <OutstandingTablesCard
           roundId={liveRound._id}
@@ -146,7 +140,7 @@ function OverviewBody({
           publicCode={publicCode}
         />
       )}
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-8">
         {liveRound ? (
           <UnconfirmedResultsCard
             roundId={liveRound._id}
@@ -261,13 +255,10 @@ function StateCard({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        {text ? <CardDescription>{text}</CardDescription> : null}
-      </CardHeader>
-      {action ? <CardContent>{action}</CardContent> : null}
-    </Card>
+    <section className="flex flex-col gap-4">
+      <SectionHeader title={title} description={text} />
+      {action ? <div>{action}</div> : null}
+    </section>
   )
 }
 

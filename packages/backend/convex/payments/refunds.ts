@@ -28,6 +28,7 @@ import {
   OPEN_ORDER_STATUSES,
   ordersForRegistration,
   paidEntryRefundWindowOpen,
+  patchOrder,
   refundsReturningForOrder,
 } from "../model/payments";
 import { getStripeGateway } from "../stripe/client";
@@ -111,7 +112,7 @@ export async function closeOpenOrdersForRegistration(
     if (!isOpenOrderStatus(order.status)) {
       continue;
     }
-    await ctx.db.patch(order._id, {
+    await patchOrder(ctx, order, {
       status: "canceled",
       updatedAt: Date.now(),
     });
@@ -204,7 +205,7 @@ export const closeOpenOrdersSweep = internalMutation({
       );
       sawFullPage ||= orders.length === SWEEP_BATCH;
       for (const order of orders) {
-        await ctx.db.patch(order._id, {
+        await patchOrder(ctx, order, {
           status: "canceled",
           updatedAt: Date.now(),
         });
@@ -464,7 +465,7 @@ async function applyRefundOutcome(
             row.stripeChargeId === undefined,
         )
         .reduce((sum, row) => sum + row.amountCents, 0);
-      await ctx.db.patch(order._id, {
+      await patchOrder(ctx, order, {
         status:
           returnedCents >= order.amountBreakdown.totalCents
             ? "refunded"

@@ -25,7 +25,11 @@ export type {
   TournamentVisibility,
 } from './tournament-display'
 export { TournamentTable } from './tournament-table'
+export { parseTournamentTableSearch } from './tournament-table-search'
+export type { TournamentTableSearchParams } from './tournament-table-search'
 export type {
+  TournamentTableConvention,
   TournamentTableItem,
+  TournamentTableTournament,
   TournamentTableVariant,
 } from './tournament-table'

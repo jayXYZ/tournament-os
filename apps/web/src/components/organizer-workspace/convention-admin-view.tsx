@@ -7,7 +7,7 @@ import { ConventionTable } from '@/components/conventions/convention-table'
 import { WorkspacePageHeader } from '@/components/shared/workspace-page-header'
 
 export function ConventionAdminView() {
-  const { selectedOrganizationId, selectedOrganization } = useOrganization()
+  const { selectedOrganizationId } = useOrganization()
   const conventions = useQuery(
     api.conventions.lifecycle.listForOrganization,
     selectedOrganizationId
@@ -23,7 +23,6 @@ export function ConventionAdminView() {
   return (
     <section className="flex flex-col gap-4">
       <WorkspacePageHeader
-        eyebrow={selectedOrganization?.organization.name ?? 'Admin workspace'}
         title="Conventions"
         actions={<CreateConventionDialog />}
       />

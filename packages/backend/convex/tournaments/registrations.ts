@@ -20,7 +20,7 @@ import {
 } from "../model/participants";
 import { setRegistrationState } from "../model/participation";
 import { resolveChildEventAdmission } from "../model/conventions";
-import { isPaidEvent, latestOrderForRegistration } from "../model/payments";
+import { isPaidEvent } from "../model/payments";
 import { tiebreakRandom } from "../model/random";
 import {
   adjustConfirmedRegistrationCount,
@@ -52,7 +52,10 @@ import {
   requireTournament,
 } from "../model/tournaments";
 import { enforceRateLimit } from "../rateLimits";
-import { registrationFilterValidator } from "../validators";
+import {
+  paymentOrderStatusValidator,
+  registrationFilterValidator,
+} from "../validators";
 
 async function registrationRows(
   ctx: QueryCtx,
@@ -87,11 +90,12 @@ async function registrationRows(
       // enforce, so the approve/reject/waitlist menu items and their wording
       // always match what confirming them will do.
       ...entryReviewActions(tournament, registration),
-      // The row's payment state on paid events (the newest order's status;
-      // null on free events or when the player has no order yet).
+      // The row's payment state on paid events: the newest order's status,
+      // read from the mirror every order write maintains (schema.ts
+      // tournamentRegistrations.paymentStatus) rather than a per-row order
+      // lookup; null on free events or when the player has no order yet.
       paymentStatus: isPaidEvent(tournament)
-        ? ((await latestOrderForRegistration(ctx, registration._id))?.status ??
-          null)
+        ? (registration.paymentStatus ?? null)
         : null,
     }),
   );
@@ -391,11 +395,15 @@ export const listMyTournaments = query({
 // registrationFilterValidator). Unlike confirmed participants,
 // pending/cancelled/rejected rows are not bounded by tournament capacity, so
 // this organizer history must be cursor-paginated;
-// paginateRegistrationHistory picks the index.
+// paginateRegistrationHistory picks the index. The optional payment filter
+// (any of the given order statuses, matched against the row's mirrored
+// paymentStatus) narrows on the server too, so a filtered page never omits
+// a match that merely sat on a later page.
 export const listRegistrationPage = query({
   args: {
     tournamentId: v.id("tournaments"),
     filter: v.optional(registrationFilterValidator),
+    payment: v.optional(v.array(paymentOrderStatusValidator)),
     paginationOpts: paginationOptsValidator,
   },
   handler: async (ctx, args) => {
@@ -406,6 +414,7 @@ export const listRegistrationPage = query({
       args.tournamentId,
       args.filter,
       args.paginationOpts,
+      args.payment,
     );
     return {
       ...page,
@@ -427,13 +436,14 @@ export const getPendingReviewCount = query({
 });
 
 // Organizer roster search across the full registration history, one page of
-// best matches; the optional filter composes with the search the same way
-// it narrows the list (see searchRegistrationHistory).
+// best matches; the optional filters compose with the search the same way
+// they narrow the list (see searchRegistrationHistory).
 export const searchRegistrations = query({
   args: {
     tournamentId: v.id("tournaments"),
     search: v.string(),
     filter: v.optional(registrationFilterValidator),
+    payment: v.optional(v.array(paymentOrderStatusValidator)),
   },
   handler: async (ctx, args) => {
     const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
@@ -442,6 +452,7 @@ export const searchRegistrations = query({
       args.tournamentId,
       args.search,
       args.filter,
+      args.payment,
     );
 
     return await registrationRows(ctx, tournament, matches);

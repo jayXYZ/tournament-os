@@ -11,19 +11,12 @@ import type { FormEvent } from 'react'
 import type { TournamentFormat } from '@paper-pairings/shared/tournament-creation-utils'
 import type { Doc } from '@paper-pairings/backend/convex/_generated/dataModel'
 import type { TournamentBasicsValue } from '@/components/tournaments'
+import { SectionHeader } from '@/components/shared/section-header'
 import {
   TournamentBasicsFields,
   toDatetimeLocalValue,
 } from '@/components/tournaments'
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
 import {
   Field,
   FieldContent,
@@ -103,22 +96,22 @@ export function TournamentSettingsCard({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Tournament settings</CardTitle>
-        <CardDescription>
-          {locked
+    <section className="flex flex-col gap-4">
+      <SectionHeader
+        title="Tournament settings"
+        description={
+          locked
             ? 'Core settings are locked after tournament play begins.'
-            : 'Update these details any time before tournament play begins.'}
-        </CardDescription>
-        <CardAction>
+            : 'Update these details any time before tournament play begins.'
+        }
+        actions={
           <div className="flex items-center gap-2">
             <VisibilitySelect tournament={tournament} />
             <PublishTournamentButton tournament={tournament} />
           </div>
-        </CardAction>
-      </CardHeader>
-      <CardContent>
+        }
+      />
+      <div>
         <form onSubmit={handleSubmit}>
           <FieldGroup>
             <TournamentBasicsFields
@@ -235,7 +228,7 @@ export function TournamentSettingsCard({
             </div>
           </FieldGroup>
         </form>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   )
 }

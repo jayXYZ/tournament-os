@@ -9,15 +9,9 @@ import { api } from '@paper-pairings/backend/convex/_generated/api'
 
 import { ProfilePrivacyCard } from '@/components/settings/profile-privacy-card'
 import { LoadingCard } from '@/components/shared/loading-card'
+import { SectionHeader } from '@/components/shared/section-header'
 import { SiteShell, SiteShellBackLink } from '@/components/shared/site-shell'
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
 import { useEnsureUserRow } from '@/hooks/use-ensure-user-row'
 import { useAppAuth } from '@/lib/use-app-auth'
 
@@ -25,6 +19,7 @@ export function PlayerSettingsPage() {
   return (
     <SiteShell
       subtitle="Account settings"
+      readingColumn
       toaster
       actions={<SiteShellBackLink to="/">All tournaments</SiteShellBackLink>}
     >
@@ -66,21 +61,18 @@ function SettingsContent() {
 
 function AccountSetupFailedCard({ onRetry }: { onRetry: () => void }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Couldn&apos;t load your account</CardTitle>
-        <CardDescription>
-          Something went wrong while setting up your player account. Check your
-          connection and try again.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
+    <section className="flex flex-col gap-4">
+      <SectionHeader
+        title="Couldn't load your account"
+        description="Something went wrong while setting up your player account. Check your connection and try again."
+      />
+      <div>
         <Button type="button" onClick={onRetry}>
           <RotateCcw data-icon="inline-start" />
           Try again
         </Button>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   )
 }
 
@@ -88,15 +80,12 @@ function SignedOutSettings() {
   const { refreshAuth } = useAppAuth()
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Sign in to manage your settings</CardTitle>
-        <CardDescription>
-          Profile privacy and tournament history controls are tied to your
-          player account.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
+    <section className="flex flex-col gap-4">
+      <SectionHeader
+        title="Sign in to manage your settings"
+        description="Profile privacy and tournament history controls are tied to your player account."
+      />
+      <div>
         <Button
           type="button"
           onClick={() => void refreshAuth({ ensureSignedIn: true })}
@@ -104,8 +93,8 @@ function SignedOutSettings() {
           <LogIn data-icon="inline-start" />
           Sign in
         </Button>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   )
 }
 
