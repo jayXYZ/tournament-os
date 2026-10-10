@@ -13,8 +13,8 @@ import type { Root } from 'react-dom/client'
 import type { TournamentTableSearchParams } from './tournament-table-search'
 
 // The hook under a router that lags: `search` is whatever the test last
-// delivered, standing in for useSearch settling only after beforeLoad's
-// round trip, and `writes` is every navigation the hook asked for.
+// delivered, standing in for useSearch settling only after the router's load
+// and React transition, and `writes` is every navigation the hook asked for.
 
 let latest: {
   columnFilters: ColumnFiltersState

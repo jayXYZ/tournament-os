@@ -15,9 +15,9 @@ export const SEARCH_URL_WRITE_DELAY_MS = 300
 
 // The tournament table's toolbar state when the caller keeps it in the
 // route's search params (see tournament-table-search.ts). The table answers
-// from a local copy of its filters and writes the URL behind it: every
-// navigation re-runs the root route's beforeLoad (a server round trip) and
-// `search` only reflects the new value once that settles, so a table bound
+// from a local copy of its filters and writes the URL behind it: the router
+// settles a navigation asynchronously (its load, then a React transition)
+// and `search` only reflects the new value once it has, so a table bound
 // straight to the URL would lag — a keystroke behind while typing, and a
 // chip changed while the previous chip's write was still in flight would be
 // applied to the stale URL state and silently undo it. Chip changes write at

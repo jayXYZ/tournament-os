@@ -28,6 +28,13 @@ const fetchClerkAuth = createServerFn({ method: 'GET' }).handler(async () => {
   }
 })
 
+// What beforeLoad adds to the router context, with the pathname the answer
+// was fetched for (see beforeLoad).
+type RootAuthContext = {
+  userId: string | null
+  authPathname: string
+}
+
 export const Route = createRootRouteWithContext<{
   queryClient: QueryClient
   convexClient: ConvexReactClient
@@ -75,17 +82,35 @@ export const Route = createRootRouteWithContext<{
       { rel: 'icon', href: '/favicon.ico' },
     ],
   }),
-  beforeLoad: async (ctx) => {
-    const clerkAuth = await fetchClerkAuth()
-    const { userId, token } = clerkAuth
+  beforeLoad: async ({
+    cause,
+    context,
+    location,
+    matches,
+  }): Promise<RootAuthContext | undefined> => {
+    // Who is signed in can only change between pages. A navigation that only
+    // rewrites the search params of the page already shown (the tournament
+    // tables keep their filters there) keeps the last answer instead of
+    // paying a server round trip per chip click or pause in typing. `cause`
+    // alone cannot tell: the root stays matched across every client-side
+    // navigation, so the answer records the page it was fetched for, and the
+    // root match (always first) still carries it here. Returning nothing
+    // leaves that context in place.
+    const previous = matches[0].context as Partial<RootAuthContext>
+    if (cause === 'stay' && previous.authPathname === location.pathname) {
+      return
+    }
+
+    const { userId, token } = await fetchClerkAuth()
     // During SSR only (the only time serverHttpClient exists),
     // set the Clerk auth token to make HTTP queries with.
     if (token) {
-      ctx.context.convexQueryClient.serverHttpClient?.setAuth(token)
+      context.convexQueryClient.serverHttpClient?.setAuth(token)
     }
 
     return {
       userId,
+      authPathname: location.pathname,
     }
   },
   component: RootComponent,
