@@ -3,6 +3,8 @@ import { beforeEach, expect, test, vi } from "vitest";
 
 import { api, internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
+import { ORGANIZER_LIST_PAGE_SIZE } from "./model/pagination";
+import { PAYMENT_FILTER_ROWS_PER_PAGE } from "./model/registrations";
 import {
   organizerIdentity,
   playerIdentity,
@@ -425,4 +427,110 @@ test("the payment filter narrows the list and the search on the server, past the
     },
   );
   expect(everyone.page).toHaveLength(4);
+});
+
+// Rows for the row-budget test, written straight to the table as guest
+// participants with no orders, so a thousand of them cost only the walk
+// under test. The mirror is set by hand: the walks read the mirror, not the
+// orders, and the first test pins that the order writes keep it in step.
+async function seedMirroredRegistrations(
+  t: TestConvex<typeof schema>,
+  tournamentId: Id<"tournaments">,
+  rows: ReadonlyArray<{
+    playerName: string;
+    paymentStatus: Doc<"paymentOrders">["status"];
+  }>,
+) {
+  await t.run(async (ctx) => {
+    const tournament = await ctx.db.get(tournamentId);
+    if (!tournament) {
+      throw new Error("Tournament not found in test setup");
+    }
+    const now = Date.now();
+    for (const [index, row] of rows.entries()) {
+      const participantId = await ctx.db.insert("participants", {
+        displayName: row.playerName,
+        updatedAt: now,
+      });
+      await ctx.db.insert("tournamentRegistrations", {
+        tournamentId,
+        participantId,
+        tournamentStartDate: tournament.startDate,
+        entryStatus: "confirmed",
+        participationStatus: "active",
+        playerName: row.playerName,
+        paymentStatus: row.paymentStatus,
+        createdAt: now + index,
+        tiebreakRandom: index,
+        updatedAt: now,
+      });
+    }
+  });
+}
+
+test("a payment-filtered page reads a bounded window; the search filters inside the index", async () => {
+  const t = createConvexTest();
+  const tournamentId = await seedPaidTournament(t);
+  const asOwner = t.withIdentity(organizerIdentity);
+
+  // The lone disputed row is the oldest, behind a full row budget of paid
+  // rows, so the newest-first walk reads the whole budget before it.
+  await seedMirroredRegistrations(t, tournamentId, [
+    { playerName: "Player 0", paymentStatus: "disputed" },
+    ...Array.from({ length: PAYMENT_FILTER_ROWS_PER_PAGE }, (_, i) => ({
+      playerName: `Player ${i + 1}`,
+      paymentStatus: "paid" as const,
+    })),
+  ]);
+  const page = (
+    payment: Array<Doc<"paymentOrders">["status"]> | undefined,
+    cursor: string | null = null,
+  ) =>
+    asOwner.query(api.tournaments.registrations.listRegistrationPage, {
+      tournamentId,
+      ...(payment === undefined ? {} : { payment }),
+      paginationOpts: { numItems: ORGANIZER_LIST_PAGE_SIZE, cursor },
+    });
+
+  // Without the chip a page reads exactly the rows it returns: no budget,
+  // nothing to split.
+  const plain = await page(undefined);
+  expect(plain.page).toHaveLength(ORGANIZER_LIST_PAGE_SIZE);
+  expect(plain.pageStatus ?? null).toBeNull();
+
+  // Under it the first page stops at the budget — short, split required,
+  // not done — instead of scanning on to the disputed row...
+  const first = await page(["disputed"]);
+  expect(first.page).toEqual([]);
+  expect(first.isDone).toBe(false);
+  expect(first.pageStatus).toBe("SplitRequired");
+  expect(first.splitCursor).toEqual(expect.any(String));
+
+  // ...which the next window, from its continueCursor, reaches.
+  const next = await page(["disputed"], first.continueCursor);
+  expect(names(next.page)).toEqual(["Player 0"]);
+  expect(next.isDone).toBe(true);
+
+  // A status dense enough to fill the page inside the budget settles.
+  const paid = await page(["paid"]);
+  expect(paid.page).toHaveLength(ORGANIZER_LIST_PAGE_SIZE);
+  expect(paid.pageStatus ?? null).toBeNull();
+
+  // The search narrows inside the index, so the lone status is found among
+  // a thousand name matches, and a multi-status search gives each status a
+  // share of its one page rather than letting the dense one fill it.
+  // (convex-test ranks every matching row, so the index's 1024-row scan
+  // window — what makes a post-filter miss — is not reproducible here; the
+  // schema's filterFields are what tsc holds the search to.)
+  const disputed = await asOwner.query(
+    api.tournaments.registrations.searchRegistrations,
+    { tournamentId, search: "Player", payment: ["disputed"] },
+  );
+  expect(names(disputed)).toEqual(["Player 0"]);
+  const both = await asOwner.query(
+    api.tournaments.registrations.searchRegistrations,
+    { tournamentId, search: "Player", payment: ["paid", "disputed"] },
+  );
+  expect(both).toHaveLength(ORGANIZER_LIST_PAGE_SIZE);
+  expect(names(both)).toContain("Player 0");
 });

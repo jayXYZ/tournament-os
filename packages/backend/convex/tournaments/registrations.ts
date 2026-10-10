@@ -398,7 +398,9 @@ export const listMyTournaments = query({
 // paginateRegistrationHistory picks the index. The optional payment filter
 // (any of the given order statuses, matched against the row's mirrored
 // paymentStatus) narrows on the server too, so a filtered page never omits
-// a match that merely sat on a later page.
+// a match that merely sat on a later page — within a per-page row budget: a
+// page that exhausts it comes back short with a split required, and the
+// client pages on through the next window (see paginateRegistrationHistory).
 export const listRegistrationPage = query({
   args: {
     tournamentId: v.id("tournaments"),

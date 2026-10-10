@@ -616,7 +616,9 @@ export default defineSchema({
     // until the row's first order, so always absent on free events. The
     // roster's Payment filter narrows the list and search walks on this
     // column instead of joining every row to its orders after the page is
-    // cut, which is what would make a filtered page lie by omission.
+    // cut, which is what would make a filtered page lie by omission: the
+    // search through the filter field below, the list through a
+    // row-budgeted post-filter (paginateRegistrationHistory).
     paymentStatus: v.optional(paymentOrderStatusValidator),
     createdAt: v.number(),
     // The player's fixed random tiebreaker for this tournament, breaking
@@ -665,7 +667,11 @@ export default defineSchema({
     // loading that event's registration history; the status columns let the
     // Registrations tab's filter narrow a search the same way it narrows the
     // paginated list (see searchRegistrations): entryStatus and
-    // participationStatus for a status, awaitingReview for the review queue.
+    // participationStatus for a status, awaitingReview for the review queue,
+    // paymentStatus for the Payment chip. Every one of them is a filter
+    // field rather than a `.filter` after the search, because a search reads
+    // at most 1024 ranked rows out of the index and a post-filter sees only
+    // those — a matching player ranked past them would read as absent.
     .searchIndex("search_playerName", {
       searchField: "playerName",
       filterFields: [
@@ -673,6 +679,7 @@ export default defineSchema({
         "entryStatus",
         "participationStatus",
         "awaitingReview",
+        "paymentStatus",
       ],
     }),
 

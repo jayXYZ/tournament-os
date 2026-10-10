@@ -520,15 +520,23 @@ function participationFilterRange(
 // it directly (the awaitingReview column is set only on the review queue,
 // so a status prefix never regroups — a filtered confirmed list is not
 // regrouped by participation status).
-// No maximumRowsRead on any: a cap would buy no headroom — it would just
-// equal numItems and trip on every full page (rowsRead reaches the cap on
-// the same doc that fills the page), flagging a healthy page as
+// No maximumRowsRead on the plain walks: a cap would buy no headroom — it
+// would just equal numItems and trip on every full page (rowsRead reaches
+// the cap on the same doc that fills the page), flagging a healthy page as
 // SplitRequired/SplitRecommended and making usePaginatedQuery split and
 // re-issue it instead of settling.
-// The payment filter is the one post-index narrowing (narrowToPaymentStatuses)
-// and it runs here, before the page is cut, so a page under it still holds
-// numItems matching rows (or everything that matches) rather than whatever
-// survived of an unfiltered page.
+// The payment filter is the one post-index narrowing, and so the one walk
+// that reads rows it does not return. paymentStatus has no index: one per
+// walk above would double the roster's indexes, and an index range could
+// not take the chip's OR of statuses under one cursor anyway. So it is a
+// `.filter` over the status walk — run before the page is cut, so a page
+// still holds numItems matching rows rather than whatever survived of an
+// unfiltered page — and that walk alone carries maximumRowsRead
+// (PAYMENT_FILTER_ROWS_PER_PAGE): a page that reads that many rows is cut
+// short as SplitRequired, usePaginatedQuery splits it and pages on from its
+// continueCursor, and a rare status on a large history costs a bounded read
+// set per page (and per page subscription) instead of a scan to the first
+// numItems matches or to the end of the history.
 export async function paginateRegistrationHistory(
   ctx: QueryCtx,
   tournamentId: Id<"tournaments">,
@@ -536,11 +544,29 @@ export async function paginateRegistrationHistory(
   paginationOpts: PaginationOptions,
   payment?: ReadonlyArray<PaymentOrderStatus>,
 ) {
-  return await narrowToPaymentStatuses(
-    registrationHistoryWalk(ctx, tournamentId, filter),
-    payment,
-  ).paginate(paginationOpts);
+  const walk = registrationHistoryWalk(ctx, tournamentId, filter);
+  if (payment === undefined || payment.length === 0) {
+    return await walk.paginate(paginationOpts);
+  }
+  return await walk
+    .filter((q) =>
+      q.or(...payment.map((status) => q.eq(q.field("paymentStatus"), status))),
+    )
+    // Spread, not rebuilt: the client's native fields (endCursor on a split
+    // half, id) ride through untouched.
+    .paginate({
+      ...paginationOpts,
+      maximumRowsRead: PAYMENT_FILTER_ROWS_PER_PAGE,
+    });
 }
+
+// Rows a payment-filtered history page may read before it is cut short
+// (paginate's maximumRowsRead; see paginateRegistrationHistory): ten full
+// pages' worth, so a page settles whenever at least one row in ten carries
+// the status, and a rarer one is paged through in windows of this many
+// rows. Well clear of the page size, which is the one value a cap must not
+// be: at numItems it would trip on the very row that fills the page.
+export const PAYMENT_FILTER_ROWS_PER_PAGE = 10 * ORGANIZER_LIST_PAGE_SIZE;
 
 function registrationHistoryWalk(
   ctx: QueryCtx,
@@ -574,27 +600,6 @@ function registrationHistoryWalk(
 
 type RegistrationWalk = OrderedQuery<DataModel["tournamentRegistrations"]>;
 type PaymentOrderStatus = Doc<"paymentOrders">["status"];
-
-// Keeps only rows whose mirrored payment status (schema.ts
-// tournamentRegistrations.paymentStatus) is one of `payment`; an empty or
-// absent list leaves the walk alone. Payment status has no index of its
-// own — one per status-filter index would triple them for a chip most
-// visits never touch — so this is a post-index `.filter`. That is
-// acceptable here because every walk it narrows is already bounded to one
-// tournament's rows, and it must run on the server: filtering after the
-// page (or the search's take) is cut would drop matches the client never
-// saw and report them as absent.
-function narrowToPaymentStatuses<Walk extends RegistrationWalk>(
-  walk: Walk,
-  payment: ReadonlyArray<PaymentOrderStatus> | undefined,
-): Walk {
-  if (payment === undefined || payment.length === 0) {
-    return walk;
-  }
-  return walk.filter((q) =>
-    q.or(...payment.map((status) => q.eq(q.field("paymentStatus"), status))),
-  );
-}
 
 // The pending-review count is a badge, not a ledger: past this many it reads
 // "99+", so the count reads at most one row beyond it. Pending rows are not
@@ -637,10 +642,13 @@ export async function pendingReviewCount(
 // are relevance-ordered and bounded to one page — the caller never has to
 // page older records in to find a player. Rows without a denormalized
 // playerName (legacy data) are absent from the index and cannot match. The
-// optional filter narrows the search to the same rows it narrows
+// optional filters narrow the search to the same rows they narrow
 // paginateRegistrationHistory to, so a filter and a search box compose —
-// and so does the payment filter, applied before the take for the same
-// reason it is applied before the page there.
+// and every one of them is a filter field of the index, never a `.filter`
+// after it: a search reads at most 1024 ranked rows out of the index, and a
+// post-filter would see only those, reporting a matching player ranked past
+// them as absent. The index takes one equality per field, so the payment
+// chip's OR of statuses is one search per status, merged by rank below.
 export async function searchRegistrationHistory(
   ctx: QueryCtx,
   tournamentId: Id<"tournaments">,
@@ -648,27 +656,59 @@ export async function searchRegistrationHistory(
   filter: RegistrationFilter | undefined,
   payment?: ReadonlyArray<PaymentOrderStatus>,
 ) {
-  const matches = ctx.db
-    .query("tournamentRegistrations")
-    .withSearchIndex("search_playerName", (q) => {
-      const scoped = q
-        .search("playerName", search)
-        .eq("tournamentId", tournamentId);
-      if (filter === undefined) {
-        return scoped;
-      }
-      if (isParticipationFilter(filter)) {
-        return scoped
-          .eq("entryStatus", "confirmed")
-          .eq("participationStatus", filter);
-      }
-      return filter === "awaiting_review"
-        ? scoped.eq("entryStatus", "pending").eq("awaitingReview", true)
-        : scoped.eq("entryStatus", filter);
-    });
-  return await narrowToPaymentStatuses(matches, payment).take(
+  const matches = (paymentStatus: PaymentOrderStatus | undefined) =>
+    ctx.db
+      .query("tournamentRegistrations")
+      .withSearchIndex("search_playerName", (q) => {
+        const scoped = q
+          .search("playerName", search)
+          .eq("tournamentId", tournamentId);
+        const byPayment =
+          paymentStatus === undefined
+            ? scoped
+            : scoped.eq("paymentStatus", paymentStatus);
+        if (filter === undefined) {
+          return byPayment;
+        }
+        if (isParticipationFilter(filter)) {
+          return byPayment
+            .eq("entryStatus", "confirmed")
+            .eq("participationStatus", filter);
+        }
+        return filter === "awaiting_review"
+          ? byPayment.eq("entryStatus", "pending").eq("awaitingReview", true)
+          : byPayment.eq("entryStatus", filter);
+      })
+      .take(ORGANIZER_LIST_PAGE_SIZE);
+  if (payment === undefined || payment.length === 0) {
+    return await matches(undefined);
+  }
+  return interleaveByRank(
+    await Promise.all(payment.map((status) => matches(status))),
     ORGANIZER_LIST_PAGE_SIZE,
   );
+}
+
+// One page of best matches out of several relevance-ordered lists (one per
+// payment status): round-robin by rank, so a status with a full page of
+// matches cannot push another status's only match off the page, and each
+// status's rows keep their own relevance order. The lists are disjoint — a
+// row carries one payment status — so nothing repeats.
+function interleaveByRank<T>(
+  lists: ReadonlyArray<ReadonlyArray<T>>,
+  limit: number,
+): Array<T> {
+  const merged: Array<T> = [];
+  const deepest = Math.max(0, ...lists.map((list) => list.length));
+  for (let rank = 0; rank < deepest && merged.length < limit; rank += 1) {
+    for (const list of lists) {
+      const row = list[rank];
+      if (row !== undefined && merged.length < limit) {
+        merged.push(row);
+      }
+    }
+  }
+  return merged;
 }
 
 // Structural over tournaments and conventions — both carry the same

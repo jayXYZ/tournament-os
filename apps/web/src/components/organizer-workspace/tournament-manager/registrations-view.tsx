@@ -229,7 +229,24 @@ export function RegistrationsView({
   if (status !== 'LoadingFirstPage') {
     loadedOnce.current = true
   }
-  const listPending = status === 'LoadingFirstPage' && loadedOnce.current
+  // Under a payment filter the server reads the history in bounded windows
+  // (listRegistrationPage's row budget), so a window with no match comes
+  // back short and splitting, or settles empty with older rows to load.
+  // Nothing on screen with a page in flight is the list still loading, not
+  // an empty list; and an empty settled window loads the next one itself,
+  // so by the time the table claims "no match" every row has been checked.
+  const listPending =
+    (status === 'LoadingFirstPage' && loadedOnce.current) ||
+    (status === 'LoadingMore' && results.length === 0)
+  useEffect(() => {
+    if (
+      payment !== undefined &&
+      status === 'CanLoadMore' &&
+      results.length === 0
+    ) {
+      loadMore(REGISTRATION_PAGE_SIZE)
+    }
+  }, [payment, status, results.length, loadMore])
   const setup = useQuery(api.tournaments.lifecycle.getTournamentSetup, {
     tournamentId,
   })
