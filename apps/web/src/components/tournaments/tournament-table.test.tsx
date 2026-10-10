@@ -137,3 +137,30 @@ test('a search the URL holds waits for the list to be whole too', () => {
   expect(searchBox().value).toBe('cup')
   expect(rowNames()).toEqual(['Modern Cup'])
 })
+
+test('a title the caller supplies heads the section while it loads, when it is empty, and once it fills', () => {
+  const heading = () => container.querySelector('h2')?.textContent
+  render({ title: 'Events', items: undefined })
+  expect(heading()).toBe('Events')
+
+  render({ title: 'Events', items: [] })
+  expect(heading()).toBe('Events')
+  expect(container.textContent).toContain('No upcoming tournaments')
+
+  render({ title: 'Events', items })
+  expect(heading()).toBe('Events')
+  expect(rowNames()).toEqual(['Modern Cup', 'Draft Open'])
+})
+
+test('the manage empty state is kept for an organization with nothing in any lifecycle', () => {
+  // Events the Status chip leaves out keep the table and its toolbar.
+  render({ variant: 'manage', items: [], hasItemsBeyondStatusFilter: true })
+  expect(toolbar()).not.toBeNull()
+
+  // Nothing in any lifecycle: the empty state, which must not read as
+  // merely "nothing upcoming" when the list would show history too.
+  render({ variant: 'manage', items: [] })
+  expect(toolbar()).toBeNull()
+  expect(container.textContent).toContain('No tournaments yet')
+  expect(container.textContent).not.toContain('upcoming')
+})

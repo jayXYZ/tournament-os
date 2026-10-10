@@ -170,6 +170,9 @@ function ConventionDetails({
 
       <TournamentTable
         variant="public"
+        // The page names the convention, not its schedule, so the table
+        // heads its own section.
+        title="Events"
         items={childItems}
         // The list arrives a page at a time, so the table's client-side
         // filters wait for the last one (see hasUnloadedItems).

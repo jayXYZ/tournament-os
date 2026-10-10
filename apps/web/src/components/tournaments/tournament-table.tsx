@@ -93,6 +93,7 @@ export function TournamentTable({
   items,
   conventions,
   variant,
+  title = sectionTitle[variant],
   search,
   onSearchChange,
   hasItemsBeyondStatusFilter = false,
@@ -103,6 +104,9 @@ export function TournamentTable({
   // only once loaded so the grouping never flashes in after the flat list.
   conventions?: Array<TournamentTableConvention>
   variant: TournamentTableVariant
+  // Heads the table's section where the page does not already name it;
+  // `sectionTitle` has each variant's default.
+  title?: string
   // Toolbar state kept by the caller, in practice the route's search params
   // (see tournament-table-search.ts), so filters survive reload and the
   // back button. Pass both or neither; without them the table keeps the
@@ -142,19 +146,19 @@ export function TournamentTable({
 
   if (rows === undefined) {
     return (
-      <TournamentSection variant={variant} description={loadingCopy[variant]}>
+      <TournamentSection title={title} description={loadingCopy[variant]}>
         <TableLoadingSkeleton rows={variant === 'registered' ? 2 : 3} />
       </TournamentSection>
     )
   }
 
   if (rows.length === 0 && !hasItemsBeyondStatusFilter) {
-    return <TournamentTableEmpty variant={variant} />
+    return <TournamentTableEmpty variant={variant} title={title} />
   }
 
   const isManage = variant === 'manage'
   return (
-    <TournamentSection variant={variant} description={populatedCopy[variant]}>
+    <TournamentSection title={title} description={populatedCopy[variant]}>
       <DataTable
         columns={columns}
         data={rows}
@@ -299,10 +303,12 @@ function rowStartDate(row: TournamentTableRow) {
     : row.tournament.startDate
 }
 
-// The public and manage tables sit directly under a page title that already
-// names them, so only the registered list (which shares a page with the
-// public schedule) carries its own heading. The others show their
-// description as a single muted line.
+// Each variant's default heading. The public and manage tables usually sit
+// directly under a page title that already names them, so only the
+// registered list (which shares a page with the public schedule) carries
+// one; a page that does not name its table (the convention page, which
+// lists a convention's events beneath its details) passes `title`. A
+// section with no heading shows its description as a single muted line.
 const sectionTitle: Partial<Record<TournamentTableVariant, string>> = {
   registered: 'My tournaments',
 }
@@ -320,15 +326,14 @@ const populatedCopy: Record<TournamentTableVariant, string> = {
 }
 
 function TournamentSection({
-  variant,
+  title,
   description,
   children,
 }: {
-  variant: TournamentTableVariant
-  description: string
+  title?: string
+  description?: string
   children?: React.ReactNode
 }) {
-  const title = sectionTitle[variant]
   return (
     <section className="flex flex-col gap-4">
       <SectionHeader title={title} description={description} />
@@ -337,34 +342,60 @@ function TournamentSection({
   )
 }
 
+// Copy for an empty public or manage list. The manage list holds every
+// lifecycle, and is empty only when the organization has no tournaments in
+// any of them and no conventions (an empty Status selection keeps the table
+// instead, see hasItemsBeyondStatusFilter), so it must not read as merely
+// "nothing upcoming".
+const emptyCopy: Record<
+  Exclude<TournamentTableVariant, 'registered'>,
+  { title: string; description: string }
+> = {
+  public: {
+    title: 'No upcoming tournaments',
+    description:
+      'Public tournaments will appear here once an organizer publishes future events.',
+  },
+  manage: {
+    title: 'No tournaments yet',
+    description:
+      'Tournaments and conventions you create for this organization will appear here.',
+  },
+}
+
 function TournamentTableEmpty({
   variant,
+  title,
 }: {
   variant: TournamentTableVariant
+  title?: string
 }) {
   if (variant === 'registered') {
     return (
       <TournamentSection
-        variant={variant}
+        title={title}
         description="You are not registered for any upcoming events yet. Pick one from the schedule below to get started."
       />
     )
   }
 
-  return (
+  const empty = (
     <TableEmptyState
       icon={variant === 'public' ? UserRound : CalendarDays}
-      title="No upcoming tournaments"
-      description={
-        variant === 'public'
-          ? 'Public tournaments will appear here once an organizer publishes future events.'
-          : 'Future tournaments for this organization will appear here.'
-      }
+      title={emptyCopy[variant].title}
+      description={emptyCopy[variant].description}
       className={cn(
         'rounded-lg border border-border',
         variant === 'public' && 'min-h-80',
       )}
     />
+  )
+  // A heading names the section whatever it holds, so it stays above the
+  // empty state as it did above the loading skeleton.
+  return title === undefined ? (
+    empty
+  ) : (
+    <TournamentSection title={title}>{empty}</TournamentSection>
   )
 }
 
