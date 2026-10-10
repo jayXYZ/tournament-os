@@ -29,6 +29,29 @@ const ThemeProviderContext = createContext<ThemeProviderState | undefined>(
   undefined,
 )
 
+// Storage access can throw where a browser blocks it (private windows,
+// cleared or denied site data). The pre-hydration script above swallows
+// that; these do too, so a blocked store degrades to the default theme
+// instead of taking down the root tree.
+function readStoredTheme(storageKey: string): Theme | undefined {
+  try {
+    const stored = localStorage.getItem(storageKey)
+    return stored === 'light' || stored === 'dark' || stored === 'system'
+      ? stored
+      : undefined
+  } catch {
+    return undefined
+  }
+}
+
+function writeStoredTheme(storageKey: string, theme: Theme) {
+  try {
+    localStorage.setItem(storageKey, theme)
+  } catch {
+    // The choice still applies for this page; it just won't persist.
+  }
+}
+
 function applyTheme(theme: Theme) {
   const root = document.documentElement
   root.classList.remove('light', 'dark')
@@ -53,12 +76,7 @@ export function ThemeProvider({
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
-    const stored = localStorage.getItem(storageKey)
-    setThemeState(
-      stored === 'light' || stored === 'dark' || stored === 'system'
-        ? stored
-        : defaultTheme,
-    )
+    setThemeState(readStoredTheme(storageKey) ?? defaultTheme)
     setMounted(true)
   }, [defaultTheme, storageKey])
 
@@ -77,7 +95,7 @@ export function ThemeProvider({
   }, [theme, mounted])
 
   const setTheme = (next: Theme) => {
-    localStorage.setItem(storageKey, next)
+    writeStoredTheme(storageKey, next)
     setThemeState(next)
   }
 

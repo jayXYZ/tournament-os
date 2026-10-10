@@ -1,6 +1,7 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
 import {
+  phaseAllowsMatchDraws,
   phaseByOrder,
   phasesInOrder,
   roundNumberInPhase,
@@ -200,6 +201,9 @@ export async function currentMatchForPlayer(
       // The phase's Match Structure, so result entry can cap game wins at
       // what the structure allows instead of hardcoding best-of-3.
       bestOf: phase.bestOf,
+      // The phase-type draw rule, so result entry can refuse equal game
+      // wins up front where the report would be rejected.
+      allowDraws: phaseAllowsMatchDraws(phase),
     },
     me: {
       registrationId: registration._id,

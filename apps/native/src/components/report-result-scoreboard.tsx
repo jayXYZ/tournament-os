@@ -6,7 +6,8 @@ import {
 import type { CurrentMatchAction } from "@paper-pairings/core";
 import {
   MAX_GAME_DRAWS,
-  requiredGameWins,
+  matchDrawError,
+  maxGameWinsGiven,
 } from "@paper-pairings/shared/match-structure";
 import { useState } from "react";
 import {
@@ -19,7 +20,7 @@ import {
 } from "react-native";
 
 import { HoldButton } from "@/components/hold-button";
-import { fonts } from "@/lib/typography";
+import { useNumeralFont } from "@/lib/typography";
 import { palette } from "@/lib/palette";
 
 // The player's report surface while their match is live, from the Figma
@@ -28,10 +29,16 @@ import { palette } from "@/lib/palette";
 // games hide behind a one-line prompt, and submitting is a hold, not a tap —
 // a reported result counts the moment it lands (there is no opponent
 // confirmation), so the deliberate gesture stands in for a confirm step.
+//
+// The header is the presenter's card copy verbatim (label, title, subtitle,
+// body), so the live-match card reads the same here as on the web even
+// though the scoreboard replaces the card's report button.
 export function ReportResultScoreboard({
   action,
   label,
   title,
+  subtitle,
+  body,
   onReported,
   onError,
 }: {
@@ -40,21 +47,45 @@ export function ReportResultScoreboard({
   label: string;
   /** The presenter's card title, e.g. "Table 4". */
   title: string;
+  /** The presenter's card subtitle, e.g. "vs Alice". */
+  subtitle: string | null;
+  /** The presenter's card body: what to do before reporting. */
+  body: string | null;
   onReported: () => void;
   onError: (message: string) => void;
 }) {
-  const { matchId, bestOf, opponentName } = action;
-  const maxGameWins = requiredGameWins(bestOf);
+  const { matchId, bestOf, allowDraws, opponentName } = action;
   const reportResult = useReportResult();
   const [myGameWins, setMyGameWins] = useState(0);
   const [opponentGameWins, setOpponentGameWins] = useState(0);
+  const numeralFont = useNumeralFont();
+  // Each side's ceiling depends on the other's count, so the steppers can
+  // never build a scoreline the backend's gameWinsEntryError would reject
+  // (2–2 in a best-of-3): once one side reaches a total the structure
+  // allows, the other side's "+" goes dark instead of the hold failing.
+  const myMaxGameWins = maxGameWinsGiven(bestOf, opponentGameWins);
+  const opponentMaxGameWins = maxGameWinsGiven(bestOf, myGameWins);
+  // Equal counts can't be made unreachable by the caps (0–0 is where entry
+  // starts), so where the phase forbids draws the hold stays disabled until
+  // the scoreline is decisive and the preview line says why.
+  const drawError = matchDrawError(allowDraws, myGameWins, opponentGameWins);
   const [gameDraws, setGameDraws] = useState(0);
   const [drawsRevealed, setDrawsRevealed] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  // Rejections rethrow so the hold button skips its success flash; the
+  // Rejections rethrow so the hold button rewinds for another try; the
   // message goes to the screen's toast first (rate-limited rejections get
   // the retry-later treatment from mutationErrorMessage).
+  //
+  // TODO: holding at 0–0 is how a player reports an intentional draw, but
+  // it is also one hold away from an accidental report. When the entry is a
+  // 0–0 draw, prompt before submitting: "Was this an intentional draw?" and
+  // record the draw count that matches the answer. Confirm the MTR's
+  // encodings first: it is unclear which of 0–0–3 and 0–0–1 is the
+  // intentional draw. Older judge guidance gives intentional draws as
+  // 0–0–3 (WER's draw button entered 0–0–1), and an unintentional draw at
+  // time as the games actually played. Mirror the prompt in the web
+  // report dialog.
   async function submit() {
     setBusy(true);
     try {
@@ -74,6 +105,14 @@ export function ReportResultScoreboard({
     myGameWins < opponentGameWins ? "trailing" : "leading";
   const opponentTone: NumeralTone =
     opponentGameWins < myGameWins ? "trailing" : "leading";
+  const preview =
+    drawError ??
+    describeResultPreview(
+      myGameWins,
+      opponentGameWins,
+      gameDraws,
+      opponentName,
+    );
 
   return (
     <View style={styles.root}>
@@ -82,6 +121,8 @@ export function ReportResultScoreboard({
       <View style={styles.stepHeader}>
         <Text style={styles.label}>{label}</Text>
         <Text style={styles.title}>{title}</Text>
+        {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+        {body ? <Text style={styles.body}>{body}</Text> : null}
       </View>
 
       <View style={styles.scoreboard}>
@@ -89,18 +130,18 @@ export function ReportResultScoreboard({
           <ScoreColumn
             label="You"
             value={myGameWins}
-            max={maxGameWins}
+            max={myMaxGameWins}
             tone={myTone}
             disabled={busy}
             onChange={setMyGameWins}
           />
           <View style={styles.divider}>
-            <Text style={styles.dash}>–</Text>
+            <Text style={[styles.dash, numeralFont]}>–</Text>
           </View>
           <ScoreColumn
             label={opponentName}
             value={opponentGameWins}
-            max={maxGameWins}
+            max={opponentMaxGameWins}
             tone={opponentTone}
             disabled={busy}
             onChange={setOpponentGameWins}
@@ -131,18 +172,21 @@ export function ReportResultScoreboard({
       </View>
 
       <View style={styles.footer}>
-        <Text style={styles.preview}>
-          {describeResultPreview(
-            myGameWins,
-            opponentGameWins,
-            gameDraws,
-            opponentName,
-          )}
+        <Text
+          accessibilityLiveRegion="polite"
+          style={[styles.preview, drawError !== null && styles.previewMuted]}
+        >
+          {preview}
         </Text>
+        {/* No successLabel: the mutation resolves only once the current-match
+            query reflects the report, so this card has already unmounted by
+            then and the screen's toast is the confirmation. The preview is
+            also what a screen reader hears when its first activation arms
+            the button, so the readback matches what a sighted player sees. */}
         <HoldButton
           label="Hold to submit result"
-          successLabel="Reported"
-          disabled={busy}
+          accessibilityDescription={preview}
+          disabled={busy || drawError !== null}
           onConfirm={submit}
         />
       </View>
@@ -155,6 +199,11 @@ type NumeralTone = "leading" | "trailing";
 // One player's count. The +/− glyphs are signposts, not buttons: the tap
 // targets are the invisible upper and lower halves of the whole numeral
 // block, so a thumb never has to find a 32px control.
+//
+// To a screen reader the block is one adjustable control (a stepper), not
+// two unlabelled halves plus loose glyphs: swipe up/down (VoiceOver) or the
+// adjust actions (TalkBack) step the count, and the value is announced after
+// each step. The halves still take direct touches.
 function ScoreColumn({
   label,
   value,
@@ -172,6 +221,7 @@ function ScoreColumn({
 }) {
   const canIncrement = !disabled && value < max;
   const canDecrement = !disabled && value > 0;
+  const numeralFont = useNumeralFont();
   // Which half is under a finger right now: its glyph brightens so the
   // signpost answers the touch, not just the count.
   const [held, setHeld] = useState<Half | null>(null);
@@ -180,12 +230,34 @@ function ScoreColumn({
   // ref contents.
   const [upperTint] = useState(() => new Animated.Value(0));
   const [lowerTint] = useState(() => new Animated.Value(0));
+  const increment = () => {
+    if (canIncrement) onChange(value + 1);
+  };
+  const decrement = () => {
+    if (canDecrement) onChange(value - 1);
+  };
   return (
     <View style={styles.column}>
       <Text style={styles.columnLabel} numberOfLines={1}>
         {label}
       </Text>
-      <View style={styles.stepper}>
+      <View
+        accessible
+        accessibilityRole="adjustable"
+        accessibilityLabel={`Game wins for ${label}`}
+        accessibilityValue={{ min: 0, max, now: value, text: String(value) }}
+        accessibilityState={{ disabled }}
+        accessibilityActions={[{ name: "increment" }, { name: "decrement" }]}
+        onAccessibilityAction={(event) => {
+          const { actionName } = event.nativeEvent;
+          if (actionName === "increment") increment();
+          else if (actionName === "decrement") decrement();
+        }}
+        // `accessible` folds the glyphs, numeral and hit areas into this one
+        // element, so there is a single focus stop per player and nothing
+        // stray to swipe to; the children opt out explicitly as well below.
+        style={styles.stepper}
+      >
         {/* Painted first so they sit behind the glyphs and the numeral;
             absolute children stack in source order. The hit areas below
             stay transparent and only route touches. */}
@@ -198,8 +270,10 @@ function ScoreColumn({
           style={[styles.tint, styles.lowerHalf, { opacity: lowerTint }]}
         />
         <Text
+          {...hiddenFromReader}
           style={[
             styles.glyph,
+            numeralFont,
             !canIncrement && styles.glyphDisabled,
             held === "upper" && styles.glyphHeld,
           ]}
@@ -207,16 +281,20 @@ function ScoreColumn({
           +
         </Text>
         <Text
+          {...hiddenFromReader}
           style={[
             styles.numeral,
+            numeralFont,
             tone === "trailing" && styles.numeralTrailing,
           ]}
         >
           {value}
         </Text>
         <Text
+          {...hiddenFromReader}
           style={[
             styles.glyph,
+            numeralFont,
             !canDecrement && styles.glyphDisabled,
             held === "lower" && styles.glyphHeld,
           ]}
@@ -226,17 +304,15 @@ function ScoreColumn({
         <HitArea
           half="upper"
           tint={upperTint}
-          accessibilityLabel={`More game wins for ${label}`}
           disabled={!canIncrement}
-          onPress={() => onChange(value + 1)}
+          onPress={increment}
           onHeldChange={(isHeld) => setHeld(isHeld ? "upper" : null)}
         />
         <HitArea
           half="lower"
           tint={lowerTint}
-          accessibilityLabel={`Fewer game wins for ${label}`}
           disabled={!canDecrement}
-          onPress={() => onChange(value - 1)}
+          onPress={decrement}
           onHeldChange={(isHeld) => setHeld(isHeld ? "lower" : null)}
         />
       </View>
@@ -246,32 +322,37 @@ function ScoreColumn({
 
 type Half = "upper" | "lower";
 
+// Props for the pieces inside an adjustable stepper that must not surface
+// as their own accessibility elements (the parent speaks for them).
+const hiddenFromReader = {
+  accessible: false,
+  accessibilityElementsHidden: true,
+  importantForAccessibility: "no-hide-descendants",
+} as const;
+
 // One invisible half of the numeral block. With no button chrome, the tint
 // is the only thing that tells a thumb where it landed, so it appears the
 // instant the touch starts and lingers through a short fade after release —
 // a quick tap would otherwise show it for a frame or two at most. The tint
 // layer itself is rendered by the column, behind the text; this only drives
-// its opacity.
+// its opacity. It is touch-only: the column's adjustable role is the
+// screen-reader path.
 function HitArea({
   half,
   tint,
-  accessibilityLabel,
   disabled,
   onPress,
   onHeldChange,
 }: {
   half: Half;
   tint: Animated.Value;
-  accessibilityLabel: string;
   disabled: boolean;
   onPress: () => void;
   onHeldChange: (held: boolean) => void;
 }) {
   return (
     <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel}
-      accessibilityState={{ disabled }}
+      {...hiddenFromReader}
       disabled={disabled}
       onPress={onPress}
       onPressIn={() => {
@@ -309,23 +390,42 @@ function DrawsStepper({
 }) {
   const canIncrement = !disabled && value < MAX_GAME_DRAWS;
   const canDecrement = !disabled && value > 0;
+  const increment = () => {
+    if (canIncrement) onChange(value + 1);
+  };
+  const decrement = () => {
+    if (canDecrement) onChange(value - 1);
+  };
+  // One adjustable control to a screen reader, like the score columns.
   return (
-    <View style={styles.drawsRow}>
-      <Text style={styles.drawsLabel}>Drawn games</Text>
+    <View
+      accessible
+      accessibilityRole="adjustable"
+      accessibilityLabel="Drawn games"
+      accessibilityValue={{
+        min: 0,
+        max: MAX_GAME_DRAWS,
+        now: value,
+        text: String(value),
+      }}
+      accessibilityState={{ disabled }}
+      accessibilityActions={[{ name: "increment" }, { name: "decrement" }]}
+      onAccessibilityAction={(event) => {
+        const { actionName } = event.nativeEvent;
+        if (actionName === "increment") increment();
+        else if (actionName === "decrement") decrement();
+      }}
+      style={styles.drawsRow}
+    >
+      <Text {...hiddenFromReader} style={styles.drawsLabel}>
+        Drawn games
+      </Text>
       <View style={styles.drawsControls}>
-        <StepButton
-          glyph="−"
-          accessibilityLabel="Fewer drawn games"
-          disabled={!canDecrement}
-          onPress={() => onChange(value - 1)}
-        />
-        <Text style={styles.drawsValue}>{value}</Text>
-        <StepButton
-          glyph="+"
-          accessibilityLabel="More drawn games"
-          disabled={!canIncrement}
-          onPress={() => onChange(value + 1)}
-        />
+        <StepButton glyph="−" disabled={!canDecrement} onPress={decrement} />
+        <Text {...hiddenFromReader} style={styles.drawsValue}>
+          {value}
+        </Text>
+        <StepButton glyph="+" disabled={!canIncrement} onPress={increment} />
       </View>
     </View>
   );
@@ -333,20 +433,16 @@ function DrawsStepper({
 
 function StepButton({
   glyph,
-  accessibilityLabel,
   disabled,
   onPress,
 }: {
   glyph: string;
-  accessibilityLabel: string;
   disabled: boolean;
   onPress: () => void;
 }) {
   return (
     <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel}
-      accessibilityState={{ disabled }}
+      {...hiddenFromReader}
       disabled={disabled}
       onPress={onPress}
       hitSlop={6}
@@ -409,6 +505,19 @@ const styles = StyleSheet.create({
     lineHeight: 28,
     textAlign: "center",
   },
+  subtitle: {
+    color: palette.foreground,
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: "center",
+  },
+  body: {
+    color: palette.mutedForeground,
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: "center",
+    marginTop: 6,
+  },
   scoreboard: { gap: 12 },
   columns: { flexDirection: "row", alignItems: "flex-start" },
   column: { flex: 1, alignItems: "center", gap: COLUMN_GAP },
@@ -420,7 +529,6 @@ const styles = StyleSheet.create({
   },
   stepper: { alignSelf: "stretch", alignItems: "center" },
   glyph: {
-    fontFamily: fonts.numeral,
     fontSize: GLYPH_SIZE,
     lineHeight: GLYPH_HEIGHT,
     color: palette.mutedForeground,
@@ -430,7 +538,6 @@ const styles = StyleSheet.create({
   glyphDisabled: { opacity: 0.4 },
   glyphHeld: { color: palette.foreground },
   numeral: {
-    fontFamily: fonts.numeral,
     fontSize: NUMERAL_SIZE,
     lineHeight: NUMERAL_HEIGHT,
     color: palette.foreground,
@@ -464,7 +571,6 @@ const styles = StyleSheet.create({
   pressedTint: { backgroundColor: palette.secondary },
   divider: { width: 48, paddingTop: DASH_OFFSET, alignItems: "center" },
   dash: {
-    fontFamily: fonts.numeral,
     fontSize: DASH_SIZE,
     lineHeight: DASH_HEIGHT,
     color: palette.mutedForeground,
@@ -528,4 +634,5 @@ const styles = StyleSheet.create({
     lineHeight: 28,
     textAlign: "center",
   },
+  previewMuted: { color: palette.mutedForeground, fontSize: 16 },
 });

@@ -1,7 +1,6 @@
 import { useUser } from "@clerk/expo";
 import {
   describeCurrentMatch,
-  reportAction,
   useMyCurrentMatch,
   usePlayerTournamentAccess,
 } from "@paper-pairings/core";
@@ -146,18 +145,26 @@ function CurrentMatch({
   onReportError: (message: string) => void;
 }) {
   const description = describeCurrentMatch(current);
-  const action = reportAction(current);
 
   if (description.kind === "loading") {
     return <Text style={styles.muted}>Loading…</Text>;
   }
 
-  if (action && description.kind === "card") {
+  // The presenter carries the report action on the card itself, so the
+  // availability rule lives in one place.
+  if (description.kind === "card" && description.action) {
+    const { action } = description;
     return (
+      // Keyed so a re-pair or structure change mid-entry remounts the
+      // scoreboard: stepper counts entered for one match must never be
+      // submitted against another, or past a new best-of ceiling.
       <ReportResultScoreboard
+        key={`${action.matchId}:${action.bestOf}`}
         action={action}
         label={description.label}
         title={description.title}
+        subtitle={description.subtitle}
+        body={description.body}
         onReported={onReported}
         onError={onReportError}
       />

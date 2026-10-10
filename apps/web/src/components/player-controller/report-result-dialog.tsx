@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { describeResultPreview, useReportResult } from '@paper-pairings/core'
 import {
   MAX_GAME_DRAWS,
-  requiredGameWins,
+  matchDrawError,
+  maxGameWinsGiven,
 } from '@paper-pairings/shared/match-structure'
 import { Minus, Plus } from 'lucide-react'
 import { toast } from 'sonner'
@@ -24,22 +25,32 @@ import { useBusyAction } from '@/hooks/use-busy-action'
 export function ReportResultDialog({
   matchId,
   bestOf,
+  allowDraws,
   opponentName,
   open,
   onOpenChange,
 }: {
   matchId: Id<'tournamentMatches'>
   bestOf: BestOf
+  /** Whether equal game wins is a legal result in this phase. */
+  allowDraws: boolean
   opponentName: string
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
-  const maxGameWins = requiredGameWins(bestOf)
   const reportResult = useReportResult()
   const { busy, run } = useBusyAction()
   const [myGameWins, setMyGameWins] = useState(0)
   const [opponentGameWins, setOpponentGameWins] = useState(0)
   const [gameDraws, setGameDraws] = useState(0)
+  // Each side's ceiling depends on the other's count, so a scoreline the
+  // backend would reject (2–2 in a best-of-3) can't be entered.
+  const myMaxGameWins = maxGameWinsGiven(bestOf, opponentGameWins)
+  const opponentMaxGameWins = maxGameWinsGiven(bestOf, myGameWins)
+  // Equal counts can't be made unreachable by the caps (0–0 is where entry
+  // starts), so where the phase forbids draws the submit waits for a
+  // decisive scoreline and the preview line says why.
+  const drawError = matchDrawError(allowDraws, myGameWins, opponentGameWins)
 
   async function handleSubmit() {
     await run(async () => {
@@ -71,14 +82,14 @@ export function ReportResultDialog({
           <GameWinsStepper
             label="You"
             value={myGameWins}
-            max={maxGameWins}
+            max={myMaxGameWins}
             onChange={setMyGameWins}
             disabled={busy}
           />
           <GameWinsStepper
             label={opponentName}
             value={opponentGameWins}
-            max={maxGameWins}
+            max={opponentMaxGameWins}
             onChange={setOpponentGameWins}
             disabled={busy}
           />
@@ -89,13 +100,17 @@ export function ReportResultDialog({
             onChange={setGameDraws}
             disabled={busy}
           />
-          <p className="text-center text-sm font-medium text-muted-foreground">
-            {describeResultPreview(
-              myGameWins,
-              opponentGameWins,
-              gameDraws,
-              opponentName,
-            )}
+          <p
+            role="status"
+            className="text-center text-sm font-medium text-muted-foreground"
+          >
+            {drawError ??
+              describeResultPreview(
+                myGameWins,
+                opponentGameWins,
+                gameDraws,
+                opponentName,
+              )}
           </p>
         </div>
 
@@ -103,7 +118,7 @@ export function ReportResultDialog({
           <Button
             type="button"
             size="lg"
-            disabled={busy}
+            disabled={busy || drawError !== null}
             onClick={() => void handleSubmit()}
           >
             {busy ? <Spinner data-icon="inline-start" /> : null}

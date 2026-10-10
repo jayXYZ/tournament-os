@@ -31,6 +31,7 @@ import {
 } from '@/components/tournaments'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { formatCents } from '@/lib/money'
 
 // The organizer's answer to "where are we?": the event's name, the live
 // status band with the one next action, the timeline, then what needs doing
@@ -111,6 +112,9 @@ function OverviewBody({
       )
     : undefined
   const bestOf = phaseBoard?.phase.bestOf ?? DEFAULT_BEST_OF
+  // The phase-type draw rule (model/phases.ts requireValidMatchResult):
+  // brackets never end in a draw, so result entry refuses one up front.
+  const allowDraws = phaseBoard?.phase.phaseType !== 'single_elimination'
   const tournamentId = board.tournament._id
 
   const liveRound =
@@ -126,6 +130,7 @@ function OverviewBody({
           roundId={liveRound._id}
           roundLabel={describeCurrentRound(board)}
           bestOf={bestOf}
+          allowDraws={allowDraws}
           publicCode={publicCode}
         />
       ) : (
@@ -137,7 +142,11 @@ function OverviewBody({
       )}
       <div className="flex flex-col gap-8">
         {liveRound ? (
-          <UnconfirmedResultsCard roundId={liveRound._id} bestOf={bestOf} />
+          <UnconfirmedResultsCard
+            roundId={liveRound._id}
+            bestOf={bestOf}
+            allowDraws={allowDraws}
+          />
         ) : null}
         <RecentActivityCard
           tournamentId={tournamentId}
@@ -197,8 +206,24 @@ function StateCard({
       break
     case 'between-rounds':
       title = `${describeCurrentRound(board)} complete`
+      // A later phase with its own player meeting is seated before it is
+      // paired, so the card names that step rather than the next round.
       text =
-        'Standings are posted. Generate the next round when the room is ready; drops made now are reflected in the new pairings.'
+        board.nextStep.kind === 'startPlayerMeeting'
+          ? 'Standings are posted. Start the player meeting to seat the next phase; the seats fix who made the cut, and its first round is paired from them.'
+          : 'Standings are posted. Generate the next round when the room is ready; drops made now are reflected in the new pairings.'
+      action = (
+        <Button asChild type="button" variant="outline">
+          <Link to="/admin/tournaments/$tournamentId/standings" params={params}>
+            Standings
+          </Link>
+        </Button>
+      )
+      break
+    case 'final-round-complete':
+      title = `${describeCurrentRound(board)} complete`
+      text =
+        'Standings are posted and no rounds remain. Complete the tournament to post final standings and close the event.'
       action = (
         <Button asChild type="button" variant="outline">
           <Link to="/admin/tournaments/$tournamentId/standings" params={params}>
@@ -310,11 +335,4 @@ function Detail({ label, children }: { label: string; children: ReactNode }) {
       <dd className="font-medium text-foreground">{children}</dd>
     </div>
   )
-}
-
-function formatCents(cents: number) {
-  return (cents / 100).toLocaleString('en-US', {
-    style: 'currency',
-    currency: 'USD',
-  })
 }
