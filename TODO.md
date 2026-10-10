@@ -345,7 +345,15 @@ claimed by one.
         under a participation status's prefix, and `searchRegistrations`
         narrows on the same columns (now search-index filter fields), so the
         filter sees the whole history rather than the pages loaded so far
-        and composes with the search box. "Pending review" is the review
+        and composes with the search box. On paid events a Payment chip
+        narrows both walks on `tournamentRegistrations.paymentStatus`, a
+        mirror of the newest order's status that every order write keeps in
+        step (`syncRegistrationPaymentStatus`; the roster's Payment column
+        reads it too, never the orders table) — a search-index filter field,
+        and a row-budgeted post-filter on the list (reset the dev DB: the
+        mirror is written only on order writes, so a registration whose
+        order predates it shows no payment state and never matches the chip
+        until that order is next written). "Pending review" is the review
         queue (CONTEXT.md "Review Queue"): a pending row carries
         `awaitingReview` only until the organizer decides it, so an approved
         entry awaiting its payment on a paid event — or one filed by a
