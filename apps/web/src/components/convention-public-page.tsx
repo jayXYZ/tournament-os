@@ -49,6 +49,7 @@ export function ConventionPublicPage({ publicCode }: { publicCode: string }) {
   return (
     <SiteShell
       subtitle="Convention details"
+      readingColumn
       toaster
       actions={<SiteShellBackLink to="/">All events</SiteShellBackLink>}
     >

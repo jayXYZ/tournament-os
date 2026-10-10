@@ -42,6 +42,7 @@ function RouteComponent() {
   return (
     <SiteShell
       subtitle="Badge payment"
+      readingColumn
       toaster
       actions={
         <SiteShellBackLink
