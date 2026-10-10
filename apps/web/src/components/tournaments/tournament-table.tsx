@@ -17,6 +17,7 @@ import {
 import { useTournamentTableSearch } from './use-tournament-table-search'
 import type {
   ColumnDef,
+  ColumnFiltersState,
   Row,
   Table as TanstackTable,
 } from '@tanstack/react-table'
@@ -95,6 +96,7 @@ export function TournamentTable({
   search,
   onSearchChange,
   hasItemsBeyondStatusFilter = false,
+  hasUnloadedItems = false,
 }: {
   items: Array<TournamentTableItem> | undefined
   // When present, the table groups events under their conventions. Pass it
@@ -112,6 +114,13 @@ export function TournamentTable({
   // and its toolbar — the chip is how those events are reached — rather
   // than the no-tournaments state.
   hasItemsBeyondStatusFilter?: boolean
+  // Set while `items` is the loaded prefix of a paginated list with pages
+  // still to come. The toolbar filters on the client, so it is withheld
+  // until the list is whole rather than report "no matches" over rows not
+  // yet loaded. The filters it would hold are set aside with it: a list can
+  // go from whole back to partial (its open last page grew), and must not
+  // stay narrowed by a chip no longer on screen.
+  hasUnloadedItems?: boolean
 }) {
   const navigate = useNavigate()
   const grouped = conventions !== undefined
@@ -160,7 +169,13 @@ export function TournamentTable({
             : 'No tournaments match these filters.'
         }
         initialColumnFilters={columnFilters}
-        columnFilters={controlled ? columnFilters : undefined}
+        columnFilters={
+          hasUnloadedItems
+            ? noColumnFilters
+            : controlled
+              ? columnFilters
+              : undefined
+        }
         onColumnFiltersChange={controlled ? onColumnFiltersChange : undefined}
         onRowClick={
           isManage
@@ -183,6 +198,9 @@ export function TournamentTable({
             : undefined
         }
         toolbar={(table) => {
+          if (hasUnloadedItems) {
+            return null
+          }
           // Status only means something where more than one lifecycle can
           // appear: the public schedule is registration-only by the time it
           // reaches the client. Start date waits under "More filters" since
@@ -225,6 +243,10 @@ export function TournamentTable({
     </TournamentSection>
   )
 }
+
+// One shared empty state, so the table's filter memo is not invalidated by a
+// fresh literal on every render it spends without its toolbar.
+const noColumnFilters: ColumnFiltersState = []
 
 // The Format chip offers every tournament format. A convention row's own
 // format is "convention" and never matches, but the table filters from leaf

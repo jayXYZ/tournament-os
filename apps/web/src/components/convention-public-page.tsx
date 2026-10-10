@@ -168,7 +168,13 @@ function ConventionDetails({
         </CardContent>
       </Card>
 
-      <TournamentTable variant="public" items={childItems} />
+      <TournamentTable
+        variant="public"
+        items={childItems}
+        // The list arrives a page at a time, so the table's client-side
+        // filters wait for the last one (see hasUnloadedItems).
+        hasUnloadedItems={childrenStatus !== 'Exhausted'}
+      />
       <LoadMoreButton
         status={childrenStatus}
         onLoadMore={() => loadMoreChildren(EVENTS_PAGE_SIZE)}
