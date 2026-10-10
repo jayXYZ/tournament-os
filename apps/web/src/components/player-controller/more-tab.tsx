@@ -40,9 +40,9 @@ export function MoreTab({
   // the page reads from the server.
   myDecklist: MyDecklistData | undefined
 }) {
-  // No wrapper of its own: the controller lays these sections out in
-  // whichever grid is active (the More tab's column on phones, the left
-  // desktop column). Hairlines separate them; the first one has none.
+  // No wrapper of its own: the controller renders these sections straight
+  // into its SectionStack (the More tab's column on phones, the left desktop
+  // column), which draws the hairlines between them.
   return (
     <>
       <DecklistCard
@@ -78,7 +78,7 @@ function DecklistCard({
     // The link shows even with no list on file; the decklist page's own
     // empty state covers that.
     return (
-      <section className="flex flex-col gap-3 border-t border-border pt-4 first:border-t-0 first:pt-0">
+      <section className="flex flex-col gap-3">
         <SectionHeader
           title="Decklist"
           description="This event does not collect decklists. Any list you already submitted is still on file."
@@ -113,7 +113,7 @@ function DecklistCard({
       : 'Submission is closed and no decklist is on file. Talk to the organizer if you still need to register one.'
 
   return (
-    <section className="flex flex-col gap-3 border-t border-border pt-4 first:border-t-0 first:pt-0">
+    <section className="flex flex-col gap-3">
       <SectionHeader title="Decklist" description={description} />
       {decklist || submissionOpen ? (
         <div>
@@ -147,7 +147,7 @@ function MatchHistoryCard({
   const history = useMyMatchHistory(tournamentId)
 
   return (
-    <section className="flex flex-col gap-3 border-t border-border pt-4 first:border-t-0 first:pt-0">
+    <section className="flex flex-col gap-3">
       <SectionHeader
         title="Match history"
         description="Your results in this tournament."
@@ -200,7 +200,7 @@ function DropCard({
 
   if (currentMatch?.myRegistrationStatus === 'dropped') {
     return (
-      <section className="flex flex-col gap-3 border-t border-border pt-4 first:border-t-0 first:pt-0">
+      <section className="flex flex-col gap-3">
         <SectionHeader
           title="Dropped"
           description="You have dropped from this tournament. You can keep watching standings, and your finished matches still count."
@@ -211,7 +211,7 @@ function DropCard({
 
   if (currentMatch?.myRegistrationStatus === 'disqualified') {
     return (
-      <section className="flex flex-col gap-3 border-t border-border pt-4 first:border-t-0 first:pt-0">
+      <section className="flex flex-col gap-3">
         <SectionHeader
           title="Disqualified"
           description="You have been disqualified from this tournament. Your finished matches stay on record and still count for opponents' tiebreakers."
@@ -225,7 +225,7 @@ function DropCard({
   }
 
   return (
-    <section className="flex flex-col gap-3 border-t border-border pt-4 first:border-t-0 first:pt-0">
+    <section className="flex flex-col gap-3">
       <SectionHeader
         title="Drop from tournament"
         description="Dropping removes you from future rounds immediately. Your finished matches still count for opponents' tiebreakers."

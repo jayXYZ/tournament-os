@@ -12,6 +12,7 @@ import type { FormEvent } from 'react'
 import type { OrganizationProfileImageDetails } from '@paper-pairings/shared/organization-profile-image'
 import type { Id } from '@paper-pairings/backend/convex/_generated/dataModel'
 import { SectionHeader } from '@/components/shared/section-header'
+import { SectionStack } from '@/components/shared/section-stack'
 import { WorkspacePageHeader } from '@/components/shared/workspace-page-header'
 import { Button } from '@/components/ui/button'
 import {
@@ -132,8 +133,8 @@ export function OrganizationProfileView() {
       <WorkspacePageHeader title="Organization profile" />
 
       <div className="grid gap-8 xl:grid-cols-[1fr_360px]">
-        <div className="flex flex-col divide-y divide-border [&>*+*]:pt-6">
-          <section className="flex flex-col gap-4 pb-6">
+        <SectionStack>
+          <section className="flex flex-col gap-4">
             <SectionHeader
               title="Details"
               description="Update the selected organization workspace profile."
@@ -171,10 +172,10 @@ export function OrganizationProfileView() {
           </section>
 
           <OrganizationPaymentsCard key={organizationId} />
-        </div>
+        </SectionStack>
 
-        <aside className="flex flex-col divide-y divide-border [&>*+*]:pt-6">
-          <section className="flex flex-col gap-4 pb-6">
+        <SectionStack as="aside">
+          <section className="flex flex-col gap-4">
             <SectionHeader
               title="Profile picture"
               description="PNG, JPEG, or WebP up to 2 MB."
@@ -257,7 +258,7 @@ export function OrganizationProfileView() {
               </FieldGroup>
             </form>
           </section>
-        </aside>
+        </SectionStack>
       </div>
     </section>
   )

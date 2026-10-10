@@ -20,6 +20,7 @@ import type { FormEvent } from 'react'
 import type { Id } from '@paper-pairings/backend/convex/_generated/dataModel'
 import type { PairingsBoard } from './pairings-board'
 import { SectionHeader } from '@/components/shared/section-header'
+import { SectionStack } from '@/components/shared/section-stack'
 import { Button } from '@/components/ui/button'
 import { Field, FieldDescription, FieldLabel } from '@/components/ui/field'
 import { HoldButton } from '@/components/ui/hold-button'
@@ -48,13 +49,13 @@ export function RoundTimerView({
           <Skeleton className="h-40" />
         </div>
       ) : (
-        <div className="flex flex-col divide-y divide-border [&>*]:py-6 [&>*:first-child]:pt-0 [&>*:last-child]:pb-0">
+        <SectionStack>
           <TimerCard key={board.tournament._id} board={board} />
           <RoundLengthCard
             key={`${board.tournament._id}-length`}
             tournament={board.tournament}
           />
-        </div>
+        </SectionStack>
       )}
     </section>
   )

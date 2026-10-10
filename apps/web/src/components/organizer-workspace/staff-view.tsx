@@ -9,6 +9,7 @@ import { useOrganization } from './organization-context'
 import type { OrganizerInviteRole } from '@paper-pairings/shared/organizer-utils'
 import type { FormEvent } from 'react'
 import { SectionHeader } from '@/components/shared/section-header'
+import { SectionStack } from '@/components/shared/section-stack'
 import { WorkspacePageHeader } from '@/components/shared/workspace-page-header'
 import { Button } from '@/components/ui/button'
 import {
@@ -123,8 +124,8 @@ export function StaffView() {
           </div>
         </section>
 
-        <aside className="flex flex-col divide-y divide-border [&>*+*]:pt-6">
-          <section className="pb-6">
+        <SectionStack as="aside">
+          <section>
             <SectionHeader
               title="Current access"
               description={
@@ -135,7 +136,7 @@ export function StaffView() {
             />
           </section>
 
-          <section className="flex flex-col gap-4 pb-6">
+          <section className="flex flex-col gap-4">
             <SectionHeader
               title="Invite staff"
               description="Owners and admins can invite staff to this workspace."
@@ -206,7 +207,7 @@ export function StaffView() {
             )}
             {invitations === undefined && <Skeleton className="h-16" />}
           </section>
-        </aside>
+        </SectionStack>
       </div>
     </div>
   )
