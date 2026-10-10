@@ -40,6 +40,7 @@ import {
   cleanName,
   createTournament as createTournamentModel,
   isPubliclyViewable,
+  listTournamentsForOrganization,
   requireOrganizerAccess,
   requirePreStartEditable,
   requireSetupEditable,
@@ -50,7 +51,6 @@ import {
 import {
   tournamentCreationArgs,
   tournamentFormatValidator,
-  tournamentLifecycles,
   tournamentLifecycleValidator,
   tournamentPhaseBestOfValidator,
   tournamentPhaseCutoffValidator,
@@ -88,11 +88,6 @@ export const listUpcomingPublic = query({
   },
 });
 
-// Newest events the organizer's table receives per lifecycle. Live and
-// upcoming lifecycles never approach this; it bounds the completed and
-// cancelled history the "all statuses" view can scroll back through.
-const ORGANIZATION_LIST_LIMIT_PER_LIFECYCLE = 200;
-
 export const listForOrganization = query({
   args: {
     organizationId: v.id("organizations"),
@@ -109,64 +104,11 @@ export const listForOrganization = query({
   },
   handler: async (ctx, args) => {
     await requireActiveMembership(ctx, args.organizationId);
-
-    const inLifecycle = (lifecycle: Doc<"tournaments">["lifecycle"]) =>
-      ctx.db
-        .query("tournaments")
-        .withIndex("by_organizationId_and_lifecycle_and_startDate", (q) =>
-          q
-            .eq("organizationId", args.organizationId)
-            .eq("lifecycle", lifecycle),
-        );
-
-    // The requested lifecycles, newest start first. The table filters by
-    // status on the client within what it asked for, so an event that has
-    // already started never drops out of the list the moment its start time
-    // passes. Each lifecycle is bounded on its own: one shared cap would let
-    // a long completed history push a live or upcoming event out of the
-    // table entirely.
-    const requested = new Set(args.lifecycles);
-    const perLifecycle = await Promise.all(
-      [...requested].map((lifecycle) =>
-        inLifecycle(lifecycle)
-          .order("desc")
-          .take(ORGANIZATION_LIST_LIMIT_PER_LIFECYCLE),
-      ),
+    return await listTournamentsForOrganization(
+      ctx,
+      args.organizationId,
+      args.lifecycles,
     );
-    const rows = perLifecycle
-      .flat()
-      .sort((left, right) => right.startDate - left.startDate);
-
-    // Whether the lifecycles left out hold any events, one document at most
-    // per lifecycle. An organization whose only events are completed must
-    // still get its table and Status chip, not the "no tournaments yet"
-    // state, when the chip is narrowed to the active lifecycles.
-    const probes: Array<Promise<Doc<"tournaments"> | null>> = [];
-    for (const lifecycle of tournamentLifecycles) {
-      if (!requested.has(lifecycle)) {
-        probes.push(inLifecycle(lifecycle).first());
-      }
-    }
-    const elsewhere = await Promise.all(probes);
-    const hasEventsInOtherLifecycles = elsewhere.some((row) => row !== null);
-
-    // Only the columns the table renders, so a write to one of the listed
-    // events re-sends a few fields per row rather than whole documents.
-    return {
-      tournaments: rows.map((tournament) => ({
-        _id: tournament._id,
-        name: tournament.name,
-        publicCode: tournament.publicCode,
-        format: tournament.format,
-        lifecycle: tournament.lifecycle,
-        startDate: tournament.startDate,
-        playerCapacity: tournament.playerCapacity,
-        isTestEvent: tournament.isTestEvent,
-        conventionId: tournament.conventionId,
-        registeredCount: tournament.confirmedRegistrationCount,
-      })),
-      hasEventsInOtherLifecycles,
-    };
   },
 });
 
