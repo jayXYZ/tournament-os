@@ -191,3 +191,48 @@ test("payout transfers are idempotent and re-check the live capability", () => {
   // No db-query .filter( — array filters over already-bounded reads are fine.
   expect(payoutsSource).not.toMatch(/\)\s*\n?\s*\.filter\(/);
 });
+
+test("paymentOrders are written only through model/payments.ts", () => {
+  // createEntryOrder and patchOrder re-derive the registration's mirrored
+  // paymentStatus (schema.ts tournamentRegistrations.paymentStatus) after
+  // every order write, and the roster's server-side Payment filter trusts
+  // that mirror without ever joining the orders table. A direct ctx.db write
+  // anywhere else — a new webhook, a refund path, a spec seed — would leave
+  // the mirror stale with no symptom beyond a roster row that lies. The scan
+  // is textual, so it keys off what a direct write looks like: an insert
+  // naming the table, or a patch/replace/delete whose target names an order.
+  const root = new URL("./", import.meta.url);
+  // model/deletion.ts drains an event's orders only after the delete guard
+  // proved them terminal, and takes the registrations with them in the same
+  // sweep, so there is no mirror left to keep in step.
+  const allowed = new Set(["model/payments.ts", "model/deletion.ts"]);
+  const directWrite =
+    /\.db\.insert\(\s*"paymentOrders"|\.db\.(?:patch|replace|delete)\(\s*[^,()]*order/gi;
+  const offenders: string[] = [];
+  const walk = (dir: URL) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name === "node_modules" || entry.name === "_generated") {
+        continue;
+      }
+      const child = new URL(
+        entry.isDirectory() ? `${entry.name}/` : entry.name,
+        dir,
+      );
+      if (entry.isDirectory()) {
+        walk(child);
+        continue;
+      }
+      const path = child.pathname.slice(root.pathname.length);
+      if (!path.endsWith(".ts") || allowed.has(path)) {
+        continue;
+      }
+      const source = readFileSync(child, "utf8");
+      for (const match of source.matchAll(directWrite)) {
+        const line = source.slice(0, match.index).split("\n").length;
+        offenders.push(`${path}:${line}`);
+      }
+    }
+  };
+  walk(root);
+  expect(offenders).toEqual([]);
+});

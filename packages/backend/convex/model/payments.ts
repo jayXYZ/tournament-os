@@ -155,6 +155,8 @@ export async function latestOrderForRegistration(
 // the whole writable row, not just status, so a writer never has to decide
 // whether its change needs the sync — it always runs, and it is cheap: one
 // indexed read and a write only when the mirror actually moved.
+// payments.structure.convex.spec.ts pins the routing: no other module may
+// write the orders table directly.
 export async function patchOrder(
   ctx: MutationCtx,
   order: Doc<"paymentOrders">,
