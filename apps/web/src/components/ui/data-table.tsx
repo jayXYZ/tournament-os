@@ -21,6 +21,7 @@ import type {
   ExpandedStateList,
   FilterFn,
   OnChangeFn,
+  PaginationState,
   Row,
   RowModel,
   SortingState,
@@ -158,6 +159,19 @@ export function DataTable<TData, TValue>({
   // `row.toggleExpanded()` still toggles: it adds an id that is absent and
   // drops one that is present.
   const [collapsed, setCollapsed] = React.useState<ExpandedStateList>({})
+  // The page the user is on, with the filters and sort they turned to it
+  // under. TanStack would go back to the first page itself, but on every
+  // new `data` array as much as on a filter change, and the lists here are
+  // rebuilt by a live query push or a parent's re-render; a reader on page
+  // three would be sent back to page one by an unrelated event's count
+  // moving. So the table keeps its page across data changes (see
+  // `autoResetPageIndex` below) and starts over only when the filters or
+  // sort change, as it did before.
+  const [pagination, setPagination] = React.useState<PaginationState>({
+    pageIndex: 0,
+    pageSize,
+  })
+  const [pagedUnder, setPagedUnder] = React.useState({ columnFilters, sorting })
 
   const table = useReactTable({
     data,
@@ -165,6 +179,7 @@ export function DataTable<TData, TValue>({
     getRowId,
     getSubRows,
     filterFromLeafRows: true,
+    autoResetPageIndex: false,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
@@ -179,9 +194,27 @@ export function DataTable<TData, TValue>({
         // TanStack's `true` means everything open: here, the empty record.
         return next === true ? {} : next
       }),
-    initialState: { pagination: { pageSize } },
-    state: { sorting, columnFilters, expanded: collapsed },
+    onPaginationChange: setPagination,
+    state: { sorting, columnFilters, expanded: collapsed, pagination },
   })
+
+  // Settle the page for this render: the first one under new filters or
+  // sort, and never past the last when the list shrank under the reader (a
+  // live query dropping rows). The page count does not depend on the page,
+  // so it can be read here; a state set during render re-renders before
+  // anything is committed, so an empty page past the end never shows.
+  const restarted =
+    pagedUnder.columnFilters !== columnFilters || pagedUnder.sorting !== sorting
+  const lastPageIndex = Math.max(table.getPageCount() - 1, 0)
+  const pageIndex = restarted
+    ? 0
+    : Math.min(pagination.pageIndex, lastPageIndex)
+  if (restarted) {
+    setPagedUnder({ columnFilters, sorting })
+  }
+  if (pageIndex !== pagination.pageIndex) {
+    setPagination((previous) => ({ ...previous, pageIndex }))
+  }
 
   const rows = table.getRowModel().rows
   const pageCount = table.getPageCount()

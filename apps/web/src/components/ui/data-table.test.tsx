@@ -56,10 +56,19 @@ const conventions: Array<TestRow> = [
   },
 ]
 
+// Flat rows, enough to paginate two to a page.
+const events: Array<TestRow> = [
+  { id: 'e1', name: 'Event 1', format: 'modern' },
+  { id: 'e2', name: 'Event 2', format: 'legacy' },
+  { id: 'e3', name: 'Event 3', format: 'modern' },
+  { id: 'e4', name: 'Event 4', format: 'legacy' },
+  { id: 'e5', name: 'Event 5', format: 'modern' },
+]
+
 const unfiltered: ColumnFiltersState = []
 const modernOnly: ColumnFiltersState = [{ id: 'format', value: ['modern'] }]
 
-function mount() {
+function mount({ pageSize }: { pageSize?: number } = {}) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
   const container = document.createElement('div')
   document.body.append(container)
@@ -67,18 +76,23 @@ function mount() {
 
   return {
     render(data: Array<TestRow>, columnFilters: ColumnFiltersState) {
-      return act(() =>
+      return act(async () => {
         root.render(
           <DataTable
             columns={columns}
             data={data}
+            pageSize={pageSize}
+            pageSizeOptions={pageSize === undefined ? undefined : [pageSize]}
             getRowId={(row) => row.id}
             getSubRows={(row) => row.events}
             columnFilters={columnFilters}
             onColumnFiltersChange={() => {}}
           />,
-        ),
-      )
+        )
+        // TanStack applies its own page reset from a microtask, so let one
+        // pass before the table is read, or a reset would go unnoticed.
+        await Promise.resolve()
+      })
     },
     names() {
       return Array.from(
@@ -90,6 +104,20 @@ function mount() {
         `button[aria-label="Toggle ${name}"]`,
       )
       if (!button) throw new Error(`Toggle for ${name} not found`)
+      return button
+    },
+    page() {
+      return (
+        Array.from(container.querySelectorAll('p'))
+          .map((paragraph) => paragraph.textContent)
+          .find((text) => /^Page \d+ of \d+$/.test(text)) ?? null
+      )
+    },
+    next() {
+      const button = Array.from(container.querySelectorAll('button')).find(
+        (candidate) => candidate.textContent === 'Next',
+      )
+      if (!button) throw new Error('Next button not found')
       return button
     },
     async unmount() {
@@ -184,6 +212,64 @@ test('a collapsed parent stays collapsed through a filter, and new parents start
       'Late Addition',
       'Late Modern',
     ])
+  } finally {
+    await table.unmount()
+  }
+})
+
+test('the page holds across new data arrays and starts over when a filter changes', async () => {
+  const table = mount({ pageSize: 2 })
+  try {
+    await table.render(events, unfiltered)
+    expect(table.names()).toEqual(['Event 1', 'Event 2'])
+    await act(() => table.next().click())
+    expect(table.names()).toEqual(['Event 3', 'Event 4'])
+    expect(table.page()).toBe('Page 2 of 3')
+
+    // The same rows in a fresh array, as a live query pushes them.
+    await table.render(
+      events.map((event) => ({ ...event })),
+      unfiltered,
+    )
+    expect(table.names()).toEqual(['Event 3', 'Event 4'])
+    expect(table.page()).toBe('Page 2 of 3')
+
+    // A row changes and another arrives: the page shows the new rows, in
+    // place.
+    await table.render(
+      [
+        ...events.map((event) =>
+          event.id === 'e3' ? { ...event, name: 'Event 3 (moved)' } : event,
+        ),
+        { id: 'e6', name: 'Event 6', format: 'legacy' },
+      ],
+      unfiltered,
+    )
+    expect(table.names()).toEqual(['Event 3 (moved)', 'Event 4'])
+    expect(table.page()).toBe('Page 2 of 3')
+
+    // A filter change starts over on the first page, though the second
+    // would still exist.
+    await table.render(events, modernOnly)
+    expect(table.names()).toEqual(['Event 1', 'Event 3'])
+    expect(table.page()).toBe('Page 1 of 2')
+  } finally {
+    await table.unmount()
+  }
+})
+
+test('a list that shrinks under the reader falls back to its last page', async () => {
+  const table = mount({ pageSize: 2 })
+  try {
+    await table.render(events, unfiltered)
+    await act(() => table.next().click())
+    await act(() => table.next().click())
+    expect(table.names()).toEqual(['Event 5'])
+    expect(table.page()).toBe('Page 3 of 3')
+
+    await table.render(events.slice(0, 3), unfiltered)
+    expect(table.names()).toEqual(['Event 3'])
+    expect(table.page()).toBe('Page 2 of 2')
   } finally {
     await table.unmount()
   }
