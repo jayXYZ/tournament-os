@@ -610,6 +610,14 @@ export default defineSchema({
     // key off decklistId — an unnamed list has no deckName here either.
     decklistId: v.optional(v.id("tournamentDecklists")),
     deckName: v.optional(v.string()),
+    // The newest order's status on a paid event, mirrored from paymentOrders
+    // by syncRegistrationPaymentStatus (model/payments.ts) — every order
+    // write runs through it, so this never lags the orders table. Absent
+    // until the row's first order, so always absent on free events. The
+    // roster's Payment filter narrows the list and search walks on this
+    // column instead of joining every row to its orders after the page is
+    // cut, which is what would make a filtered page lie by omission.
+    paymentStatus: v.optional(paymentOrderStatusValidator),
     createdAt: v.number(),
     // The player's fixed random tiebreaker for this tournament, breaking
     // otherwise-perfect standings ties. Derived at registration time from

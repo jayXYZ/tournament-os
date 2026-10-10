@@ -33,6 +33,7 @@ import {
   paymentFilterOptions,
   paymentLabel,
   paymentStatusPresentation,
+  paymentStatusesForLabels,
 } from '@/components/organizer-workspace/paid-event/roster-badges'
 import { ConfirmActionDialog } from '@/components/shared/confirm-action-dialog'
 import { LoadMoreButton } from '@/components/shared/load-more-button'
@@ -44,11 +45,7 @@ import {
   statusDotToneClassName,
 } from '@/components/shared/status-dot'
 import { Button } from '@/components/ui/button'
-import {
-  DataTable,
-  DataTableColumnHeader,
-  oneOfFilter,
-} from '@/components/ui/data-table'
+import { DataTable, DataTableColumnHeader } from '@/components/ui/data-table'
 import { DataTableToolbar } from '@/components/ui/data-table-toolbar'
 import {
   DropdownMenu,
@@ -205,11 +202,22 @@ export function RegistrationsView({
   const [filter, setFilter] = useState<RegistrationFilter | undefined>(
     undefined,
   )
+  // The Payment chip's selected labels, and the order statuses they stand
+  // for. Like the status filter this narrows on the server (both roster
+  // queries take it), so it sees every row — not just the pages loaded so
+  // far or the search's capped best matches, where a match outside them
+  // would otherwise read as "no players match".
+  const [paymentLabels, setPaymentLabels] = useState<Array<string>>([])
+  const payment = useMemo(
+    () => paymentStatusesForLabels(paymentLabels),
+    [paymentLabels],
+  )
   const { results, status, loadMore } = usePaginatedQuery(
     api.tournaments.registrations.listRegistrationPage,
     {
       tournamentId,
       filter,
+      payment,
     },
     { initialNumItems: REGISTRATION_PAGE_SIZE },
   )
@@ -235,20 +243,22 @@ export function RegistrationsView({
   const searching = search !== ''
   const searchResults = useQuery(
     api.tournaments.registrations.searchRegistrations,
-    searching ? { tournamentId, search, filter } : 'skip',
+    searching ? { tournamentId, search, filter, payment } : 'skip',
   )
   // Keep the previous matches on screen while a keystroke's query is in
   // flight so the table doesn't flash empty between results. The cache is
   // only valid for the current uninterrupted search session: emptying the
   // box clears it (handleSearchTermChange), and it is stamped with the
-  // tournament and filter it belongs to so a tournament switch or filter
+  // tournament and filters it belongs to so a tournament switch or filter
   // change mid-search can't show another list's rows. useQuery's value is
   // looked up by the current render's args, so `searchResults` here is
-  // always rows for exactly this render's { tournamentId, search, filter }
-  // — the stamp can't mislabel.
+  // always rows for exactly this render's { tournamentId, search, filter,
+  // payment } — the stamp can't mislabel.
+  const paymentKey = paymentLabels.join(',')
   const lastSearchResults = useRef<{
     tournamentId: Id<'tournaments'>
     filter: RegistrationFilter | undefined
+    paymentKey: string
     rows: Array<RegistrationRow>
   } | null>(null)
   useEffect(() => {
@@ -256,10 +266,11 @@ export function RegistrationsView({
       lastSearchResults.current = {
         tournamentId,
         filter,
+        paymentKey,
         rows: searchResults,
       }
     }
-  }, [searchResults, tournamentId, filter])
+  }, [searchResults, tournamentId, filter, paymentKey])
 
   function handleSearchTermChange(value: string) {
     if (value.trim() === '') {
@@ -274,7 +285,8 @@ export function RegistrationsView({
   const cachedSearchRows =
     lastSearchResults.current !== null &&
     lastSearchResults.current.tournamentId === tournamentId &&
-    lastSearchResults.current.filter === filter
+    lastSearchResults.current.filter === filter &&
+    lastSearchResults.current.paymentKey === paymentKey
       ? lastSearchResults.current.rows
       : undefined
 
@@ -300,6 +312,8 @@ export function RegistrationsView({
           registrations={rows}
           filter={filter}
           onFilterChange={setFilter}
+          paymentLabels={paymentLabels}
+          onPaymentLabelsChange={setPaymentLabels}
           searchTerm={searchTerm}
           onSearchTermChange={handleSearchTermChange}
           searchPending={searching && searchResults === undefined}
@@ -396,14 +410,14 @@ function getRegistrationColumns({
     ? [
         {
           id: 'payment',
-          // The label, not the raw status, so the Payment chip's merged
-          // options (see paymentFilterOptions) match every row they cover.
+          // The label, not the raw status, so sorting groups the rows the way
+          // the column reads ("Unpaid" together, whichever way the order
+          // lapsed). Filtering is the server's (see RegistrationsView).
           accessorFn: (row) =>
             row.paymentStatus ? paymentLabel(row.paymentStatus) : '',
           header: ({ column }) => (
             <DataTableColumnHeader column={column} title="Payment" />
           ),
-          filterFn: oneOfFilter,
           meta: { className: 'w-36' },
           cell: ({ row }) => {
             const paymentStatus = row.original.paymentStatus
@@ -468,6 +482,8 @@ function RegistrationsTable({
   registrations,
   filter,
   onFilterChange,
+  paymentLabels,
+  onPaymentLabelsChange,
   searchTerm,
   onSearchTermChange,
   searchPending,
@@ -478,6 +494,8 @@ function RegistrationsTable({
   registrations: Array<RegistrationRow> | undefined
   filter: RegistrationFilter | undefined
   onFilterChange: (filter: RegistrationFilter | undefined) => void
+  paymentLabels: Array<string>
+  onPaymentLabelsChange: (labels: Array<string>) => void
   searchTerm: string
   onSearchTermChange: (value: string) => void
   searchPending: boolean
@@ -519,14 +537,14 @@ function RegistrationsTable({
   ) : listPending ? (
     'Loading registrations…'
   ) : registrations.length === 0 ? (
-    filter === undefined ? (
+    filter === undefined && paymentLabels.length === 0 ? (
       <TableEmptyState
         icon={ClipboardList}
         title="No registrations yet"
         description="Players who sign up for this tournament will appear here."
         className="min-h-48"
       />
-    ) : (
+    ) : filter !== undefined && paymentLabels.length === 0 ? (
       // An empty filtered list names the filter, and keeps the toolbar so
       // the organizer can switch it back off.
       <TableEmptyState
@@ -535,6 +553,10 @@ function RegistrationsTable({
         description={emptyFilterCopy[filter].description}
         className="min-h-48"
       />
+    ) : (
+      // Under a payment filter (alone or with a status) the server has
+      // checked every row, so an empty page is a real "no match".
+      'No players match these filters.'
     )
   ) : (
     'No players match these filters.'
@@ -553,13 +575,12 @@ function RegistrationsTable({
         data={registrations}
         className={cn('min-w-[480px]', searchPending && 'opacity-60')}
         noResultsLabel={noResultsLabel}
-        // The search term and status filter drive server-side queries, so
-        // both are controlled from outside the table instead of binding to
-        // TanStack column filters (which would re-filter the server's
-        // rows). The payment filter does bind to its column: it narrows the
-        // rows on screen, which is every loaded page of the roster, or the
-        // search's best matches while a term is active.
-        toolbar={(table) => {
+        // The search term and both filters drive server-side queries, so
+        // all are controlled from outside the table instead of binding to
+        // TanStack column filters, which would only re-filter the rows the
+        // server already cut to a page (or to the search's best matches)
+        // and so could report a player on a later page as "no match".
+        toolbar={() => {
           const filters: Array<DataTableFilterDef> = [
             {
               id: 'status',
@@ -578,7 +599,8 @@ function RegistrationsTable({
               id: 'payment',
               label: 'Payment',
               options: paymentFilterOptions,
-              column: table.getColumn('payment'),
+              value: paymentLabels,
+              onChange: onPaymentLabelsChange,
             })
           }
           return (

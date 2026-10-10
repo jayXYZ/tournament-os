@@ -1,6 +1,10 @@
-import type { IndexRangeBuilder, PaginationOptions } from "convex/server";
+import type {
+  IndexRangeBuilder,
+  OrderedQuery,
+  PaginationOptions,
+} from "convex/server";
 
-import type { Doc, Id } from "../_generated/dataModel";
+import type { DataModel, Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import type { RegistrationFilter } from "../validators";
 import { ORGANIZER_LIST_PAGE_SIZE } from "./pagination";
@@ -508,7 +512,7 @@ function participationFilterRange(
 // a filter, only that slice of it: one entry status, one participation
 // status of the confirmed entries, or the review queue (the applications
 // awaiting a decision). The filter picks the index. Every walk is a plain
-// index-equality prefix with no post-index filter, so every row read is a
+// index-equality prefix, so without a payment filter every row read is a
 // row returned, and every walk reads newest-first: the unfiltered walk
 // orders on the startDate column, constant per tournament (reschedule syncs
 // excepted, transiently) and so effectively on _creationTime; the filtered
@@ -521,38 +525,75 @@ function participationFilterRange(
 // the same doc that fills the page), flagging a healthy page as
 // SplitRequired/SplitRecommended and making usePaginatedQuery split and
 // re-issue it instead of settling.
+// The payment filter is the one post-index narrowing (narrowToPaymentStatuses)
+// and it runs here, before the page is cut, so a page under it still holds
+// numItems matching rows (or everything that matches) rather than whatever
+// survived of an unfiltered page.
 export async function paginateRegistrationHistory(
   ctx: QueryCtx,
   tournamentId: Id<"tournaments">,
   filter: RegistrationFilter | undefined,
   paginationOpts: PaginationOptions,
+  payment?: ReadonlyArray<PaymentOrderStatus>,
 ) {
+  return await narrowToPaymentStatuses(
+    registrationHistoryWalk(ctx, tournamentId, filter),
+    payment,
+  ).paginate(paginationOpts);
+}
+
+function registrationHistoryWalk(
+  ctx: QueryCtx,
+  tournamentId: Id<"tournaments">,
+  filter: RegistrationFilter | undefined,
+): RegistrationWalk {
   if (filter === undefined) {
-    return await ctx.db
+    return ctx.db
       .query("tournamentRegistrations")
       .withIndex("by_tournamentId_and_tournamentStartDate", (q) =>
         q.eq("tournamentId", tournamentId),
       )
-      .order("desc")
-      .paginate(paginationOpts);
+      .order("desc");
   }
   if (isParticipationFilter(filter)) {
-    return await ctx.db
+    return ctx.db
       .query("tournamentRegistrations")
       .withIndex(
         "by_tournamentId_and_entryStatus_and_participationStatus",
         (q) => participationFilterRange(q, tournamentId, filter),
       )
-      .order("desc")
-      .paginate(paginationOpts);
+      .order("desc");
   }
-  return await ctx.db
+  return ctx.db
     .query("tournamentRegistrations")
     .withIndex("by_tournamentId_and_entryStatus_and_awaitingReview", (q) =>
       registrationFilterRange(q, tournamentId, filter),
     )
-    .order("desc")
-    .paginate(paginationOpts);
+    .order("desc");
+}
+
+type RegistrationWalk = OrderedQuery<DataModel["tournamentRegistrations"]>;
+type PaymentOrderStatus = Doc<"paymentOrders">["status"];
+
+// Keeps only rows whose mirrored payment status (schema.ts
+// tournamentRegistrations.paymentStatus) is one of `payment`; an empty or
+// absent list leaves the walk alone. Payment status has no index of its
+// own — one per status-filter index would triple them for a chip most
+// visits never touch — so this is a post-index `.filter`. That is
+// acceptable here because every walk it narrows is already bounded to one
+// tournament's rows, and it must run on the server: filtering after the
+// page (or the search's take) is cut would drop matches the client never
+// saw and report them as absent.
+function narrowToPaymentStatuses<Walk extends RegistrationWalk>(
+  walk: Walk,
+  payment: ReadonlyArray<PaymentOrderStatus> | undefined,
+): Walk {
+  if (payment === undefined || payment.length === 0) {
+    return walk;
+  }
+  return walk.filter((q) =>
+    q.or(...payment.map((status) => q.eq(q.field("paymentStatus"), status))),
+  );
 }
 
 // The pending-review count is a badge, not a ledger: past this many it reads
@@ -597,14 +638,17 @@ export async function pendingReviewCount(
 // page older records in to find a player. Rows without a denormalized
 // playerName (legacy data) are absent from the index and cannot match. The
 // optional filter narrows the search to the same rows it narrows
-// paginateRegistrationHistory to, so a filter and a search box compose.
+// paginateRegistrationHistory to, so a filter and a search box compose —
+// and so does the payment filter, applied before the take for the same
+// reason it is applied before the page there.
 export async function searchRegistrationHistory(
   ctx: QueryCtx,
   tournamentId: Id<"tournaments">,
   search: string,
   filter: RegistrationFilter | undefined,
+  payment?: ReadonlyArray<PaymentOrderStatus>,
 ) {
-  return await ctx.db
+  const matches = ctx.db
     .query("tournamentRegistrations")
     .withSearchIndex("search_playerName", (q) => {
       const scoped = q
@@ -621,8 +665,10 @@ export async function searchRegistrationHistory(
       return filter === "awaiting_review"
         ? scoped.eq("entryStatus", "pending").eq("awaitingReview", true)
         : scoped.eq("entryStatus", filter);
-    })
-    .take(ORGANIZER_LIST_PAGE_SIZE);
+    });
+  return await narrowToPaymentStatuses(matches, payment).take(
+    ORGANIZER_LIST_PAGE_SIZE,
+  );
 }
 
 // Structural over tournaments and conventions — both carry the same

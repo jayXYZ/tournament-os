@@ -4,6 +4,7 @@ import {
   columnFiltersFromSearch,
   parseTournamentTableSearch,
   searchFromColumnFilters,
+  settleTournamentTableSearch,
 } from './tournament-table-search'
 
 describe('parseTournamentTableSearch', () => {
@@ -28,6 +29,63 @@ describe('parseTournamentTableSearch', () => {
     expect(parseTournamentTableSearch({ status: ALL_STATUSES })).toEqual({
       status: ALL_STATUSES,
     })
+  })
+
+  test('drops dates outside the range Date can hold', () => {
+    // Finite, but past ±8.64e15: `new Date(x)` is Invalid Date and the date
+    // chip would throw formatting it.
+    expect(parseTournamentTableSearch({ from: 1e20, to: -1e20 })).toEqual({})
+    expect(
+      parseTournamentTableSearch({ from: Infinity, to: Number.NaN }),
+    ).toEqual({})
+    expect(parseTournamentTableSearch({ from: 0, to: 8.64e15 })).toEqual({
+      from: 0,
+      to: 8.64e15,
+    })
+  })
+
+  test('sets every key so a rejected raw value cannot survive the router merge', () => {
+    // The router lays the validated search over the parent's raw one; an
+    // omitted key would keep the very value the parser rejected.
+    expect(Object.keys(parseTournamentTableSearch({ from: 1e20 }))).toEqual([
+      'q',
+      'status',
+      'format',
+      'from',
+      'to',
+    ])
+  })
+})
+
+describe('settleTournamentTableSearch', () => {
+  const first = { status: ALL_STATUSES, format: 'modern' }
+  const second = { status: 'setup', format: 'modern' }
+
+  test('an echoed write settles itself and everything before it', () => {
+    expect(settleTournamentTableSearch([first, second], first)).toEqual([
+      second,
+    ])
+    // The router may skip straight to the newer write; the superseded one
+    // is never coming back and must not linger as pending.
+    expect(settleTournamentTableSearch([first, second], second)).toEqual([])
+  })
+
+  test('compares by value, text included', () => {
+    expect(
+      settleTournamentTableSearch([{ ...first, q: 'cup' }], { ...first }),
+    ).toBeNull()
+    expect(
+      settleTournamentTableSearch([{ ...first, q: 'cup' }], {
+        q: 'cup',
+        format: 'modern',
+        status: ALL_STATUSES,
+      }),
+    ).toEqual([])
+  })
+
+  test('a URL that echoes no write is an external change', () => {
+    expect(settleTournamentTableSearch([first], { format: 'draft' })).toBeNull()
+    expect(settleTournamentTableSearch([], first)).toBeNull()
   })
 })
 

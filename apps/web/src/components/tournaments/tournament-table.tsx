@@ -14,14 +14,9 @@ import {
   formatTournamentDateShort,
   tournamentLifecycleFilterOptions,
 } from './tournament-display'
-import {
-  columnFiltersFromSearch,
-  searchFromColumnFilters,
-} from './tournament-table-search'
+import { useTournamentTableSearch } from './use-tournament-table-search'
 import type {
   ColumnDef,
-  ColumnFiltersState,
-  OnChangeFn,
   Row,
   Table as TanstackTable,
 } from '@tanstack/react-table'
@@ -127,76 +122,8 @@ export function TournamentTable({
   // reaches completed and cancelled ones. The other variants already
   // arrive scoped by the server and start unfiltered. The same codec that
   // reads the URL supplies the uncontrolled table's starting point.
-  const controlled = search !== undefined && onSearchChange !== undefined
-
-  // The search box answers from local state and reaches the URL after a
-  // pause. Every navigation re-runs the root route's beforeLoad (a server
-  // round trip) and useSearch only reflects the new value once that
-  // settles, so an input bound straight to the URL would lag a keystroke
-  // behind and drop characters typed in the meantime. Chip changes still
-  // write at once; only typing waits.
-  const urlQuery = search?.q ?? ''
-  const [query, setQuery] = React.useState(urlQuery)
-  const writeTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
-  // The last q this table wrote, so the URL catching up with its own write
-  // is not mistaken for an external change and allowed to undo newer typing.
-  const lastWrittenQuery = React.useRef(urlQuery)
-  React.useEffect(() => {
-    if (urlQuery !== lastWrittenQuery.current) {
-      // The back button or a pasted link changed the URL under the table.
-      lastWrittenQuery.current = urlQuery
-      setQuery(urlQuery)
-    }
-  }, [urlQuery])
-  React.useEffect(
-    () => () => {
-      // Leaving the page discards a pending write rather than navigating
-      // back to this route to deliver it.
-      if (writeTimer.current !== null) {
-        clearTimeout(writeTimer.current)
-      }
-    },
-    [],
-  )
-
-  const columnFilters = React.useMemo<ColumnFiltersState>(
-    () =>
-      columnFiltersFromSearch(
-        controlled ? { ...search, q: query || undefined } : {},
-        variant,
-      ),
-    [controlled, search, query, variant],
-  )
-  const handleColumnFiltersChange = React.useCallback<
-    OnChangeFn<ColumnFiltersState>
-  >(
-    (updater) => {
-      if (!onSearchChange) {
-        return
-      }
-      const next =
-        typeof updater === 'function' ? updater(columnFilters) : updater
-      const params = searchFromColumnFilters(next, variant)
-      const nextQuery = params.q ?? ''
-      setQuery(nextQuery)
-      if (writeTimer.current !== null) {
-        clearTimeout(writeTimer.current)
-      }
-      const write = () => {
-        writeTimer.current = null
-        lastWrittenQuery.current = nextQuery
-        onSearchChange(params)
-      }
-      const current = searchFromColumnFilters(columnFilters, variant)
-      if (sameChipFilters(params, current)) {
-        writeTimer.current = setTimeout(write, SEARCH_URL_WRITE_DELAY_MS)
-      } else {
-        // A chip change carries any pending search text along with it.
-        write()
-      }
-    },
-    [columnFilters, onSearchChange, variant],
-  )
+  const { controlled, columnFilters, onColumnFiltersChange } =
+    useTournamentTableSearch({ search, onSearchChange, variant })
 
   if (rows === undefined) {
     return (
@@ -228,9 +155,7 @@ export function TournamentTable({
         }
         initialColumnFilters={columnFilters}
         columnFilters={controlled ? columnFilters : undefined}
-        onColumnFiltersChange={
-          controlled ? handleColumnFiltersChange : undefined
-        }
+        onColumnFiltersChange={controlled ? onColumnFiltersChange : undefined}
         onRowClick={
           isManage
             ? (row) =>
@@ -304,22 +229,6 @@ const formatFilterOptions: Array<DataTableFilterOption> = tournamentFormats.map(
     label: format.charAt(0).toUpperCase() + format.slice(1),
   }),
 )
-
-// How long typing may pause before the search text reaches the URL.
-const SEARCH_URL_WRITE_DELAY_MS = 300
-
-// Whether two search states agree on everything but the search text.
-function sameChipFilters(
-  left: TournamentTableSearchParams,
-  right: TournamentTableSearchParams,
-) {
-  return (
-    left.status === right.status &&
-    left.format === right.format &&
-    left.from === right.from &&
-    left.to === right.to
-  )
-}
 
 // Conventions and standalone tournaments share the top level, merged in the
 // order their servers chose: the manage list arrives newest start first and

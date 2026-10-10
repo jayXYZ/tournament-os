@@ -41,8 +41,8 @@ export const paymentStatusPresentation: Record<
 
 // The Payment chip's options, one per label the column can show. Statuses
 // that share a label ("Unpaid") collapse into one option, so the chip
-// filters on the label rather than the raw order status: the Payment
-// column's accessor returns `paymentLabel(status)` for exactly this reason.
+// selects labels; paymentStatusesForLabels below turns the selection back
+// into the raw statuses the roster queries filter on.
 export const paymentFilterOptions: Array<DataTableFilterOption> = Object.values(
   paymentStatusPresentation,
 ).reduce<Array<DataTableFilterOption>>((options, { label, tone }) => {
@@ -58,4 +58,23 @@ export const paymentFilterOptions: Array<DataTableFilterOption> = Object.values(
 
 export function paymentLabel(status: Doc<'paymentOrders'>['status']) {
   return paymentStatusPresentation[status].label
+}
+
+// The Payment chip's selected labels → every order status they cover, the
+// shape the roster queries take (listRegistrationPage / searchRegistrations
+// `payment`), so the server narrows on raw statuses while the organizer
+// picks friendly labels. Undefined when nothing is selected, which the
+// queries read as "no payment filter".
+export function paymentStatusesForLabels(
+  labels: ReadonlyArray<string>,
+): Array<Doc<'paymentOrders'>['status']> | undefined {
+  if (labels.length === 0) {
+    return undefined
+  }
+  const statuses = (
+    Object.keys(paymentStatusPresentation) as Array<
+      Doc<'paymentOrders'>['status']
+    >
+  ).filter((status) => labels.includes(paymentStatusPresentation[status].label))
+  return statuses.length > 0 ? statuses : undefined
 }
