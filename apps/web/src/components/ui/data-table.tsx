@@ -2,12 +2,15 @@
 
 import * as React from 'react'
 import {
+  expandRows,
   flexRender,
+  functionalUpdate,
   getCoreRowModel,
-  getExpandedRowModel,
   getFilteredRowModel,
+  getMemoOptions,
   getPaginationRowModel,
   getSortedRowModel,
+  memo,
   useReactTable,
 } from '@tanstack/react-table'
 import { ArrowDown, ArrowUp, ChevronsUpDown } from 'lucide-react'
@@ -15,10 +18,11 @@ import type {
   Column,
   ColumnDef,
   ColumnFiltersState,
-  ExpandedState,
+  ExpandedStateList,
   FilterFn,
   OnChangeFn,
   Row,
+  RowModel,
   SortingState,
   Table as TanstackTable,
 } from '@tanstack/react-table'
@@ -83,6 +87,22 @@ function columnClassName(meta: unknown): string | undefined {
   return (meta as DataTableColumnMeta | undefined)?.className
 }
 
+// Expanded row model for a table whose `expanded` state holds the *collapsed*
+// row ids (see DataTable). TanStack's own `getExpandedRowModel()` hands back
+// the tree unexpanded whenever that record is empty, which here means nothing
+// is collapsed, so this one always walks it and lets `getIsRowExpanded`
+// decide parent by parent.
+function getOpenRowModel<TData>(): (
+  table: TanstackTable<TData>,
+) => () => RowModel<TData> {
+  return (table) =>
+    memo(
+      () => [table.getPreExpandedRowModel(), table.getState().expanded],
+      (rowModel) => expandRows(rowModel),
+      getMemoOptions(table.options, 'debugTable', 'getExpandedRowModel'),
+    )
+}
+
 interface DataTableProps<TData, TValue> {
   columns: Array<ColumnDef<TData, TValue>>
   data: Array<TData>
@@ -130,7 +150,14 @@ export function DataTable<TData, TValue>({
     React.useState<ColumnFiltersState>(initialColumnFilters)
   const columnFilters = controlledColumnFilters ?? internalColumnFilters
   const setColumnFilters = onColumnFiltersChange ?? setInternalColumnFilters
-  const [expanded, setExpanded] = React.useState<ExpandedState>(true)
+  // Parents the user collapsed, keyed by row id; every other parent is open.
+  // TanStack's `expanded: true` opens everything too, but its first toggle
+  // turns `true` into the ids visible at that moment, so a parent filtered
+  // out just then, or one a live query adds later, comes back collapsed.
+  // The table reads this record through `getIsRowExpanded`, and a bare
+  // `row.toggleExpanded()` still toggles: it adds an id that is absent and
+  // drops one that is present.
+  const [collapsed, setCollapsed] = React.useState<ExpandedStateList>({})
 
   const table = useReactTable({
     data,
@@ -141,13 +168,19 @@ export function DataTable<TData, TValue>({
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
-    getExpandedRowModel: getExpandedRowModel(),
+    getExpandedRowModel: getOpenRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
+    getIsRowExpanded: (row) => !collapsed[row.id],
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
-    onExpandedChange: setExpanded,
+    onExpandedChange: (updater) =>
+      setCollapsed((previous) => {
+        const next = functionalUpdate(updater, previous)
+        // TanStack's `true` means everything open: here, the empty record.
+        return next === true ? {} : next
+      }),
     initialState: { pagination: { pageSize } },
-    state: { sorting, columnFilters, expanded },
+    state: { sorting, columnFilters, expanded: collapsed },
   })
 
   const rows = table.getRowModel().rows
