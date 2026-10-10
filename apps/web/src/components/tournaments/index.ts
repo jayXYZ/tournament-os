@@ -12,6 +12,8 @@ export type {
   TournamentBasicsValue,
 } from './tournament-fields'
 export {
+  activeTournamentLifecycles,
+  endedTournamentLifecycles,
   formatTournamentDateLong,
   formatTournamentDateShort,
   isTournamentEnded,
@@ -25,7 +27,10 @@ export type {
   TournamentVisibility,
 } from './tournament-display'
 export { TournamentTable } from './tournament-table'
-export { parseTournamentTableSearch } from './tournament-table-search'
+export {
+  parseTournamentTableSearch,
+  searchAdmitsEndedEvents,
+} from './tournament-table-search'
 export type { TournamentTableSearchParams } from './tournament-table-search'
 export type {
   TournamentTableConvention,

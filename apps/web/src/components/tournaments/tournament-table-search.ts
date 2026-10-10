@@ -1,6 +1,7 @@
 import { tournamentFormats } from '@paper-pairings/shared/tournament-creation-utils'
 import {
   activeTournamentLifecycles,
+  isTournamentEnded,
   tournamentLifecycleValues,
 } from './tournament-display'
 import type { ColumnFiltersState } from '@tanstack/react-table'
@@ -131,6 +132,17 @@ function statusFilterFromSearch(
     return variant === 'manage' ? activeTournamentLifecycles : []
   }
   return parseList(status, tournamentLifecycleValues)
+}
+
+// Whether the manage table's Status chip, as the URL has it, admits
+// completed or cancelled events. Those are read only on demand (the manage
+// list is fetched per lifecycle), so the admin view subscribes to them
+// while this holds and drops them again when the chip narrows back.
+export function searchAdmitsEndedEvents(
+  params: TournamentTableSearchParams,
+): boolean {
+  const status = statusFilterFromSearch(params.status, 'manage')
+  return status.length === 0 || status.some(isTournamentEnded)
 }
 
 // Column filters → search params, the inverse of columnFiltersFromSearch.

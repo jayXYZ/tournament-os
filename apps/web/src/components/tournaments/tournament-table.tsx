@@ -94,6 +94,7 @@ export function TournamentTable({
   variant,
   search,
   onSearchChange,
+  hasItemsBeyondStatusFilter = false,
 }: {
   items: Array<TournamentTableItem> | undefined
   // When present, the table groups events under their conventions. Pass it
@@ -106,6 +107,11 @@ export function TournamentTable({
   // state itself.
   search?: TournamentTableSearchParams
   onSearchChange?: (next: TournamentTableSearchParams) => void
+  // Set when the server narrowed `items` to the lifecycles the Status chip
+  // admits and left events out. An empty list then still renders the table
+  // and its toolbar — the chip is how those events are reached — rather
+  // than the no-tournaments state.
+  hasItemsBeyondStatusFilter?: boolean
 }) {
   const navigate = useNavigate()
   const grouped = conventions !== undefined
@@ -117,11 +123,11 @@ export function TournamentTable({
     () => (items ? buildRows(items, conventions ?? [], variant) : undefined),
     [items, conventions, variant],
   )
-  // The manage list holds every lifecycle the organization has ever run, so
-  // it opens narrowed to the events still in play; widening the Status chip
-  // reaches completed and cancelled ones. The other variants already
-  // arrive scoped by the server and start unfiltered. The same codec that
-  // reads the URL supplies the uncontrolled table's starting point.
+  // The manage list opens narrowed to the events still in play; widening
+  // the Status chip reaches completed and cancelled ones, which the admin
+  // view fetches only then. The other variants already arrive scoped by
+  // the server and start unfiltered. The same codec that reads the URL
+  // supplies the uncontrolled table's starting point.
   const { controlled, columnFilters, onColumnFiltersChange } =
     useTournamentTableSearch({ search, onSearchChange, variant })
 
@@ -133,7 +139,7 @@ export function TournamentTable({
     )
   }
 
-  if (rows.length === 0) {
+  if (rows.length === 0 && !hasItemsBeyondStatusFilter) {
     return <TournamentTableEmpty variant={variant} />
   }
 

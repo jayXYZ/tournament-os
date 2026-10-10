@@ -54,11 +54,17 @@ export const tournamentLifecycleFilterOptions: Array<DataTableFilterOption> =
   }))
 
 // The lifecycles an organizer is still working: what the manage table shows
-// until they widen the Status filter to finished events.
+// until they widen the Status filter to finished events. The two lists
+// partition every lifecycle; the manage list is read per lifecycle, the
+// active ones always and the ended ones only while the chip reaches them.
 export const activeTournamentLifecycles: Array<TournamentLifecycle> = [
   'setup',
   'registration',
   'in_progress',
+]
+export const endedTournamentLifecycles: Array<TournamentLifecycle> = [
+  'completed',
+  'cancelled',
 ]
 
 export function formatTournamentDateShort(timestamp: number) {
@@ -76,7 +82,7 @@ export function toDatetimeLocalValue(timestamp: number) {
 
 // Whether the tournament's lifecycle is over — completed or cancelled.
 export function isTournamentEnded(lifecycle: TournamentLifecycle) {
-  return lifecycle === 'completed' || lifecycle === 'cancelled'
+  return endedTournamentLifecycles.includes(lifecycle)
 }
 
 export function TournamentLifecycleBadge({

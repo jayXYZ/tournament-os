@@ -3,6 +3,7 @@ import {
   ALL_STATUSES,
   columnFiltersFromSearch,
   parseTournamentTableSearch,
+  searchAdmitsEndedEvents,
   searchFromColumnFilters,
   settleTournamentTableSearch,
 } from './tournament-table-search'
@@ -124,6 +125,21 @@ describe('columnFiltersFromSearch', () => {
       { id: 'format', value: ['draft'] },
       { id: 'startDate', value: { from: 1, to: 2 } },
     ])
+  })
+})
+
+describe('searchAdmitsEndedEvents', () => {
+  test('the default narrowing and an active-only chip leave history unread', () => {
+    expect(searchAdmitsEndedEvents({})).toBe(false)
+    expect(searchAdmitsEndedEvents({ status: 'setup,in_progress' })).toBe(false)
+  })
+
+  test('widening to an ended lifecycle or clearing the chip reads it', () => {
+    expect(searchAdmitsEndedEvents({ status: 'registration,completed' })).toBe(
+      true,
+    )
+    expect(searchAdmitsEndedEvents({ status: 'cancelled' })).toBe(true)
+    expect(searchAdmitsEndedEvents({ status: ALL_STATUSES })).toBe(true)
   })
 })
 
