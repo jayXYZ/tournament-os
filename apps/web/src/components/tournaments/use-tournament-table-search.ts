@@ -46,6 +46,12 @@ export function useTournamentTableSearch({
   // back button, a pasted link) the table must adopt. See
   // settleTournamentTableSearch.
   const pendingWrites = React.useRef<Array<TournamentTableSearchParams>>([])
+  // The URL as of the latest render, for a write to read when it runs: the
+  // `search` a delayed write closed over when the pause began may predate a
+  // write that has landed since, and a write matching that stale value would
+  // be skipped as a no-op while the URL says otherwise.
+  const urlSearch = React.useRef(search)
+  urlSearch.current = search
   const writeTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const cancelPendingWrite = React.useCallback(() => {
     if (writeTimer.current !== null) {
@@ -100,7 +106,7 @@ export function useTournamentTableSearch({
         // A write that matches what the URL already shows (or is about to,
         // once the last write lands) is no navigation at all, so the router
         // would never echo it back; don't wait for one.
-        const expected = pendingWrites.current.at(-1) ?? search
+        const expected = pendingWrites.current.at(-1) ?? urlSearch.current
         if (
           expected !== undefined &&
           sameTournamentTableSearch(params, expected)
@@ -121,7 +127,7 @@ export function useTournamentTableSearch({
         write()
       }
     },
-    [cancelPendingWrite, columnFilters, onSearchChange, search, variant],
+    [cancelPendingWrite, columnFilters, onSearchChange, variant],
   )
 
   return { controlled, columnFilters, onColumnFiltersChange }

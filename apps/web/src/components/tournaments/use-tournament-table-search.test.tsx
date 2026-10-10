@@ -169,6 +169,33 @@ test('a URL change under pending typing discards the typing', () => {
   expect(filterValue('format')).toEqual(['draft'])
 })
 
+test('text cleared while its write is in flight still clears the URL', () => {
+  // A URL the codec round-trips, so clearing the text lands the table back
+  // on exactly this state.
+  deliverUrl({ status: 'all' })
+  change(setChip('tournament', 'x'))
+  act(() => {
+    vi.advanceTimersByTime(SEARCH_URL_WRITE_DELAY_MS)
+  })
+  expect(writes).toHaveLength(1)
+  expect(writes[0]).toMatchObject({ q: 'x' })
+
+  // The box is cleared while the ?q=x navigation is still in flight, and
+  // that navigation settles before the pause elapses.
+  change(setChip('tournament', undefined))
+  deliverUrl(urlAfter(writes[0]))
+  expect(filterValue('tournament')).toBeUndefined()
+
+  // The URL still says ?q=x, so the clear is a real change and must
+  // navigate; the stale URL the pause was scheduled under is not what the
+  // URL shows now.
+  act(() => {
+    vi.advanceTimersByTime(SEARCH_URL_WRITE_DELAY_MS)
+  })
+  expect(writes).toHaveLength(2)
+  expect(writes[1].q).toBeUndefined()
+})
+
 test('a write the URL already shows is not waited for', () => {
   deliverUrl({ format: 'modern', status: 'all' })
   change(setChip('format', ['draft']))
