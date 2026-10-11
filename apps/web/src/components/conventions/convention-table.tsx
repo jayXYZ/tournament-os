@@ -70,7 +70,7 @@ export function ConventionTable({
             description={emptyDescription}
           />
         ) : (
-          <Table>
+          <Table bare>
             <TableHeader>
               <TableRow>
                 <TableHead>Convention</TableHead>

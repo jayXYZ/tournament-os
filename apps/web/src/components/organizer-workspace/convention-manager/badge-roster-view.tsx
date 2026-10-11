@@ -10,10 +10,11 @@ import type {
 } from '@paper-pairings/backend/convex/_generated/dataModel'
 import {
   entryStatusBadgeVariant,
-  paymentBadge,
+  paymentStatusPresentation,
 } from '@/components/organizer-workspace/paid-event/roster-badges'
 import { ConfirmActionDialog } from '@/components/shared/confirm-action-dialog'
 import { LoadMoreButton } from '@/components/shared/load-more-button'
+import { StatusDot } from '@/components/shared/status-dot'
 import { TableEmptyState } from '@/components/shared/table-empty-state'
 import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'
 import { Badge } from '@/components/ui/badge'
@@ -160,7 +161,7 @@ export function BadgeRosterView({
                   Showing previous results while your search updates…
                 </p>
               ) : null}
-              <Table className={cn(searchPending && 'opacity-60')}>
+              <Table bare className={cn(searchPending && 'opacity-60')}>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Attendee</TableHead>
@@ -235,9 +236,9 @@ function BadgeRosterRow({
       {showPaymentColumn ? (
         <TableCell>
           {row.paymentStatus ? (
-            <Badge variant={paymentBadge[row.paymentStatus].variant}>
-              {paymentBadge[row.paymentStatus].label}
-            </Badge>
+            <StatusDot tone={paymentStatusPresentation[row.paymentStatus].tone}>
+              {paymentStatusPresentation[row.paymentStatus].label}
+            </StatusDot>
           ) : (
             <span className="text-muted-foreground">—</span>
           )}

@@ -3,14 +3,8 @@ import { toast } from 'sonner'
 
 import { api } from '@paper-pairings/backend/convex/_generated/api'
 import type { Doc } from '@paper-pairings/backend/convex/_generated/dataModel'
+import { SectionHeader } from '@/components/shared/section-header'
 import { isTournamentEnded } from '@/components/tournaments'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
 import {
   Field,
   FieldContent,
@@ -46,15 +40,12 @@ export function PairingsPublicationCard({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Pairing publication</CardTitle>
-        <CardDescription>
-          Choose whether players see each new round as soon as its pairings are
-          generated.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
+    <section className="flex flex-col gap-4">
+      <SectionHeader
+        title="Pairing publication"
+        description="Choose whether players see each new round as soon as its pairings are generated."
+      />
+      <div>
         <Field orientation="horizontal" data-disabled={disabled}>
           <FieldContent>
             <FieldLabel htmlFor="settings-auto-publish-pairings">
@@ -74,7 +65,7 @@ export function PairingsPublicationCard({
             aria-label="Publish pairings automatically"
           />
         </Field>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   )
 }

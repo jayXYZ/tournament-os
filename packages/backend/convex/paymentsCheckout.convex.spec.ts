@@ -3,6 +3,7 @@ import { beforeEach, expect, test, vi } from "vitest";
 
 import { api, internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
+import { patchOrder } from "./model/payments";
 import { organizerIdentity, seedOrganizer } from "./specHelpers";
 import { createConvexTest } from "./specHelpers.runtime";
 import type { TestConvex } from "convex-test";
@@ -544,7 +545,8 @@ test("attach refuses an order a webhook closed mid-flight", async () => {
     { tournamentId },
   );
   await t.run(async (ctx) => {
-    await ctx.db.patch(begin.orderId, { status: "canceled" });
+    const order = (await ctx.db.get(begin.orderId))!;
+    await patchOrder(ctx, order, { status: "canceled" });
   });
 
   const attached = await t.mutation(

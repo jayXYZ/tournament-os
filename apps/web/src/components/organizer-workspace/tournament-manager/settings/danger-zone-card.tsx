@@ -1,14 +1,8 @@
 import { CancelTournamentButton } from './cancel-tournament-button'
 import { DeleteTournamentButton } from './delete-tournament-button'
 import type { Doc } from '@paper-pairings/backend/convex/_generated/dataModel'
+import { SectionHeader } from '@/components/shared/section-header'
 import { isTournamentEnded } from '@/components/tournaments'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 
 export function DangerZoneCard({
@@ -19,14 +13,12 @@ export function DangerZoneCard({
   const cancellable = !isTournamentEnded(tournament.lifecycle)
 
   return (
-    <Card className="border-destructive/50">
-      <CardHeader>
-        <CardTitle className="text-destructive">Danger zone</CardTitle>
-        <CardDescription>
-          These actions affect players and cannot be undone.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="grid gap-4">
+    <section className="flex flex-col gap-4">
+      <SectionHeader
+        title={<span className="text-destructive">Danger zone</span>}
+        description="These actions affect players and cannot be undone."
+      />
+      <div className="grid gap-4">
         {cancellable ? (
           <>
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -52,7 +44,7 @@ export function DangerZoneCard({
           </div>
           <DeleteTournamentButton tournament={tournament} />
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   )
 }

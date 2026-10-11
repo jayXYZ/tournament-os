@@ -12,6 +12,7 @@ import { PhaseSettingsCard } from './phase-settings-card'
 import { SettingsSkeleton } from './settings-skeleton'
 import { TournamentSettingsCard } from './tournament-settings-card'
 import type { Id } from '@paper-pairings/backend/convex/_generated/dataModel'
+import { SectionStack } from '@/components/shared/section-stack'
 import {
   TournamentLifecycleBadge,
   TournamentVisibilityBadge,
@@ -45,29 +46,31 @@ export function TournamentSettingsView({
                 : 'Core and phase settings are locked after tournament play begins. Visibility, event details, and pairing publication preferences can still be changed.'}
             </p>
           ) : null}
-          <TournamentSettingsCard
-            key={setup.tournament._id}
-            tournament={setup.tournament}
-          />
-          <InviteLinkCard tournament={setup.tournament} />
-          <EntryFeeCard
-            key={`${setup.tournament._id}-entry-fee`}
-            tournament={setup.tournament}
-          />
-          <PayoutCard tournament={setup.tournament} />
-          <PairingsPublicationCard tournament={setup.tournament} />
-          <EventDetailsCard
-            key={`${setup.tournament._id}-details`}
-            tournament={setup.tournament}
-          />
-          <PhaseSettingsCard
-            key={setup.phases
-              .map((phase) => `${phase._id}:${phase.updatedAt}`)
-              .join('|')}
-            tournament={setup.tournament}
-            phases={setup.phases}
-          />
-          <DangerZoneCard tournament={setup.tournament} />
+          <SectionStack>
+            <TournamentSettingsCard
+              key={setup.tournament._id}
+              tournament={setup.tournament}
+            />
+            <InviteLinkCard tournament={setup.tournament} />
+            <EntryFeeCard
+              key={`${setup.tournament._id}-entry-fee`}
+              tournament={setup.tournament}
+            />
+            <PayoutCard tournament={setup.tournament} />
+            <PairingsPublicationCard tournament={setup.tournament} />
+            <EventDetailsCard
+              key={`${setup.tournament._id}-details`}
+              tournament={setup.tournament}
+            />
+            <PhaseSettingsCard
+              key={setup.phases
+                .map((phase) => `${phase._id}:${phase.updatedAt}`)
+                .join('|')}
+              tournament={setup.tournament}
+              phases={setup.phases}
+            />
+            <DangerZoneCard tournament={setup.tournament} />
+          </SectionStack>
         </>
       )}
     </section>

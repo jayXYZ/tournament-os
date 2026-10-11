@@ -3,15 +3,8 @@ import { useQuery } from 'convex/react'
 import { SearchX } from 'lucide-react'
 import { api } from '@paper-pairings/backend/convex/_generated/api'
 import { SiteShell } from '@/components/shared/site-shell'
-import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'
+import { LoadingCard } from '@/components/shared/loading-card'
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
 import {
   Empty,
   EmptyDescription,
@@ -46,19 +39,14 @@ function RouteComponent() {
   }
 
   return (
-    <SiteShell subtitle="Tournament invite">
+    <SiteShell subtitle="Tournament invite" readingColumn>
       {resolved === undefined ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Opening invite</CardTitle>
-            <CardDescription>Looking up the event.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <TableLoadingSkeleton />
-          </CardContent>
-        </Card>
+        <LoadingCard
+          title="Opening invite"
+          description="Looking up the event."
+        />
       ) : (
-        <Empty className="min-h-80 border bg-card">
+        <Empty className="min-h-80">
           <EmptyHeader>
             <EmptyMedia variant="icon">
               <SearchX aria-hidden="true" />

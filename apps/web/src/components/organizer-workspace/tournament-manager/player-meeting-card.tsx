@@ -7,15 +7,9 @@ import type {
   Doc,
   Id,
 } from '@paper-pairings/backend/convex/_generated/dataModel'
+import { SectionHeader } from '@/components/shared/section-header'
 import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'
 import { Badge } from '@/components/ui/badge'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
 import {
   Table,
   TableBody,
@@ -55,25 +49,23 @@ export function PlayerMeetingCard({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          Player meeting
-          {meetingStatus === 'in_progress' ? (
-            <Badge>In progress</Badge>
-          ) : (
-            // A "superseded" snapshot (its phase's first round was rewound)
-            // still reads "Completed" here: the meeting itself did finish.
-            <Badge variant="secondary">Completed</Badge>
-          )}
-        </CardTitle>
-        <CardDescription>
-          Players seated alphabetically for attendance and announcements. Drop
-          no-shows from the Registrations view; dropped players are struck
-          through here.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
+    <section className="flex flex-col gap-4">
+      <SectionHeader
+        title={
+          <span className="inline-flex items-center gap-2">
+            Player meeting
+            {meetingStatus === 'in_progress' ? (
+              <Badge>In progress</Badge>
+            ) : (
+              // A "superseded" snapshot (its phase's first round was rewound)
+              // still reads "Completed" here: the meeting itself did finish.
+              <Badge variant="secondary">Completed</Badge>
+            )}
+          </span>
+        }
+        description="Players seated alphabetically for attendance and announcements. Drop no-shows from the Registrations view; dropped players are struck through here."
+      />
+      <div>
         {seating === undefined ? (
           <TableLoadingSkeleton />
         ) : (
@@ -124,7 +116,7 @@ export function PlayerMeetingCard({
             </TableBody>
           </Table>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   )
 }

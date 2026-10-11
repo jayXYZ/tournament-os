@@ -10,6 +10,7 @@
 // ctx.db — the same shape registerSelf writes: an entry status, the
 // review-queue flag on a pending one, and no participation status — so
 // each transition is pinned independently of the filing path.
+import { effectiveRegistrationStatus } from "@paper-pairings/shared/registration-status";
 import type { TestConvex } from "convex-test";
 import { expect, test } from "vitest";
 
@@ -523,7 +524,7 @@ test("applications gate on confirmed seats, not on other applications", async ()
   expect(await confirmedCount(t, tournamentId)).toBe(1);
 });
 
-test("the organizer roster filters by entry status, in the list and in search", async () => {
+test("the organizer roster filters by status, in the list and in search", async () => {
   const t = createConvexTest();
   const { tournamentId } = await seedOpenTournament(t);
   const organizer = t.withIdentity(organizerIdentity);
@@ -559,6 +560,13 @@ test("the organizer roster filters by entry status, in the list and in search", 
     "waitlisted",
   );
   expect(waitlisted.map((row) => row.registration._id)).toEqual([waitlistedId]);
+
+  // A participation status pins the confirmed prefix too: "active" is the
+  // two seated players, and none of the applications.
+  const active = await organizerRegistrationRows(t, tournamentId, "active");
+  expect(
+    active.map((row) => effectiveRegistrationStatus(row.registration)),
+  ).toEqual(["active", "active"]);
 
   // Search composes with the filter: every seeded name matches "Player",
   // but under the pending filter only the applications come back.

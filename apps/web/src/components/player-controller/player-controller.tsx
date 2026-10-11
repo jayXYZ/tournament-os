@@ -15,13 +15,14 @@ import {
 } from 'lucide-react'
 import { CurrentMatchCard } from './current-match-card'
 import { MoreTab } from './more-tab'
-import { PlayerAccessShell, playerShellWidth } from './player-access-shell'
+import { PlayerAccessShell } from './player-access-shell'
 import { StandingsList } from './standings-list'
 import { usePlayerTournamentAccess } from './use-player-tournament-access'
 import type { ReactNode } from 'react'
 import type { MyCurrentMatch, RoundTimer } from '@paper-pairings/core'
 import type { PlayerTournamentEvent } from './use-player-tournament-access'
 import { RoundTimerPill } from '@/components/shared/round-timer-indicator'
+import { SectionStack } from '@/components/shared/section-stack'
 import { SiteShell, SiteShellBackLink } from '@/components/shared/site-shell'
 import { WorkspacePageHeader } from '@/components/shared/workspace-page-header'
 import { useIsDesktop } from '@/hooks/use-desktop'
@@ -52,7 +53,6 @@ export function PlayerController({ publicCode }: { publicCode: string }) {
   if (access.state !== 'ready') {
     return (
       <SiteShell
-        width={playerShellWidth}
         subtitle="Player controller"
         actions={access.state === 'notFound' ? undefined : eventPageAction}
         appBar
@@ -156,7 +156,6 @@ function ControllerReady({
   return (
     <RoundTimerProvider timer={event.tournament.roundTimer}>
       <SiteShell
-        width={playerShellWidth}
         subtitle="Player controller"
         actions={eventPageAction}
         toaster
@@ -202,10 +201,7 @@ function ControllerReady({
         }
       >
         <div className="hidden pt-8 lg:block">
-          <WorkspacePageHeader
-            eyebrow={event.organizationName ?? 'Player controller'}
-            title={event.tournament.name}
-          />
+          <WorkspacePageHeader title={event.tournament.name} />
         </div>
 
         {/* Desktop stand-in for the phone app bar: no site chrome is sticky
@@ -243,12 +239,10 @@ function ControllerReady({
               </section>
             ) : null}
             {panelMounted('more') ? (
-              <section
+              <SectionStack
+                as="section"
                 aria-label="Tournament options"
-                className={cn(
-                  tab === 'more' ? 'grid gap-4' : 'hidden lg:grid',
-                  'lg:gap-6',
-                )}
+                className={tab === 'more' ? undefined : 'hidden lg:flex'}
               >
                 <MoreTab
                   tournamentId={typedTournamentId}
@@ -257,7 +251,7 @@ function ControllerReady({
                   currentMatch={currentMatch}
                   myDecklist={myDecklist}
                 />
-              </section>
+              </SectionStack>
             ) : null}
           </div>
           <div className="contents lg:block">

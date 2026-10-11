@@ -14,14 +14,8 @@ import {
 import type { Id } from '@paper-pairings/backend/convex/_generated/dataModel'
 import type { BestOf } from '@paper-pairings/shared/match-structure'
 import type { PairingRow } from './pairings/pairing-row'
+import { SectionHeader } from '@/components/shared/section-header'
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
 import {
   Empty,
   EmptyDescription,
@@ -52,7 +46,7 @@ export function OutstandingTablesCard({
   })
 
   if (pairings === undefined) {
-    return <Skeleton className="h-64 rounded-xl" />
+    return <Skeleton className="h-64" />
   }
 
   const byes = pairings.filter((row) =>
@@ -66,30 +60,32 @@ export function OutstandingTablesCard({
   )
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>
-          {outstanding.length === 0
+    <section className="flex flex-col gap-4">
+      <SectionHeader
+        title={
+          outstanding.length === 0
             ? 'All tables reported'
-            : `Waiting on ${outstanding.length} ${outstanding.length === 1 ? 'table' : 'tables'}`}
-        </CardTitle>
-        <CardDescription>
-          {roundLabel}, {tables.length}{' '}
-          {tables.length === 1 ? 'table' : 'tables'}
-          {byes.length > 0
-            ? `, ${byes.length} ${byes.length === 1 ? 'bye' : 'byes'}`
-            : ''}
-          .{' '}
-          <Link
-            to="/admin/tournaments/$tournamentId/pairings"
-            params={{ tournamentId: publicCode }}
-            className="underline underline-offset-4 hover:text-foreground"
-          >
-            All pairings
-          </Link>
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
+            : `Waiting on ${outstanding.length} ${outstanding.length === 1 ? 'table' : 'tables'}`
+        }
+        description={
+          <>
+            {roundLabel}, {tables.length}{' '}
+            {tables.length === 1 ? 'table' : 'tables'}
+            {byes.length > 0
+              ? `, ${byes.length} ${byes.length === 1 ? 'bye' : 'byes'}`
+              : ''}
+            .{' '}
+            <Link
+              to="/admin/tournaments/$tournamentId/pairings"
+              params={{ tournamentId: publicCode }}
+              className="underline underline-offset-4 hover:text-foreground"
+            >
+              All pairings
+            </Link>
+          </>
+        }
+      />
+      <div className="flex flex-col gap-4">
         {outstanding.length === 0 ? (
           <Empty className="py-8">
             <EmptyHeader>
@@ -127,8 +123,8 @@ export function OutstandingTablesCard({
             . Awarded as a win, no table.
           </p>
         ) : null}
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   )
 }
 
@@ -197,15 +193,12 @@ export function UnconfirmedResultsCard({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Needs a look</CardTitle>
-        <CardDescription>
-          Reported by one player and not yet confirmed. Each counts toward
-          completing the round unless you change it.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
+    <section className="flex flex-col gap-4">
+      <SectionHeader
+        title="Needs a look"
+        description="Reported by one player and not yet confirmed. Each counts toward completing the round unless you change it."
+      />
+      <div>
         <ul className="divide-y divide-border">
           {unconfirmed.map((row) => (
             <UnconfirmedRow
@@ -216,8 +209,8 @@ export function UnconfirmedResultsCard({
             />
           ))}
         </ul>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   )
 }
 

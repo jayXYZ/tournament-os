@@ -87,13 +87,21 @@ export const tournamentVisibilityValidator = v.union(
 // (never publicly viewable regardless of visibility; named to avoid clashing
 // with the Magic "draft" format); "registration" means published and open for
 // registration.
+export const tournamentLifecycles = [
+  "setup",
+  "registration",
+  "in_progress",
+  "completed",
+  "cancelled",
+] as const;
+export type TournamentLifecycle = (typeof tournamentLifecycles)[number];
 export const tournamentLifecycleValidator = v.union(
   v.literal("setup"),
   v.literal("registration"),
   v.literal("in_progress"),
   v.literal("completed"),
   v.literal("cancelled"),
-);
+) satisfies { type: TournamentLifecycle };
 
 // Conventions have no "in_progress" stage (ADR 0004): "registration" spans
 // the whole live run — publish opens it, and the organizer's explicit
@@ -130,23 +138,6 @@ export const tournamentEntryStatusValidator = v.union(
   v.literal("rejected"),
 );
 
-// The Registrations tab's filter: one entry status of a tournament's
-// history, except that "pending" is replaced by the review queue —
-// "awaiting_review" lists only the applications the organizer has yet to
-// decide (CONTEXT.md "Review Queue"). A pending row awaiting its payment
-// (an approved or directly filed entry on a paid event) is not review work
-// and has no filter of its own; it shows in the unfiltered history with its
-// payment badge. listRegistrationPage and searchRegistrations share this so
-// a filter and a search term always narrow the same rows.
-export const registrationFilterValidator = v.union(
-  v.literal("awaiting_review"),
-  v.literal("waitlisted"),
-  v.literal("confirmed"),
-  v.literal("cancelled"),
-  v.literal("rejected"),
-);
-export type RegistrationFilter = Infer<typeof registrationFilterValidator>;
-
 // Competitive eligibility after an entry is confirmed. "active" means the
 // player remains eligible to be paired; it is initialized on confirmation so
 // starting round one never needs to patch every registration.
@@ -159,6 +150,28 @@ export const tournamentParticipationStatusValidator = v.union(
   v.literal("eliminated"),
   v.literal("disqualified"),
 );
+
+// One slice an organizer can narrow the Registrations tab to: an entry
+// status of the tournament's history, a participation status of its
+// confirmed entries (the effective status the roster shows for them —
+// @paper-pairings/shared effectiveRegistrationStatus), or the review queue.
+// "pending" has no filter of its own: "awaiting_review" lists only the
+// applications the organizer has yet to decide (CONTEXT.md "Review Queue"),
+// while a pending row awaiting its payment (an approved or directly filed
+// entry on a paid event) is not review work and shows in the unfiltered
+// history with its payment badge. Every value is an index-equality prefix
+// (model/registrations.ts registrationFilterRange), so the filter never
+// post-scans. listRegistrationPage and searchRegistrations share this so a
+// filter and a search term always narrow the same rows.
+export const registrationFilterValidator = v.union(
+  v.literal("awaiting_review"),
+  v.literal("waitlisted"),
+  v.literal("confirmed"),
+  v.literal("cancelled"),
+  v.literal("rejected"),
+  tournamentParticipationStatusValidator,
+);
+export type RegistrationFilter = Infer<typeof registrationFilterValidator>;
 
 // A tournament's tally of confirmed entrants in each non-active status
 // (tournaments.participationCounts); "active" is confirmed minus the sum.

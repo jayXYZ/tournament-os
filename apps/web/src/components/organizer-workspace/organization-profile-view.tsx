@@ -11,15 +11,10 @@ import type { FormEvent } from 'react'
 
 import type { OrganizationProfileImageDetails } from '@paper-pairings/shared/organization-profile-image'
 import type { Id } from '@paper-pairings/backend/convex/_generated/dataModel'
+import { SectionHeader } from '@/components/shared/section-header'
+import { SectionStack } from '@/components/shared/section-stack'
 import { WorkspacePageHeader } from '@/components/shared/workspace-page-header'
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
 import {
   Field,
   FieldDescription,
@@ -135,148 +130,135 @@ export function OrganizationProfileView() {
 
   return (
     <section className="flex flex-col gap-6">
-      <WorkspacePageHeader
-        eyebrow={membershipRole ?? 'No org'}
-        title="Organization profile"
-      />
+      <WorkspacePageHeader title="Organization profile" />
 
-      <div className="grid gap-6 xl:grid-cols-[1fr_360px]">
-        <div className="flex flex-col gap-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Details</CardTitle>
-              <CardDescription>
-                Update the selected organization workspace profile.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleUpdateProfile}>
-                <FieldGroup>
-                  <Field>
-                    <FieldLabel htmlFor="profile-organization-name">
-                      Name
-                    </FieldLabel>
-                    <Input
-                      id="profile-organization-name"
-                      value={profileName}
-                      onChange={(event) => setProfileName(event.target.value)}
-                      disabled={!mayManageProfile || profileAction.busy}
-                      required
-                    />
-                  </Field>
-                  <Button
-                    type="submit"
-                    disabled={!mayManageProfile || profileAction.busy}
-                  >
-                    {profileAction.busy ? (
-                      <Spinner data-icon="inline-start" />
-                    ) : null}
-                    Save changes
-                  </Button>
-                  {!mayManageProfile && (
-                    <FieldDescription>
-                      Only owners and admins can update organization details.
-                    </FieldDescription>
-                  )}
-                </FieldGroup>
-              </form>
-            </CardContent>
-          </Card>
-
-          <OrganizationPaymentsCard key={organizationId} />
-        </div>
-
-        <aside className="flex flex-col gap-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Profile picture</CardTitle>
-              <CardDescription>PNG, JPEG, or WebP up to 2 MB.</CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-4">
-              <div
-                className="flex size-28 items-center justify-center overflow-hidden rounded-md border border-border bg-muted bg-cover bg-center"
-                style={
-                  organization.profileImageUrl
-                    ? {
-                        backgroundImage: `url(${organization.profileImageUrl})`,
-                      }
-                    : undefined
-                }
-              >
-                {!organization.profileImageUrl && (
-                  <Building2 className="text-muted-foreground" />
-                )}
-              </div>
+      <div className="grid gap-8 xl:grid-cols-[1fr_360px]">
+        <SectionStack>
+          <section className="flex flex-col gap-4">
+            <SectionHeader
+              title="Details"
+              description="Update the selected organization workspace profile."
+            />
+            <form onSubmit={handleUpdateProfile}>
               <FieldGroup>
                 <Field>
-                  <FieldLabel htmlFor="profile-image">Upload image</FieldLabel>
+                  <FieldLabel htmlFor="profile-organization-name">
+                    Name
+                  </FieldLabel>
                   <Input
-                    id="profile-image"
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp"
-                    disabled={!mayManageProfile || imageAction.busy}
-                    onChange={(event) => {
-                      const file = event.target.files?.[0]
-                      if (file) {
-                        void handleUpdateProfileImage(file)
-                      }
-                      event.target.value = ''
-                    }}
+                    id="profile-organization-name"
+                    value={profileName}
+                    onChange={(event) => setProfileName(event.target.value)}
+                    disabled={!mayManageProfile || profileAction.busy}
+                    required
                   />
-                  <FieldDescription>
-                    Use a square image at least 256 x 256 pixels.
-                  </FieldDescription>
                 </Field>
-                {imageAction.busy && (
-                  <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Button
+                  type="submit"
+                  disabled={!mayManageProfile || profileAction.busy}
+                >
+                  {profileAction.busy ? (
                     <Spinner data-icon="inline-start" />
-                    Uploading profile picture
-                  </p>
+                  ) : null}
+                  Save changes
+                </Button>
+                {!mayManageProfile && (
+                  <FieldDescription>
+                    Only owners and admins can update organization details.
+                  </FieldDescription>
                 )}
               </FieldGroup>
-            </CardContent>
-          </Card>
+            </form>
+          </section>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Archive organization</CardTitle>
-              <CardDescription>
-                Archive hides this workspace without deleting historical data.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleArchiveOrganization}>
-                <FieldGroup>
-                  <Field>
-                    <FieldLabel htmlFor="archive-confirmation">
-                      Type {organization.name}
-                    </FieldLabel>
-                    <Input
-                      id="archive-confirmation"
-                      value={archiveConfirmationName}
-                      onChange={(event) =>
-                        setArchiveConfirmationName(event.target.value)
-                      }
-                      disabled={!mayManageProfile || archiveAction.busy}
-                    />
-                  </Field>
-                  <Button
-                    type="submit"
-                    variant="destructive"
+          <OrganizationPaymentsCard key={organizationId} />
+        </SectionStack>
+
+        <SectionStack as="aside">
+          <section className="flex flex-col gap-4">
+            <SectionHeader
+              title="Profile picture"
+              description="PNG, JPEG, or WebP up to 2 MB."
+            />
+            <div
+              className="flex size-28 items-center justify-center overflow-hidden rounded-md border border-border bg-muted bg-cover bg-center"
+              style={
+                organization.profileImageUrl
+                  ? {
+                      backgroundImage: `url(${organization.profileImageUrl})`,
+                    }
+                  : undefined
+              }
+            >
+              {!organization.profileImageUrl && (
+                <Building2 className="text-muted-foreground" />
+              )}
+            </div>
+            <FieldGroup>
+              <Field>
+                <FieldLabel htmlFor="profile-image">Upload image</FieldLabel>
+                <Input
+                  id="profile-image"
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  disabled={!mayManageProfile || imageAction.busy}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0]
+                    if (file) {
+                      void handleUpdateProfileImage(file)
+                    }
+                    event.target.value = ''
+                  }}
+                />
+                <FieldDescription>
+                  Use a square image at least 256 x 256 pixels.
+                </FieldDescription>
+              </Field>
+              {imageAction.busy && (
+                <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Spinner data-icon="inline-start" />
+                  Uploading profile picture
+                </p>
+              )}
+            </FieldGroup>
+          </section>
+
+          <section className="flex flex-col gap-4">
+            <SectionHeader
+              title="Archive organization"
+              description="Archive hides this workspace without deleting historical data."
+            />
+            <form onSubmit={handleArchiveOrganization}>
+              <FieldGroup>
+                <Field>
+                  <FieldLabel htmlFor="archive-confirmation">
+                    Type {organization.name}
+                  </FieldLabel>
+                  <Input
+                    id="archive-confirmation"
+                    value={archiveConfirmationName}
+                    onChange={(event) =>
+                      setArchiveConfirmationName(event.target.value)
+                    }
                     disabled={!mayManageProfile || archiveAction.busy}
-                  >
-                    {archiveAction.busy ? (
-                      <Spinner data-icon="inline-start" />
-                    ) : (
-                      <Archive data-icon="inline-start" />
-                    )}
-                    Archive organization
-                  </Button>
-                </FieldGroup>
-              </form>
-            </CardContent>
-          </Card>
-        </aside>
+                  />
+                </Field>
+                <Button
+                  type="submit"
+                  variant="destructive"
+                  disabled={!mayManageProfile || archiveAction.busy}
+                >
+                  {archiveAction.busy ? (
+                    <Spinner data-icon="inline-start" />
+                  ) : (
+                    <Archive data-icon="inline-start" />
+                  )}
+                  Archive organization
+                </Button>
+              </FieldGroup>
+            </form>
+          </section>
+        </SectionStack>
       </div>
     </section>
   )

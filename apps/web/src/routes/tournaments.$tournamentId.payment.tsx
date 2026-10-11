@@ -43,6 +43,7 @@ function RouteComponent() {
   return (
     <SiteShell
       subtitle="Registration payment"
+      readingColumn
       toaster
       actions={
         <SiteShellBackLink

@@ -6,15 +6,9 @@ import { api } from '@paper-pairings/backend/convex/_generated/api'
 import { mutationErrorMessage } from '@paper-pairings/core'
 import { SUPPORTED_STRIPE_COUNTRIES } from '@paper-pairings/shared/payment-fees'
 import { useOrganization } from './organization-context'
+import { SectionHeader } from '@/components/shared/section-header'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Field, FieldContent, FieldLabel } from '@/components/ui/field'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -30,9 +24,9 @@ const statusLabels = {
   unsupported: 'Not supported',
 } as const
 
-// Stripe Connect card on the organization profile page. Connecting redirects
-// to Stripe-hosted onboarding and lands back on /admin/stripe-return, which
-// refreshes the capability snapshot this card renders.
+// Stripe Connect section on the organization profile page. Connecting
+// redirects to Stripe-hosted onboarding and lands back on
+// /admin/stripe-return, which refreshes the capability snapshot this renders.
 export function OrganizationPaymentsCard() {
   const { selectedOrganizationId } = useOrganization()
 
@@ -127,15 +121,12 @@ export function OrganizationPaymentsCard() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Payments</CardTitle>
-        <CardDescription>
-          Connect a Stripe account to charge entry fees and receive payouts for
-          your events.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
+    <section className="flex flex-col gap-4">
+      <SectionHeader
+        title="Payments"
+        description="Connect a Stripe account to charge entry fees and receive payouts for your events."
+      />
+      <div className="flex flex-col gap-4">
         {settings === undefined ? (
           <Skeleton className="h-16" />
         ) : !settings.stripeConfigured ? (
@@ -246,7 +237,7 @@ export function OrganizationPaymentsCard() {
             )}
           </>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   )
 }

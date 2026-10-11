@@ -107,7 +107,6 @@ export function ConventionOverviewView() {
   return (
     <section className="flex flex-col gap-4">
       <WorkspacePageHeader
-        eyebrow="Convention"
         title={convention.name}
         metadata={
           <span className="flex items-center gap-2">

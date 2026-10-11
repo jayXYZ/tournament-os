@@ -133,7 +133,7 @@ function MatchLog({
   }
 
   return (
-    <Table>
+    <Table bare>
       <TableHeader>
         <TableRow>
           <TableHead>Round</TableHead>

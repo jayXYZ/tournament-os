@@ -1,7 +1,11 @@
 import type { Doc } from '@paper-pairings/backend/convex/_generated/dataModel'
 
 import type { StatusTone } from '@/components/shared/status-dot'
-import { StatusDot } from '@/components/shared/status-dot'
+import type { DataTableFilterOption } from '@/components/ui/data-table-toolbar'
+import {
+  StatusDot,
+  statusDotToneClassName,
+} from '@/components/shared/status-dot'
 
 export type TournamentLifecycle = Doc<'tournaments'>['lifecycle']
 export type TournamentVisibility = Doc<'tournaments'>['visibility']
@@ -34,6 +38,33 @@ const tournamentLifecycles: Record<
   cancelled: { label: 'Cancelled', tone: 'danger' },
 }
 
+// Every lifecycle in workflow order: the Status chip's options and the
+// values the URL codec accepts, so the two can never disagree.
+export const tournamentLifecycleValues = Object.keys(
+  tournamentLifecycles,
+) as Array<TournamentLifecycle>
+
+// One filter chip option per lifecycle, each carrying the badge's dot so the
+// popover reads like the Status column.
+export const tournamentLifecycleFilterOptions: Array<DataTableFilterOption> =
+  tournamentLifecycleValues.map((lifecycle) => ({
+    value: lifecycle,
+    label: tournamentLifecycles[lifecycle].label,
+    dotClassName: statusDotToneClassName[tournamentLifecycles[lifecycle].tone],
+  }))
+
+// The lifecycles an organizer is still working: what the manage table shows
+// until they widen the Status filter to finished events. Ended is the one
+// hand-written split and active is its complement, so the two always
+// partition every lifecycle. The manage list is read per lifecycle, the
+// active ones always and the ended ones only while the chip reaches them.
+export const endedTournamentLifecycles: Array<TournamentLifecycle> = [
+  'completed',
+  'cancelled',
+]
+export const activeTournamentLifecycles: Array<TournamentLifecycle> =
+  tournamentLifecycleValues.filter((lifecycle) => !isTournamentEnded(lifecycle))
+
 export function formatTournamentDateShort(timestamp: number) {
   return shortDateFormatter.format(new Date(timestamp))
 }
@@ -49,7 +80,7 @@ export function toDatetimeLocalValue(timestamp: number) {
 
 // Whether the tournament's lifecycle is over — completed or cancelled.
 export function isTournamentEnded(lifecycle: TournamentLifecycle) {
-  return lifecycle === 'completed' || lifecycle === 'cancelled'
+  return endedTournamentLifecycles.includes(lifecycle)
 }
 
 export function TournamentLifecycleBadge({
