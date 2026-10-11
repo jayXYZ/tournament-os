@@ -7,9 +7,11 @@ When working on Convex code, **always read
 how to correctly use Convex APIs and patterns. The file contains rules that
 override what you may have learned about Convex from training data.
 
-That file is gitignored, so it may be missing on a fresh clone — regenerate it
-(and the Convex agent skills) with
-`pnpm --filter @paper-pairings/backend exec convex ai-files install`.
+That file, the agent skills under `.agents/skills/` and `.claude/skills/`, and
+`skills-lock.json` are tracked in git so worktrees and fresh clones get them.
+Refresh them with
+`pnpm --filter @paper-pairings/backend exec convex ai-files install` and commit
+the result.
 npm/npx/yarn/bun are denied in this repo; always use pnpm.
 
 <!-- convex-ai-end -->

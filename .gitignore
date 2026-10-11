@@ -41,11 +41,11 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# ai (agent skills, lockfiles, and generated guidelines)
-/.agents/skills/
-skills-lock.json
-/packages/backend/convex/_generated/ai/
+# ai: agent skills, skills-lock.json, and generated Convex guidelines are
+# tracked on purpose so git worktrees and fresh clones get them. Only local
+# Claude state (settings.local.json, worktrees/, lock files) stays ignored.
 .claude/*
 !.claude/settings.json
+!.claude/skills/
 /packages/backend/AGENTS.md
 /packages/backend/CLAUDE.md
