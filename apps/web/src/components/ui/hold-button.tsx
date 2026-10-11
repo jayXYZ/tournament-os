@@ -12,10 +12,15 @@ const SUCCESS_DISPLAY_MS = 1400
 type HoldPhase = 'idle' | 'holding' | 'pending' | 'success'
 
 // The sweep layer inverts the button: it must contrast with both the idle
-// button face and the page behind it (hence the inset ring on `default`).
+// button face and the page behind it (hence the inset rings on the solids).
+// Callers pick a variant rather than restyling the face: the solid variants'
+// hover and active states are CSS filters, which a `hover:bg-*` override
+// would stack with instead of replacing.
 const overlayStyles = {
   default:
     'bg-primary-foreground text-primary inset-ring inset-ring-primary/25',
+  brand:
+    'bg-accent-brand-foreground text-accent-brand inset-ring inset-ring-accent-brand/25',
   destructive: 'bg-destructive text-white',
 } satisfies Partial<Record<string, string>>
 

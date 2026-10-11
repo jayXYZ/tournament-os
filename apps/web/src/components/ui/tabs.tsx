@@ -31,7 +31,9 @@ function Tabs({
  * segment lifts out as a white (dark: gray-a3) pill under elevation 2.
  * `line` is Themes Tabs, size 2: 40px triggers on a gray-a5 baseline, gray-a11
  * text that turns gray-12 with an inner gray-a3 pill on hover, and a 2px
- * accent indicator under the active one.
+ * accent indicator under the active one. Both lists `isolate`: the pills and
+ * the line variant's focus outline are drawn on a `before` at z-index -1,
+ * which would otherwise sink below any backgrounded ancestor.
  */
 const tabsListVariants = cva(
   'group/tabs-list inline-flex w-fit items-center group-data-vertical/tabs:h-fit group-data-vertical/tabs:flex-col',
@@ -40,7 +42,7 @@ const tabsListVariants = cva(
       variant: {
         default:
           'isolate justify-center rounded-(--radius-2) bg-surface bg-[image:linear-gradient(var(--gray-a3),var(--gray-a3))] text-foreground group-data-horizontal/tabs:h-8',
-        line: 'justify-start text-gray-a11 group-data-horizontal/tabs:h-10 group-data-horizontal/tabs:shadow-[inset_0_-1px_0_0_var(--gray-a5)] group-data-vertical/tabs:shadow-[inset_-1px_0_0_0_var(--gray-a5)]',
+        line: 'isolate justify-start text-gray-a11 group-data-horizontal/tabs:h-10 group-data-horizontal/tabs:shadow-[inset_0_-1px_0_0_var(--gray-a5)] group-data-vertical/tabs:shadow-[inset_-1px_0_0_0_var(--gray-a5)]',
       },
     },
     defaultVariants: {

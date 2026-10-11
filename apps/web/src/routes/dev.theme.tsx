@@ -563,6 +563,10 @@ function Panel() {
             <Checkbox disabled defaultChecked /> Disabled checked
           </label>
           <label className="flex items-center gap-2 text-sm">
+            <Checkbox disabled defaultChecked="indeterminate" /> Disabled
+            indeterminate
+          </label>
+          <label className="flex items-center gap-2 text-sm">
             <Checkbox aria-invalid /> Invalid
           </label>
         </div>

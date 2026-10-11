@@ -506,6 +506,7 @@ function AdvanceStepButton({
       data-attention={step.ready || undefined}
     >
       <HoldButton
+        variant="brand"
         disabled={!step.ready}
         onConfirm={handleAdvance}
         successLabel={description.successLabel}
@@ -515,10 +516,6 @@ function AdvanceStepButton({
             ? (description.hint ?? undefined)
             : undefined
         }
-        className={cn(
-          step.ready &&
-            'bg-accent-brand text-accent-brand-foreground hover:bg-accent-brand/90',
-        )}
       >
         {action.icon}
         {label}
