@@ -2,12 +2,15 @@
 
 import * as React from 'react'
 import {
+  expandRows,
   flexRender,
+  functionalUpdate,
   getCoreRowModel,
-  getExpandedRowModel,
   getFilteredRowModel,
+  getMemoOptions,
   getPaginationRowModel,
   getSortedRowModel,
+  memo,
   useReactTable,
 } from '@tanstack/react-table'
 import { ArrowDown, ArrowUp, ChevronsUpDown } from 'lucide-react'
@@ -15,10 +18,12 @@ import type {
   Column,
   ColumnDef,
   ColumnFiltersState,
-  ExpandedState,
+  ExpandedStateList,
   FilterFn,
   OnChangeFn,
+  PaginationState,
   Row,
+  RowModel,
   SortingState,
   Table as TanstackTable,
 } from '@tanstack/react-table'
@@ -83,6 +88,22 @@ function columnClassName(meta: unknown): string | undefined {
   return (meta as DataTableColumnMeta | undefined)?.className
 }
 
+// Expanded row model for a table whose `expanded` state holds the *collapsed*
+// row ids (see DataTable). TanStack's own `getExpandedRowModel()` hands back
+// the tree unexpanded whenever that record is empty, which here means nothing
+// is collapsed, so this one always walks it and lets `getIsRowExpanded`
+// decide parent by parent.
+function getOpenRowModel<TData>(): (
+  table: TanstackTable<TData>,
+) => () => RowModel<TData> {
+  return (table) =>
+    memo(
+      () => [table.getPreExpandedRowModel(), table.getState().expanded],
+      (rowModel) => expandRows(rowModel),
+      getMemoOptions(table.options, 'debugTable', 'getExpandedRowModel'),
+    )
+}
+
 interface DataTableProps<TData, TValue> {
   columns: Array<ColumnDef<TData, TValue>>
   data: Array<TData>
@@ -132,7 +153,27 @@ export function DataTable<TData, TValue>({
     React.useState<ColumnFiltersState>(initialColumnFilters)
   const columnFilters = controlledColumnFilters ?? internalColumnFilters
   const setColumnFilters = onColumnFiltersChange ?? setInternalColumnFilters
-  const [expanded, setExpanded] = React.useState<ExpandedState>(true)
+  // Parents the user collapsed, keyed by row id; every other parent is open.
+  // TanStack's `expanded: true` opens everything too, but its first toggle
+  // turns `true` into the ids visible at that moment, so a parent filtered
+  // out just then, or one a live query adds later, comes back collapsed.
+  // The table reads this record through `getIsRowExpanded`, and a bare
+  // `row.toggleExpanded()` still toggles: it adds an id that is absent and
+  // drops one that is present.
+  const [collapsed, setCollapsed] = React.useState<ExpandedStateList>({})
+  // The page the user is on, with the filters and sort they turned to it
+  // under. TanStack would go back to the first page itself, but on every
+  // new `data` array as much as on a filter change, and the lists here are
+  // rebuilt by a live query push or a parent's re-render; a reader on page
+  // three would be sent back to page one by an unrelated event's count
+  // moving. So the table keeps its page across data changes (see
+  // `autoResetPageIndex` below) and starts over only when the filters or
+  // sort change, as it did before.
+  const [pagination, setPagination] = React.useState<PaginationState>({
+    pageIndex: 0,
+    pageSize,
+  })
+  const [pagedUnder, setPagedUnder] = React.useState({ columnFilters, sorting })
 
   const table = useReactTable({
     data,
@@ -140,24 +181,52 @@ export function DataTable<TData, TValue>({
     getRowId,
     getSubRows,
     filterFromLeafRows: true,
+    autoResetPageIndex: false,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
-    getExpandedRowModel: getExpandedRowModel(),
+    getExpandedRowModel: getOpenRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
+    getIsRowExpanded: (row) => !collapsed[row.id],
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
-    onExpandedChange: setExpanded,
-    initialState: { pagination: { pageSize } },
-    state: { sorting, columnFilters, expanded },
+    onExpandedChange: (updater) =>
+      setCollapsed((previous) => {
+        const next = functionalUpdate(updater, previous)
+        // TanStack's `true` means everything open: here, the empty record.
+        return next === true ? {} : next
+      }),
+    onPaginationChange: setPagination,
+    state: { sorting, columnFilters, expanded: collapsed, pagination },
   })
+
+  // Settle the page for this render: the first one under new filters or
+  // sort, and never past the last when the list shrank under the reader (a
+  // live query dropping rows). The page count does not depend on the page,
+  // so it can be read here; a state set during render re-renders before
+  // anything is committed, so an empty page past the end never shows.
+  const restarted =
+    pagedUnder.columnFilters !== columnFilters || pagedUnder.sorting !== sorting
+  const lastPageIndex = Math.max(table.getPageCount() - 1, 0)
+  const pageIndex = restarted
+    ? 0
+    : Math.min(pagination.pageIndex, lastPageIndex)
+  if (restarted) {
+    setPagedUnder({ columnFilters, sorting })
+  }
+  if (pageIndex !== pagination.pageIndex) {
+    setPagination((previous) => ({ ...previous, pageIndex }))
+  }
 
   const rows = table.getRowModel().rows
   const pageCount = table.getPageCount()
   const currentPageSize = table.getState().pagination.pageSize
   // Only surface pagination controls once there are more rows than the smallest
-  // page size — small tables shouldn't carry an empty footer.
-  const showFooter = data.length > pageSizeOptions[0]
+  // page size — small tables shouldn't carry an empty footer. Count nested rows
+  // too: pagination slices the flattened expanded rows, so a handful of parents
+  // with many children can still overflow a page.
+  const showFooter =
+    table.getCoreRowModel().flatRows.length > pageSizeOptions[0]
 
   return (
     <div className="flex flex-col gap-4">

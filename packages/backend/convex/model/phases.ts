@@ -2,6 +2,7 @@ import {
   DEFAULT_BEST_OF,
   gameWinsEntryError,
   isBestOf,
+  matchDrawError,
   type BestOf,
 } from "@paper-pairings/shared/match-structure";
 import {
@@ -614,12 +615,23 @@ export function requireValidMatchResult(
   if (entryError !== null) {
     throw new Error(entryError);
   }
-  if (
-    phase.phaseType === SINGLE_ELIMINATION_FORMAT &&
-    playerOneGameWins === playerTwoGameWins
-  ) {
-    throw new Error("Single-elimination matches cannot end in a draw");
+  const drawError = matchDrawError(
+    phaseAllowsMatchDraws(phase),
+    playerOneGameWins,
+    playerTwoGameWins,
+  );
+  if (drawError !== null) {
+    throw new Error(drawError);
   }
+}
+
+// Whether a match in this phase may end with equal game wins. Sent to
+// clients with the current match so their entry controls can refuse a draw
+// up front instead of discovering the rule when the report is rejected.
+export function phaseAllowsMatchDraws(
+  phase: Pick<Doc<"tournamentPhases">, "phaseType">,
+): boolean {
+  return phase.phaseType !== SINGLE_ELIMINATION_FORMAT;
 }
 
 // A configured player meeting is a backend lifecycle prerequisite, not only a

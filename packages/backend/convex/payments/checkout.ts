@@ -28,6 +28,7 @@ import {
   isPaidEvent,
   openOrderForRegistration,
   orderTransferGroup,
+  patchOrder,
 } from "../model/payments";
 import {
   isPaidTicketType,
@@ -183,6 +184,7 @@ export const beginEntryCheckout = internalMutation({
       } else if (registration.entryStatus === "cancelled") {
         await setRegistrationState(ctx, registration._id, {
           entryStatus: "pending",
+          awaitingReview: false,
           playerName: playerDisplayName(user),
           tournamentStartDate: tournament.startDate,
           updatedAt: Date.now(),
@@ -247,7 +249,7 @@ async function bumpCheckoutAttempt(
   const checkoutAttempt = (order.checkoutAttempt ?? 0) + 1;
   const existingSessionId =
     order.stripeCheckoutSessionId ?? order.supersededSessionId ?? null;
-  await ctx.db.patch(order._id, {
+  await patchOrder(ctx, order, {
     checkoutAttempt,
     stripeCheckoutSessionId: undefined,
     supersededSessionId: existingSessionId ?? undefined,
@@ -384,7 +386,7 @@ export const attachCheckoutSession = internalMutation({
     if (order.checkoutAttempt !== args.checkoutAttempt) {
       return false;
     }
-    await ctx.db.patch(args.orderId, {
+    await patchOrder(ctx, order, {
       stripeCheckoutSessionId: args.stripeCheckoutSessionId,
       // The replacement only minted because the superseded session was
       // proven dead (expired, never paid), so the memory of it can go.

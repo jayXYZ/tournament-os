@@ -5,9 +5,8 @@ import {
   formatTimer,
 } from '@paper-pairings/shared/timer-utils'
 
-import { describeNextStep } from './next-step'
+import { describeNextStep, roundPosition } from './next-step'
 import { inProgressRound } from './pairings-board'
-import { phaseLabel } from './phase-label'
 import { activeRoundTimer } from './round-timer-chip'
 import type { ReactNode } from 'react'
 import type { PairingsBoard } from './pairings-board'
@@ -43,24 +42,15 @@ export function LiveStatusBand({
     description.body === 'live' || description.body === 'unpublished-pairings'
 
   if (roundInPlay && round) {
-    const phaseIndex = board.phases.findIndex(
-      (phaseBoard) => phaseBoard.phase._id === round.tournamentPhaseId,
-    )
-    const phaseBoard = board.phases[phaseIndex]
-    const start = phaseBoard.timeline.startRoundNumber ?? round.roundNumber
-    const planned = phaseBoard.timeline.plannedRoundCount
-    const label = phaseLabel(
-      phaseBoard.phase,
-      phaseIndex > 0 ? board.phases[phaseIndex - 1].phase : undefined,
-    )
+    const { phaseName, roundInPhase, planned } = roundPosition(board, round)
     cells.push(
       <BandCell key="round" label="Round">
         <BandFigure
-          value={String(round.roundNumber - start + 1)}
+          value={String(roundInPhase)}
           unit={planned === null ? undefined : `of ${planned}`}
         />
         <BandNote>
-          {label}
+          {phaseName}
           {round.pairingsPublishedAt === undefined
             ? ', pairings not yet published'
             : `, pairings published ${timeFormatter.format(new Date(round.pairingsPublishedAt))}`}

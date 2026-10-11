@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { type Infer, v } from "convex/values";
 
 import {
   invitationStatuses,
@@ -87,13 +87,21 @@ export const tournamentVisibilityValidator = v.union(
 // (never publicly viewable regardless of visibility; named to avoid clashing
 // with the Magic "draft" format); "registration" means published and open for
 // registration.
+export const tournamentLifecycles = [
+  "setup",
+  "registration",
+  "in_progress",
+  "completed",
+  "cancelled",
+] as const;
+export type TournamentLifecycle = (typeof tournamentLifecycles)[number];
 export const tournamentLifecycleValidator = v.union(
   v.literal("setup"),
   v.literal("registration"),
   v.literal("in_progress"),
   v.literal("completed"),
   v.literal("cancelled"),
-);
+) satisfies { type: TournamentLifecycle };
 
 // Conventions have no "in_progress" stage (ADR 0004): "registration" spans
 // the whole live run — publish opens it, and the organizer's explicit
@@ -143,19 +151,35 @@ export const tournamentParticipationStatusValidator = v.union(
   v.literal("disqualified"),
 );
 
-// One state an organizer can narrow the Registrations tab to. These are the
-// effective statuses (@paper-pairings/shared effectiveRegistrationStatus): the
-// non-confirmed entry states pass through, and a confirmed entry is named by
-// its participation status instead, since that is what the roster shows. Each
-// value is a prefix of by_tournamentId_and_entryStatus_and_participationStatus
-// (see registrationStatusIndexKey), so the filter never post-scans.
-export const registrationStatusFilterValidator = v.union(
-  v.literal("pending"),
+// One slice an organizer can narrow the Registrations tab to: an entry
+// status of the tournament's history, a participation status of its
+// confirmed entries (the effective status the roster shows for them —
+// @paper-pairings/shared effectiveRegistrationStatus), or the review queue.
+// "pending" has no filter of its own: "awaiting_review" lists only the
+// applications the organizer has yet to decide (CONTEXT.md "Review Queue"),
+// while a pending row awaiting its payment (an approved or directly filed
+// entry on a paid event) is not review work and shows in the unfiltered
+// history with its payment badge. Every value is an index-equality prefix
+// (model/registrations.ts registrationFilterRange), so the filter never
+// post-scans. listRegistrationPage and searchRegistrations share this so a
+// filter and a search term always narrow the same rows.
+export const registrationFilterValidator = v.union(
+  v.literal("awaiting_review"),
   v.literal("waitlisted"),
+  v.literal("confirmed"),
   v.literal("cancelled"),
   v.literal("rejected"),
   tournamentParticipationStatusValidator,
 );
+export type RegistrationFilter = Infer<typeof registrationFilterValidator>;
+
+// A tournament's tally of confirmed entrants in each non-active status
+// (tournaments.participationCounts); "active" is confirmed minus the sum.
+export const participationCountsValidator = v.object({
+  dropped: v.number(),
+  eliminated: v.number(),
+  disqualified: v.number(),
+});
 
 export const tournamentPhaseStatusValidator = v.union(
   v.literal("upcoming"),

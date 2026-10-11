@@ -394,6 +394,83 @@ test("playoff standings lock placements by elimination round", async () => {
   ]);
 });
 
+test("getMyCurrentMatch serves the phase's draw rule and the bracket enforces it", async () => {
+  const t = createConvexTest();
+  const { tournamentId, registrationIds } = await seedTournament(t, 8, [
+    {
+      phaseOrder: 1,
+      phaseType: "swiss",
+      phaseRoundMode: "fixed",
+      phaseTotalRounds: 1,
+    },
+    {
+      phaseOrder: 2,
+      phaseType: "single_elimination",
+      phaseRoundMode: "fixed",
+    },
+  ]);
+  const organizer = t.withIdentity(organizerIdentity);
+  await organizer.mutation(api.tournaments.rounds.startTournament, {
+    tournamentId,
+  });
+
+  // Swiss: a drawn match is a legal result, and the client is told so.
+  const swissView = await t
+    .withIdentity(playerIdentity(1))
+    .query(api.tournaments.player.getMyCurrentMatch, { tournamentId });
+  if (swissView.kind !== "match") {
+    throw new Error("Expected a Swiss match");
+  }
+  expect(swissView.match.allowDraws).toBe(true);
+
+  await playOutCurrentRound(t, tournamentId);
+  const quarterfinalId = await organizer.mutation(
+    api.tournaments.rounds.generateNextRound,
+    { tournamentId },
+  );
+  const quarterfinals = await organizer.query(
+    api.tournaments.rounds.listRoundPairings,
+    { roundId: quarterfinalId },
+  );
+  const seatedPlayerNumber =
+    registrationIds.indexOf(quarterfinals[0].players[0].playerId) + 1;
+  const seated = t.withIdentity(playerIdentity(seatedPlayerNumber));
+
+  // Bracket: the flag flips so entry controls can refuse a draw up front…
+  const bracketView = await seated.query(
+    api.tournaments.player.getMyCurrentMatch,
+    { tournamentId },
+  );
+  if (bracketView.kind !== "match") {
+    throw new Error("Expected a quarterfinal match");
+  }
+  expect(bracketView.match.allowDraws).toBe(false);
+
+  // …and the gate behind them refuses one anyway, with the same message.
+  await expect(
+    seated.mutation(api.tournaments.player.reportMyMatchResult, {
+      matchId: bracketView.match._id,
+      myGameWins: 1,
+      opponentGameWins: 1,
+    }),
+  ).rejects.toThrow("Single-elimination matches cannot end in a draw");
+
+  await seated.mutation(api.tournaments.player.reportMyMatchResult, {
+    matchId: bracketView.match._id,
+    myGameWins: 2,
+    opponentGameWins: 1,
+  });
+  const reported = await seated.query(
+    api.tournaments.player.getMyCurrentMatch,
+    { tournamentId },
+  );
+  expect(reported).toMatchObject({
+    kind: "match",
+    match: { matchStatus: "completed", allowDraws: false },
+    me: { gameWins: 2, gameLosses: 1 },
+  });
+});
+
 test("getMyCurrentMatch walks the tournament lifecycle", async () => {
   const t = createConvexTest();
   const { tournamentId, registrationIds } = await seedTournament(t, 4);

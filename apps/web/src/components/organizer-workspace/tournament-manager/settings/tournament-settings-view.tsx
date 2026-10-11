@@ -12,6 +12,7 @@ import { PhaseSettingsCard } from './phase-settings-card'
 import { SettingsSkeleton } from './settings-skeleton'
 import { TournamentSettingsCard } from './tournament-settings-card'
 import type { Id } from '@paper-pairings/backend/convex/_generated/dataModel'
+import { SectionStack } from '@/components/shared/section-stack'
 import {
   TournamentLifecycleBadge,
   TournamentVisibilityBadge,
@@ -45,7 +46,7 @@ export function TournamentSettingsView({
                 : 'Core and phase settings are locked after tournament play begins. Visibility, event details, and pairing publication preferences can still be changed.'}
             </p>
           ) : null}
-          <div className="flex flex-col divide-y divide-border [&>*]:py-6 [&>*:first-child]:pt-0 [&>*:last-child]:pb-0">
+          <SectionStack>
             <TournamentSettingsCard
               key={setup.tournament._id}
               tournament={setup.tournament}
@@ -69,7 +70,7 @@ export function TournamentSettingsView({
               phases={setup.phases}
             />
             <DangerZoneCard tournament={setup.tournament} />
-          </div>
+          </SectionStack>
         </>
       )}
     </section>

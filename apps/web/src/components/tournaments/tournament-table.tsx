@@ -14,14 +14,10 @@ import {
   formatTournamentDateShort,
   tournamentLifecycleFilterOptions,
 } from './tournament-display'
-import {
-  columnFiltersFromSearch,
-  searchFromColumnFilters,
-} from './tournament-table-search'
+import { useTournamentTableSearch } from './use-tournament-table-search'
 import type {
   ColumnDef,
   ColumnFiltersState,
-  OnChangeFn,
   Row,
   Table as TanstackTable,
 } from '@tanstack/react-table'
@@ -33,6 +29,7 @@ import type {
 } from '@/components/ui/data-table-toolbar'
 
 import { formatConventionDateRange } from '@/components/conventions/convention-display'
+import { SectionHeader } from '@/components/shared/section-header'
 import { TableEmptyState } from '@/components/shared/table-empty-state'
 import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'
 import { Badge } from '@/components/ui/badge'
@@ -51,12 +48,28 @@ import { cn } from '@/lib/utils'
 
 export type TournamentTableVariant = 'public' | 'registered' | 'manage'
 
+// The columns the table reads from a tournament. Narrower than the document
+// so the manage list can arrive projected (listForOrganization sends only
+// these) while the other lists still pass whole documents.
+export type TournamentTableTournament = Pick<
+  Doc<'tournaments'>,
+  | '_id'
+  | 'name'
+  | 'publicCode'
+  | 'format'
+  | 'lifecycle'
+  | 'startDate'
+  | 'playerCapacity'
+  | 'isTestEvent'
+  | 'conventionId'
+>
+
 export type TournamentTableItem = {
   key: string
   organizationName?: string | null
   registeredCount?: number
   registration?: Doc<'tournamentRegistrations'>
-  tournament: Doc<'tournaments'>
+  tournament: TournamentTableTournament
 }
 
 // A convention listed in the same table as tournaments. Its child events
@@ -80,20 +93,38 @@ export function TournamentTable({
   items,
   conventions,
   variant,
+  title = sectionTitle[variant],
   search,
   onSearchChange,
+  hasItemsBeyondStatusFilter = false,
+  hasUnloadedItems = false,
 }: {
   items: Array<TournamentTableItem> | undefined
   // When present, the table groups events under their conventions. Pass it
   // only once loaded so the grouping never flashes in after the flat list.
   conventions?: Array<TournamentTableConvention>
   variant: TournamentTableVariant
+  // Heads the table's section where the page does not already name it;
+  // `sectionTitle` has each variant's default.
+  title?: string
   // Toolbar state kept by the caller, in practice the route's search params
   // (see tournament-table-search.ts), so filters survive reload and the
   // back button. Pass both or neither; without them the table keeps the
   // state itself.
   search?: TournamentTableSearchParams
   onSearchChange?: (next: TournamentTableSearchParams) => void
+  // Set when the server narrowed `items` to the lifecycles the Status chip
+  // admits and left events out. An empty list then still renders the table
+  // and its toolbar — the chip is how those events are reached — rather
+  // than the no-tournaments state.
+  hasItemsBeyondStatusFilter?: boolean
+  // Set while `items` is the loaded prefix of a paginated list with pages
+  // still to come. The toolbar filters on the client, so it is withheld
+  // until the list is whole rather than report "no matches" over rows not
+  // yet loaded. The filters it would hold are set aside with it: a list can
+  // go from whole back to partial (its open last page grew), and must not
+  // stay narrowed by a chip no longer on screen.
+  hasUnloadedItems?: boolean
 }) {
   const navigate = useNavigate()
   const grouped = conventions !== undefined
@@ -102,45 +133,32 @@ export function TournamentTable({
     [variant, grouped],
   )
   const rows = React.useMemo(
-    () => (items ? buildRows(items, conventions ?? []) : undefined),
-    [items, conventions],
+    () => (items ? buildRows(items, conventions ?? [], variant) : undefined),
+    [items, conventions, variant],
   )
-  // The manage list holds every lifecycle the organization has ever run, so
-  // it opens narrowed to the events still in play; widening the Status chip
-  // reaches completed and cancelled ones. The other variants already
-  // arrive scoped by the server and start unfiltered. The same codec that
-  // reads the URL supplies the uncontrolled table's starting point.
-  const controlled = search !== undefined && onSearchChange !== undefined
-  const columnFilters = React.useMemo<ColumnFiltersState>(
-    () => columnFiltersFromSearch(search ?? {}, variant),
-    [search, variant],
-  )
-  const handleColumnFiltersChange = React.useCallback<
-    OnChangeFn<ColumnFiltersState>
-  >(
-    (updater) => {
-      const next =
-        typeof updater === 'function' ? updater(columnFilters) : updater
-      onSearchChange?.(searchFromColumnFilters(next, variant))
-    },
-    [columnFilters, onSearchChange, variant],
-  )
+  // The manage list opens narrowed to the events still in play; widening
+  // the Status chip reaches completed and cancelled ones, which the admin
+  // view fetches only then. The other variants already arrive scoped by
+  // the server and start unfiltered. The same codec that reads the URL
+  // supplies the uncontrolled table's starting point.
+  const { controlled, columnFilters, onColumnFiltersChange } =
+    useTournamentTableSearch({ search, onSearchChange, variant })
 
   if (rows === undefined) {
     return (
-      <TournamentSection variant={variant} description={loadingCopy[variant]}>
+      <TournamentSection title={title} description={loadingCopy[variant]}>
         <TableLoadingSkeleton rows={variant === 'registered' ? 2 : 3} />
       </TournamentSection>
     )
   }
 
-  if (rows.length === 0) {
-    return <TournamentTableEmpty variant={variant} />
+  if (rows.length === 0 && !hasItemsBeyondStatusFilter) {
+    return <TournamentTableEmpty variant={variant} title={title} />
   }
 
   const isManage = variant === 'manage'
   return (
-    <TournamentSection variant={variant} description={populatedCopy[variant]}>
+    <TournamentSection title={title} description={populatedCopy[variant]}>
       <DataTable
         columns={columns}
         data={rows}
@@ -155,10 +173,14 @@ export function TournamentTable({
             : 'No tournaments match these filters.'
         }
         initialColumnFilters={columnFilters}
-        columnFilters={controlled ? columnFilters : undefined}
-        onColumnFiltersChange={
-          controlled ? handleColumnFiltersChange : undefined
+        columnFilters={
+          hasUnloadedItems
+            ? noColumnFilters
+            : controlled
+              ? columnFilters
+              : undefined
         }
+        onColumnFiltersChange={controlled ? onColumnFiltersChange : undefined}
         onRowClick={
           isManage
             ? (row) =>
@@ -180,6 +202,9 @@ export function TournamentTable({
             : undefined
         }
         toolbar={(table) => {
+          if (hasUnloadedItems) {
+            return null
+          }
           // Status only means something where more than one lifecycle can
           // appear: the public schedule is registration-only by the time it
           // reaches the client. Start date waits under "More filters" since
@@ -223,6 +248,10 @@ export function TournamentTable({
   )
 }
 
+// One shared empty state, so the table's filter memo is not invalidated by a
+// fresh literal on every render it spends without its toolbar.
+const noColumnFilters: ColumnFiltersState = []
+
 // The Format chip offers every tournament format. A convention row's own
 // format is "convention" and never matches, but the table filters from leaf
 // rows so a convention stays listed while any of its events match.
@@ -233,11 +262,16 @@ const formatFilterOptions: Array<DataTableFilterOption> = tournamentFormats.map(
   }),
 )
 
-// Conventions and standalone tournaments share the top level, ordered by
-// start date; each convention's children keep the order they arrived in.
+// Conventions and standalone tournaments share the top level, merged in the
+// order their servers chose: the manage list arrives newest start first and
+// is capped per lifecycle on that assumption, so an organization with a long
+// history sees its current events on page one; the public and registered
+// lists arrive soonest first. Each convention's children keep their arrival
+// order.
 function buildRows(
   items: Array<TournamentTableItem>,
   conventions: Array<TournamentTableConvention>,
+  variant: TournamentTableVariant,
 ): Array<TournamentTableRow> {
   const parents = new Map<string, ConventionRow>(
     conventions.map((entry) => [
@@ -257,8 +291,9 @@ function buildRows(
       standalone.push(row)
     }
   }
+  const direction = variant === 'manage' ? -1 : 1
   return [...parents.values(), ...standalone].sort(
-    (left, right) => rowStartDate(left) - rowStartDate(right),
+    (left, right) => direction * (rowStartDate(left) - rowStartDate(right)),
   )
 }
 
@@ -268,10 +303,12 @@ function rowStartDate(row: TournamentTableRow) {
     : row.tournament.startDate
 }
 
-// The public and manage tables sit directly under a page title that already
-// names them, so only the registered list (which shares a page with the
-// public schedule) carries its own heading. The others show their
-// description as a single muted line.
+// Each variant's default heading. The public and manage tables usually sit
+// directly under a page title that already names them, so only the
+// registered list (which shares a page with the public schedule) carries
+// one; a page that does not name its table (the convention page, which
+// lists a convention's events beneath its details) passes `title`. A
+// section with no heading shows its description as a single muted line.
 const sectionTitle: Partial<Record<TournamentTableVariant, string>> = {
   registered: 'My tournaments',
 }
@@ -289,54 +326,76 @@ const populatedCopy: Record<TournamentTableVariant, string> = {
 }
 
 function TournamentSection({
-  variant,
+  title,
   description,
   children,
 }: {
-  variant: TournamentTableVariant
-  description: string
+  title?: string
+  description?: string
   children?: React.ReactNode
 }) {
-  const title = sectionTitle[variant]
   return (
     <section className="flex flex-col gap-4">
-      <div>
-        {title ? <h2 className="text-sm font-medium">{title}</h2> : null}
-        <p className="text-xs/relaxed text-muted-foreground">{description}</p>
-      </div>
+      <SectionHeader title={title} description={description} />
       {children}
     </section>
   )
 }
 
+// Copy for an empty public or manage list. The manage list holds every
+// lifecycle, and is empty only when the organization has no tournaments in
+// any of them and no conventions (an empty Status selection keeps the table
+// instead, see hasItemsBeyondStatusFilter), so it must not read as merely
+// "nothing upcoming".
+const emptyCopy: Record<
+  Exclude<TournamentTableVariant, 'registered'>,
+  { title: string; description: string }
+> = {
+  public: {
+    title: 'No upcoming tournaments',
+    description:
+      'Public tournaments will appear here once an organizer publishes future events.',
+  },
+  manage: {
+    title: 'No tournaments yet',
+    description:
+      'Tournaments and conventions you create for this organization will appear here.',
+  },
+}
+
 function TournamentTableEmpty({
   variant,
+  title,
 }: {
   variant: TournamentTableVariant
+  title?: string
 }) {
   if (variant === 'registered') {
     return (
       <TournamentSection
-        variant={variant}
+        title={title}
         description="You are not registered for any upcoming events yet. Pick one from the schedule below to get started."
       />
     )
   }
 
-  return (
+  const empty = (
     <TableEmptyState
       icon={variant === 'public' ? UserRound : CalendarDays}
-      title="No upcoming tournaments"
-      description={
-        variant === 'public'
-          ? 'Public tournaments will appear here once an organizer publishes future events.'
-          : 'Future tournaments for this organization will appear here.'
-      }
+      title={emptyCopy[variant].title}
+      description={emptyCopy[variant].description}
       className={cn(
         'rounded-lg border border-border',
         variant === 'public' && 'min-h-80',
       )}
     />
+  )
+  // A heading names the section whatever it holds, so it stays above the
+  // empty state as it did above the loading skeleton.
+  return title === undefined ? (
+    empty
+  ) : (
+    <TournamentSection title={title}>{empty}</TournamentSection>
   )
 }
 
@@ -494,7 +553,18 @@ function buildTournamentColumns(
 function ConventionNameCell({ row }: { row: Row<TournamentTableRow> }) {
   const { convention, events } = row.original as ConventionRow
   const expanded = row.getIsExpanded()
-  const count = events.length
+  // The table filters from leaf rows, so a convention can stay listed with
+  // some or none of its events matching. `row.subRows` is the filtered set:
+  // the count and the chevron describe what expanding will actually show,
+  // with the total alongside once a filter has hidden any.
+  const visible = row.subRows.length
+  const total = events.length
+  const count =
+    visible === total
+      ? total === 1
+        ? '1 event'
+        : `${total} events`
+      : `${visible} of ${total} events`
   return (
     <div className="flex min-w-0 items-center gap-2">
       <Button
@@ -508,7 +578,7 @@ function ConventionNameCell({ row }: { row: Row<TournamentTableRow> }) {
             ? `Collapse ${convention.name} events`
             : `Expand ${convention.name} events`
         }
-        disabled={count === 0}
+        disabled={visible === 0}
         onClick={(event) => {
           event.stopPropagation()
           row.toggleExpanded()
@@ -517,9 +587,7 @@ function ConventionNameCell({ row }: { row: Row<TournamentTableRow> }) {
         {expanded ? <ChevronDown /> : <ChevronRight />}
       </Button>
       <p className="font-medium text-foreground">{convention.name}</p>
-      <span className="text-muted-foreground">
-        {count === 1 ? '1 event' : `${count} events`}
-      </span>
+      <span className="text-muted-foreground">{count}</span>
       {convention.isTestEvent ? <Badge variant="outline">Test</Badge> : null}
     </div>
   )
@@ -566,16 +634,36 @@ function TournamentNameCell({
 
 // Whether no sibling follows this row on the rendered page, so the vertical
 // tree line can stop at the row's midpoint instead of running off the
-// bottom. Uses the paginated, sorted, filtered rows so it tracks what is
-// actually on screen.
+// bottom. Reads the paginated, sorted, filtered rows so it tracks what is
+// actually on screen. The scan runs once per row model (its array identity
+// changes whenever filtering, sorting, or paging does) rather than once per
+// cell, so a page of nested rows stays linear to render.
+const lastVisibleChildIds = new WeakMap<
+  ReadonlyArray<Row<TournamentTableRow>>,
+  Set<string>
+>()
+
 function isLastVisibleChild(
   row: Row<TournamentTableRow>,
   table: TanstackTable<TournamentTableRow>,
 ) {
   const rows = table.getRowModel().rows
-  const index = rows.findIndex((candidate) => candidate.id === row.id)
-  const next = rows.at(index + 1)
-  return next === undefined || next.depth < row.depth
+  const cached = lastVisibleChildIds.get(rows)
+  if (cached !== undefined) {
+    return cached.has(row.id)
+  }
+  const ids = new Set<string>()
+  rows.forEach((candidate, index) => {
+    const next = rows.at(index + 1)
+    if (
+      candidate.depth > 0 &&
+      (next === undefined || next.depth < candidate.depth)
+    ) {
+      ids.add(candidate.id)
+    }
+  })
+  lastVisibleChildIds.set(rows, ids)
+  return ids.has(row.id)
 }
 
 // The ├─ / └─ lines that tie a nested event to its convention. Positioned
@@ -658,7 +746,7 @@ function TournamentTableAction({
   variant,
 }: {
   publicCode: string
-  tournament: Doc<'tournaments'>
+  tournament: TournamentTableTournament
   variant: TournamentTableVariant
 }) {
   if (variant === 'manage') {

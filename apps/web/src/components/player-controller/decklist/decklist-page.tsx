@@ -206,10 +206,10 @@ function DecklistFrame({
             <WorkspacePageHeader
               title={
                 // The placeholder reserves exactly the real title's box:
-                // h-9 (2.25rem) equals text-3xl's line height (1.875rem x
-                // 1.2), so the h1 keeps its height and the content under
-                // the heading holds still when the name lands.
-                eventName ?? <Skeleton className="h-9 w-64" />
+                // h-8 (2rem) equals text-2xl's line height (1.5rem x 4/3),
+                // so the h1 keeps its height and the content under the
+                // heading holds still when the name lands.
+                eventName ?? <Skeleton className="h-8 w-64" />
               }
             />
           </div>

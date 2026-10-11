@@ -6,6 +6,7 @@ import { api } from '@paper-pairings/backend/convex/_generated/api'
 import { mutationErrorMessage } from '@paper-pairings/core'
 import { SUPPORTED_STRIPE_COUNTRIES } from '@paper-pairings/shared/payment-fees'
 import { useOrganization } from './organization-context'
+import { SectionHeader } from '@/components/shared/section-header'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -121,13 +122,10 @@ export function OrganizationPaymentsCard() {
 
   return (
     <section className="flex flex-col gap-4">
-      <div>
-        <h2 className="text-sm font-medium">Payments</h2>
-        <p className="text-xs/relaxed text-muted-foreground">
-          Connect a Stripe account to charge entry fees and receive payouts for
-          your events.
-        </p>
-      </div>
+      <SectionHeader
+        title="Payments"
+        description="Connect a Stripe account to charge entry fees and receive payouts for your events."
+      />
       <div className="flex flex-col gap-4">
         {settings === undefined ? (
           <Skeleton className="h-16" />

@@ -49,6 +49,7 @@ export function ConventionPublicPage({ publicCode }: { publicCode: string }) {
   return (
     <SiteShell
       subtitle="Convention details"
+      readingColumn
       toaster
       actions={<SiteShellBackLink to="/">All events</SiteShellBackLink>}
     >
@@ -168,7 +169,16 @@ function ConventionDetails({
         </CardContent>
       </Card>
 
-      <TournamentTable variant="public" items={childItems} />
+      <TournamentTable
+        variant="public"
+        // The page names the convention, not its schedule, so the table
+        // heads its own section.
+        title="Events"
+        items={childItems}
+        // The list arrives a page at a time, so the table's client-side
+        // filters wait for the last one (see hasUnloadedItems).
+        hasUnloadedItems={childrenStatus !== 'Exhausted'}
+      />
       <LoadMoreButton
         status={childrenStatus}
         onLoadMore={() => loadMoreChildren(EVENTS_PAGE_SIZE)}

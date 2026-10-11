@@ -11,6 +11,7 @@ import {
 import { parseDollarsToCents, toDollarsValue } from './money'
 import type { FormEvent } from 'react'
 import type { Id } from '@paper-pairings/backend/convex/_generated/dataModel'
+import { SectionHeader } from '@/components/shared/section-header'
 import { toDatetimeLocalValue } from '@/components/tournaments'
 import { Button } from '@/components/ui/button'
 import {
@@ -112,12 +113,10 @@ export function PaidEventFeeCard({
 
   return (
     <section className="flex flex-col gap-4">
-      <div>
-        <h2 className="text-sm font-medium">{copy.title}</h2>
-        <p className="text-xs/relaxed text-muted-foreground">
-          {locked ? copy.lockedDescription : copy.description}
-        </p>
-      </div>
+      <SectionHeader
+        title={copy.title}
+        description={locked ? copy.lockedDescription : copy.description}
+      />
       <div>
         <form onSubmit={handleSubmit}>
           <FieldGroup>

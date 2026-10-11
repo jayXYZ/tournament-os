@@ -14,6 +14,7 @@ import {
 import type { Id } from '@paper-pairings/backend/convex/_generated/dataModel'
 import type { BestOf } from '@paper-pairings/shared/match-structure'
 import type { PairingRow } from './pairings/pairing-row'
+import { SectionHeader } from '@/components/shared/section-header'
 import { Button } from '@/components/ui/button'
 import {
   Empty,
@@ -31,11 +32,13 @@ export function OutstandingTablesCard({
   roundId,
   roundLabel,
   bestOf,
+  allowDraws,
   publicCode,
 }: {
   roundId: Id<'tournamentRounds'>
   roundLabel: string
   bestOf: BestOf
+  allowDraws: boolean
   publicCode: string
 }) {
   const pairings = useQuery(api.tournaments.rounds.listRoundPairings, {
@@ -58,28 +61,30 @@ export function OutstandingTablesCard({
 
   return (
     <section className="flex flex-col gap-4">
-      <div>
-        <h2 className="text-sm font-medium">
-          {outstanding.length === 0
+      <SectionHeader
+        title={
+          outstanding.length === 0
             ? 'All tables reported'
-            : `Waiting on ${outstanding.length} ${outstanding.length === 1 ? 'table' : 'tables'}`}
-        </h2>
-        <p className="text-xs/relaxed text-muted-foreground">
-          {roundLabel}, {tables.length}{' '}
-          {tables.length === 1 ? 'table' : 'tables'}
-          {byes.length > 0
-            ? `, ${byes.length} ${byes.length === 1 ? 'bye' : 'byes'}`
-            : ''}
-          .{' '}
-          <Link
-            to="/admin/tournaments/$tournamentId/pairings"
-            params={{ tournamentId: publicCode }}
-            className="underline underline-offset-4 hover:text-foreground"
-          >
-            All pairings
-          </Link>
-        </p>
-      </div>
+            : `Waiting on ${outstanding.length} ${outstanding.length === 1 ? 'table' : 'tables'}`
+        }
+        description={
+          <>
+            {roundLabel}, {tables.length}{' '}
+            {tables.length === 1 ? 'table' : 'tables'}
+            {byes.length > 0
+              ? `, ${byes.length} ${byes.length === 1 ? 'bye' : 'byes'}`
+              : ''}
+            .{' '}
+            <Link
+              to="/admin/tournaments/$tournamentId/pairings"
+              params={{ tournamentId: publicCode }}
+              className="underline underline-offset-4 hover:text-foreground"
+            >
+              All pairings
+            </Link>
+          </>
+        }
+      />
       <div className="flex flex-col gap-4">
         {outstanding.length === 0 ? (
           <Empty className="py-8">
@@ -96,7 +101,12 @@ export function OutstandingTablesCard({
         ) : (
           <ul className="divide-y divide-border">
             {outstanding.map((row) => (
-              <LedgerRow key={row.match._id} row={row} bestOf={bestOf} />
+              <LedgerRow
+                key={row.match._id}
+                row={row}
+                bestOf={bestOf}
+                allowDraws={allowDraws}
+              />
             ))}
           </ul>
         )}
@@ -105,11 +115,9 @@ export function OutstandingTablesCard({
             {byes.length === 1 ? 'Bye this round: ' : 'Byes this round: '}
             <span className="font-medium text-foreground">
               {byes
-                .map((row) =>
-                  displayPlayerName(
-                    row.players.find((player) => !player.isBye)?.playerName,
-                  ),
-                )
+                // A bye match has one player row, itself flagged isBye
+                // (validators.ts), so the player is that row.
+                .map((row) => displayPlayerName(row.players.at(0)?.playerName))
                 .join(', ')}
             </span>
             . Awarded as a win, no table.
@@ -120,7 +128,15 @@ export function OutstandingTablesCard({
   )
 }
 
-function LedgerRow({ row, bestOf }: { row: PairingRow; bestOf: BestOf }) {
+function LedgerRow({
+  row,
+  bestOf,
+  allowDraws,
+}: {
+  row: PairingRow
+  bestOf: BestOf
+  allowDraws: boolean
+}) {
   const [entering, setEntering] = useState(false)
   return (
     <li className="flex items-center gap-4 py-2.5">
@@ -143,6 +159,7 @@ function LedgerRow({ row, bestOf }: { row: PairingRow; bestOf: BestOf }) {
         <EnterResultDialog
           row={row}
           bestOf={bestOf}
+          allowDraws={allowDraws}
           open={entering}
           onOpenChange={setEntering}
         />
@@ -157,9 +174,11 @@ function LedgerRow({ row, bestOf }: { row: PairingRow; bestOf: BestOf }) {
 export function UnconfirmedResultsCard({
   roundId,
   bestOf,
+  allowDraws,
 }: {
   roundId: Id<'tournamentRounds'>
   bestOf: BestOf
+  allowDraws: boolean
 }) {
   const pairings = useQuery(api.tournaments.rounds.listRoundPairings, {
     roundId,
@@ -175,17 +194,19 @@ export function UnconfirmedResultsCard({
 
   return (
     <section className="flex flex-col gap-4">
-      <div>
-        <h2 className="text-sm font-medium">Needs a look</h2>
-        <p className="text-xs/relaxed text-muted-foreground">
-          Reported by one player and not yet confirmed. Each counts toward
-          completing the round unless you change it.
-        </p>
-      </div>
+      <SectionHeader
+        title="Needs a look"
+        description="Reported by one player and not yet confirmed. Each counts toward completing the round unless you change it."
+      />
       <div>
         <ul className="divide-y divide-border">
           {unconfirmed.map((row) => (
-            <UnconfirmedRow key={row.match._id} row={row} bestOf={bestOf} />
+            <UnconfirmedRow
+              key={row.match._id}
+              row={row}
+              bestOf={bestOf}
+              allowDraws={allowDraws}
+            />
           ))}
         </ul>
       </div>
@@ -193,7 +214,15 @@ export function UnconfirmedResultsCard({
   )
 }
 
-function UnconfirmedRow({ row, bestOf }: { row: PairingRow; bestOf: BestOf }) {
+function UnconfirmedRow({
+  row,
+  bestOf,
+  allowDraws,
+}: {
+  row: PairingRow
+  bestOf: BestOf
+  allowDraws: boolean
+}) {
   const [editing, setEditing] = useState(false)
   const reporter = row.players.find(
     (player) => player.playerId === row.match.reportedByRegistrationId,
@@ -228,6 +257,7 @@ function UnconfirmedRow({ row, bestOf }: { row: PairingRow; bestOf: BestOf }) {
         <EnterResultDialog
           row={row}
           bestOf={bestOf}
+          allowDraws={allowDraws}
           open={editing}
           onOpenChange={setEditing}
         />

@@ -149,7 +149,10 @@ http.route({
 // `v2.core.account[configuration.recipient].capability_status_updated` and
 // `v2.core.account[requirements].updated`. A thin event carries only ids, so
 // the handler re-reads the live transfers capability and overwrites the
-// snapshot — naturally idempotent, no processed-event bookkeeping needed. The
+// snapshot — naturally idempotent, no processed-event bookkeeping needed.
+// Overlapping deliveries (or a delivery racing the manual refresh) can commit
+// in reverse order of their reads, so each write carries the time its read
+// began and the model-layer freshness guard drops the older one. The
 // snapshot only drives UI and the entry-fee gate; the payout re-checks live.
 http.route({
   path: "/stripe/account-events",
@@ -177,6 +180,7 @@ http.route({
       notification.type.startsWith("v2.core.account") &&
       notification.stripeAccountId
     ) {
+      const observedAt = Date.now();
       const status = await gateway.retrieveTransfersCapabilityStatus({
         stripeAccountId: notification.stripeAccountId,
       });
@@ -185,6 +189,7 @@ http.route({
         {
           stripeAccountId: notification.stripeAccountId,
           transfersCapabilityStatus: status,
+          observedAt,
         },
       );
     }

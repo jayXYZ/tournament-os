@@ -83,7 +83,7 @@ src/
   lib/
     convex.ts            # ConvexReactClient singleton
     palette.ts           # Dark-theme tokens mirrored from the web app.css
-    typography.ts        # Font families registered in _layout.tsx (Geist)
+    typography.ts        # Scoreboard numeral face (Geist), loaded without gating start
 ```
 
 ## Monorepo notes

@@ -6,6 +6,8 @@ import { api } from '@paper-pairings/backend/convex/_generated/api'
 import { displayPlayerName } from '@paper-pairings/core'
 import {
   MAX_GAME_DRAWS,
+  gameWinsEntryError,
+  matchDrawError,
   requiredGameWins,
 } from '@paper-pairings/shared/match-structure'
 import type { BestOf } from '@paper-pairings/shared/match-structure'
@@ -28,18 +30,20 @@ import { useBusyAction } from '@/hooks/use-busy-action'
 export function EnterResultDialog({
   row,
   bestOf,
+  allowDraws,
   open,
   onOpenChange,
 }: {
   row: PairingRow
   bestOf: BestOf
+  /** Whether equal game wins is a legal result in this phase. */
+  allowDraws: boolean
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
   const recordMatchResult = useMutation(
     api.tournaments.rounds.recordMatchResult,
   )
-  const maxGameWins = requiredGameWins(bestOf)
   const playerOne = row.players.at(0)
   const playerTwo = row.players.at(1)
 
@@ -52,6 +56,24 @@ export function EnterResultDialog({
   )
   const [gameDraws, setGameDraws] = useState(String(playerOne?.gameDraws ?? 0))
   const [note, setNote] = useState('')
+  // Each field carries only its own fixed bounds (whole numbers from 0 to
+  // the wins that take the match), so the browser flags just the field the
+  // organizer typed in. The rules that span both fields — a scoreline the
+  // backend would reject (2–2 in a best-of-3), or equal counts where the
+  // phase forbids a draw — are checked with the shared helpers and shown as
+  // a message instead, so the save waits for a valid scoreline and says why.
+  // `Number` rather than `parseInt` so a fractional entry reaches the
+  // whole-number check instead of being silently truncated.
+  const maxWins = requiredGameWins(bestOf)
+  const playerOneGameWins = Number(playerOneWins)
+  const playerTwoGameWins = Number(playerTwoWins)
+  const entryError =
+    gameWinsEntryError(
+      bestOf,
+      playerOneGameWins,
+      playerTwoGameWins,
+      Number(gameDraws || 0),
+    ) ?? matchDrawError(allowDraws, playerOneGameWins, playerTwoGameWins)
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -64,9 +86,9 @@ export function EnterResultDialog({
         matchId: row.match._id,
         playerOneRegistrationId: playerOne.playerId,
         playerTwoRegistrationId: playerTwo.playerId,
-        playerOneGameWins: Number.parseInt(playerOneWins, 10),
-        playerTwoGameWins: Number.parseInt(playerTwoWins, 10),
-        gameDraws: Number.parseInt(gameDraws, 10) || 0,
+        playerOneGameWins,
+        playerTwoGameWins,
+        gameDraws: Number(gameDraws || 0),
         ...(note.trim() === '' ? {} : { note: note.trim() }),
       })
       onOpenChange(false)
@@ -108,7 +130,8 @@ export function EnterResultDialog({
                   onChange={(event) => setPlayerOneWins(event.target.value)}
                   type="number"
                   min={0}
-                  max={maxGameWins}
+                  max={maxWins}
+                  step={1}
                   disabled={busy}
                   required
                 />
@@ -123,7 +146,8 @@ export function EnterResultDialog({
                   onChange={(event) => setPlayerTwoWins(event.target.value)}
                   type="number"
                   min={0}
-                  max={maxGameWins}
+                  max={maxWins}
+                  step={1}
                   disabled={busy}
                   required
                 />
@@ -141,6 +165,7 @@ export function EnterResultDialog({
                   type="number"
                   min={0}
                   max={MAX_GAME_DRAWS}
+                  step={1}
                   disabled={busy}
                 />
               </Field>
@@ -160,8 +185,14 @@ export function EnterResultDialog({
             </div>
           </FieldGroup>
 
+          {entryError ? (
+            <p role="status" className="text-sm text-muted-foreground">
+              {entryError}
+            </p>
+          ) : null}
+
           <DialogFooter>
-            <Button type="submit" disabled={busy}>
+            <Button type="submit" disabled={busy || entryError !== null}>
               {busy ? <Spinner data-icon="inline-start" /> : null}
               Save result
             </Button>

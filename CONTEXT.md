@@ -1,4 +1,4 @@
-# Tournament OS — Competitive Engine
+# Paper Pairings — Competitive Engine
 
 Shared language for the tournament engine — pairing, scoring, standings, and
 progression — plus the container tier above it (conventions and the events
@@ -164,6 +164,12 @@ URL-embedded, human-readable form)
 **Entry Status**:
 A registration's admission state (pending, waitlisted, confirmed, cancelled,
 rejected). Independent of competitive state.
+
+**Review Queue**:
+The pending applications an organizer has yet to decide (approve, reject, or
+waitlist). A pending entry that is instead awaiting its payment — approved on
+a paid event, or filed by a direct checkout — is not in the queue.
+_Avoid_: pending list (ambiguous between the queue and every pending row)
 
 **Participation Status**:
 A confirmed player's competitive state (active, dropped, eliminated,

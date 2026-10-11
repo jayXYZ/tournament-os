@@ -16,6 +16,7 @@ import {
   requireCurrentPhase,
   requirePhase,
 } from "../model/phases";
+import { ZERO_PARTICIPATION_COUNTS } from "../model/participation";
 import {
   analyzeProgression,
   completeRound as completeRoundTransition,
@@ -301,22 +302,20 @@ export const getPairingsBoard = query({
       { phaseBoards },
     );
 
-    // Who is still playing. The confirmed count is denormalized on the
-    // tournament; the non-active statuses are three small indexed reads,
-    // bounded by the player cap, and every manager route subscribes to this
-    // board so the overview's "31 playing, 1 dropped" line costs no extra
-    // subscription.
-    const nonActive = await nonActiveParticipationStatuses(ctx, tournament._id);
+    // Who is still playing. Both counts are denormalized on the tournament
+    // row this query already holds (the participation module keeps the
+    // tally current), so the overview's "31 playing, 1 dropped" line costs
+    // no extra reads — every manager route subscribes to this board, and
+    // after a cut the non-active roster it would otherwise scan is nearly the
+    // whole field.
+    const counts = tournament.participationCounts ?? ZERO_PARTICIPATION_COUNTS;
     const field = {
       confirmed: tournament.confirmedRegistrationCount,
-      active: tournament.confirmedRegistrationCount - nonActive.size,
-      dropped: 0,
-      eliminated: 0,
-      disqualified: 0,
+      active:
+        tournament.confirmedRegistrationCount -
+        (counts.dropped + counts.eliminated + counts.disqualified),
+      ...counts,
     };
-    for (const status of nonActive.values()) {
-      field[status] += 1;
-    }
 
     // Derived from the same boards progression analyzes, so the timeline the
     // clients render can never disagree with nextStep.

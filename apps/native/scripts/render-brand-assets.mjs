@@ -32,12 +32,32 @@ const markFill = /\sfill="(#[0-9a-fA-F]{6})"/.exec(markSvg)[1];
 // Android's adaptive-icon safe zone is a circle spanning 66/108 of the canvas;
 // the sheet's far corners fit inside it when the viewBox spans half the canvas.
 const ADAPTIVE_SCALE = 0.5;
+// The launcher icon's mark, inset so the OS's corner mask never clips it.
+const ICON_SCALE = 2 / 3;
+const fullBleed = roundedSquare(VIEWBOX, 0);
 
 const assets = [
   // In-app mark and splash image: the full viewBox in paper white on
   // transparent, so they sit on the app's own dark background.
   { file: "brand-mark.png", size: 512, layers: [[mark, markFill, 1]] },
   { file: "splash-icon.png", size: 1024, layers: [[mark, markFill, 1]] },
+  // Launcher icon: opaque, the mark on a full-bleed ink square (the OS
+  // applies its own corner mask).
+  {
+    file: "icon.png",
+    size: 1024,
+    layers: [
+      [fullBleed, palette.background, 1],
+      [mark, markFill, ICON_SCALE],
+    ],
+  },
+  // Adaptive-icon backdrop: a solid ink square. app.config.ts also sets a
+  // backgroundColor, but this image takes precedence, so it tracks the palette.
+  {
+    file: "android-icon-background.png",
+    size: 512,
+    layers: [[fullBleed, palette.background, 1]],
+  },
   {
     file: "android-icon-foreground.png",
     size: 512,

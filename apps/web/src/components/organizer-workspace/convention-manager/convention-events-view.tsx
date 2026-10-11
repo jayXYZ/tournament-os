@@ -83,7 +83,7 @@ export function ConventionEventsView() {
               description="Create a tournament under this convention or attach an existing one."
             />
           ) : (
-            <Table>
+            <Table bare>
               <TableHeader>
                 <TableRow>
                   <TableHead>Event</TableHead>

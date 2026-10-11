@@ -9,6 +9,8 @@ export type CurrentMatchAction = {
   kind: "report";
   matchId: MyActiveMatch["match"]["_id"];
   bestOf: MyActiveMatch["match"]["bestOf"];
+  /** Whether equal game wins is a legal result in this phase. */
+  allowDraws: MyActiveMatch["match"]["allowDraws"];
   opponentName: string;
 };
 
@@ -134,6 +136,7 @@ export function reportAction(
     kind: "report",
     matchId: match._id,
     bestOf: match.bestOf,
+    allowDraws: match.allowDraws,
     opponentName: opponent?.name ?? "Opponent",
   };
 }

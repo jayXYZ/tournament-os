@@ -1,5 +1,9 @@
 import { tournamentFormats } from '@paper-pairings/shared/tournament-creation-utils'
-import { activeTournamentLifecycles } from './tournament-display'
+import {
+  activeTournamentLifecycles,
+  isTournamentEnded,
+  tournamentLifecycleValues,
+} from './tournament-display'
 import type { ColumnFiltersState } from '@tanstack/react-table'
 import type { TournamentFormat } from '@paper-pairings/shared/tournament-creation-utils'
 import type { TournamentLifecycle } from './tournament-display'
@@ -25,27 +29,28 @@ export type TournamentTableSearchParams = {
 
 export const ALL_STATUSES = 'all'
 
-const lifecycles: ReadonlyArray<TournamentLifecycle> = [
-  'setup',
-  'registration',
-  'in_progress',
-  'completed',
-  'cancelled',
-]
-
 // validateSearch: keeps only well-formed values so a hand-edited URL can
-// never put the table in a state its chips cannot show.
+// never put the table in a state its chips cannot show. Every key is set,
+// to undefined when its value is missing or malformed: the router lays a
+// route's validated search over its parent's raw one, so a key merely left
+// out would keep the raw value this parser meant to reject.
 export function parseTournamentTableSearch(
   search: Record<string, unknown>,
 ): TournamentTableSearchParams {
-  const params: TournamentTableSearchParams = {}
+  const params: TournamentTableSearchParams = {
+    q: undefined,
+    status: undefined,
+    format: undefined,
+    from: undefined,
+    to: undefined,
+  }
   if (typeof search.q === 'string' && search.q !== '') {
     params.q = search.q
   }
   if (search.status === ALL_STATUSES) {
     params.status = ALL_STATUSES
   } else {
-    const status = parseList(search.status, lifecycles)
+    const status = parseList(search.status, tournamentLifecycleValues)
     if (status.length > 0) {
       params.status = status.join(',')
     }
@@ -54,13 +59,24 @@ export function parseTournamentTableSearch(
   if (format.length > 0) {
     params.format = format.join(',')
   }
-  if (typeof search.from === 'number' && Number.isFinite(search.from)) {
+  if (isTimestamp(search.from)) {
     params.from = search.from
   }
-  if (typeof search.to === 'number' && Number.isFinite(search.to)) {
+  if (isTimestamp(search.to)) {
     params.to = search.to
   }
   return params
+}
+
+// A finite number is not enough: Date can only hold about ±8.64e15 ms, and
+// a larger value would pass through to the date chip, which formats it and
+// throws (RangeError: Invalid time value) on first render.
+function isTimestamp(value: unknown): value is number {
+  return (
+    typeof value === 'number' &&
+    Number.isFinite(value) &&
+    !Number.isNaN(new Date(value).getTime())
+  )
 }
 
 function parseList<T extends string>(
@@ -107,13 +123,26 @@ function statusFilterFromSearch(
   status: string | undefined,
   variant: TournamentTableVariant,
 ): Array<TournamentLifecycle> {
-  if (status === ALL_STATUSES) {
+  // The public schedule has no Status chip (its list is registration-only),
+  // so a status in the URL would narrow the table with nothing to clear it.
+  if (variant === 'public' || status === ALL_STATUSES) {
     return []
   }
   if (status === undefined) {
     return variant === 'manage' ? activeTournamentLifecycles : []
   }
-  return parseList(status, lifecycles)
+  return parseList(status, tournamentLifecycleValues)
+}
+
+// Whether the manage table's Status chip, as the URL has it, admits
+// completed or cancelled events. Those are read only on demand (the manage
+// list is fetched per lifecycle), so the admin view subscribes to them
+// while this holds and drops them again when the chip narrows back.
+export function searchAdmitsEndedEvents(
+  params: TournamentTableSearchParams,
+): boolean {
+  const status = statusFilterFromSearch(params.status, 'manage')
+  return status.length === 0 || status.some(isTournamentEnded)
 }
 
 // Column filters → search params, the inverse of columnFiltersFromSearch.
@@ -143,6 +172,43 @@ export function searchFromColumnFilters(
     from: range?.from,
     to: range?.to,
   }
+}
+
+// Whether two search states agree on every chip (everything but the text).
+export function sameTournamentTableChips(
+  left: TournamentTableSearchParams,
+  right: TournamentTableSearchParams,
+) {
+  return (
+    left.status === right.status &&
+    left.format === right.format &&
+    left.from === right.from &&
+    left.to === right.to
+  )
+}
+
+export function sameTournamentTableSearch(
+  left: TournamentTableSearchParams,
+  right: TournamentTableSearchParams,
+) {
+  return left.q === right.q && sameTournamentTableChips(left, right)
+}
+
+// The table writes its filters to the URL and only reads them back once the
+// router settles, which may be after it has written again. `pending` is the
+// writes not yet seen back, oldest first. When `url` echoes one of them, the
+// result is what is still in flight (the echoed write and everything before
+// it — superseded or settled — drops out). When it echoes none, the result
+// is null: the back button or a pasted link changed the URL under the table,
+// and the table must adopt it.
+export function settleTournamentTableSearch(
+  pending: ReadonlyArray<TournamentTableSearchParams>,
+  url: TournamentTableSearchParams,
+): ReadonlyArray<TournamentTableSearchParams> | null {
+  const echoed = pending.findIndex((write) =>
+    sameTournamentTableSearch(write, url),
+  )
+  return echoed === -1 ? null : pending.slice(echoed + 1)
 }
 
 export type { TournamentFormat }

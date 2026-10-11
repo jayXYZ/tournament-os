@@ -10,6 +10,7 @@ import { ListOrdered } from 'lucide-react'
 import type { StandingRow } from '@paper-pairings/core'
 
 import type { Id } from '@paper-pairings/backend/convex/_generated/dataModel'
+import { SectionHeader } from '@/components/shared/section-header'
 import {
   Empty,
   EmptyDescription,
@@ -51,17 +52,19 @@ export function StandingsList({
 
   return (
     <section className="flex flex-col gap-4">
-      <div>
-        <h2 className="text-sm font-medium">Standings</h2>
-        <p className="text-xs/relaxed text-muted-foreground">
-          After round {standings.roundNumber}
-          {myRow
-            ? ` · You're ${ordinal(myRow.rank)} with ${myRow.matchPoints} ${
-                myRow.matchPoints === 1 ? 'point' : 'points'
-              }`
-            : ''}
-        </p>
-      </div>
+      <SectionHeader
+        title="Standings"
+        description={
+          <>
+            After round {standings.roundNumber}
+            {myRow
+              ? ` · You're ${ordinal(myRow.rank)} with ${myRow.matchPoints} ${
+                  myRow.matchPoints === 1 ? 'point' : 'points'
+                }`
+              : ''}
+          </>
+        }
+      />
       <div className="grid gap-1.5">
         {standings.rows.map((row) => (
           <StandingsRow key={row.rank} row={row} />

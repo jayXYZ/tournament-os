@@ -17,6 +17,7 @@ import {
   writePhases,
 } from "../model/phases";
 import { advance, pairFirstRoundOfTournament } from "../model/progression";
+import { ZERO_PARTICIPATION_COUNTS } from "../model/participation";
 import { activeRegistrations } from "../model/registrations";
 import {
   createTournament as createTournamentModel,
@@ -247,6 +248,7 @@ export const resetTestTournament = mutation({
     await ctx.db.patch(args.tournamentId, {
       lifecycle: "setup",
       confirmedRegistrationCount: 0,
+      participationCounts: ZERO_PARTICIPATION_COUNTS,
       updatedAt: Date.now(),
     });
 

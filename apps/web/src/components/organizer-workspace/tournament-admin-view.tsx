@@ -5,7 +5,12 @@ import { CreateTournamentDialog } from './create-tournament-dialog'
 import { useOrganization } from './organization-context'
 import type { TournamentTableSearchParams } from '@/components/tournaments'
 import { WorkspacePageHeader } from '@/components/shared/workspace-page-header'
-import { TournamentTable } from '@/components/tournaments'
+import {
+  TournamentTable,
+  activeTournamentLifecycles,
+  endedTournamentLifecycles,
+  searchAdmitsEndedEvents,
+} from '@/components/tournaments'
 
 export function TournamentAdminView({
   search,
@@ -15,10 +20,27 @@ export function TournamentAdminView({
   onSearchChange: (next: TournamentTableSearchParams) => void
 }) {
   const { selectedOrganizationId } = useOrganization()
-  const tournaments = useQuery(
+  // The list is read per lifecycle group. The events still in play are
+  // always subscribed; completed and cancelled history only while the
+  // Status chip reaches it, so widening the chip adds rows without
+  // reloading the live ones and the default subscription stays small for
+  // an organization with a long history.
+  const active = useQuery(
     api.tournaments.lifecycle.listForOrganization,
     selectedOrganizationId
-      ? { organizationId: selectedOrganizationId }
+      ? {
+          organizationId: selectedOrganizationId,
+          lifecycles: activeTournamentLifecycles,
+        }
+      : 'skip',
+  )
+  const ended = useQuery(
+    api.tournaments.lifecycle.listForOrganization,
+    selectedOrganizationId && searchAdmitsEndedEvents(search)
+      ? {
+          organizationId: selectedOrganizationId,
+          lifecycles: endedTournamentLifecycles,
+        }
       : 'skip',
   )
   const conventions = useQuery(
@@ -29,13 +51,16 @@ export function TournamentAdminView({
   )
   // Both lists feed one grouped table, so it stays in its loading state
   // until each has arrived rather than regrouping once conventions land.
-  const loaded = tournaments !== undefined && conventions !== undefined
+  // Ended events are not waited for: they join the table when they arrive.
+  const loaded = active !== undefined && conventions !== undefined
   const items = loaded
-    ? tournaments.map((tournament) => ({
-        key: tournament._id,
-        registeredCount: tournament.registeredCount,
-        tournament,
-      }))
+    ? [...active.tournaments, ...(ended?.tournaments ?? [])].map(
+        (tournament) => ({
+          key: tournament._id,
+          registeredCount: tournament.registeredCount,
+          tournament,
+        }),
+      )
     : undefined
   const conventionItems = loaded
     ? conventions.map((convention) => ({
@@ -58,6 +83,11 @@ export function TournamentAdminView({
         conventions={conventionItems}
         search={search}
         onSearchChange={onSearchChange}
+        // Until the ended list is in, the active read says whether the
+        // Status chip is hiding history the organizer can widen it to.
+        hasItemsBeyondStatusFilter={
+          loaded && ended === undefined && active.hasEventsInOtherLifecycles
+        }
       />
     </section>
   )

@@ -39,6 +39,9 @@ export function PairingsView({
     selectedRound?.roundStatus === 'in_progress' &&
     selectedRound.pairingsPublishedAt === undefined &&
     activePhase?.phaseType === 'swiss'
+  // The phase-type draw rule (model/phases.ts requireValidMatchResult):
+  // brackets never end in a draw, so result entry refuses one up front.
+  const allowDraws = activePhase?.phaseType !== 'single_elimination'
 
   return (
     <section className="flex flex-col gap-4">
@@ -75,6 +78,7 @@ export function PairingsView({
               <PairingsTable
                 roundId={selectedRound._id}
                 bestOf={activePhase?.bestOf ?? DEFAULT_BEST_OF}
+                allowDraws={allowDraws}
                 canEditPairings={canEditPairings}
               />
             </>

@@ -22,6 +22,7 @@ import type { ReactNode } from 'react'
 import type { MyCurrentMatch, RoundTimer } from '@paper-pairings/core'
 import type { PlayerTournamentEvent } from './use-player-tournament-access'
 import { RoundTimerPill } from '@/components/shared/round-timer-indicator'
+import { SectionStack } from '@/components/shared/section-stack'
 import { SiteShell, SiteShellBackLink } from '@/components/shared/site-shell'
 import { WorkspacePageHeader } from '@/components/shared/workspace-page-header'
 import { useIsDesktop } from '@/hooks/use-desktop'
@@ -238,12 +239,10 @@ function ControllerReady({
               </section>
             ) : null}
             {panelMounted('more') ? (
-              <section
+              <SectionStack
+                as="section"
                 aria-label="Tournament options"
-                className={cn(
-                  tab === 'more' ? 'grid gap-4' : 'hidden lg:grid',
-                  'lg:gap-6',
-                )}
+                className={tab === 'more' ? undefined : 'hidden lg:flex'}
               >
                 <MoreTab
                   tournamentId={typedTournamentId}
@@ -252,7 +251,7 @@ function ControllerReady({
                   currentMatch={currentMatch}
                   myDecklist={myDecklist}
                 />
-              </section>
+              </SectionStack>
             ) : null}
           </div>
           <div className="contents lg:block">

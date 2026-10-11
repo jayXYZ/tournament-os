@@ -1,18 +1,29 @@
 import { useCallback, useEffect, useState } from "react";
-import { Animated, Easing, StyleSheet, Text } from "react-native";
+import {
+  AccessibilityInfo,
+  Animated,
+  Easing,
+  Platform,
+  StyleSheet,
+  Text,
+} from "react-native";
 
 import { palette } from "@/lib/palette";
 
 // Native stand-in for the web's sonner toasts: one message at a time, slid
-// up from the bottom of the screen and dismissed on its own. Mount <Toast>
-// once at the end of a screen so it floats above the content.
+// down from the top of the screen and dismissed on its own. Mount <Toast>
+// once at the end of a screen, inside the area below its header, so it
+// floats above the content. It sits at the top rather than the bottom
+// because the bottom is where the hold button lives: a failure toast there
+// would cover the control the player is about to retry, and on a phone
+// with a home indicator it would overlap that too.
 
 export type ToastTone = "default" | "destructive";
 
+// Each `show` call creates a fresh object, and identity is what the toast
+// compares, so repeating the same text still restarts the timer and the
+// entrance animation.
 export type ToastMessage = {
-  // Fresh per `show` call so repeating the same text still restarts the
-  // timer and the entrance animation.
-  id: number;
   text: string;
   tone: ToastTone;
 };
@@ -22,7 +33,7 @@ const DISPLAY_MS = 2800;
 export function useToast() {
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const show = useCallback((text: string, tone: ToastTone = "default") => {
-    setToast({ id: Date.now(), text, tone });
+    setToast({ text, tone });
   }, []);
   const dismiss = useCallback(() => setToast(null), []);
   return { toast, show, dismiss };
@@ -59,6 +70,11 @@ export function Toast({
       });
       return;
     }
+    // accessibilityLiveRegion is Android-only; VoiceOver needs an explicit
+    // announcement or a screen-reader user never hears the toast.
+    if (Platform.OS === "ios") {
+      AccessibilityInfo.announceForAccessibility(toast.text);
+    }
     reveal.setValue(0);
     Animated.timing(reveal, {
       toValue: 1,
@@ -88,7 +104,7 @@ export function Toast({
             {
               translateY: reveal.interpolate({
                 inputRange: [0, 1],
-                outputRange: [12, 0],
+                outputRange: [-12, 0],
               }),
             },
           ],
@@ -108,9 +124,9 @@ export function Toast({
 const styles = StyleSheet.create({
   toast: {
     position: "absolute",
+    top: 12,
     left: 16,
     right: 16,
-    bottom: 24,
     flexDirection: "row",
     alignItems: "center",
     gap: 10,

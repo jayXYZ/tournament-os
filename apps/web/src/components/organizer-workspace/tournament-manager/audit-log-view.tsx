@@ -10,6 +10,7 @@ import {
 import type { AuditEventRow } from './audit-event-text'
 import type { Id } from '@paper-pairings/backend/convex/_generated/dataModel'
 import { LoadMoreButton } from '@/components/shared/load-more-button'
+import { SectionHeader } from '@/components/shared/section-header'
 import { Badge } from '@/components/ui/badge'
 import {
   Empty,
@@ -35,13 +36,10 @@ export function AuditLogView({
 
   return (
     <section className="flex flex-col gap-4">
-      <div>
-        <h2 className="text-sm font-medium">Activity</h2>
-        <p className="text-xs/relaxed text-muted-foreground">
-          Every result entry, edit, drop, and lifecycle change, newest first —
-          for resolving disputes after the fact.
-        </p>
-      </div>
+      <SectionHeader
+        title="Activity"
+        description="Every result entry, edit, drop, and lifecycle change, newest first — for resolving disputes after the fact."
+      />
       <div>
         {status === 'LoadingFirstPage' ? (
           <div className="flex flex-col gap-3">

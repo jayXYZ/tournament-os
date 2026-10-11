@@ -7,6 +7,7 @@ import type { FunctionReturnType } from 'convex/server'
 import { LoadMoreButton } from '@/components/shared/load-more-button'
 import { LoadingCard } from '@/components/shared/loading-card'
 import { PageNotFound } from '@/components/shared/page-not-found'
+import { SectionHeader } from '@/components/shared/section-header'
 import { SiteShell, SiteShellBackLink } from '@/components/shared/site-shell'
 import { Button } from '@/components/ui/button'
 import {
@@ -188,7 +189,7 @@ function TournamentHistory({ publicCode }: { publicCode: string }) {
 
   return (
     <section className="flex flex-col gap-4 border-t border-border pt-6">
-      <h2 className="text-sm font-medium">Tournament history</h2>
+      <SectionHeader title="Tournament history" />
       {results.map((result) => (
         <UserPublicTournamentCard
           key={result.tournamentId}

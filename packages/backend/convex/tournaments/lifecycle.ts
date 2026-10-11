@@ -40,6 +40,7 @@ import {
   cleanName,
   createTournament as createTournamentModel,
   isPubliclyViewable,
+  listTournamentsForOrganization,
   requireOrganizerAccess,
   requirePreStartEditable,
   requireSetupEditable,
@@ -50,6 +51,7 @@ import {
 import {
   tournamentCreationArgs,
   tournamentFormatValidator,
+  tournamentLifecycleValidator,
   tournamentPhaseBestOfValidator,
   tournamentPhaseCutoffValidator,
   tournamentPhaseRoundModeValidator,
@@ -87,25 +89,26 @@ export const listUpcomingPublic = query({
 });
 
 export const listForOrganization = query({
-  args: { organizationId: v.id("organizations") },
+  args: {
+    organizationId: v.id("organizations"),
+    // Only these lifecycles are read. The organizer's table opens on the
+    // events still in play and reaches completed and cancelled ones through
+    // its Status chip, so it asks for the ended lifecycles only then: this
+    // query is reactive, and reading every lifecycle would re-run a read of
+    // up to five lifecycles' worth of whole documents (details markdown
+    // included) in every open tab on every write to any of the
+    // organization's tournaments — a registration count, a round timer
+    // tick — and a long history could push that past the transaction's
+    // read limit.
+    lifecycles: v.array(tournamentLifecycleValidator),
+  },
   handler: async (ctx, args) => {
     await requireActiveMembership(ctx, args.organizationId);
-
-    // Every lifecycle, newest start first. The organizer's table filters by
-    // status on the client, so completed and cancelled events stay
-    // reachable and an event that has already started never drops out of
-    // the list the moment its start time passes.
-    const rows = await ctx.db
-      .query("tournaments")
-      .withIndex("by_organizationId_and_startDate", (q) =>
-        q.eq("organizationId", args.organizationId),
-      )
-      .order("desc")
-      .take(200);
-    return rows.map((tournament) => ({
-      ...tournament,
-      registeredCount: tournament.confirmedRegistrationCount,
-    }));
+    return await listTournamentsForOrganization(
+      ctx,
+      args.organizationId,
+      args.lifecycles,
+    );
   },
 });
 

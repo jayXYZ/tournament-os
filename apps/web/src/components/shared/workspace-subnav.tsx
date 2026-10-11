@@ -9,6 +9,10 @@ export type WorkspaceSubnavItem = {
   href: string
   icon?: LucideIcon
   search?: Record<string, unknown>
+  // A notification count for work waiting behind the tab, shown as a pill
+  // beside the label; omit (or pass undefined) when there is nothing to
+  // flag. `label` is the screen-reader text behind the number.
+  notification?: { count: string; label: string }
 }
 
 // A context-aware section bar that replaces a nested sidebar: a horizontal row
@@ -56,6 +60,14 @@ export function WorkspaceSubnav({
               >
                 {Icon ? <Icon className="size-4 shrink-0" /> : null}
                 <span>{item.label}</span>
+                {item.notification ? (
+                  <span
+                    aria-label={item.notification.label}
+                    className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[0.625rem] font-semibold tabular-nums text-primary-foreground"
+                  >
+                    {item.notification.count}
+                  </span>
+                ) : null}
               </Link>
             )
           })}
