@@ -76,7 +76,7 @@ export function AdminSidebar() {
         */}
         <Link
           to="/admin"
-          className="flex min-w-0 items-center gap-2 overflow-hidden whitespace-nowrap rounded-(--radius-2) outline-none transition-[opacity,visibility] duration-200 ease-out delay-75 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring group-data-[collapsible=icon]:invisible group-data-[collapsible=icon]:w-0 group-data-[collapsible=icon]:opacity-0 group-data-[collapsible=icon]:delay-0 group-data-[collapsible=icon]:duration-100"
+          className="flex min-w-0 items-center gap-2 overflow-hidden whitespace-nowrap rounded-(--radius-2) outline-none transition-[opacity,visibility] duration-200 ease-out delay-75 focus-visible:focus-ring-outset group-data-[collapsible=icon]:invisible group-data-[collapsible=icon]:w-0 group-data-[collapsible=icon]:opacity-0 group-data-[collapsible=icon]:delay-0 group-data-[collapsible=icon]:duration-100"
         >
           <BrandMark className="size-6 shrink-0" />
           <span className="text-sm font-semibold">Paper Pairings</span>

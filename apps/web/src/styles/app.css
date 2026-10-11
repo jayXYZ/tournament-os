@@ -199,6 +199,28 @@
   --radius-4xl: 24px;
 }
 
+/* Focus rings. Fields and anything else that sits flush (menu buttons,
+   cards, items) wear the Radix Themes inset ring: 2px of the accent's step 8
+   drawn 1px inside the edge so it covers the hairline. Small round controls
+   (checkbox, radio, switch) float it 2px outside instead. Tie either to a
+   variant: `focus-visible:focus-ring`, `focus-within:focus-ring`,
+   `has-[...:focus-visible]:focus-ring`. The invalid states keep overriding
+   the color with `outline-red-8` on their own, more specific, variants. */
+@utility focus-ring {
+  outline: 2px solid var(--ring);
+  outline-offset: -1px;
+}
+@utility focus-ring-outset {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+/* The disabled and read-only field wash: a flat gray-a2 layer painted as a
+   background image so it stacks over the translucent --surface fill instead
+   of replacing it. */
+@utility field-wash {
+  background-image: linear-gradient(var(--gray-a2), var(--gray-a2));
+}
+
 :root,
 .light {
   /* Every neutral token is a step on the Radix gray scale, every accent a

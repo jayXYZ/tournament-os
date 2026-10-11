@@ -11,12 +11,13 @@ import { cn } from '@/lib/utils'
  * `readonly` attribute rather than `:read-only`, because file, range, color
  * and checkbox inputs always match `:read-only` and would otherwise wear the
  * dimmed wash while enabled. Input and Textarea share this and add their own
- * box; composite fields (InputGroup, ComboboxChips, MarkdownEditor) restate
- * it with `has-*` / `focus-within` variants because the control that takes
- * focus is a descendant.
+ * box. The focus ring and the wash are the `focus-ring` and `field-wash`
+ * utilities from styles/app.css, so composite fields (InputGroup,
+ * ComboboxChips, MarkdownEditor), whose focused control is a descendant, hang
+ * the same look off `has-*` / `focus-within` variants instead of restating it.
  */
 const fieldClassName =
-  'rounded-(--radius-2) bg-surface text-sm text-foreground ring-1 ring-gray-a7 ring-inset transition-[box-shadow,background-color] duration-100 outline-none selection:bg-iris-a5 placeholder:text-gray-a10 [&[readonly]]:text-gray-a11 [&[readonly]]:ring-gray-a6 [&[readonly]]:bg-[image:linear-gradient(var(--gray-a2),var(--gray-a2))] focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-1 focus-visible:outline-ring disabled:cursor-not-allowed disabled:text-gray-a11 disabled:ring-gray-a6 disabled:bg-[image:linear-gradient(var(--gray-a2),var(--gray-a2))] aria-invalid:ring-red-a8 aria-invalid:focus-visible:outline-red-8'
+  'rounded-(--radius-2) bg-surface text-sm text-foreground ring-1 ring-gray-a7 ring-inset transition-[box-shadow,background-color] duration-100 outline-none selection:bg-iris-a5 placeholder:text-gray-a10 [&[readonly]]:text-gray-a11 [&[readonly]]:ring-gray-a6 [&[readonly]]:field-wash focus-visible:focus-ring disabled:cursor-not-allowed disabled:text-gray-a11 disabled:ring-gray-a6 disabled:field-wash aria-invalid:ring-red-a8 aria-invalid:focus-visible:outline-red-8'
 
 // Size 2: 32px tall with 8px gutters.
 function Input({ className, type, ...props }: React.ComponentProps<'input'>) {

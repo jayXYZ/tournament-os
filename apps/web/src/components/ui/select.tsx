@@ -40,7 +40,7 @@ function SelectValue({
  * (32px, 14px text), `sm` size 1 (24px, 12px text).
  */
 const selectTriggerVariants = cva(
-  'inline-flex w-fit shrink-0 items-center justify-between whitespace-nowrap text-foreground transition-[box-shadow,background-color] duration-100 outline-none select-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-1 focus-visible:outline-ring disabled:cursor-not-allowed disabled:text-gray-a11 aria-invalid:ring-red-a8 aria-invalid:focus-visible:outline-red-8 data-placeholder:text-gray-a10 *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-1.5 [&_svg]:pointer-events-none [&_svg]:shrink-0',
+  'inline-flex w-fit shrink-0 items-center justify-between whitespace-nowrap text-foreground transition-[box-shadow,background-color] duration-100 outline-none select-none focus-visible:focus-ring disabled:cursor-not-allowed disabled:text-gray-a11 aria-invalid:ring-red-a8 aria-invalid:focus-visible:outline-red-8 data-placeholder:text-gray-a10 *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-1.5 [&_svg]:pointer-events-none [&_svg]:shrink-0',
   {
     variants: {
       variant: {

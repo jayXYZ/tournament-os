@@ -37,7 +37,7 @@ function ItemSeparator({
 const itemVariants = cva(
   // A list row on the Card's terms: radius 3, the Card hairline for the
   // outline variant, a gray-a2 wash for muted and for link rows on hover.
-  'group/item flex w-full flex-wrap items-center rounded-(--radius-3) text-sm transition-[background-color,box-shadow] duration-100 outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-1 focus-visible:outline-ring [a]:hover:bg-gray-a2',
+  'group/item flex w-full flex-wrap items-center rounded-(--radius-3) text-sm transition-[background-color,box-shadow] duration-100 outline-none focus-visible:focus-ring [a]:hover:bg-gray-a2',
   {
     variants: {
       variant: {

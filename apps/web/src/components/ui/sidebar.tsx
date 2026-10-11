@@ -439,7 +439,7 @@ function SidebarGroupLabel({
       data-slot="sidebar-group-label"
       data-sidebar="group-label"
       className={cn(
-        'flex h-8 shrink-0 items-center overflow-hidden rounded-(--radius-2) px-2 text-xs font-medium text-gray-a11 outline-none transition-[height,margin] duration-200 ease-linear focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-1 focus-visible:outline-ring [&>svg]:size-4 [&>svg]:shrink-0',
+        'flex h-8 shrink-0 items-center overflow-hidden rounded-(--radius-2) px-2 text-xs font-medium text-gray-a11 outline-none transition-[height,margin] duration-200 ease-linear focus-visible:focus-ring [&>svg]:size-4 [&>svg]:shrink-0',
         // In the rail the label has no room, so it becomes the short rule the
         // WorkOS rail draws between groups: a 24px gray-a6 line, 8px above
         // and below.
@@ -463,7 +463,7 @@ function SidebarGroupAction({
       data-slot="sidebar-group-action"
       data-sidebar="group-action"
       className={cn(
-        'absolute top-3.5 right-3 flex aspect-square w-5 items-center justify-center rounded-(--radius-1) p-0 text-gray-a11 outline-none transition-[background-color,color] duration-100 group-data-[collapsible=icon]:hidden after:absolute after:-inset-2 hover:bg-gray-a3 hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-1 focus-visible:outline-ring active:bg-gray-a4 md:after:hidden [&>svg]:size-4 [&>svg]:shrink-0',
+        'absolute top-3.5 right-3 flex aspect-square w-5 items-center justify-center rounded-(--radius-1) p-0 text-gray-a11 outline-none transition-[background-color,color] duration-100 group-data-[collapsible=icon]:hidden after:absolute after:-inset-2 hover:bg-gray-a3 hover:text-foreground focus-visible:focus-ring active:bg-gray-a4 md:after:hidden [&>svg]:size-4 [&>svg]:shrink-0',
         className,
       )}
       {...props}
@@ -508,7 +508,7 @@ function SidebarMenuItem({ className, ...props }: React.ComponentProps<'li'>) {
 }
 
 const sidebarMenuButtonVariants = cva(
-  "peer/menu-button group/menu-button flex w-full items-center gap-2.5 overflow-hidden px-2 text-left text-foreground outline-none transition-[width,height,padding,background-color,color] duration-100 group-has-data-[sidebar=menu-action]/menu-item:pr-8 group-data-[collapsible=icon]:size-9! group-data-[collapsible=icon]:p-2.5! hover:bg-gray-a3 focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-1 focus-visible:outline-ring active:bg-gray-a4 disabled:pointer-events-none disabled:text-gray-a8 aria-disabled:pointer-events-none aria-disabled:text-gray-a8 data-open:bg-gray-a3 data-active:bg-gray-a3 data-active:font-medium data-active:hover:bg-gray-a4 data-active:active:bg-gray-a5 [&_svg]:shrink-0 [&_svg]:text-gray-a11 [&_svg:not([class*='size-'])]:size-4 hover:[&_svg]:text-foreground data-active:[&_svg]:text-foreground disabled:[&_svg]:text-gray-a8 [&>span:last-child]:truncate",
+  "peer/menu-button group/menu-button flex w-full items-center gap-2.5 overflow-hidden px-2 text-left text-foreground outline-none transition-[width,height,padding,background-color,color] duration-100 group-has-data-[sidebar=menu-action]/menu-item:pr-8 group-data-[collapsible=icon]:size-9! group-data-[collapsible=icon]:p-2.5! hover:bg-gray-a3 focus-visible:focus-ring active:bg-gray-a4 disabled:pointer-events-none disabled:text-gray-a8 aria-disabled:pointer-events-none aria-disabled:text-gray-a8 data-open:bg-gray-a3 data-active:bg-gray-a3 data-active:font-medium data-active:hover:bg-gray-a4 data-active:active:bg-gray-a5 [&_svg]:shrink-0 [&_svg]:text-gray-a11 [&_svg:not([class*='size-'])]:size-4 hover:[&_svg]:text-foreground data-active:[&_svg]:text-foreground disabled:[&_svg]:text-gray-a8 [&>span:last-child]:truncate",
   {
     variants: {
       variant: {
@@ -597,7 +597,7 @@ function SidebarMenuAction({
       data-slot="sidebar-menu-action"
       data-sidebar="menu-action"
       className={cn(
-        'absolute top-1.5 right-1 flex aspect-square w-5 items-center justify-center rounded-(--radius-1) p-0 text-gray-a11 outline-none transition-[background-color,color,opacity] duration-100 group-data-[collapsible=icon]:hidden peer-data-[size=default]/menu-button:top-2 peer-data-[size=lg]/menu-button:top-3.5 peer-data-[size=sm]/menu-button:top-1 peer-data-active/menu-button:text-foreground after:absolute after:-inset-2 hover:bg-gray-a4 hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-1 focus-visible:outline-ring active:bg-gray-a5 md:after:hidden [&>svg]:size-4 [&>svg]:shrink-0',
+        'absolute top-1.5 right-1 flex aspect-square w-5 items-center justify-center rounded-(--radius-1) p-0 text-gray-a11 outline-none transition-[background-color,color,opacity] duration-100 group-data-[collapsible=icon]:hidden peer-data-[size=default]/menu-button:top-2 peer-data-[size=lg]/menu-button:top-3.5 peer-data-[size=sm]/menu-button:top-1 peer-data-active/menu-button:text-foreground after:absolute after:-inset-2 hover:bg-gray-a4 hover:text-foreground focus-visible:focus-ring active:bg-gray-a5 md:after:hidden [&>svg]:size-4 [&>svg]:shrink-0',
         showOnHover &&
           'group-focus-within/menu-item:opacity-100 group-hover/menu-item:opacity-100 aria-expanded:opacity-100 md:opacity-0',
         className,
@@ -713,7 +713,7 @@ function SidebarMenuSubButton({
         // Sub-items sit a step under their parent: 28px rows (24px at `sm`) of
         // gray-a11 text that lifts to gray-12 on hover. The current one takes
         // the same gray-a3 and medium weight as a top-level item.
-        'flex h-7 min-w-0 -translate-x-px items-center gap-2 overflow-hidden rounded-(--radius-2) px-2 text-sm text-gray-a11 outline-none transition-[background-color,color] duration-100 group-data-[collapsible=icon]:hidden hover:bg-gray-a3 hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-1 focus-visible:outline-ring active:bg-gray-a4 disabled:pointer-events-none disabled:text-gray-a8 aria-disabled:pointer-events-none aria-disabled:text-gray-a8 data-[size=sm]:h-6 data-[size=sm]:rounded-(--radius-1) data-[size=sm]:text-xs data-[size=sm]:tracking-[0.0025em] data-active:bg-gray-a3 data-active:font-medium data-active:text-foreground data-active:hover:bg-gray-a4 [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0',
+        'flex h-7 min-w-0 -translate-x-px items-center gap-2 overflow-hidden rounded-(--radius-2) px-2 text-sm text-gray-a11 outline-none transition-[background-color,color] duration-100 group-data-[collapsible=icon]:hidden hover:bg-gray-a3 hover:text-foreground focus-visible:focus-ring active:bg-gray-a4 disabled:pointer-events-none disabled:text-gray-a8 aria-disabled:pointer-events-none aria-disabled:text-gray-a8 data-[size=sm]:h-6 data-[size=sm]:rounded-(--radius-1) data-[size=sm]:text-xs data-[size=sm]:tracking-[0.0025em] data-active:bg-gray-a3 data-active:font-medium data-active:text-foreground data-active:hover:bg-gray-a4 [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0',
         className,
       )}
       {...props}

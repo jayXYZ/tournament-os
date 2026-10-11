@@ -16,7 +16,7 @@ import { cn } from '@/lib/utils'
  *   destructive → soft, red (red-a3 on red-a11)
  */
 const badgeVariants = cva(
-  "inline-flex h-5 w-fit shrink-0 items-center justify-center gap-1.5 overflow-hidden rounded-(--radius-1) px-1.5 text-xs/4 font-medium tracking-[0.0025em] whitespace-nowrap transition-[background-color,box-shadow,color] duration-100 outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-1 focus-visible:outline-ring has-data-[icon=inline-end]:pr-1 has-data-[icon=inline-start]:pl-1 [&>svg]:pointer-events-none [&>svg:not([class*='size-'])]:size-3",
+  "inline-flex h-5 w-fit shrink-0 items-center justify-center gap-1.5 overflow-hidden rounded-(--radius-1) px-1.5 text-xs/4 font-medium tracking-[0.0025em] whitespace-nowrap transition-[background-color,box-shadow,color] duration-100 outline-none focus-visible:focus-ring has-data-[icon=inline-end]:pr-1 has-data-[icon=inline-start]:pl-1 [&>svg]:pointer-events-none [&>svg:not([class*='size-'])]:size-3",
   {
     variants: {
       variant: {

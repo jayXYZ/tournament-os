@@ -25,7 +25,7 @@ function Switch({
       data-slot="switch"
       data-size={size}
       className={cn(
-        'peer group/switch relative inline-flex shrink-0 items-center rounded-full ring-1 ring-gray-a5 ring-inset transition-[background-color,box-shadow,filter] duration-150 outline-none after:absolute after:-inset-x-3 after:-inset-y-2 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring aria-invalid:ring-red-a8 aria-invalid:focus-visible:outline-red-8 data-[size=default]:h-5 data-[size=default]:w-[35px] data-[size=sm]:h-4 data-[size=sm]:w-7 data-checked:bg-accent-brand data-checked:active:[filter:brightness(0.92)_saturate(1.1)] data-unchecked:bg-gray-a3 data-unchecked:active:bg-gray-a4 data-disabled:cursor-not-allowed data-disabled:bg-gray-a3 data-disabled:ring-gray-a3 data-disabled:[filter:none] dark:data-checked:active:[filter:brightness(1.08)]',
+        'peer group/switch relative inline-flex shrink-0 items-center rounded-full ring-1 ring-gray-a5 ring-inset transition-[background-color,box-shadow,filter] duration-150 outline-none after:absolute after:-inset-x-3 after:-inset-y-2 focus-visible:focus-ring-outset aria-invalid:ring-red-a8 aria-invalid:focus-visible:outline-red-8 data-[size=default]:h-5 data-[size=default]:w-[35px] data-[size=sm]:h-4 data-[size=sm]:w-7 data-checked:bg-accent-brand data-checked:active:[filter:brightness(0.92)_saturate(1.1)] data-unchecked:bg-gray-a3 data-unchecked:active:bg-gray-a4 data-disabled:cursor-not-allowed data-disabled:bg-gray-a3 data-disabled:ring-gray-a3 data-disabled:[filter:none] dark:data-checked:active:[filter:brightness(1.08)]',
         className,
       )}
       {...props}

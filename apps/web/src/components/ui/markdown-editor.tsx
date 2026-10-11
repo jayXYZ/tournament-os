@@ -82,9 +82,8 @@ export function MarkdownEditor({
       className={cn(
         // The Textarea's surface and hairline, with the focus outline lifted
         // to the frame so the toolbar sits inside it.
-        'rounded-(--radius-2) bg-surface ring-1 ring-gray-a7 ring-inset transition-[box-shadow,background-color] duration-100 focus-within:outline-2 focus-within:outline-solid focus-within:-outline-offset-1 focus-within:outline-ring',
-        disabled &&
-          'pointer-events-none bg-[image:linear-gradient(var(--gray-a2),var(--gray-a2))] text-gray-a11 ring-gray-a6',
+        'rounded-(--radius-2) bg-surface ring-1 ring-gray-a7 ring-inset transition-[box-shadow,background-color] duration-100 focus-within:focus-ring',
+        disabled && 'pointer-events-none field-wash text-gray-a11 ring-gray-a6',
         className,
       )}
     >
