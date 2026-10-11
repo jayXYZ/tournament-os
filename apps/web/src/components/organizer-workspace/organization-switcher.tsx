@@ -203,7 +203,8 @@ function OrganizationAvatar({
   }
 
   // A workspace without a logo gets its initial on a gray-a3 tile, so every
-  // workspace has a mark in the rail and in the menu.
+  // workspace has a mark in the rail and in the menu. The initial is the first
+  // code point, not the first UTF-16 unit, so an emoji-led name keeps its glyph.
   return (
     <span
       aria-hidden="true"
@@ -212,7 +213,7 @@ function OrganizationAvatar({
         className,
       )}
     >
-      {name.trim().charAt(0).toUpperCase() || '?'}
+      {Array.from(name.trim())[0]?.toUpperCase() ?? '?'}
     </span>
   )
 }

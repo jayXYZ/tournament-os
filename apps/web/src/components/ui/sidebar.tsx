@@ -36,6 +36,10 @@ import {
  * accent. Collapsed, the panel is a 56px rail of 36px tiles whose group
  * labels turn into short rules. Disabled is gray-a8 text, never opacity.
  */
+// `setOpen` records the last toggle in this cookie. The provider never reads
+// it: the first render must match on the server and the client, so the route
+// that mounts the sidebar reads the cookie in a server function (see
+// `readSidebarCookie`) and passes the answer as `defaultOpen`.
 const SIDEBAR_COOKIE_NAME = 'sidebar_state'
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
 const SIDEBAR_WIDTH = '16rem'
@@ -43,15 +47,11 @@ const SIDEBAR_WIDTH_MOBILE = '18rem'
 const SIDEBAR_WIDTH_ICON = '3.5rem'
 const SIDEBAR_KEYBOARD_SHORTCUT = 'b'
 
-// The last toggled state, as `setOpen` wrote it. Undefined when no toggle has
-// happened yet or off the client, so `defaultOpen` still decides the first
-// paint.
-function readSidebarCookie(): boolean | undefined {
-  if (typeof document === 'undefined') return undefined
-  const match = new RegExp(`(?:^|; )${SIDEBAR_COOKIE_NAME}=(true|false)`).exec(
-    document.cookie,
-  )
-  return match ? match[1] === 'true' : undefined
+// The last toggled state, as `setOpen` wrote it, from a raw cookie header
+// value. Undefined when no toggle has happened yet, so `defaultOpen` still
+// decides the first paint.
+function readSidebarCookie(value: string | undefined): boolean | undefined {
+  return value === 'true' ? true : value === 'false' ? false : undefined
 }
 
 type SidebarContextProps = {
@@ -93,9 +93,7 @@ function SidebarProvider({
 
   // This is the internal state of the sidebar.
   // We use openProp and setOpenProp for control from outside the component.
-  const [_open, _setOpen] = React.useState(
-    () => readSidebarCookie() ?? defaultOpen,
-  )
+  const [_open, _setOpen] = React.useState(defaultOpen)
   const open = openProp ?? _open
   const setOpen = React.useCallback(
     (value: boolean | ((value: boolean) => boolean)) => {
@@ -745,5 +743,7 @@ export {
   SidebarRail,
   SidebarSeparator,
   SidebarTrigger,
+  SIDEBAR_COOKIE_NAME,
+  readSidebarCookie,
   useSidebar,
 }

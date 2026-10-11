@@ -7,12 +7,21 @@ import { Toaster } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useEnsureUserRow } from '@/hooks/use-ensure-user-row'
 
-export function AdminWorkspaceShell({ children }: { children: ReactNode }) {
+export function AdminWorkspaceShell({
+  children,
+  defaultSidebarOpen,
+}: {
+  children: ReactNode
+  // The cookie-remembered open state, read on the server by the admin route
+  // so the first paint matches between SSR and hydration. Undefined means no
+  // toggle has been recorded yet, and the sidebar starts expanded.
+  defaultSidebarOpen?: boolean
+}) {
   return (
     <AdminAuthGate>
       <TooltipProvider>
         <OrganizationProvider>
-          <SidebarProvider>
+          <SidebarProvider defaultOpen={defaultSidebarOpen}>
             <UpsertCurrentUser />
             <AdminSidebar />
             <SidebarInset className="h-svh overflow-hidden">

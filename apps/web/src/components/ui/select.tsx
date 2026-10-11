@@ -146,7 +146,7 @@ function SelectLabel({
     <SelectPrimitive.Label
       data-slot="select-label"
       className={cn(
-        'flex h-8 items-center px-6 text-sm text-gray-a10 select-none [[data-slot=select-item]+&]:mt-2',
+        'flex min-h-8 py-1.5 items-center px-6 text-sm text-gray-a10 select-none [[data-slot=select-item]+&]:mt-2',
         className,
       )}
       {...props}
@@ -163,7 +163,7 @@ function SelectItem({
     <SelectPrimitive.Item
       data-slot="select-item"
       className={cn(
-        "relative flex h-8 w-full cursor-default items-center gap-2 rounded-(--radius-2) px-6 text-sm outline-hidden select-none focus:bg-accent-brand focus:text-accent-brand-foreground not-data-[variant=destructive]:focus:**:text-accent-brand-foreground data-disabled:pointer-events-none data-disabled:text-gray-a8 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5 *:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-2",
+        "relative flex min-h-8 py-1.5 w-full cursor-default items-center gap-2 rounded-(--radius-2) px-6 text-sm outline-hidden select-none focus:bg-accent-brand focus:text-accent-brand-foreground not-data-[variant=destructive]:focus:**:text-accent-brand-foreground data-disabled:pointer-events-none data-disabled:text-gray-a8 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5 *:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-2",
         className,
       )}
       {...props}

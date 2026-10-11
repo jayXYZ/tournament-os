@@ -323,6 +323,13 @@
   --elevation-6:
     0 0 0 1px var(--gray-a6), 0 12px 60px var(--black-a4),
     0 16px 64px var(--black-a6), 0 16px 36px -20px var(--black-a11);
+  /* Redeclared, not inherited: a custom property is resolved where it is
+     declared, so the :root values above carry the light gray steps into any
+     nested .dark scope (the /dev/theme panels) unless dark sets its own. */
+  --card-border: color-mix(in oklab, var(--gray-a5), var(--gray-5) 25%);
+  --card-border-hover: color-mix(in oklab, var(--gray-a7), var(--gray-7) 25%);
+  --card-border-active: color-mix(in oklab, var(--gray-a6), var(--gray-6) 25%);
+  --table-border: color-mix(in oklab, var(--gray-a5), var(--gray-6));
   --iris-surface: #1d1b3980;
   --red-surface: #2f151780;
 
