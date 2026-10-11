@@ -19,3 +19,8 @@ apps/native/expo-env.d.ts
 apps/web/src/routeTree.gen.ts
 packages/backend/convex/_generated/
 pnpm-lock.yaml
+
+# agent skills are installed by their tools (skills-lock.json) and tracked
+# verbatim; .claude/skills/* are symlinks into .agents/skills/
+.agents/skills/
+.claude/skills/

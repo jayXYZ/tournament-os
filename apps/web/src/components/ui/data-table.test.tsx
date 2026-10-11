@@ -274,3 +274,22 @@ test('a list that shrinks under the reader falls back to its last page', async (
     await table.unmount()
   }
 })
+
+test('a few parents whose children overflow a page still get the pagination footer', async () => {
+  // Two top-level rows, five rows once expanded: pagination slices the
+  // expanded rows, so the footer must count them or the second page is
+  // unreachable.
+  const table = mount({ pageSize: 2 })
+  try {
+    await table.render(conventions, unfiltered)
+    expect(table.names()).toEqual(['Grand Prix', 'GP Modern'])
+    expect(table.page()).toBe('Page 1 of 3')
+    await act(() => table.next().click())
+    expect(table.names()).toEqual(['GP Legacy', 'Open'])
+    await act(() => table.next().click())
+    expect(table.names()).toEqual(['Open Legacy'])
+    expect(table.page()).toBe('Page 3 of 3')
+  } finally {
+    await table.unmount()
+  }
+})
