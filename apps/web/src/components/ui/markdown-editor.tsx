@@ -80,8 +80,10 @@ export function MarkdownEditor({
   return (
     <div
       className={cn(
-        'rounded-md border border-input bg-input/20 transition-colors focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/30 dark:bg-input/30',
-        disabled && 'pointer-events-none opacity-50',
+        // The Textarea's surface and hairline, with the focus outline lifted
+        // to the frame so the toolbar sits inside it.
+        'rounded-(--radius-2) bg-surface ring-1 ring-gray-a7 ring-inset transition-[box-shadow,background-color] duration-100 focus-within:focus-ring',
+        disabled && 'pointer-events-none field-wash text-gray-a11 ring-gray-a6',
         className,
       )}
     >
@@ -267,7 +269,7 @@ function ToolbarButton({
       title={label}
       aria-pressed={active}
       disabled={disabled}
-      className={cn(active && 'bg-muted text-foreground')}
+      className={cn(active && 'bg-gray-a4')}
       // Keep the editor selection instead of moving focus to the button.
       onMouseDown={(event) => event.preventDefault()}
       onClick={onClick}
@@ -324,7 +326,7 @@ function LinkPopoverButton({
           title="Link"
           aria-pressed={active}
           disabled={disabled}
-          className={cn(active && 'bg-muted text-foreground')}
+          className={cn(active && 'bg-gray-a4')}
         >
           <LinkIcon />
         </Button>

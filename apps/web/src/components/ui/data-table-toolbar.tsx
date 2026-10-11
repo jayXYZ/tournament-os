@@ -296,27 +296,27 @@ function FilterChip({
             {filter.label}
             {active ? ':' : null}
             {active ? (
-              <span className="max-w-48 truncate font-normal text-accent-brand">
+              <span className="max-w-48 truncate font-normal text-iris-a11">
                 {summary}
               </span>
             ) : null}
           </Button>
         </PopoverTrigger>
-        {/* Sits exactly over the icon circle: the trigger's 1px border plus
-            its pl-1. The circle only shows on hover or focus, so at rest the
-            × reads as part of the chip. */}
+        {/* Sits exactly over the icon circle at the trigger's pl-1. The
+            circle only shows on hover or focus, so at rest the × reads as
+            part of the chip. */}
         {active ? (
           <button
             type="button"
             aria-label={`Clear ${filter.label.toLowerCase()} filter`}
             onClick={onClear}
-            className="absolute top-1/2 left-[calc(--spacing(1)+1px)] size-5 -translate-y-1/2 rounded-full outline-none transition-colors duration-200 hover:bg-muted-foreground/20 focus-visible:bg-muted-foreground/20 focus-visible:ring-2 focus-visible:ring-ring/50"
+            className="absolute top-1/2 left-1 size-5 -translate-y-1/2 rounded-full outline-none transition-colors duration-200 hover:bg-gray-a4 focus-visible:bg-gray-a4 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
           />
         ) : null}
       </div>
       <PopoverContent
         align="start"
-        className={cn('gap-0 p-1', contentClassName)}
+        className={cn('gap-0 p-2', contentClassName)}
       >
         {children}
       </PopoverContent>
@@ -377,7 +377,7 @@ export function DataTableFilter({
             <li key={option.value}>
               <label
                 htmlFor={id}
-                className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-muted"
+                className="flex h-8 cursor-pointer items-center gap-2 rounded-(--radius-2) px-2 text-sm hover:bg-gray-a3"
               >
                 <Checkbox
                   id={id}
@@ -402,11 +402,10 @@ export function DataTableFilter({
         })}
       </ul>
       {selected.length > 0 ? (
-        <div className="mt-1 border-t border-border pt-1">
+        <div className="mt-2 border-t border-gray-a6 pt-2">
           <Button
             type="button"
             variant="ghost"
-            size="sm"
             className="w-full justify-start"
             onClick={() => writeFilterValue(filter, [])}
           >
@@ -509,11 +508,10 @@ export function DataTableDateRangeFilter({
         }
       />
       {selected ? (
-        <div className="mt-1 border-t border-border pt-1">
+        <div className="mt-2 border-t border-gray-a6 pt-2">
           <Button
             type="button"
             variant="ghost"
-            size="sm"
             className="w-full justify-start"
             onClick={() => writeDateRange(filter, undefined)}
           >

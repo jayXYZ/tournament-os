@@ -36,7 +36,7 @@ function AlertDialogOverlay({
     <AlertDialogPrimitive.Overlay
       data-slot="alert-dialog-overlay"
       className={cn(
-        'fixed inset-0 z-50 bg-black/80 duration-100 supports-backdrop-filter:backdrop-blur-xs data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0',
+        'fixed inset-0 z-50 bg-overlay duration-200 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0',
         className,
       )}
       {...props}
@@ -58,7 +58,10 @@ function AlertDialogContent({
         data-slot="alert-dialog-content"
         data-size={size}
         className={cn(
-          'group/alert-dialog-content fixed top-1/2 left-1/2 z-50 grid w-full -translate-x-1/2 -translate-y-1/2 gap-3 rounded-xl bg-popover p-4 text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none data-[size=default]:max-w-xs data-[size=sm]:max-w-64 data-[size=default]:sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95',
+          // Same panel as Dialog: Radix Themes size 3 (20px padding, radius 5,
+          // elevation 6) with Themes' rise-and-scale entrance. `sm` is the
+          // compact two-button confirm.
+          'group/alert-dialog-content fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-(--radius-5) bg-popover p-5 text-sm text-popover-foreground shadow-6 duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] outline-none data-[size=sm]:max-w-72 data-[size=default]:sm:max-w-[450px] data-open:animate-in data-open:fade-in-0 data-open:zoom-in-[0.97] data-open:slide-in-from-bottom-[5px] data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-[0.99] data-closed:slide-out-to-bottom-[5px]',
           className,
         )}
         {...props}
@@ -91,7 +94,7 @@ function AlertDialogFooter({
     <div
       data-slot="alert-dialog-footer"
       className={cn(
-        'flex flex-col-reverse gap-2 group-data-[size=sm]/alert-dialog-content:grid group-data-[size=sm]/alert-dialog-content:grid-cols-2 sm:flex-row sm:justify-end',
+        'flex flex-col-reverse gap-3 group-data-[size=sm]/alert-dialog-content:grid group-data-[size=sm]/alert-dialog-content:grid-cols-2 sm:flex-row sm:justify-end',
         className,
       )}
       {...props}
@@ -107,7 +110,7 @@ function AlertDialogMedia({
     <div
       data-slot="alert-dialog-media"
       className={cn(
-        "mb-2 inline-flex size-8 items-center justify-center rounded-md bg-muted sm:group-data-[size=default]/alert-dialog-content:row-span-2 *:[svg:not([class*='size-'])]:size-4",
+        "mb-2 inline-flex size-9 items-center justify-center rounded-(--radius-2) bg-gray-a3 sm:group-data-[size=default]/alert-dialog-content:row-span-2 *:[svg:not([class*='size-'])]:size-4",
         className,
       )}
       {...props}
@@ -123,7 +126,7 @@ function AlertDialogTitle({
     <AlertDialogPrimitive.Title
       data-slot="alert-dialog-title"
       className={cn(
-        'font-heading text-sm font-medium sm:group-data-[size=default]/alert-dialog-content:group-has-data-[slot=alert-dialog-media]/alert-dialog-content:col-start-2',
+        'font-heading text-xl/7 font-bold tracking-[-0.005em] sm:group-data-[size=default]/alert-dialog-content:group-has-data-[slot=alert-dialog-media]/alert-dialog-content:col-start-2',
         className,
       )}
       {...props}
@@ -139,7 +142,7 @@ function AlertDialogDescription({
     <AlertDialogPrimitive.Description
       data-slot="alert-dialog-description"
       className={cn(
-        'text-xs/relaxed text-balance text-muted-foreground md:text-pretty *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground',
+        'text-sm text-balance text-gray-a11 md:text-pretty *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground',
         className,
       )}
       {...props}
