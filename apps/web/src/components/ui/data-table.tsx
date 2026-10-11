@@ -362,9 +362,11 @@ export function DataTableColumnHeader<TData, TValue>({
     <Button
       type="button"
       variant="ghost"
-      size="sm"
-      // A sortable header is a ghost button that keeps the header's weight.
-      className={cn('-ml-2 h-8 font-bold', className)}
+      size="default"
+      // A sortable header is a ghost button at the table's own text size that
+      // keeps the header's weight; the negative margin realigns the label
+      // with the cell padding.
+      className={cn('-ml-3 font-bold', className)}
       onClick={() => column.toggleSorting(sorted === 'asc')}
     >
       {title}

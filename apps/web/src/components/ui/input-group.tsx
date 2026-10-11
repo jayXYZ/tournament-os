@@ -128,7 +128,7 @@ function InputGroupInput({
     <Input
       data-slot="input-group-control"
       className={cn(
-        'flex-1 rounded-none bg-transparent ring-0 focus-visible:outline-0 read-only:bg-none disabled:bg-none disabled:ring-0 aria-invalid:ring-0',
+        'flex-1 rounded-none bg-transparent ring-0 focus-visible:outline-0 [&[readonly]]:bg-none disabled:bg-none disabled:ring-0 aria-invalid:ring-0',
         className,
       )}
       {...props}

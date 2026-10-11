@@ -175,7 +175,7 @@ function DropdownMenuLabel({
       data-slot="dropdown-menu-label"
       data-inset={inset}
       className={cn(
-        'flex h-8 items-center px-3 text-sm text-gray-a10 select-none group-has-data-[slot=dropdown-menu-checkbox-item]/menu:pl-6 group-has-data-[slot=dropdown-menu-radio-item]/menu:pl-6 data-inset:pl-6 [[data-slot=dropdown-menu-item]+&]:mt-2',
+        'min-h-8 px-3 py-1.5 text-sm/5 text-gray-a10 select-none group-has-data-[slot=dropdown-menu-checkbox-item]/menu:pl-6 group-has-data-[slot=dropdown-menu-radio-item]/menu:pl-6 data-inset:pl-6 [[data-slot=dropdown-menu-item]+&]:mt-2',
         className,
       )}
       {...props}

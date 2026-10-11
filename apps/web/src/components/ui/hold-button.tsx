@@ -223,7 +223,7 @@ function HoldButton({
       <span
         aria-hidden="true"
         className={cn(
-          'absolute inset-0 flex items-center justify-center gap-1 whitespace-nowrap',
+          'absolute inset-0 flex items-center justify-center gap-[inherit] whitespace-nowrap',
           overlayStyles[variant],
         )}
         style={{
@@ -232,7 +232,7 @@ function HoldButton({
       >
         <span
           className={cn(
-            'flex items-center gap-1',
+            'flex items-center gap-[inherit]',
             phase === 'pending' && 'hold-pending-pulse',
           )}
         >
