@@ -27,9 +27,11 @@ import {
 
 /**
  * Radix Themes has no sidebar; this one follows the WorkOS dashboard, which
- * is built on Themes. The panel is the page color (one flat plane in light,
- * gray-1 in dark) behind a gray-a6 hairline, and its header row is the same
- * height as the app header so the two share one hairline across the screen.
+ * is built on Themes. The panel is the page color in light (one flat white
+ * plane) and the gray-2 panel tone in dark, the same step cards and popovers
+ * sit on (`--sidebar` in app.css), behind a gray-a6 hairline. Its header row
+ * is the same height as the app header so the two share one hairline across
+ * the screen.
  * Rows are 36px of 14px text at radius 2: gray-12 labels beside gray-a11
  * icons, gray-a3 on hover, and the current page in the same gray-a3 at medium
  * weight with its icon lifted to gray-12. Nothing in the nav takes the

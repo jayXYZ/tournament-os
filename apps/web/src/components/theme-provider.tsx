@@ -52,7 +52,10 @@ function writeStoredTheme(storageKey: string, theme: Theme) {
   }
 }
 
-function applyTheme(theme: Theme) {
+// Puts the resolved theme on the document without touching the stored
+// preference. The provider calls it whenever its own state changes; the
+// /dev/theme gallery also calls it to preview a panel's theme in portals.
+export function applyTheme(theme: Theme) {
   const root = document.documentElement
   root.classList.remove('light', 'dark')
 
