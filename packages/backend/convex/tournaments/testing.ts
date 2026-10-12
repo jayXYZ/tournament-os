@@ -23,6 +23,7 @@ import {
   createTournament as createTournamentModel,
   requireOrganizerAccess,
   requireRound,
+  requireRoundForTournament,
   requireTestTournament,
   requireTournament,
   validCapacity,
@@ -188,7 +189,7 @@ export const generateTestRoundResults = mutation({
     await generateTestResults(
       ctx,
       tournament,
-      await requireRound(ctx, roundId),
+      await requireRoundForTournament(ctx, tournament, roundId),
     );
     return roundId;
   },
