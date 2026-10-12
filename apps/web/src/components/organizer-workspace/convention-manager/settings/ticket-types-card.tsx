@@ -50,6 +50,8 @@ import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
 import { useBusyAction } from '@/hooks/use-busy-action'
+import { useClientClock } from '@/hooks/use-client-clock'
+import { useStableQuery } from '@/hooks/use-stable-query'
 import { formatCents } from '@/lib/money'
 
 type OrganizerTicketType = FunctionReturnType<
@@ -70,10 +72,11 @@ export function TicketTypesCard({
   // included — stays open for the whole live run, so only the add button
   // goes away. The server stays authoritative; this keeps the card from
   // offering a dialog whose submit it would refuse.
-  const started = Date.now() >= convention.startDate
-  const ticketTypes = useQuery(
+  const now = useClientClock()
+  const started = now >= convention.startDate
+  const ticketTypes = useStableQuery(
     api.conventions.ticketTypes.listTicketTypesForOrganizer,
-    { conventionId: convention._id },
+    { conventionId: convention._id, now },
   )
   const deleteTicketType = useMutation(
     api.conventions.ticketTypes.deleteTicketType,
