@@ -7,7 +7,11 @@ import {
   requireActiveMembership,
 } from "./access";
 import type { AuditActorRole } from "./auditLog";
-import { conventionAuditPlayerRef, logConventionAuditEvent } from "./auditLog";
+import {
+  auditUserLabel,
+  conventionAuditPlayerRef,
+  logConventionAuditEvent,
+} from "./auditLog";
 import { ensureParticipantForUser, participantForUser } from "./participants";
 import { nextPublicCode } from "./publicCodes";
 import {
@@ -365,7 +369,10 @@ export async function registerBadge(
     actorRole: "player",
     event: {
       type: "badge_registered",
-      player: conventionAuditPlayerRef(badge),
+      player: {
+        registrationId: badge._id,
+        playerName: auditUserLabel(args.user),
+      },
     },
   });
   return badge;
@@ -406,7 +413,7 @@ async function exitBadge(
     actorRole: args.actorRole,
     event: {
       type: args.auditType,
-      player: conventionAuditPlayerRef(args.badge),
+      player: await conventionAuditPlayerRef(ctx, args.badge),
     },
   });
   await settleOrdersOnEntryExit(ctx, {

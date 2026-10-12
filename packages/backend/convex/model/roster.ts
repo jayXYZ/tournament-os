@@ -98,7 +98,10 @@ export async function dropPlayer(
     tournamentId: tournament._id,
     actor,
     actorRole,
-    event: { type: "player_dropped", player: auditPlayerRef(registration) },
+    event: {
+      type: "player_dropped",
+      player: await auditPlayerRef(ctx, registration),
+    },
   });
   // A drop during the player's own unfinished match concedes it (see
   // CONTEXT.md "Concession"), recorded with the drop's actor.
@@ -152,7 +155,10 @@ export async function reinstatePlayer(
     tournamentId: tournament._id,
     actor,
     actorRole,
-    event: { type: "player_reinstated", player: auditPlayerRef(registration) },
+    event: {
+      type: "player_reinstated",
+      player: await auditPlayerRef(ctx, registration),
+    },
   });
 }
 
@@ -193,7 +199,7 @@ export async function cancelEntry(
     actorRole,
     event: {
       type: "registration_cancelled",
-      player: auditPlayerRef(registration),
+      player: await auditPlayerRef(ctx, registration),
     },
   });
   // Money follows the entry out: open orders close, and a paid one refunds
@@ -256,7 +262,7 @@ export async function restoreEntry(
       actorRole,
       event: {
         type: "player_reinstated",
-        player: auditPlayerRef(registration),
+        player: await auditPlayerRef(ctx, registration),
       },
     });
     await logAuditEvent(ctx, {
@@ -265,7 +271,7 @@ export async function restoreEntry(
       actorRole,
       event: {
         type: "payment_requested",
-        player: auditPlayerRef(registration),
+        player: await auditPlayerRef(ctx, registration),
         totalCents: order.amountBreakdown.totalCents,
       },
     });
@@ -284,7 +290,7 @@ export async function restoreEntry(
     actorRole,
     event: {
       type: "player_reinstated",
-      player: auditPlayerRef(registration),
+      player: await auditPlayerRef(ctx, registration),
       compedByBadge: compedByBadge || undefined,
     },
   });
@@ -345,7 +351,7 @@ export async function approveEntry(
       actorRole,
       event: {
         type: "registration_approved",
-        player: auditPlayerRef(registration),
+        player: await auditPlayerRef(ctx, registration),
         previousEntryStatus: approveEffect,
       },
     });
@@ -355,7 +361,7 @@ export async function approveEntry(
       actorRole,
       event: {
         type: "payment_requested",
-        player: auditPlayerRef(registration),
+        player: await auditPlayerRef(ctx, registration),
         totalCents: order.amountBreakdown.totalCents,
       },
     });
@@ -374,7 +380,7 @@ export async function approveEntry(
     actorRole,
     event: {
       type: "registration_approved",
-      player: auditPlayerRef(registration),
+      player: await auditPlayerRef(ctx, registration),
       previousEntryStatus: approveEffect,
       compedByBadge: compedByBadge || undefined,
     },
@@ -419,7 +425,7 @@ export async function rejectEntry(
     actorRole,
     event: {
       type: "registration_rejected",
-      player: auditPlayerRef(registration),
+      player: await auditPlayerRef(ctx, registration),
       previousEntryStatus,
     },
   });
@@ -461,7 +467,7 @@ export async function waitlistEntry(
     actorRole,
     event: {
       type: "registration_waitlisted",
-      player: auditPlayerRef(registration),
+      player: await auditPlayerRef(ctx, registration),
     },
   });
   // A waitlisted entry must not stay payable: an open checkout completing

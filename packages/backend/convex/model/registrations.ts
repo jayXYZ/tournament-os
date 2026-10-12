@@ -78,10 +78,11 @@ export async function syncRegistrationStartDatesBatch(
 // seatmate's name), so the stamp itself must be safe to show anyone. An
 // account without a name stamps nothing. Organizer surfaces that want the
 // email as a fallback label resolve it at read time through
-// resolveOrganizerDisplayName instead; that choice keeps the email out of
-// every denormalized row and off the per-subscriber read path of the
-// player-facing standings query, which would otherwise have to read through
-// to every user document on each run.
+// resolveOrganizerDisplayName instead, and the organizer-only audit logs
+// stamp that label once at append time (model/auditLog.ts); either way the
+// email stays off every row a player can read and off the per-subscriber
+// read path of the player-facing standings query, which would otherwise
+// have to read through to every user document on each run.
 export function playerDisplayName(
   user: Doc<"users"> | null | undefined,
 ): string | undefined {

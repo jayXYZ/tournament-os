@@ -394,7 +394,10 @@ export const payoutTransferStatusValidator = v.union(
 
 // A player referenced by an audit event. The name is denormalized at write
 // time so the log stays readable without per-row joins, even if the roster
-// changes later.
+// changes later. It is the ORGANIZER label (model/auditLog.ts
+// auditPlayerLabel): an account without a name is labelled by its email,
+// which is safe here only because both audit logs are organizer-only. Null
+// when the registration's participant is gone.
 const auditPlayerRefValidator = v.object({
   registrationId: v.id("tournamentRegistrations"),
   playerName: v.union(v.string(), v.null()),

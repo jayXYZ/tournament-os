@@ -9,7 +9,7 @@ import {
   type QueryCtx,
 } from "../_generated/server";
 import { currentUserOrNull } from "../model/access";
-import { logAuditEvent } from "../model/auditLog";
+import { auditUserLabel, logAuditEvent } from "../model/auditLog";
 import { inviteCodeGrantsAccess } from "../model/invites";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
 import { registrationsConcededByDrop } from "../model/matchResults";
@@ -259,11 +259,11 @@ export const registerSelf = mutation({
       event: requiresApproval
         ? {
             type: "registration_requested",
-            player: { registrationId, playerName: playerName ?? null },
+            player: { registrationId, playerName: auditUserLabel(user) },
           }
         : {
             type: "player_registered",
-            player: { registrationId, playerName: playerName ?? null },
+            player: { registrationId, playerName: auditUserLabel(user) },
             compedByBadge: compedByBadge || undefined,
           },
     });

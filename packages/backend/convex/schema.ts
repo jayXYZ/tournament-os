@@ -431,7 +431,8 @@ export default defineSchema({
   // Append-only audit trail of convention actions, the parallel of
   // tournamentAuditEvents (see conventionAuditEventValidator for why it is
   // a separate table). Rows are immutable; deleted only when the convention
-  // is deleted.
+  // is deleted. Organizer-only, so player references may carry an email
+  // label (see auditPlayerRefValidator).
   conventionAuditEvents: defineTable({
     conventionId: v.id("conventions"),
     // Absent exactly when actorRole is "system".
@@ -601,8 +602,9 @@ export default defineSchema({
     // denormalized at registration time so roster, standings, and pairings
     // list queries never join through to the user document per row. Absent
     // when the account has no name: player-facing readers show nothing for
-    // such a row, and organizer-only readers resolve an email label at read
-    // time (resolveOrganizerDisplayName).
+    // such a row, organizer-only readers resolve an email label at read time
+    // (resolveOrganizerDisplayName), and the audit logs stamp that label at
+    // append time (model/auditLog.ts auditPlayerLabel).
     playerName: v.optional(v.string()),
     // Denormalized from the player's decklist at submission time (see
     // submitMyDecklist, the only writer of both) so the organizer roster
@@ -938,7 +940,8 @@ export default defineSchema({
   // Append-only audit trail of tournament actions (result entries and edits,
   // drops, lifecycle changes) for dispute resolution. Rows are immutable — no
   // updatedAt; _creationTime is the event timestamp. Deleted only when the
-  // whole tournament is deleted.
+  // whole tournament is deleted. Organizer-only: a player reference may
+  // carry an account's email as its label (see auditPlayerRefValidator).
   tournamentAuditEvents: defineTable({
     tournamentId: v.id("tournaments"),
     // Absent exactly when actorRole is "system" (payment webhooks and

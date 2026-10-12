@@ -133,7 +133,9 @@ test("the organizer audit log labels a nameless player by email", async () => {
     registrationId: namelessRegistrationId,
   });
 
-  // The stored rows carry no name (the stamp is name-only)...
+  // The stored rows carry the organizer label — the email — resolved once at
+  // append time (the log is organizer-only), so the list query never reads
+  // through to the user document...
   const stored = await t.run(async (ctx) =>
     (
       await ctx.db
@@ -147,9 +149,9 @@ test("the organizer audit log labels a nameless player by email", async () => {
       ? [event.player.playerName]
       : [],
   );
-  expect(storedNames).toEqual([null, null]);
+  expect(storedNames).toEqual([NAMELESS_EMAIL, NAMELESS_EMAIL]);
 
-  // ...and the organizer-only list fills the email label in at read time.
+  // ...and the organizer-only list returns the rows as stored.
   const page = await organizer.query(api.tournaments.auditLog.listAuditEvents, {
     tournamentId,
     paginationOpts: { numItems: 20, cursor: null },

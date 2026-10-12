@@ -1,6 +1,6 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
-import { logAuditEvent } from "./auditLog";
+import { auditMatchPlayerRef, auditPlayerRef, logAuditEvent } from "./auditLog";
 import {
   deleteResultRevisionsForMatch,
   materializeAwardedByeMatch,
@@ -103,10 +103,9 @@ export async function breakPairing(
       roundId: round._id,
       roundNumber: round.roundNumber,
       tableNumber: match.tableNumber ?? null,
-      players: players.map((player) => ({
-        registrationId: player.playerId,
-        playerName: player.playerName ?? null,
-      })),
+      players: await Promise.all(
+        players.map((player) => auditMatchPlayerRef(ctx, player)),
+      ),
       wasBye: players.some((player) => player.isBye),
     },
   });
@@ -165,14 +164,8 @@ export async function pairPlayersManually(
       roundNumber: round.roundNumber,
       tableNumber,
       players: [
-        {
-          registrationId: playerOne._id,
-          playerName: playerOne.playerName ?? null,
-        },
-        {
-          registrationId: playerTwo._id,
-          playerName: playerTwo.playerName ?? null,
-        },
+        await auditPlayerRef(ctx, playerOne),
+        await auditPlayerRef(ctx, playerTwo),
       ],
       isBye: false,
     },
@@ -218,12 +211,7 @@ export async function assignByeManually(
       roundId: round._id,
       roundNumber: round.roundNumber,
       tableNumber: null,
-      players: [
-        {
-          registrationId: registration._id,
-          playerName: registration.playerName ?? null,
-        },
-      ],
+      players: [await auditPlayerRef(ctx, registration)],
       isBye: true,
     },
   });

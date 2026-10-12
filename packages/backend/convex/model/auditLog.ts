@@ -1,10 +1,9 @@
 import type { Infer } from "convex/values";
 
 import type { Doc, Id } from "../_generated/dataModel";
-import type { MutationCtx, QueryCtx } from "../_generated/server";
+import type { MutationCtx } from "../_generated/server";
 import { parseMoneyRowEntry, parseMoneyRowOwner } from "./paidEventOwner";
 import { participantOrganizerName } from "./participants";
-import { resolveOrganizerDisplayName } from "./registrations";
 import type {
   conventionAuditEventValidator,
   tournamentAuditEventValidator,
@@ -14,6 +13,15 @@ export type TournamentAuditEvent = Infer<typeof tournamentAuditEventValidator>;
 export type ConventionAuditEvent = Infer<typeof conventionAuditEventValidator>;
 
 export type AuditActorRole = "organizer" | "player" | "system";
+
+// The organizer label for an account the caller already holds: the same
+// name-then-email rule as participantOrganizerName, with no read. Used for
+// the actor of every append and for the player reference when the registrant
+// is acting on their own entry (registering, cancelling, submitting a
+// decklist), where the acting user is the player.
+export function auditUserLabel(user: Doc<"users">): string | null {
+  return user.name ?? user.email ?? null;
+}
 
 // The actor half of an audit append, shared by both logs.
 type AuditActorArgs =
@@ -37,7 +45,7 @@ export async function logAuditEvent(
     actorUserId: actor?._id,
     // Organizer-only log, so the actor label may fall back to the email
     // (unlike playerDisplayName, whose stamp reaches other players).
-    actorName: actor ? (actor.name ?? actor.email ?? null) : null,
+    actorName: actor ? auditUserLabel(actor) : null,
     actorRole: args.actorRole,
     event: args.event,
   });
@@ -55,85 +63,72 @@ export async function logConventionAuditEvent(
   await ctx.db.insert("conventionAuditEvents", {
     conventionId: args.conventionId,
     actorUserId: actor?._id,
-    actorName: actor ? (actor.name ?? actor.email ?? null) : null,
+    actorName: actor ? auditUserLabel(actor) : null,
     actorRole: args.actorRole,
     event: args.event,
   });
 }
 
-// Player references stamp the registration's playerName, which is name-only
-// (see playerDisplayName): a nameless account's events carry null. The two
-// organizer-only list queries fill those in at read time through the
-// organizer label (which may be the email), walking the event for any
-// {registrationId, playerName: null} reference so every arm — single
-// player, player lists, result lines — resolves the same way. Bounded by
-// the page size, and only rows with a null name read through.
-export async function fillMissingAuditPlayerNames<Event>(
-  event: Event,
-  resolve: (registrationId: string) => Promise<string | null>,
-): Promise<Event> {
-  const fill = async (value: unknown): Promise<unknown> => {
-    if (Array.isArray(value)) {
-      return await Promise.all(value.map(fill));
-    }
-    if (value === null || typeof value !== "object") {
-      return value;
-    }
-    const record = value as Record<string, unknown>;
-    const entries = await Promise.all(
-      Object.entries(record).map(async ([key, child]) => {
-        if (
-          key === "playerName" &&
-          child === null &&
-          typeof record.registrationId === "string"
-        ) {
-          return [key, await resolve(record.registrationId)] as const;
-        }
-        return [key, await fill(child)] as const;
-      }),
-    );
-    return Object.fromEntries(entries);
+// The label an audit row stores for a registration or badge: the stamped
+// playerName when the account has one, otherwise the participant's organizer
+// label, which falls back to the email. The stamp is name-only because its
+// copies reach other players (playerDisplayName); both audit logs are
+// organizer-only by access, so they are the one place that label is
+// denormalized. Resolving it here, once per append, keeps the two list
+// queries free of per-row joins and off every user document's subscription.
+// A named account reads nothing; a nameless one costs two reads (participant,
+// user) per event — and none when the caller holds the registrant's user
+// document (auditUserLabel). Null only when the participant is gone.
+async function auditPlayerLabel(
+  ctx: MutationCtx,
+  registration: { playerName?: string; participantId: Id<"participants"> },
+): Promise<string | null> {
+  if (registration.playerName !== undefined) {
+    return registration.playerName;
+  }
+  const participant = await ctx.db.get(registration.participantId);
+  return participant ? await participantOrganizerName(ctx, participant) : null;
+}
+
+// Shapes a registration into the audit log's denormalized player reference.
+export async function auditPlayerRef(
+  ctx: MutationCtx,
+  registration: Doc<"tournamentRegistrations">,
+) {
+  return {
+    registrationId: registration._id,
+    playerName: await auditPlayerLabel(ctx, registration),
   };
-  return (await fill(event)) as Event;
-}
-
-export async function withOrganizerPlayerNames(
-  ctx: QueryCtx,
-  event: TournamentAuditEvent,
-): Promise<TournamentAuditEvent> {
-  return await fillMissingAuditPlayerNames(
-    event,
-    async (registrationId) =>
-      (await resolveOrganizerDisplayName(
-        ctx,
-        undefined,
-        registrationId as Id<"tournamentRegistrations">,
-      )) ?? null,
-  );
-}
-
-export async function withOrganizerBadgeNames(
-  ctx: QueryCtx,
-  event: ConventionAuditEvent,
-): Promise<ConventionAuditEvent> {
-  return await fillMissingAuditPlayerNames(event, async (registrationId) => {
-    const badge = await ctx.db.get(
-      registrationId as Id<"conventionRegistrations">,
-    );
-    const participant = badge ? await ctx.db.get(badge.participantId) : null;
-    return participant
-      ? await participantOrganizerName(ctx, participant)
-      : null;
-  });
 }
 
 // Shapes a badge registration into the convention log's player reference.
-export function conventionAuditPlayerRef(
+export async function conventionAuditPlayerRef(
+  ctx: MutationCtx,
   registration: Doc<"conventionRegistrations">,
 ) {
   return {
     registrationId: registration._id,
-    playerName: registration.playerName ?? null,
+    playerName: await auditPlayerLabel(ctx, registration),
+  };
+}
+
+// The player reference for a match-player row, whose stamped playerName dates
+// from pairing time. A nameless row reads its registration to reach the
+// organizer label; a named one reads nothing.
+export async function auditMatchPlayerRef(
+  ctx: MutationCtx,
+  playerRow: Doc<"tournamentMatchPlayers">,
+) {
+  if (playerRow.playerName !== undefined) {
+    return {
+      registrationId: playerRow.playerId,
+      playerName: playerRow.playerName,
+    };
+  }
+  const registration = await ctx.db.get(playerRow.playerId);
+  return {
+    registrationId: playerRow.playerId,
+    playerName: registration ? await auditPlayerLabel(ctx, registration) : null,
   };
 }
 
@@ -166,6 +161,7 @@ export async function logEntryPaymentAudit(
     registration: {
       _id: Id<"tournamentRegistrations"> | Id<"conventionRegistrations">;
       playerName?: string;
+      participantId: Id<"participants">;
     };
     event: PaidEntryAuditEvent;
   } & AuditActorArgs,
@@ -178,14 +174,12 @@ export async function logEntryPaymentAudit(
     ...args.owner,
     registrationId: args.registration._id,
   });
+  const playerName = await auditPlayerLabel(ctx, args.registration);
   // One construction for both logs; generic over the per-table
   // registrationId each log's player ref demands.
   const eventWithPlayer = <RegistrationId>(registrationId: RegistrationId) => ({
     ...args.event,
-    player: {
-      registrationId,
-      playerName: args.registration.playerName ?? null,
-    },
+    player: { registrationId, playerName },
   });
   if (entry.kind === "convention") {
     await logConventionAuditEvent(ctx, {
@@ -231,25 +225,16 @@ export async function logEventPayoutAudit(
   });
 }
 
-// Shapes a registration into the audit log's denormalized player reference.
-export function auditPlayerRef(registration: Doc<"tournamentRegistrations">) {
-  return {
-    registrationId: registration._id,
-    playerName: registration.playerName ?? null,
-  };
-}
-
-// One side of a match result as captured in the log. Match-player rows carry
-// a denormalized playerName from pairing time.
-export function auditResultLine(
+// One side of a match result as captured in the log.
+export async function auditResultLine(
+  ctx: MutationCtx,
   playerRow: Doc<"tournamentMatchPlayers">,
   gameWins: number,
   gameLosses: number,
   gameDraws: number,
 ) {
   return {
-    registrationId: playerRow.playerId,
-    playerName: playerRow.playerName ?? null,
+    ...(await auditMatchPlayerRef(ctx, playerRow)),
     gameWins,
     gameLosses,
     gameDraws,
@@ -258,19 +243,23 @@ export function auditResultLine(
 
 // The result already on a match's player rows, for logging what an organizer
 // override replaced. Null when the match had no result yet.
-export function existingResultLines(
+export async function existingResultLines(
+  ctx: MutationCtx,
   match: Doc<"tournamentMatches">,
   playerRows: Doc<"tournamentMatchPlayers">[],
 ) {
   if (match.matchStatus !== "completed") {
     return null;
   }
-  return playerRows.map((row) =>
-    auditResultLine(
-      row,
-      row.gameWins ?? 0,
-      row.gameLosses ?? 0,
-      row.gameDraws ?? 0,
+  return await Promise.all(
+    playerRows.map((row) =>
+      auditResultLine(
+        ctx,
+        row,
+        row.gameWins ?? 0,
+        row.gameLosses ?? 0,
+        row.gameDraws ?? 0,
+      ),
     ),
   );
 }

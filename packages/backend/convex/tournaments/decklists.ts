@@ -3,7 +3,7 @@ import { v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import { mutation, query } from "../_generated/server";
 import { currentUserOrNull } from "../model/access";
-import { auditPlayerRef, logAuditEvent } from "../model/auditLog";
+import { auditUserLabel, logAuditEvent } from "../model/auditLog";
 import {
   boardCardCount,
   decklistForRegistration,
@@ -110,7 +110,11 @@ export const submitMyDecklist = mutation({
       actorRole: "player",
       event: {
         type: "decklist_submitted",
-        player: auditPlayerRef(registration),
+        // The submitter is the registrant, so the label needs no read.
+        player: {
+          registrationId: registration._id,
+          playerName: auditUserLabel(user),
+        },
         maindeckCardCount: boardCardCount(maindeck),
         sideboardCardCount: boardCardCount(sideboard),
         isUpdate: existing !== null,

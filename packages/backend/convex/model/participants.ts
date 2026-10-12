@@ -93,8 +93,10 @@ export async function participantPublicIdentity(
 // identity, but an account without a name falls back to its email so the
 // roster, pairings board, and seating list still identify the player.
 // Organizer-only by construction — never call this from a player-facing
-// reader, and never denormalize its result onto event rows (see
-// playerDisplayName in model/registrations.ts).
+// reader, and never denormalize its result onto a row a player can read
+// (registrations, standings, match players, seats: see playerDisplayName in
+// model/registrations.ts). The organizer-only audit logs are the one place
+// it is stored (model/auditLog.ts auditPlayerLabel).
 export async function participantOrganizerName(
   ctx: QueryCtx,
   participant: Doc<"participants">,

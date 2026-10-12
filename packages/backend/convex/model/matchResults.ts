@@ -124,7 +124,9 @@ export async function applyMatchResult(
   // Captured before the patches below overwrite the rows: a non-null value
   // means an organizer edited an existing result, which the log must preserve.
   const previousResult =
-    policy.kind === "organizer" ? existingResultLines(match, players) : null;
+    policy.kind === "organizer"
+      ? await existingResultLines(ctx, match, players)
+      : null;
   const now = Date.now();
 
   const outcomeOf = (points: number) =>
@@ -191,13 +193,15 @@ export async function applyMatchResult(
     roundNumber: args.round.roundNumber,
     tableNumber: match.tableNumber ?? null,
     result: [
-      auditResultLine(
+      await auditResultLine(
+        ctx,
         playerOne,
         args.playerOneGameWins,
         args.playerTwoGameWins,
         args.gameDraws,
       ),
-      auditResultLine(
+      await auditResultLine(
+        ctx,
         playerTwo,
         args.playerTwoGameWins,
         args.playerOneGameWins,
@@ -214,7 +218,7 @@ export async function applyMatchResult(
         ? {
             type: "match_conceded",
             ...eventBase,
-            player: auditPlayerRef(policy.concededBy),
+            player: await auditPlayerRef(ctx, policy.concededBy),
           }
         : policy.kind === "organizer"
           ? { type: "match_result_recorded", ...eventBase, previousResult }
