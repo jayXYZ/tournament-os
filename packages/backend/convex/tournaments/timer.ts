@@ -9,6 +9,7 @@ import {
 import type { Doc } from "../_generated/dataModel";
 import { mutation } from "../_generated/server";
 import type { QueryCtx } from "../_generated/server";
+import { userError } from "../model/errors";
 import { requireCurrentPhase } from "../model/phases";
 import {
   isPairingsVisibleToPlayers,
@@ -27,7 +28,7 @@ export const setRoundDuration = mutation({
   handler: async (ctx, args) => {
     const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
     if (tournament.lifecycle === "cancelled") {
-      throw new Error("Tournament has been cancelled");
+      throw userError("Tournament has been cancelled");
     }
     await ctx.db.patch(args.tournamentId, {
       roundDurationMs: validDurationMs(args.durationMs),
@@ -73,7 +74,7 @@ export const pauseTimer = mutation({
     const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
     const timer = tournament.roundTimer;
     if (timer?.kind !== "running") {
-      throw new Error("Timer is not running");
+      throw userError("Timer is not running");
     }
     const now = Date.now();
     await ctx.db.patch(tournament._id, {
@@ -97,7 +98,7 @@ export const resumeTimer = mutation({
     const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
     const timer = tournament.roundTimer;
     if (timer?.kind !== "paused") {
-      throw new Error("Timer is not paused");
+      throw userError("Timer is not paused");
     }
     const now = Date.now();
     await ctx.db.patch(tournament._id, {
@@ -120,14 +121,14 @@ export const adjustTimer = mutation({
     const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
     const timer = tournament.roundTimer;
     if (!timer) {
-      throw new Error("No timer to adjust");
+      throw userError("No timer to adjust");
     }
     if (
       !Number.isInteger(args.deltaMs) ||
       args.deltaMs === 0 ||
       Math.abs(args.deltaMs) > MAX_TIMER_ADJUST_MS
     ) {
-      throw new Error("Invalid timer adjustment");
+      throw userError("Invalid timer adjustment");
     }
     const durationMs = Math.max(timer.durationMs + args.deltaMs, 0);
     await ctx.db.patch(tournament._id, {
@@ -162,7 +163,7 @@ export const clearTimer = mutation({
 
 function validDurationMs(value: number) {
   if (!isValidRoundDurationMs(value)) {
-    throw new Error("Invalid round duration");
+    throw userError("Invalid round duration");
   }
   return value;
 }
@@ -172,18 +173,18 @@ async function requireTimableCurrentRound(
   tournament: Doc<"tournaments">,
 ) {
   if (tournament.lifecycle !== "in_progress") {
-    throw new Error("Tournament is not in progress");
+    throw userError("Tournament is not in progress");
   }
   const phase = await requireCurrentPhase(ctx, tournament._id);
   if (!phase.phaseCurrentRound) {
-    throw new Error("No round is in progress");
+    throw userError("No round is in progress");
   }
   const round = await requireRound(ctx, phase.phaseCurrentRound);
   if (round.roundStatus !== "in_progress") {
-    throw new Error("No round is in progress");
+    throw userError("No round is in progress");
   }
   if (!isPairingsVisibleToPlayers(round)) {
-    throw new Error("Pairings have not been published");
+    throw userError("Pairings have not been published");
   }
   return round;
 }

@@ -1,6 +1,7 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { logAuditEvent } from "./auditLog";
+import { userError } from "./errors";
 import {
   deleteResultRevisionsForMatch,
   materializeAwardedByeMatch,
@@ -48,16 +49,16 @@ export async function requireEditablePairings(
 ) {
   const phase = await requirePhase(ctx, round.tournamentPhaseId);
   if (isPairingsVisibleToPlayers(round)) {
-    throw new Error(PAIRINGS_LOCKED_AFTER_PUBLISH);
+    throw userError(PAIRINGS_LOCKED_AFTER_PUBLISH);
   }
   if (
     round.roundStatus !== "in_progress" ||
     phase.phaseCurrentRound !== round._id
   ) {
-    throw new Error(PAIRINGS_EDITABLE_ONLY_IN_ACTIVE_ROUND);
+    throw userError(PAIRINGS_EDITABLE_ONLY_IN_ACTIVE_ROUND);
   }
   if (phase.phaseType !== SWISS_FORMAT) {
-    throw new Error(BRACKET_PAIRINGS_NOT_EDITABLE);
+    throw userError(BRACKET_PAIRINGS_NOT_EDITABLE);
   }
   return phase;
 }
@@ -84,7 +85,7 @@ export async function breakPairing(
     match.currentResultKind !== "bye" &&
     match.currentResultKind !== "concession"
   ) {
-    throw new Error(MATCH_HAS_RECORDED_RESULT);
+    throw userError(MATCH_HAS_RECORDED_RESULT);
   }
 
   const players = await matchPlayers(ctx, match._id);
@@ -129,7 +130,7 @@ export async function pairPlayersManually(
 ): Promise<Id<"tournamentMatches">> {
   const { tournament, user, round } = args;
   if (args.playerOneRegistrationId === args.playerTwoRegistrationId) {
-    throw new Error("A player cannot be paired against themself");
+    throw userError("A player cannot be paired against themself");
   }
   const phase = await requireEditablePairings(ctx, round);
   const playerOne = await requireUnpairedActivePlayer(
@@ -276,10 +277,10 @@ async function requireUnpairedActivePlayer(
     registration.entryStatus !== "confirmed" ||
     registration.participationStatus !== "active"
   ) {
-    throw new Error(PLAYER_NOT_ACTIVE);
+    throw userError(PLAYER_NOT_ACTIVE);
   }
   if (await playerMatchInRound(ctx, registration._id, round._id)) {
-    throw new Error(PLAYER_ALREADY_PAIRED);
+    throw userError(PLAYER_ALREADY_PAIRED);
   }
   return registration;
 }

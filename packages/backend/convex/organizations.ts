@@ -12,6 +12,7 @@ import {
   requireProfilePermission,
 } from "./model/access";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "./model/batching";
+import { userError } from "./model/errors";
 import { ensureCurrentUser } from "./model/users";
 import { enforceRateLimit } from "./rateLimits";
 import {
@@ -120,7 +121,7 @@ export const createOrganizerOrganization = mutation({
     await enforceRateLimit(ctx, "createOrganization");
     const name = args.name.trim();
     if (name.length < 2) {
-      throw new Error("Organization name must be at least 2 characters");
+      throw userError("Organization name must be at least 2 characters");
     }
 
     const user = await ensureCurrentUser(ctx);
@@ -162,7 +163,7 @@ export const inviteMember = mutation({
 
     const email = normalizeEmail(args.email);
     if (!email.includes("@")) {
-      throw new Error("Enter a valid email address");
+      throw userError("Enter a valid email address");
     }
 
     const now = Date.now();
@@ -214,7 +215,7 @@ export const revokeInvitation = mutation({
     await requireInvitePermission(ctx, invitation.organizationId);
 
     if (invitation.status !== "pending") {
-      throw new Error("Only pending invitations can be revoked");
+      throw userError("Only pending invitations can be revoked");
     }
 
     await ctx.db.patch(invitation._id, {
@@ -257,7 +258,7 @@ export const updateProfileImage = mutation({
       size: metadata.size,
     });
     if (validationMessage) {
-      throw new Error(validationMessage);
+      throw userError(validationMessage);
     }
 
     await ctx.db.patch(args.organizationId, {
@@ -277,7 +278,7 @@ export const updateProfile = mutation({
   handler: async (ctx, args) => {
     const name = args.name.trim();
     if (name.length < 2) {
-      throw new Error("Organization name must be at least 2 characters");
+      throw userError("Organization name must be at least 2 characters");
     }
 
     await requireProfilePermission(ctx, args.organizationId);
@@ -303,7 +304,7 @@ export const archiveOrganization = mutation({
       args.organizationId,
     );
     if (args.confirmationName.trim() !== organization.name) {
-      throw new Error("Type the organization name to archive it");
+      throw userError("Type the organization name to archive it");
     }
 
     await ctx.db.patch(args.organizationId, {

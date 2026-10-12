@@ -4,6 +4,7 @@ import type { Id } from "../_generated/dataModel";
 import { mutation, query } from "../_generated/server";
 import type { MutationCtx } from "../_generated/server";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
+import { userError } from "../model/errors";
 import { applyMatchResult } from "../model/matchResults";
 import { latestCompletedRound, requirePhase } from "../model/phases";
 import { dropPlayer } from "../model/roster";
@@ -149,7 +150,7 @@ export const dropSelf = mutation({
       user._id,
     );
     if (!registration) {
-      throw new Error("Active registration not found");
+      throw userError("Active registration not found");
     }
     await dropPlayer(ctx, {
       tournament,
@@ -172,11 +173,11 @@ async function requireMatchParticipant(
   const match = await requireMatch(ctx, matchId);
   const tournament = await requireTournament(ctx, match.tournamentId);
   if (tournament.lifecycle !== "in_progress") {
-    throw new Error("Tournament is not in progress");
+    throw userError("Tournament is not in progress");
   }
   const round = await requireRound(ctx, match.tournamentRoundId);
   if (!isPairingsVisibleToPlayers(round)) {
-    throw new Error("Pairings have not been published");
+    throw userError("Pairings have not been published");
   }
   const registration = await registrationForUser(
     ctx,
@@ -184,16 +185,16 @@ async function requireMatchParticipant(
     user._id,
   );
   if (!registration) {
-    throw new Error("Not registered for this tournament");
+    throw userError("Not registered for this tournament");
   }
 
   const players = await matchPlayers(ctx, matchId);
   if (players.length !== 2) {
-    throw new Error("Only two-player matches can be reported by players");
+    throw userError("Only two-player matches can be reported by players");
   }
   const myRow = players.find((player) => player.playerId === registration._id);
   if (!myRow) {
-    throw new Error("You are not part of this match");
+    throw userError("You are not part of this match");
   }
   const opponentRow = players.find((player) => player._id !== myRow._id);
   if (!opponentRow) {

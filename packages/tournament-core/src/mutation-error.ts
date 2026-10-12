@@ -46,17 +46,32 @@ function describeRetryDelay(retryAfterMs: number) {
   return hours === 1 ? "about an hour" : `about ${hours} hours`;
 }
 
+// The payload the backend's model/errors.ts userError throws: a bare string
+// written for the person using the app. Production Convex deployments redact
+// a plain Error's message to "Server Error" and forward only ConvexError
+// data, so the text is read from `data` rather than `message`.
+function userErrorMessage(error: unknown): string | null {
+  if (error instanceof ConvexError && typeof error.data === "string") {
+    return error.data;
+  }
+  return null;
+}
+
 // Message for a rejected mutation, shared by the web and native clients so a
 // throttled request never surfaces as a raw ConvexError. Rate-limited
 // rejections become a retry-later notice sized from the server's retryAfter;
-// anything else keeps the error's own message, with `fallback` covering
-// non-Error throws.
+// a user-facing refusal shows its own text; anything else keeps the error's
+// own message, with `fallback` covering non-Error throws.
 export function mutationErrorMessage(error: unknown, fallback: string) {
   const rateLimit = rateLimitData(error);
   if (rateLimit) {
     return `You're doing that too often — try again in ${describeRetryDelay(
       rateLimit.retryAfter,
     )}.`;
+  }
+  const userMessage = userErrorMessage(error);
+  if (userMessage !== null) {
+    return userMessage;
   }
   return error instanceof Error ? error.message : fallback;
 }

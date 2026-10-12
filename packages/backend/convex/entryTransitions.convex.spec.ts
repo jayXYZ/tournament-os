@@ -77,6 +77,16 @@ test("approving an application takes a seat, so capacity applies", async () => {
       registrationId: applicationId,
     }),
   ).rejects.toThrow("Tournament is at capacity");
+  // A refusal written for the organizer travels as ConvexError data: prod
+  // deployments redact a plain Error's message to "Server Error".
+  await expect(
+    organizer.mutation(api.tournaments.registrations.approveRegistration, {
+      registrationId: applicationId,
+    }),
+  ).rejects.toMatchObject({
+    name: "ConvexError",
+    data: "Tournament is at capacity",
+  });
   // The refused approval left the application untouched.
   expect(await getRegistration(t, applicationId)).toMatchObject({
     entryStatus: "pending",

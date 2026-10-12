@@ -7,6 +7,7 @@ import {
   settleOrdersOnEntryExit,
 } from "../payments/refunds";
 import { participantBadgeCompsChildEvent } from "./conventions";
+import { userError } from "./errors";
 import { concedeUnfinishedMatchOnDrop } from "./matchResults";
 import { setRegistrationState } from "./participation";
 import {
@@ -72,19 +73,19 @@ export async function dropPlayer(
   { tournament, registration, actor, actorRole }: RosterTransitionArgs,
 ) {
   if (tournament.lifecycle !== "in_progress") {
-    throw new Error("Tournament is not in progress");
+    throw userError("Tournament is not in progress");
   }
   if (actorRole === "player") {
     if (
       registration.entryStatus !== "confirmed" ||
       registration.participationStatus !== "active"
     ) {
-      throw new Error("Active registration not found");
+      throw userError("Active registration not found");
     }
   } else if (
     registrationDropEffect(tournament.lifecycle, registration) !== "drop"
   ) {
-    throw new Error("Registration cannot be dropped in its current state");
+    throw userError("Registration cannot be dropped in its current state");
   }
   await setRegistrationState(ctx, registration._id, {
     entryStatus: "confirmed",
@@ -123,7 +124,7 @@ export async function reinstatePlayer(
     registrationReinstateEffect(tournament.lifecycle, registration) !==
     "reinstate"
   ) {
-    throw new Error("Registration cannot be reinstated in its current state");
+    throw userError("Registration cannot be reinstated in its current state");
   }
   const now = Date.now();
   const eliminatedByRoundId =
@@ -170,14 +171,14 @@ export async function cancelEntry(
   { tournament, registration, actor, actorRole }: RosterTransitionArgs,
 ) {
   if (tournament.lifecycle !== "registration") {
-    throw new Error("Tournament is not open for registration");
+    throw userError("Tournament is not open for registration");
   }
   const cancelEffect = registrationCancelEffect(
     tournament.lifecycle,
     registration,
   );
   if (cancelEffect === null) {
-    throw new Error("Active registration not found");
+    throw userError("Active registration not found");
   }
   const now = Date.now();
   await setRegistrationState(ctx, registration._id, {
@@ -222,7 +223,7 @@ export async function restoreEntry(
     registrationReinstateEffect(tournament.lifecycle, registration) !==
     "restore"
   ) {
-    throw new Error("Registration cannot be reinstated in its current state");
+    throw userError("Registration cannot be reinstated in its current state");
   }
   requireCapacityAvailable(tournament);
   const now = Date.now();
@@ -307,7 +308,7 @@ export async function approveEntry(
     registration,
   );
   if (approveEffect === null) {
-    throw new Error("Registration cannot be approved in its current state");
+    throw userError("Registration cannot be approved in its current state");
   }
   requireCapacityAvailable(tournament);
   const now = Date.now();
@@ -403,7 +404,7 @@ export async function rejectEntry(
   // narrow type the audit event admits.
   const { entryStatus: previousEntryStatus } = registration;
   if (rejectEffect === null || previousEntryStatus === "rejected") {
-    throw new Error("Registration cannot be rejected in its current state");
+    throw userError("Registration cannot be rejected in its current state");
   }
   const now = Date.now();
   await setRegistrationState(ctx, registration._id, {
@@ -449,7 +450,7 @@ export async function waitlistEntry(
     registrationWaitlistEffect(tournament.lifecycle, registration) !==
     "waitlist"
   ) {
-    throw new Error("Registration cannot be waitlisted in its current state");
+    throw userError("Registration cannot be waitlisted in its current state");
   }
   await setRegistrationState(ctx, registration._id, {
     entryStatus: "waitlisted",
