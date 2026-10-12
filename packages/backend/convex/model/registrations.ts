@@ -7,6 +7,7 @@ import type {
 import type { DataModel, Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { presentText, type RegistrationFilter } from "../validators";
+import { userError } from "./errors";
 import { ORGANIZER_LIST_PAGE_SIZE } from "./pagination";
 import { participantForUser, participantPublicIdentity } from "./participants";
 
@@ -862,7 +863,7 @@ export function hasCapacityAvailable(event: {
 
 export function requireCapacityAvailable(tournament: Doc<"tournaments">) {
   if (!hasCapacityAvailable(tournament)) {
-    throw new Error("Tournament is at capacity");
+    throw userError("Tournament is at capacity");
   }
 }
 

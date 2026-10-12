@@ -10,6 +10,7 @@ import {
 } from "../_generated/server";
 import { currentUserOrNull } from "../model/access";
 import { auditPlayerRefForUser, logAuditEvent } from "../model/auditLog";
+import { userError } from "../model/errors";
 import { inviteCodeGrantsAccess } from "../model/invites";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
 import { registrationsConcededByDrop } from "../model/matchResults";
@@ -157,7 +158,7 @@ export const registerSelf = mutation({
         existing === null &&
         !(await inviteCodeGrantsAccess(ctx, tournament, args.inviteCode)))
     ) {
-      throw new Error("Tournament is not open for registration");
+      throw userError("Tournament is not open for registration");
     }
     // A badge-gated child event admits self-registration only with a
     // confirmed convention badge (model/conventions.ts). Organizer verbs
@@ -183,7 +184,7 @@ export const registerSelf = mutation({
       !tournament.registrationRequiresApproval &&
       !compedByBadge
     ) {
-      throw new Error(
+      throw userError(
         "This event charges an entry fee — register through the payment checkout",
       );
     }
@@ -193,7 +194,7 @@ export const registerSelf = mutation({
         existing.entryStatus,
       );
       if (blockedBecause !== null) {
-        throw new Error(blockedBecause);
+        throw userError(blockedBecause);
       }
     }
 
@@ -274,7 +275,7 @@ export const cancelMyRegistration = mutation({
       user._id,
     );
     if (!registration) {
-      throw new Error("Active registration not found");
+      throw userError("Active registration not found");
     }
     await cancelEntry(ctx, {
       tournament,
@@ -465,14 +466,14 @@ export const dropRegistration = mutation({
       tournament.lifecycle !== "registration" &&
       tournament.lifecycle !== "in_progress"
     ) {
-      throw new Error("Tournament is no longer accepting roster changes");
+      throw userError("Tournament is no longer accepting roster changes");
     }
     const dropEffect = registrationDropEffect(
       tournament.lifecycle,
       registration,
     );
     if (dropEffect === null) {
-      throw new Error("Registration cannot be dropped in its current state");
+      throw userError("Registration cannot be dropped in its current state");
     }
     // Before play the roster's drop action releases the seat; in play it
     // drops the player (see registrationDropEffect) — one button, two verbs.
@@ -540,7 +541,7 @@ export const reinstateRegistration = mutation({
       registration,
     );
     if (reinstateEffect === null) {
-      throw new Error("Registration cannot be reinstated in its current state");
+      throw userError("Registration cannot be reinstated in its current state");
     }
     if (reinstateEffect === "restore") {
       await restoreEntry(ctx, {

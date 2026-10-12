@@ -1,5 +1,6 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
+import { userError } from "./errors";
 import { requireValidEntryFee } from "./payments";
 import { cleanName } from "./tournaments";
 
@@ -107,7 +108,7 @@ export function requireTicketTypeOnSale(
   now = Date.now(),
 ) {
   if (!isTicketTypeOnSale(convention, ticketType, now)) {
-    throw new Error(`${ticketType.name} is not on sale`);
+    throw userError(`${ticketType.name} is not on sale`);
   }
 }
 
@@ -127,7 +128,7 @@ export function requireTicketTypeCapacityAvailable(
   ticketType: Doc<"conventionTicketTypes">,
 ) {
   if (!hasTicketTypeCapacity(ticketType)) {
-    throw new Error(`${ticketType.name} is sold out`);
+    throw userError(`${ticketType.name} is sold out`);
   }
 }
 
@@ -170,7 +171,7 @@ export async function requireTicketTypePriceEditable(
   ticketTypeId: Id<"conventionTicketTypes">,
 ) {
   if (await ticketTypeHasOrders(ctx, ticketTypeId)) {
-    throw new Error(
+    throw userError(
       "Ticket price settings are locked once a payment exists for this ticket type",
     );
   }
@@ -192,7 +193,7 @@ export async function requireTicketTypeDeletable(
         .withIndex("by_ticketTypeId", (q) => q.eq("ticketTypeId", ticketTypeId))
         .first();
   if (hasOrders || badge) {
-    throw new Error(
+    throw userError(
       "This ticket type has registrations — end its sale instead of deleting it",
     );
   }
@@ -224,7 +225,7 @@ export function validTicketTypeInputs(
   const capacity =
     inputs.capacity === undefined ? undefined : Math.trunc(inputs.capacity);
   if (capacity !== undefined && (!Number.isInteger(capacity) || capacity < 1)) {
-    throw new Error("Ticket capacity must be a positive number");
+    throw userError("Ticket capacity must be a positive number");
   }
   for (const [label, value] of [
     ["admission start", inputs.admissionStartDate],
@@ -233,7 +234,7 @@ export function validTicketTypeInputs(
     ["sale end", inputs.saleEndDate],
   ] as const) {
     if (value !== undefined && !Number.isFinite(value)) {
-      throw new Error(`Enter a valid ${label} date`);
+      throw userError(`Enter a valid ${label} date`);
     }
   }
   const admissionStart = inputs.admissionStartDate;
@@ -243,24 +244,24 @@ export function validTicketTypeInputs(
     (admissionStart < convention.startDate ||
       admissionStart > convention.endDate)
   ) {
-    throw new Error("Admission must start within the convention's dates");
+    throw userError("Admission must start within the convention's dates");
   }
   if (
     admissionEnd !== undefined &&
     (admissionEnd < convention.startDate || admissionEnd > convention.endDate)
   ) {
-    throw new Error("Admission must end within the convention's dates");
+    throw userError("Admission must end within the convention's dates");
   }
   if (
     admissionStart !== undefined &&
     admissionEnd !== undefined &&
     admissionEnd < admissionStart
   ) {
-    throw new Error("Admission end must not be before its start");
+    throw userError("Admission end must not be before its start");
   }
   const saleEndBound = admissionEnd ?? convention.endDate;
   if (inputs.saleEndDate !== undefined && inputs.saleEndDate > saleEndBound) {
-    throw new Error(
+    throw userError(
       "Ticket sales must end by the time its admission window does",
     );
   }
@@ -268,7 +269,7 @@ export function validTicketTypeInputs(
     inputs.saleStartDate !== undefined &&
     inputs.saleStartDate > (inputs.saleEndDate ?? saleEndBound)
   ) {
-    throw new Error("Ticket sales must start before they end");
+    throw userError("Ticket sales must start before they end");
   }
   return { ...inputs, name, capacity };
 }
@@ -283,7 +284,7 @@ export async function validIncludedTournamentIds(
   includedTournamentIds: Array<Id<"tournaments">>,
 ) {
   if (includedTournamentIds.length > MAX_INCLUDED_TOURNAMENTS_PER_TICKET_TYPE) {
-    throw new Error(
+    throw userError(
       `A ticket type can include at most ${MAX_INCLUDED_TOURNAMENTS_PER_TICKET_TYPE} events`,
     );
   }

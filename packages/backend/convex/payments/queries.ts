@@ -8,6 +8,7 @@ import {
 import { query, type QueryCtx } from "../_generated/server";
 import { currentUserOrNull } from "../model/access";
 import { badgeForUser } from "../model/conventions";
+import { userError } from "../model/errors";
 import type { AnyEntryRegistration, PaidEventRef } from "../model/payments";
 import {
   hasPriorPlayerCancelFullRefund,
@@ -25,7 +26,7 @@ export const getFeePreview = query({
   handler: async (_ctx, args) => {
     const message = validateEntryFeeCents(args.entryFeeCents);
     if (message) {
-      throw new Error(message);
+      throw userError(message);
     }
     return computeOrderBreakdown(args.entryFeeCents, feeConfigFromEnv());
   },
