@@ -13,6 +13,7 @@ import {
 } from '@/components/shared/payment-return'
 import { SiteShell, SiteShellBackLink } from '@/components/shared/site-shell'
 import { useClientClock } from '@/hooks/use-client-clock'
+import { useStableQuery } from '@/hooks/use-stable-query'
 
 // Stripe Checkout return page for badge purchases. The status dispatch and
 // outcome UI live in components/shared/payment-return.tsx; this route
@@ -94,8 +95,10 @@ function OrderOutcome({
   conventionId: Id<'conventions'>
   backLink: ReactNode
 }) {
-  const now = useClientClock()
-  const order = useQuery(api.payments.queries.getMyBadgeOrder, {
+  // The cancel outcome reads as a promise, so its clock never runs behind
+  // the server's (see useClientClock's `round`).
+  const now = useClientClock({ round: 'up' })
+  const order = useStableQuery(api.payments.queries.getMyBadgeOrder, {
     conventionId,
     now,
   })

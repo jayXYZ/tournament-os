@@ -5,6 +5,7 @@ import type { Doc } from '@paper-pairings/backend/convex/_generated/dataModel'
 import type { PaidEventPayoutCopy } from '@/components/organizer-workspace/paid-event/payout-card'
 import { PaidEventPayoutCard } from '@/components/organizer-workspace/paid-event/payout-card'
 import { useClientClock } from '@/hooks/use-client-clock'
+import { useStableQuery } from '@/hooks/use-stable-query'
 
 const copy: PaidEventPayoutCopy = {
   title: 'Badge fee payout',
@@ -28,7 +29,7 @@ export function ConventionPayoutCard({
   )
   // Paid-ness lives on the ticket types now (ADR 0004).
   const now = useClientClock()
-  const ticketTypes = useQuery(
+  const ticketTypes = useStableQuery(
     api.conventions.ticketTypes.listTicketTypesForOrganizer,
     { conventionId: convention._id, now },
   )

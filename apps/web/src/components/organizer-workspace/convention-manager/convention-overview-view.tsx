@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useClientClock } from '@/hooks/use-client-clock'
+import { useStableQuery } from '@/hooks/use-stable-query'
 import { formatCents } from '@/lib/money'
 
 // One line summarizing the pass lineup (ADR 0004: pricing lives on ticket
@@ -91,7 +92,7 @@ export function ConventionOverviewView() {
   // The public listing carries the name/price pair the summary line needs
   // without the organizer listing's per-type payment-lock probes.
   const now = useClientClock()
-  const ticketTypes = useQuery(
+  const ticketTypes = useStableQuery(
     api.conventions.ticketTypes.listPublicTicketTypes,
     { conventionId, now },
   )
