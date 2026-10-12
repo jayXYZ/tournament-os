@@ -194,7 +194,7 @@ async function requireMatchParticipant(
   }
   const myRow = players.find((player) => player.playerId === registration._id);
   if (!myRow) {
-    throw userError("You are not part of this match");
+    throw new Error("You are not part of this match");
   }
   const opponentRow = players.find((player) => player._id !== myRow._id);
   if (!opponentRow) {

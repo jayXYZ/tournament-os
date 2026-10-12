@@ -294,7 +294,7 @@ export async function validIncludedTournamentIds(
   );
   for (const tournament of tournaments) {
     if (!tournament || tournament.conventionId !== convention._id) {
-      throw new Error("Included events must belong to this convention");
+      throw userError("Included events must belong to this convention");
     }
   }
   return unique;

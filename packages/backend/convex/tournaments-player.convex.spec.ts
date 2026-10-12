@@ -89,6 +89,17 @@ test("reportMyMatchResult rejects outsiders, byes, re-reports, and bad scores", 
         opponentGameWins: 0,
       }),
   ).rejects.toThrow("You are not part of this match");
+  // An authorization refusal stays a plain Error, so production redacts it
+  // instead of forwarding it as ConvexError data.
+  await expect(
+    t
+      .withIdentity(playerIdentity(outsider))
+      .mutation(api.tournaments.player.reportMyMatchResult, {
+        matchId: match._id,
+        myGameWins: 2,
+        opponentGameWins: 0,
+      }),
+  ).rejects.not.toHaveProperty("name", "ConvexError");
 
   await expect(
     t
