@@ -33,7 +33,7 @@ import {
   registrationReinstateEffect,
   requireCapacityAvailable,
   requireRegistration,
-  resolveRegistrationDisplayName,
+  resolveOrganizerDisplayName,
   searchRegistrationHistory,
 } from "../model/registrations";
 import {
@@ -66,13 +66,14 @@ async function registrationRows(
   const concededByDrop = await registrationsConcededByDrop(ctx, tournament);
   // Names come from the denormalized copy on the registration; only rows
   // missing it fall back to a live identity lookup, so the common path does
-  // zero per-row joins.
+  // zero per-row joins. Organizer-only surface: the fallback may label a
+  // nameless account by its email.
   return await mapAsyncInBatches(
     registrations,
     DATABASE_IO_BATCH_SIZE,
     async (registration) => ({
       registration,
-      playerName: await resolveRegistrationDisplayName(
+      playerName: await resolveOrganizerDisplayName(
         ctx,
         registration.playerName,
         registration._id,

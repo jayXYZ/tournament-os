@@ -16,7 +16,7 @@ import {
   requireConventionOrganizerAccess,
 } from "../model/conventions";
 import { ORGANIZER_LIST_PAGE_SIZE, clampPageSize } from "../model/pagination";
-import { participantPublicIdentity } from "../model/participants";
+import { participantOrganizerName } from "../model/participants";
 import { latestOrderForRegistration } from "../model/payments";
 import {
   isPaidTicketType,
@@ -51,12 +51,13 @@ async function badgeRows(
     badges,
     DATABASE_IO_BATCH_SIZE,
     async (badge) => {
+      // Organizer-only roster: a badge stamped without a name (the account
+      // has none) falls back to the organizer label, which may be the email.
       let playerName = badge.playerName;
       if (playerName === undefined) {
         const participant = await ctx.db.get(badge.participantId);
         playerName = participant
-          ? ((await participantPublicIdentity(ctx, participant)).name ??
-            undefined)
+          ? ((await participantOrganizerName(ctx, participant)) ?? undefined)
           : undefined;
       }
       return {

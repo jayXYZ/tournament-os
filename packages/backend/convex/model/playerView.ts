@@ -83,6 +83,9 @@ export async function currentMatchForPlayer(
               .eq("tableNumber", seat.tableNumber),
           )
           .take(2);
+        // Player-facing: the seat's stamped name is name-only (see
+        // startPlayerMeeting's seating snapshot), so a nameless seatmate
+        // shows as null here rather than by email.
         seatmateName =
           tableSeats.find((other) => other._id !== seat._id)?.playerName ??
           null;

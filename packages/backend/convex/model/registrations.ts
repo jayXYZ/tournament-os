@@ -8,7 +8,11 @@ import type { DataModel, Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import type { RegistrationFilter } from "../validators";
 import { ORGANIZER_LIST_PAGE_SIZE } from "./pagination";
-import { participantForUser, participantPublicIdentity } from "./participants";
+import {
+  participantForUser,
+  participantOrganizerName,
+  participantPublicIdentity,
+} from "./participants";
 
 // Hard ceiling on players (and therefore matches) per tournament. Bounds every
 // per-tournament `.take(...)` so list and standings queries stay well under
@@ -68,18 +72,27 @@ export async function syncRegistrationStartDatesBatch(
   return stale.length < START_DATE_SYNC_BATCH_SIZE;
 }
 
-// Resolved display name for a user, mirroring the client's name fallback. Stored
-// on registrations/standings/match players so list queries skip the user join.
+// The display name denormalized onto registrations, standings rows, match
+// players, and meeting seats so list queries skip the user join. Name only,
+// never the email: the copies reach other players (the player standings, a
+// seatmate's name), so the stamp itself must be safe to show anyone. An
+// account without a name stamps nothing. Organizer surfaces that want the
+// email as a fallback label resolve it at read time through
+// resolveOrganizerDisplayName instead; that choice keeps the email out of
+// every denormalized row and off the per-subscriber read path of the
+// player-facing standings query, which would otherwise have to read through
+// to every user document on each run.
 export function playerDisplayName(
   user: Doc<"users"> | null | undefined,
 ): string | undefined {
-  return user?.name ?? user?.email ?? undefined;
+  return user?.name ?? undefined;
 }
 
-// Name for a player, preferring the denormalized copy and only reading
-// through to the participant identity when a registration lacks one. Used by
-// readers as the fallback path so a missing denormalized name never blocks
-// correctness.
+// Name for a player as other players may see it, preferring the denormalized
+// copy and only reading through to the participant's public identity when a
+// registration lacks one. Used by readers as the fallback path so a missing
+// denormalized name never blocks correctness. Safe for player-facing
+// surfaces: neither the stamp nor the fallback ever yields an email.
 export async function registrationDisplayName(
   ctx: QueryCtx,
   registrationId: Id<"tournamentRegistrations">,
@@ -104,6 +117,29 @@ export async function resolveRegistrationDisplayName(
   registrationId: Id<"tournamentRegistrations">,
 ) {
   return playerName ?? (await registrationDisplayName(ctx, registrationId));
+}
+
+// The organizer-facing counterpart: the same denormalized copy first, and for
+// a registration without one, the participant's organizer label — which falls
+// back to the account's email so an organizer can still tell who a nameless
+// player is. Only organizer-gated queries may call this; it must never feed
+// a player-facing response or a denormalized field.
+export async function resolveOrganizerDisplayName(
+  ctx: QueryCtx,
+  playerName: string | undefined,
+  registrationId: Id<"tournamentRegistrations">,
+): Promise<string | undefined> {
+  if (playerName !== undefined) {
+    return playerName;
+  }
+  const registration = await ctx.db.get(registrationId);
+  const participant = registration
+    ? await ctx.db.get(registration.participantId)
+    : null;
+  if (!participant) {
+    return undefined;
+  }
+  return (await participantOrganizerName(ctx, participant)) ?? undefined;
 }
 
 // Seating order for player meetings: alphabetical by display name (case-

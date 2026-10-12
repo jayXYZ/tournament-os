@@ -77,6 +77,11 @@ export const getLatestStandings = query({
     // it patches the very rows this query reads — while a 500-player field no
     // longer costs one read and one subscription dependency per non-active
     // player on every execution.
+    //
+    // Player-facing: the denormalized playerName is safe to return because
+    // the stamp is name-only (playerDisplayName) and the fallback resolves
+    // the participant's public identity — never resolveOrganizerDisplayName,
+    // whose email fallback must not reach other players.
     const rows = await mapAsyncInBatches(
       standings,
       DATABASE_IO_BATCH_SIZE,
