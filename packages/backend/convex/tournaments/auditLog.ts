@@ -2,6 +2,8 @@ import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 
 import { query } from "../_generated/server";
+import { withOrganizerPlayerNames } from "../model/auditLog";
+import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
 import { ORGANIZER_LIST_PAGE_SIZE, clampPageSize } from "../model/pagination";
 import { requireOrganizerAccess } from "../model/tournaments";
 
@@ -21,7 +23,7 @@ export const listAuditEvents = query({
     // full page (rowsRead reaches the cap on the same doc that fills the
     // page), flagging a healthy page as SplitRequired/SplitRecommended and
     // making usePaginatedQuery split and re-issue it instead of settling.
-    return await ctx.db
+    const result = await ctx.db
       .query("tournamentAuditEvents")
       .withIndex("by_tournamentId", (q) =>
         q.eq("tournamentId", args.tournamentId),
@@ -34,5 +36,19 @@ export const listAuditEvents = query({
           ORGANIZER_LIST_PAGE_SIZE,
         ),
       });
+    // A nameless account's events were stamped with no player name; label
+    // them here (organizer-only, so the email may serve) rather than leave
+    // the organizer with "Unknown player" on a drop or a payment.
+    return {
+      ...result,
+      page: await mapAsyncInBatches(
+        result.page,
+        DATABASE_IO_BATCH_SIZE,
+        async (row) => ({
+          ...row,
+          event: await withOrganizerPlayerNames(ctx, row.event),
+        }),
+      ),
+    };
   },
 });

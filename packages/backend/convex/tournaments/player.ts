@@ -10,7 +10,6 @@ import { dropPlayer } from "../model/roster";
 import {
   MAX_TOURNAMENT_PLAYERS,
   registrationForUser,
-  resolveRegistrationDisplayName,
 } from "../model/registrations";
 import { matchLogForRegistration } from "../model/playerResults";
 import { currentMatchForPlayer } from "../model/playerView";
@@ -78,22 +77,22 @@ export const getLatestStandings = query({
     // longer costs one read and one subscription dependency per non-active
     // player on every execution.
     //
-    // Player-facing: the denormalized playerName is safe to return because
-    // the stamp is name-only (playerDisplayName) and the fallback resolves
-    // the participant's public identity — never resolveOrganizerDisplayName,
-    // whose email fallback must not reach other players.
+    // The same goes for names: the stamped playerName is the whole answer.
+    // It is name-only by construction (playerDisplayName), and an absent
+    // stamp means the account has no name — not a cache miss to read
+    // through. Reading through here would hang every player's subscription
+    // on every nameless account's user document (which upsertUser patches
+    // on each sign-in) and spend three reads per such row against the
+    // transaction's index-range budget. Organizer surfaces, whose audience
+    // is small, resolve the email label at read time instead
+    // (resolveOrganizerDisplayName).
     const rows = await mapAsyncInBatches(
       standings,
       DATABASE_IO_BATCH_SIZE,
       async (standing) => {
-        const name = await resolveRegistrationDisplayName(
-          ctx,
-          standing.playerName,
-          standing.playerId,
-        );
         return {
           rank: standing.rank,
-          name: name ?? null,
+          name: standing.playerName ?? null,
           matchPoints: standing.matchPoints,
           matchWins: standing.matchWins,
           matchLosses: standing.matchLosses,

@@ -136,7 +136,9 @@ type TournamentPhaseInputs = FunctionArgs<
 //     them clear of other manually assigned codes.
 //   - playerNames denormalizes registration.playerName (true = the identity
 //     name; an array supplies custom names, which also become the user names).
-//     Suites that omit it exercise the readers' live-user-lookup fallback.
+//     Suites that omit it exercise the organizer readers' live-identity
+//     fallback; the player standings query shows no name for such rows, as
+//     it does for a production account without one.
 export async function seedTournamentWithPlayers(
   t: TestConvex<typeof schema>,
   options: {

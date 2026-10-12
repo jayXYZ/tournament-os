@@ -1,8 +1,10 @@
 import type { Infer } from "convex/values";
 
 import type { Doc, Id } from "../_generated/dataModel";
-import type { MutationCtx } from "../_generated/server";
+import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { parseMoneyRowEntry, parseMoneyRowOwner } from "./paidEventOwner";
+import { participantOrganizerName } from "./participants";
+import { resolveOrganizerDisplayName } from "./registrations";
 import type {
   conventionAuditEventValidator,
   tournamentAuditEventValidator,
@@ -33,8 +35,8 @@ export async function logAuditEvent(
   await ctx.db.insert("tournamentAuditEvents", {
     tournamentId: args.tournamentId,
     actorUserId: actor?._id,
-    // Same fallback as playerDisplayName, inlined to keep this module free of
-    // a model/tournaments import cycle.
+    // Organizer-only log, so the actor label may fall back to the email
+    // (unlike playerDisplayName, whose stamp reaches other players).
     actorName: actor ? (actor.name ?? actor.email ?? null) : null,
     actorRole: args.actorRole,
     event: args.event,
@@ -56,6 +58,72 @@ export async function logConventionAuditEvent(
     actorName: actor ? (actor.name ?? actor.email ?? null) : null,
     actorRole: args.actorRole,
     event: args.event,
+  });
+}
+
+// Player references stamp the registration's playerName, which is name-only
+// (see playerDisplayName): a nameless account's events carry null. The two
+// organizer-only list queries fill those in at read time through the
+// organizer label (which may be the email), walking the event for any
+// {registrationId, playerName: null} reference so every arm — single
+// player, player lists, result lines — resolves the same way. Bounded by
+// the page size, and only rows with a null name read through.
+export async function fillMissingAuditPlayerNames<Event>(
+  event: Event,
+  resolve: (registrationId: string) => Promise<string | null>,
+): Promise<Event> {
+  const fill = async (value: unknown): Promise<unknown> => {
+    if (Array.isArray(value)) {
+      return await Promise.all(value.map(fill));
+    }
+    if (value === null || typeof value !== "object") {
+      return value;
+    }
+    const record = value as Record<string, unknown>;
+    const entries = await Promise.all(
+      Object.entries(record).map(async ([key, child]) => {
+        if (
+          key === "playerName" &&
+          child === null &&
+          typeof record.registrationId === "string"
+        ) {
+          return [key, await resolve(record.registrationId)] as const;
+        }
+        return [key, await fill(child)] as const;
+      }),
+    );
+    return Object.fromEntries(entries);
+  };
+  return (await fill(event)) as Event;
+}
+
+export async function withOrganizerPlayerNames(
+  ctx: QueryCtx,
+  event: TournamentAuditEvent,
+): Promise<TournamentAuditEvent> {
+  return await fillMissingAuditPlayerNames(
+    event,
+    async (registrationId) =>
+      (await resolveOrganizerDisplayName(
+        ctx,
+        undefined,
+        registrationId as Id<"tournamentRegistrations">,
+      )) ?? null,
+  );
+}
+
+export async function withOrganizerBadgeNames(
+  ctx: QueryCtx,
+  event: ConventionAuditEvent,
+): Promise<ConventionAuditEvent> {
+  return await fillMissingAuditPlayerNames(event, async (registrationId) => {
+    const badge = await ctx.db.get(
+      registrationId as Id<"conventionRegistrations">,
+    );
+    const participant = badge ? await ctx.db.get(badge.participantId) : null;
+    return participant
+      ? await participantOrganizerName(ctx, participant)
+      : null;
   });
 }
 

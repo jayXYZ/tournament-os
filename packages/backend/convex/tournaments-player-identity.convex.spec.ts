@@ -118,6 +118,53 @@ test("a player meeting never shows a seatmate's email in place of a missing name
   ]);
 });
 
+test("the organizer audit log labels a nameless player by email", async () => {
+  const t = createConvexTest();
+  const { tournamentId } = await seedTournamentWithPlayers(t, {
+    name: "Nameless Audit Event",
+    playerCount: 2,
+    playerNames: true,
+  });
+  const organizer = t.withIdentity(organizerIdentity);
+  const namelessRegistrationId = await t
+    .withIdentity(namelessIdentity)
+    .mutation(api.tournaments.registrations.registerSelf, { tournamentId });
+  await organizer.mutation(api.tournaments.registrations.dropRegistration, {
+    registrationId: namelessRegistrationId,
+  });
+
+  // The stored rows carry no name (the stamp is name-only)...
+  const stored = await t.run(async (ctx) =>
+    (
+      await ctx.db
+        .query("tournamentAuditEvents")
+        .withIndex("by_tournamentId", (q) => q.eq("tournamentId", tournamentId))
+        .collect()
+    ).map((row) => row.event),
+  );
+  const storedNames = stored.flatMap((event) =>
+    "player" in event && event.player.registrationId === namelessRegistrationId
+      ? [event.player.playerName]
+      : [],
+  );
+  expect(storedNames).toEqual([null, null]);
+
+  // ...and the organizer-only list fills the email label in at read time.
+  const page = await organizer.query(api.tournaments.auditLog.listAuditEvents, {
+    tournamentId,
+    paginationOpts: { numItems: 20, cursor: null },
+  });
+  const labelled = page.page.flatMap(({ event }) =>
+    "player" in event && event.player.registrationId === namelessRegistrationId
+      ? [`${event.type}:${event.player.playerName}`]
+      : [],
+  );
+  expect(labelled).toEqual([
+    `registration_cancelled:${NAMELESS_EMAIL}`,
+    `player_registered:${NAMELESS_EMAIL}`,
+  ]);
+});
+
 async function currentRound(
   t: TestConvex<typeof schema>,
   tournamentId: Id<"tournaments">,

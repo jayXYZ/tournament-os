@@ -597,10 +597,12 @@ export default defineSchema({
     // "eliminated". Rewinding that round can then restore exactly those
     // players without reviving voluntary drops or disqualifications.
     eliminatedByRoundId: v.optional(v.id("tournamentRounds")),
-    // Display name (user.name ?? user.email) denormalized at registration time
-    // so roster, standings, and pairings list queries never join through to the
-    // user document per row. Optional only for rows written before this field
-    // existed; readers fall back to a live user lookup when it is missing.
+    // Display name (user.name — never the email, see playerDisplayName)
+    // denormalized at registration time so roster, standings, and pairings
+    // list queries never join through to the user document per row. Absent
+    // when the account has no name: player-facing readers show nothing for
+    // such a row, and organizer-only readers resolve an email label at read
+    // time (resolveOrganizerDisplayName).
     playerName: v.optional(v.string()),
     // Denormalized from the player's decklist at submission time (see
     // submitMyDecklist, the only writer of both) so the organizer roster
@@ -878,7 +880,9 @@ export default defineSchema({
     playerId: v.id("tournamentRegistrations"),
     // Denormalized from the registration when the standings row is written, so
     // the standings list query renders names without a per-row user join.
-    // Optional for legacy rows; readers fall back to a live user lookup.
+    // Absent when the account has no name; the player-facing standings query
+    // treats that as final (no read-through), the organizer one resolves an
+    // email label.
     playerName: v.optional(v.string()),
     rank: v.number(),
     matchPoints: v.number(),
