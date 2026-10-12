@@ -25,6 +25,8 @@ const gatewayState = vi.hoisted(() => ({
   nextSessionNumber: 1,
   capabilityStatus: "active" as string,
   failTransfers: false,
+  // When set, createRefund throws it — an ambiguous failure on every call.
+  createRefundError: null as Error | null,
 }));
 
 vi.mock("./stripe/config", async (importOriginal) => {
@@ -45,6 +47,9 @@ vi.mock("./stripe/client", () => ({
     },
     expireCheckoutSession: async () => {},
     createRefund: async (args: { chargeId: string; amountCents: number }) => {
+      if (gatewayState.createRefundError) {
+        throw gatewayState.createRefundError;
+      }
       gatewayState.refunds.push(args);
       return {
         stripeRefundId: `re_test_${gatewayState.refunds.length}`,
@@ -74,6 +79,7 @@ beforeEach(() => {
   gatewayState.nextSessionNumber = 1;
   gatewayState.capabilityStatus = "active";
   gatewayState.failTransfers = false;
+  gatewayState.createRefundError = null;
   vi.useFakeTimers();
 });
 
@@ -301,6 +307,69 @@ test("payout blocks while refunds are pending and the owner can retry once they 
   });
 });
 
+test("a refund that exhausted its retries blocks the payout with a specific reason until it is re-driven", async () => {
+  const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+  try {
+    const t = createConvexTest();
+    const { organizationId } = await seedOrganizer(t);
+    const tournamentId = await seedPaidTournament(t, organizationId);
+
+    const orderId = await payAsPlayer(t, tournamentId, 1);
+    await payAsPlayer(t, tournamentId, 2);
+    gatewayState.createRefundError = new Error("socket hang up");
+    await t
+      .withIdentity(playerIdentity(1))
+      .mutation(api.tournaments.registrations.cancelMyRegistration, {
+        tournamentId,
+      });
+    await drainScheduler(t);
+    const refund = await t.run(async (ctx) =>
+      (
+        await ctx.db
+          .query("paymentRefunds")
+          .withIndex("by_orderId", (q) => q.eq("orderId", orderId))
+          .take(2)
+      ).at(0),
+    );
+    expect(refund!.status).toBe("needs_attention");
+
+    // Not "still settling": the organizer is told which refund stalled and
+    // why, so the payout is never silently stuck behind it.
+    await markCompleted(t, tournamentId);
+    await t.mutation(internal.payments.payouts.startPayoutSweep, {
+      tournamentId,
+    });
+    await drainScheduler(t);
+    const blocked = await payoutDoc(t, tournamentId);
+    expect(blocked.status).toBe("blocked");
+    expect(blocked.error).toBe(
+      "Refund of $21.94 to Player 1 failed after 5 attempts: socket hang up. Retry the refund (or resolve it in Stripe), then retry the payout.",
+    );
+    expect(
+      await t
+        .withIdentity(organizerIdentity)
+        .query(api.payments.payouts.getTournamentPayout, { tournamentId }),
+    ).toMatchObject({ status: "blocked", error: blocked.error });
+
+    // Re-driving the refund settles it; the payout retry then proceeds.
+    gatewayState.createRefundError = null;
+    await t
+      .withIdentity(organizerIdentity)
+      .mutation(api.payments.refunds.retryRefund, { refundId: refund!._id });
+    await drainScheduler(t);
+    await t
+      .withIdentity(organizerIdentity)
+      .mutation(internal.payments.payouts.beginPayoutRetry, { tournamentId });
+    await drainScheduler(t);
+    expect(await payoutDoc(t, tournamentId)).toMatchObject({
+      status: "completed",
+      netCents: 2000 - 94,
+    });
+  } finally {
+    consoleError.mockRestore();
+  }
+});
+
 test("an inactive live capability blocks the send stage", async () => {
   const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
@@ -368,6 +437,7 @@ test("the absorbed-fee deduction sums past a single summing page", async () => {
         tournamentId,
         registrationId: order.registrationId,
         participantId: order.participantId,
+        attemptCount: 0,
         kind: "full",
         reason: "organizer_remove",
         amountCents: 0,

@@ -74,6 +74,29 @@ async function payoutSourceEvent(
   return tournament;
 }
 
+// The blocked-payout reason for the owner's first unsettled refund, or null
+// when every refund has settled. Rows the executor gave up on come first so
+// the reason is actionable (a plain pending row only needs time).
+async function unsettledOwnerRefund(
+  ctx: MutationCtx,
+  owner: MoneyRowOwner,
+): Promise<string | null> {
+  const [needsAttention] = await ownerRefundsQuery(
+    ctx,
+    owner,
+    "needs_attention",
+  ).take(1);
+  if (needsAttention) {
+    const registration = await ctx.db.get(needsAttention.registrationId);
+    const player = registration?.playerName ?? "a player";
+    const amount = `$${(needsAttention.amountCents / 100).toFixed(2)}`;
+    const cause = needsAttention.lastError ?? "unknown error";
+    return `Refund of ${amount} to ${player} failed after ${needsAttention.attemptCount} attempts: ${cause}. Retry the refund (or resolve it in Stripe), then retry the payout.`;
+  }
+  const [pending] = await ownerRefundsQuery(ctx, owner, "pending").take(1);
+  return pending ? "Refunds are still settling" : null;
+}
+
 export const startPayoutSweep = internalMutation({
   args: moneyRowOwnerArgs,
   handler: async (ctx, args) => {
@@ -111,11 +134,15 @@ export const startPayoutSweep = internalMutation({
     }
 
     // The payout must not race an in-flight refund's amount out from under
-    // it; a blocked payout is retried once refunds settle.
-    const pendingRefund = await ownerRefundsQuery(ctx, owner, "pending").take(
-      1,
-    );
-    if (pendingRefund.length > 0) {
+    // it; a blocked payout is retried once refunds settle. A refund whose
+    // executor exhausted its retries (needs_attention) blocks too, but with
+    // a reason naming it: its order is still "paid" and would be paid out
+    // while Stripe may already have returned the player's money, so it has
+    // to be re-driven (retryRefund) or settled by the refund.updated
+    // webhook first. Only a definitively "failed" refund (money never
+    // moved) lets the payout proceed with the order included.
+    const unsettledRefund = await unsettledOwnerRefund(ctx, owner);
+    if (unsettledRefund) {
       await ctx.db.insert("eventPayouts", {
         ...moneyRowOwnerColumns(owner),
         organizationId: event.organizationId,
@@ -125,7 +152,7 @@ export const startPayoutSweep = internalMutation({
         absorbedFeeCents: 0,
         netCents: 0,
         remainingDeductionCents: 0,
-        error: "Refunds are still settling",
+        error: unsettledRefund,
         updatedAt: now,
       });
       return null;
@@ -157,7 +184,7 @@ export const startPayoutSweep = internalMutation({
 // Accumulates the organizer-absorbed refund fees one page at a time onto
 // the payout row (the enumeration cursor is reused between stages; it is
 // cleared when summing hands off). No refund can change the sum underneath
-// the pagination: the sweep starts only after the pending-refund guard
+// the pagination: the sweep starts only after the unsettled-refund guard
 // passes, and a completed event mints no new refunds.
 export const sumAbsorbedFeesBatch = internalMutation({
   args: { payoutId: v.id("eventPayouts") },
@@ -564,8 +591,8 @@ export const beginPayoutRetry = internalMutation({
       .first();
     const now = Date.now();
     if (!anyRow) {
-      // Blocked before enumeration (missing account, refunds settling):
-      // restart the sweep with fresh preconditions.
+      // Blocked before enumeration (missing account, refunds settling or
+      // needing attention): restart the sweep with fresh preconditions.
       await ctx.db.delete(payout._id);
       await ctx.scheduler.runAfter(
         0,

@@ -215,6 +215,12 @@ export default defineSchema({
     stripeChargeId: v.optional(v.string()),
     stripeRefundId: v.optional(v.string()),
     status: paymentRefundStatusValidator,
+    // Retry bookkeeping for the executor (payments/refunds.ts): how many
+    // Stripe calls have failed ambiguously, and the latest error message.
+    // Lives on the row rather than in scheduler args so an exhausted
+    // refund is inspectable and re-drivable by an operator.
+    attemptCount: v.number(),
+    lastError: v.optional(v.string()),
     // Absent for system-initiated refunds (webhook races, sweeps).
     initiatedByUserId: v.optional(v.id("users")),
     updatedAt: v.number(),

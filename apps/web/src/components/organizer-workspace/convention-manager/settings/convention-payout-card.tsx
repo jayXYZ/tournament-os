@@ -1,4 +1,4 @@
-import { useAction, useQuery } from 'convex/react'
+import { useAction, useMutation, useQuery } from 'convex/react'
 
 import { api } from '@paper-pairings/backend/convex/_generated/api'
 import type { Doc } from '@paper-pairings/backend/convex/_generated/dataModel'
@@ -30,14 +30,22 @@ export function ConventionPayoutCard({
     api.conventions.ticketTypes.listTicketTypesForOrganizer,
     { conventionId: convention._id },
   )
+  const isPaid = ticketTypes?.some((t) => t.priceCents > 0) ?? false
+  const refundsNeedingAttention = useQuery(
+    api.payments.refunds.listRefundsNeedingAttention,
+    isPaid ? { conventionId: convention._id } : 'skip',
+  )
   const retryPayout = useAction(api.payments.payouts.retryPayout)
+  const retryRefund = useMutation(api.payments.refunds.retryRefund)
 
   return (
     <PaidEventPayoutCard
-      isPaid={ticketTypes?.some((t) => t.priceCents > 0) ?? false}
+      isPaid={isPaid}
       completed={convention.lifecycle === 'completed'}
       payout={payout}
+      refundsNeedingAttention={refundsNeedingAttention}
       onRetry={() => retryPayout({ conventionId: convention._id })}
+      onRetryRefund={(refundId) => retryRefund({ refundId })}
       copy={copy}
     />
   )

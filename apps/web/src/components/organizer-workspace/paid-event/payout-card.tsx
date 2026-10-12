@@ -15,6 +15,9 @@ import { Spinner } from '@/components/ui/spinner'
 type PayoutSummary = FunctionReturnType<
   typeof api.payments.payouts.getTournamentPayout
 >
+type RefundNeedingAttention = FunctionReturnType<
+  typeof api.payments.refunds.listRefundsNeedingAttention
+>[number]
 
 export type PaidEventPayoutCopy = {
   title: string
@@ -27,24 +30,34 @@ export type PaidEventPayoutCopy = {
 
 // Payout status for either paid-event kind: fees transfer to the
 // organization's Stripe account when the event completes
-// (payments/payouts.ts); blocked or failed payouts retry from here. The
-// wrappers supply the payout query result and the retry action.
+// (payments/payouts.ts); blocked or failed payouts retry from here, as do
+// refunds whose executor gave up (they block the payout until settled).
+// The wrappers supply the query results and the retry verbs.
 export function PaidEventPayoutCard({
   isPaid,
   completed,
   payout,
+  refundsNeedingAttention,
   onRetry,
+  onRetryRefund,
   copy,
 }: {
   isPaid: boolean
   completed: boolean
   // undefined while loading (or while the query is skipped pre-completion).
   payout: PayoutSummary | undefined
+  refundsNeedingAttention: ReadonlyArray<RefundNeedingAttention> | undefined
   onRetry: () => Promise<unknown>
+  onRetryRefund: (
+    refundId: RefundNeedingAttention['refundId'],
+  ) => Promise<unknown>
   copy: PaidEventPayoutCopy
 }) {
   const { selectedOrganization } = useOrganization()
   const [retrying, setRetrying] = useState(false)
+  const [retryingRefundId, setRetryingRefundId] = useState<
+    RefundNeedingAttention['refundId'] | null
+  >(null)
 
   if (!isPaid) {
     return null
@@ -66,9 +79,58 @@ export function PaidEventPayoutCard({
     }
   }
 
+  async function handleRetryRefund(
+    refundId: RefundNeedingAttention['refundId'],
+  ) {
+    setRetryingRefundId(refundId)
+    try {
+      await onRetryRefund(refundId)
+      toast.success('Refund retry started.')
+    } catch (error) {
+      toast.error(mutationErrorMessage(error, 'Could not retry the refund.'))
+    } finally {
+      setRetryingRefundId(null)
+    }
+  }
+
   return (
     <section className="flex flex-col gap-4">
       <SectionHeader title={copy.title} description={copy.description} />
+      {refundsNeedingAttention && refundsNeedingAttention.length > 0 ? (
+        <ul className="flex flex-col gap-2">
+          {refundsNeedingAttention.map((refund) => (
+            <li
+              key={refund.refundId}
+              className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-destructive/40 p-3"
+            >
+              <div className="flex flex-col gap-1 text-sm">
+                <span>
+                  Refund of {formatCents(refund.amountCents)} to{' '}
+                  {refund.playerName ?? 'a player'} failed after{' '}
+                  {refund.attemptCount} attempts and needs attention.
+                </span>
+                {refund.lastError ? (
+                  <span className="text-muted-foreground">
+                    {refund.lastError}
+                  </span>
+                ) : null}
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={!canRetry || retryingRefundId !== null}
+                onClick={() => void handleRetryRefund(refund.refundId)}
+              >
+                {retryingRefundId === refund.refundId ? (
+                  <Spinner data-icon="inline-start" />
+                ) : null}
+                Retry refund
+              </Button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
       <div className="flex flex-col gap-3">
         {!completed ? (
           <p className="text-sm text-muted-foreground">{copy.pendingMessage}</p>
