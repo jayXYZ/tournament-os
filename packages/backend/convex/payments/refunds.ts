@@ -388,10 +388,13 @@ export const executeRefund = internalAction({
       // are exhausted the row parks in needs_attention (never "failed",
       // because the money may have moved) for an operator to re-drive.
       if (isDefinitiveStripeFailure(error)) {
-        await (ctx.runMutation(internal.payments.refunds.markRefundResult, {
-          refundId: args.refundId,
-          outcome: "failed",
-        }) satisfies Promise<null>);
+        await (ctx.runMutation(
+          internal.payments.refunds.recordRefundRejection,
+          {
+            refundId: args.refundId,
+            errorMessage: error instanceof Error ? error.message : "Unknown",
+          },
+        ) satisfies Promise<null>);
       } else {
         const recorded: { exhausted: boolean } = await ctx.runMutation(
           internal.payments.refunds.recordRefundAttemptFailure,
@@ -470,6 +473,40 @@ export const recordRefundAttemptFailure = internalMutation({
   },
 });
 
+// Records a definitive Stripe rejection of the create call. On a first-run
+// row the request provably created nothing, so the row settles "failed".
+// On a re-driven row the rejection proves nothing about the earlier, lost
+// attempts: Stripe prunes idempotency keys after a day, so a late re-drive
+// can be a fresh request refused precisely because an earlier attempt
+// already refunded the charge — settling it "failed" would pay the order
+// out on top of the refund. Such a row parks in needs_attention again with
+// the rejection as its lastError, keeping the payout blocked until the
+// refund.updated webhook or support resolves it.
+export const recordRefundRejection = internalMutation({
+  args: { refundId: v.id("paymentRefunds"), errorMessage: v.string() },
+  handler: async (ctx, args) => {
+    const refund = await ctx.db.get(args.refundId);
+    if (!refund || refund.status !== "pending") {
+      return null;
+    }
+    if (refund.redriven) {
+      await ctx.db.patch(refund._id, {
+        status: "needs_attention",
+        attemptCount: refund.attemptCount + 1,
+        lastError: args.errorMessage,
+        updatedAt: Date.now(),
+      });
+      return null;
+    }
+    await ctx.db.patch(refund._id, {
+      lastError: args.errorMessage,
+      updatedAt: Date.now(),
+    });
+    await applyRefundOutcome(ctx, refund, "failed");
+    return null;
+  },
+});
+
 // Organizer re-drive for a refund parked in needs_attention: the attempt
 // budget resets and the executor runs again under the row's unchanged
 // idempotency key, so a refund Stripe did create on an earlier attempt is
@@ -499,6 +536,7 @@ export const retryRefund = mutation({
       status: "pending",
       attemptCount: 0,
       lastError: undefined,
+      redriven: true,
       updatedAt: Date.now(),
     });
     await ctx.scheduler.runAfter(0, internal.payments.refunds.executeRefund, {

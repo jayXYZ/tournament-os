@@ -360,6 +360,30 @@ test("hard deletion refuses while payments are unsettled and proceeds after the 
   });
   await drainScheduler(t);
 
+  // A refund the executor gave up on is still unsettled money: deleting
+  // the event would erase the only record of it.
+  const refund = await t.run(async (ctx) =>
+    (
+      await ctx.db
+        .query("paymentRefunds")
+        .withIndex("by_tournamentId_and_status", (q) =>
+          q.eq("tournamentId", tournamentId).eq("status", "succeeded"),
+        )
+        .take(1)
+    ).at(0),
+  );
+  await t.run(async (ctx) => {
+    await ctx.db.patch(refund!._id, { status: "needs_attention" });
+  });
+  await expect(
+    asOwner.mutation(api.tournaments.lifecycle.deleteTournament, {
+      tournamentId,
+    }),
+  ).rejects.toThrow("still holds player payments");
+  await t.run(async (ctx) => {
+    await ctx.db.patch(refund!._id, { status: "succeeded" });
+  });
+
   await asOwner.mutation(api.tournaments.lifecycle.deleteTournament, {
     tournamentId,
   });

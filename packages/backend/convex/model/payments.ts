@@ -346,9 +346,12 @@ export async function requireEventPaymentsSettled(
     }
   }
   const owner = paidEventMoneyRowOwner(ref);
-  const pendingRefund = await ownerRefundsQuery(ctx, owner, "pending").first();
-  if (pendingRefund) {
-    throw new Error(blockedMessage);
+  // A needs_attention refund is unsettled too: deleting the event would
+  // destroy the only record of money that may already have left Stripe.
+  for (const status of ["pending", "needs_attention"] as const) {
+    if (await ownerRefundsQuery(ctx, owner, status).first()) {
+      throw new Error(blockedMessage);
+    }
   }
   const paidOrder = await firstOrderWithStatus(ctx, ref, "paid");
   if (paidOrder) {

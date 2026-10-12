@@ -86,7 +86,11 @@ suites are `paymentsConnect` / `entryFeeSettings` / `paymentsCheckout` /
   may have created it; it blocks the payout with a reason naming it, and
   the same settings page offers an owner-only refund retry that re-drives
   it under its original idempotency key (the `refund.updated` webhook can
-  also settle it).
+  also settle it). Stripe prunes idempotency keys after a day, so a
+  definitive rejection of a re-driven call parks the row again rather than
+  settling it failed — it may be refusing a charge an earlier, lost attempt
+  already refunded. A `needs_attention` refund also blocks hard deletion
+  of the event.
 - **Webhooks** — two signed endpoints, one per Stripe event format.
   - Snapshot events: `POST <deployment>.convex.site/stripe/events`.
     Fulfillment happens only here; success pages just watch the order
