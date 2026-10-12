@@ -79,7 +79,18 @@ suites are `paymentsConnect` / `entryFeeSettings` / `paymentsCheckout` /
   to derive completion from); the two settle independently even when the
   tournament is a child of the convention. Blocked payouts (refunds
   settling, account not payouts-ready) and exhausted-retry failures surface
-  on the event's settings page with an owner-only retry.
+  on the event's settings page with an owner-only retry. A refund whose
+  executor exhausts its retries on ambiguous Stripe failures parks in
+  `needs_attention` (its attempt count and last error on the row, a
+  `refund_failed` audit line) rather than settling as failed, since Stripe
+  may have created it; it blocks the payout with a reason naming it, and
+  the same settings page offers an owner-only refund retry that re-drives
+  it under its original idempotency key (the `refund.updated` webhook can
+  also settle it). Stripe prunes idempotency keys after a day, so a
+  definitive rejection of a re-driven call parks the row again rather than
+  settling it failed — it may be refusing a charge an earlier, lost attempt
+  already refunded. A `needs_attention` refund also blocks hard deletion
+  of the event.
 - **Webhooks** — two signed endpoints, one per Stripe event format.
   - Snapshot events: `POST <deployment>.convex.site/stripe/events`.
     Fulfillment happens only here; success pages just watch the order

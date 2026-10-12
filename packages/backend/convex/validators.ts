@@ -362,10 +362,17 @@ export const paymentRefundReasonValidator = v.union(
   v.literal("seat_unavailable"),
 );
 
+// A refund row's lifecycle: pending (queued, or the Stripe call is in
+// flight / retrying), succeeded, failed (Stripe definitively refused — the
+// money never moved), or needs_attention (the executor exhausted its
+// retries on ambiguous failures, so whether Stripe created the refund is
+// unknown: automation stops, the row stays visible to the organizer, and an
+// operator re-drives it or the refund.updated webhook settles it).
 export const paymentRefundStatusValidator = v.union(
   v.literal("pending"),
   v.literal("succeeded"),
   v.literal("failed"),
+  v.literal("needs_attention"),
 );
 
 // The event payout's lifecycle (one payout per completed paid tournament or
