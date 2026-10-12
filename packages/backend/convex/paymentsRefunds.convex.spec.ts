@@ -228,7 +228,7 @@ test("first player cancel refunds in full with the organizer absorbing the fee; 
   expect(flag.repeatDropFeesKept).toBe(false);
   const beforeCancel = await asPlayer.query(
     api.payments.queries.getMyEntryOrder,
-    { tournamentId },
+    { tournamentId, now: Date.now() },
   );
   expect(beforeCancel?.cancelOutcome).toBe("full_refund");
 
@@ -255,7 +255,7 @@ test("first player cancel refunds in full with the organizer absorbing the fee; 
   const secondOrderId = await payForEntry(t, tournamentId, "two");
   const beforeSecondCancel = await asPlayer.query(
     api.payments.queries.getMyEntryOrder,
-    { tournamentId },
+    { tournamentId, now: Date.now() },
   );
   expect(beforeSecondCancel?.cancelOutcome).toBe("entry_only_refund");
 
@@ -307,15 +307,24 @@ test("organizer removal always refunds in full and never flags the player", asyn
 test("a cancel past the refund deadline refunds nothing and the order stays paid", async () => {
   const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
+  const refundDeadline = Date.now() - 86_400_000;
   const tournamentId = await seedPaidTournament(t, organizationId, {
-    refundDeadline: Date.now() - 86_400_000,
+    refundDeadline,
   });
   const asPlayer = t.withIdentity(playerOne);
 
   const orderId = await payForEntry(t, tournamentId, "one");
+  // The verdict follows the client's clock: a client still inside the
+  // window sees the full refund, one past the deadline sees none — same
+  // rows, no write between the two reads.
+  const insideWindow = await asPlayer.query(
+    api.payments.queries.getMyEntryOrder,
+    { tournamentId, now: refundDeadline - 60_000 },
+  );
+  expect(insideWindow?.cancelOutcome).toBe("full_refund");
   const beforeCancel = await asPlayer.query(
     api.payments.queries.getMyEntryOrder,
-    { tournamentId },
+    { tournamentId, now: Date.now() },
   );
   expect(beforeCancel?.cancelOutcome).toBe("no_refund");
 

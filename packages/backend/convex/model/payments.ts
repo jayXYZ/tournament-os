@@ -297,16 +297,20 @@ export async function hasPriorPlayerCancelFullRefund(
 // rules settleOrdersOnEntryExit applies (payments/refunds.ts), computed
 // server-side so a cancel button's warning can never drift from what
 // confirming it does. Null for an order not currently holding money.
+// `now` comes from the caller: the public queries pass the client's clock
+// so the verdict flips at the refund deadline (a query is not rerun merely
+// because time advances), while a mutation may pass Date.now().
 export async function paidEntryCancelOutcome(
   ctx: QueryCtx,
   owner: PaidEventRef,
   order: Doc<"paymentOrders">,
   participantId: Id<"participants">,
+  now: number,
 ): Promise<"full_refund" | "entry_only_refund" | "no_refund" | null> {
   if (order.status !== "paid") {
     return null;
   }
-  if (!paidEntryRefundWindowOpen(owner, Date.now())) {
+  if (!paidEntryRefundWindowOpen(owner, now)) {
     return "no_refund";
   }
   return (await hasPriorPlayerCancelFullRefund(ctx, owner, participantId))

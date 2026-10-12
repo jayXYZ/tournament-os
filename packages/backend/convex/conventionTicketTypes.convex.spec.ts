@@ -161,7 +161,7 @@ async function seedLiveConvention(
   });
   const ticketTypes = await organizer.query(
     api.conventions.ticketTypes.listTicketTypesForOrganizer,
-    { conventionId },
+    { conventionId, now: Date.now() },
   );
   return {
     conventionId,
@@ -174,7 +174,7 @@ async function seedLiveConvention(
 test("sale windows: door sales stay open, a pass for a finished day is not purchasable, and the sale-end bound holds", async () => {
   const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
-  const { conventionId, startDate, defaultTicketTypeId } =
+  const { conventionId, startDate, endDate, defaultTicketTypeId } =
     await seedLiveConvention(t, organizationId);
   const organizer = t.withIdentity(organizerIdentity);
 
@@ -239,7 +239,7 @@ test("sale windows: door sales stay open, a pass for a finished day is not purch
 
   const publicTypes = await t.query(
     api.conventions.ticketTypes.listPublicTicketTypes,
-    { conventionId },
+    { conventionId, now: Date.now() },
   );
   expect(
     Object.fromEntries(publicTypes.map((row) => [row.name, row.onSale])),
@@ -248,6 +248,26 @@ test("sale windows: door sales stay open, a pass for a finished day is not purch
     "Yesterday pass": false,
     "Late-drop pass": false,
   });
+
+  // The verdict follows the client's clock: the same rows read with a time
+  // past the late pass's sale start (and past the convention's end) flip,
+  // with no write in between.
+  const afterSaleStart = await t.query(
+    api.conventions.ticketTypes.listPublicTicketTypes,
+    { conventionId, now: Date.now() + DAY + 60_000 },
+  );
+  expect(
+    Object.fromEntries(afterSaleStart.map((row) => [row.name, row.onSale])),
+  ).toEqual({
+    "General admission": true,
+    "Yesterday pass": false,
+    "Late-drop pass": true,
+  });
+  const afterEnd = await t.query(
+    api.conventions.ticketTypes.listPublicTicketTypes,
+    { conventionId, now: endDate + 60_000 },
+  );
+  expect(afterEnd.every((row) => !row.onSale)).toBe(true);
 });
 
 test("per-type capacity: a full pass refuses registration and releases its seat on cancel", async () => {

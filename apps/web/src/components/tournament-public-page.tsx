@@ -19,6 +19,7 @@ import {
   formatTournamentDateLong,
 } from '@/components/tournaments'
 import { useBusyAction } from '@/hooks/use-busy-action'
+import { useClientClock } from '@/hooks/use-client-clock'
 import { useAppAuth } from '@/lib/use-app-auth'
 
 import { Badge } from '@/components/ui/badge'
@@ -286,9 +287,10 @@ function RegistrationPanel({
     api.payments.queries.getFeePreview,
     isPaid ? { entryFeeCents: tournament.entryFeeCents! } : 'skip',
   )
+  const now = useClientClock()
   const myOrder = useQuery(
     api.payments.queries.getMyEntryOrder,
-    isPaid && user ? { tournamentId: tournament._id } : 'skip',
+    isPaid && user ? { tournamentId: tournament._id, now } : 'skip',
   )
   const refundFlag = useQuery(
     api.payments.queries.getMyRefundFlag,

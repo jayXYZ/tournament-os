@@ -35,11 +35,15 @@ export const getFeePreview = query({
 // server-computed consequence of cancelling right now (the same rules
 // settleOrdersOnEntryExit applies — paidEntryCancelOutcome), so the cancel
 // button's warning can never drift from what confirming it does. Shared by
-// both entry kinds so tournament and badge behavior cannot diverge.
+// both entry kinds so tournament and badge behavior cannot diverge. `now` is
+// the client's clock (see the web app's useClientClock): the refund-window
+// verdict must expire at the deadline, and a query is not rerun merely
+// because time advances.
 async function entryOrderView(
   ctx: QueryCtx,
   owner: PaidEventRef,
   registration: AnyEntryRegistration,
+  now: number,
 ) {
   const order = await latestOrderForRegistration(ctx, registration._id);
   if (!order) {
@@ -54,6 +58,7 @@ async function entryOrderView(
       owner,
       order,
       registration.participantId,
+      now,
     ),
   };
 }
@@ -62,7 +67,7 @@ async function entryOrderView(
 // panel and the payment return page render. Reactive: the webhook's write
 // flips this the moment fulfillment lands.
 export const getMyEntryOrder = query({
-  args: { tournamentId: v.id("tournaments") },
+  args: { tournamentId: v.id("tournaments"), now: v.number() },
   handler: async (ctx, args) => {
     const user = await currentUserOrNull(ctx);
     if (!user) {
@@ -83,6 +88,7 @@ export const getMyEntryOrder = query({
       ctx,
       { kind: "tournament", event: tournament },
       registration,
+      args.now,
     );
   },
 });
@@ -90,7 +96,7 @@ export const getMyEntryOrder = query({
 // The badge twin of getMyEntryOrder: the caller's latest badge order for a
 // convention — what the badge panel and the payment return page render.
 export const getMyBadgeOrder = query({
-  args: { conventionId: v.id("conventions") },
+  args: { conventionId: v.id("conventions"), now: v.number() },
   handler: async (ctx, args) => {
     const user = await currentUserOrNull(ctx);
     if (!user) {
@@ -105,6 +111,7 @@ export const getMyBadgeOrder = query({
       ctx,
       { kind: "convention", event: convention },
       badge,
+      args.now,
     );
   },
 });

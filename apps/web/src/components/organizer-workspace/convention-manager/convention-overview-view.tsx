@@ -20,6 +20,7 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useClientClock } from '@/hooks/use-client-clock'
 import { formatCents } from '@/lib/money'
 
 // One line summarizing the pass lineup (ADR 0004: pricing lives on ticket
@@ -89,9 +90,10 @@ export function ConventionOverviewView() {
   })
   // The public listing carries the name/price pair the summary line needs
   // without the organizer listing's per-type payment-lock probes.
+  const now = useClientClock()
   const ticketTypes = useQuery(
     api.conventions.ticketTypes.listPublicTicketTypes,
-    { conventionId },
+    { conventionId, now },
   )
 
   if (managed === undefined) {

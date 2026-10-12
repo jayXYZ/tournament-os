@@ -48,14 +48,18 @@ const ticketTypeInputArgs = {
 // page can render sold-out and sale-window states honestly without
 // re-implementing the rules. Follows the convention page's own access rule
 // (canViewConvention) — a hidden convention exposes no types or prices.
+// `now` is the client's clock: the sale-window verdict must flip when the
+// window opens or closes, and a query is not rerun merely because time
+// advances, so the client refreshes it rather than the handler reading
+// Date.now().
 export const listPublicTicketTypes = query({
-  args: { conventionId: v.id("conventions") },
+  args: { conventionId: v.id("conventions"), now: v.number() },
   handler: async (ctx, args) => {
     const convention = await requireConvention(ctx, args.conventionId);
     if (!(await canViewConvention(ctx, convention))) {
       return [];
     }
-    const now = Date.now();
+    const now = args.now;
     const feeConfig = feeConfigFromEnv();
     const ticketTypes = await listTicketTypes(ctx, args.conventionId);
     return ticketTypes.map((ticketType) => ({
@@ -82,15 +86,16 @@ export const listPublicTicketTypes = query({
 });
 
 // The organizer's full list, with the per-type lock the settings UI needs
-// (a priced type with any order keeps its price).
+// (a priced type with any order keeps its price). `now` is the client's
+// clock, as in listPublicTicketTypes.
 export const listTicketTypesForOrganizer = query({
-  args: { conventionId: v.id("conventions") },
+  args: { conventionId: v.id("conventions"), now: v.number() },
   handler: async (ctx, args) => {
     const { convention } = await requireConventionOrganizerAccess(
       ctx,
       args.conventionId,
     );
-    const now = Date.now();
+    const now = args.now;
     const ticketTypes = await listTicketTypes(ctx, args.conventionId);
     return await Promise.all(
       ticketTypes.map(async (ticketType) => ({

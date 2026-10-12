@@ -12,6 +12,7 @@ import {
   paymentReturnSearch,
 } from '@/components/shared/payment-return'
 import { SiteShell, SiteShellBackLink } from '@/components/shared/site-shell'
+import { useClientClock } from '@/hooks/use-client-clock'
 
 // Stripe Checkout return page for badge purchases. The status dispatch and
 // outcome UI live in components/shared/payment-return.tsx; this route
@@ -93,8 +94,10 @@ function OrderOutcome({
   conventionId: Id<'conventions'>
   backLink: ReactNode
 }) {
+  const now = useClientClock()
   const order = useQuery(api.payments.queries.getMyBadgeOrder, {
     conventionId,
+    now,
   })
   const badge = useQuery(api.conventions.registrations.getMyBadge, {
     conventionId,

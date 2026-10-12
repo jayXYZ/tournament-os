@@ -27,6 +27,7 @@ import {
   TournamentTable,
 } from '@/components/tournaments'
 import { useBusyAction } from '@/hooks/use-busy-action'
+import { useClientClock } from '@/hooks/use-client-clock'
 import { useAppAuth } from '@/lib/use-app-auth'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -202,20 +203,19 @@ function BadgePanel({
   badgesLeft: number
 }) {
   const { user, loading, refreshAuth } = useAppAuth()
+  const now = useClientClock()
   const badge = useQuery(
     api.conventions.registrations.getMyBadge,
     user ? { conventionId: convention._id } : 'skip',
   )
   const ticketTypes = useQuery(
     api.conventions.ticketTypes.listPublicTicketTypes,
-    {
-      conventionId: convention._id,
-    },
+    { conventionId: convention._id, now },
   )
   const cancelBadge = useMutation(api.conventions.registrations.cancelMyBadge)
   const myOrder = useQuery(
     api.payments.queries.getMyBadgeOrder,
-    user ? { conventionId: convention._id } : 'skip',
+    user ? { conventionId: convention._id, now } : 'skip',
   )
   const refundFlag = useQuery(
     api.payments.queries.getMyBadgeRefundFlag,
