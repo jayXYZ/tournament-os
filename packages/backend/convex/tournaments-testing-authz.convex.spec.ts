@@ -72,7 +72,12 @@ async function seedStartedTestTournament(
     });
 }
 
-async function roundResultCount(
+// Eight seeded players pair into four matches per round.
+const VICTIM_MATCH_COUNT = 4;
+
+// How many of the round's matches exist and how many carry a result, so a
+// "nothing was written" assertion cannot pass vacuously on an empty round.
+async function roundResultCounts(
   t: TestConvex<typeof schema>,
   roundId: Id<"tournamentRounds">,
 ) {
@@ -83,54 +88,78 @@ async function roundResultCount(
         q.eq("tournamentRoundId", roundId),
       )
       .collect();
-    return matches.filter(
-      (match) => match.currentResultRevisionId !== undefined,
-    ).length;
+    return {
+      matches: matches.length,
+      withResult: matches.filter(
+        (match) => match.currentResultRevisionId !== undefined,
+      ).length,
+    };
   });
 }
 
-test("generateTestRoundResults rejects a round from another organization's tournament", async () => {
-  const t = createConvexTest();
-  const { organizationId: ownOrganizationId } = await seedOrganizer(t);
-  const { organizationId: rivalOrganizationId } = await seedRivalOrganizer(t);
+// The victim is a live event in the reported exploit; a test event covers
+// the same path, so both shapes are asserted.
+test.each([
+  { victim: "live", isTestEvent: false },
+  { victim: "test", isTestEvent: true },
+])(
+  "generateTestRoundResults rejects a round from another organization's $victim tournament",
+  async ({ isTestEvent }) => {
+    const t = createConvexTest();
+    const { organizationId: ownOrganizationId } = await seedOrganizer(t);
+    const { organizationId: rivalOrganizationId } = await seedRivalOrganizer(t);
 
-  const ownTournamentId = await seedStartedTestTournament(
-    t,
-    organizerIdentity,
-    ownOrganizationId,
-    "Own Event",
-  );
-  const victimTournamentId = await seedStartedTestTournament(
-    t,
-    rivalOrganizerIdentity,
-    rivalOrganizationId,
-    "Victim Event",
-  );
-  const victimRound = await currentRound(t, victimTournamentId);
-  expect(await roundResultCount(t, victimRound._id)).toBe(0);
+    const ownTournamentId = await seedStartedTestTournament(
+      t,
+      organizerIdentity,
+      ownOrganizationId,
+      "Own Event",
+    );
+    const victimTournamentId = await seedStartedTestTournament(
+      t,
+      rivalOrganizerIdentity,
+      rivalOrganizationId,
+      "Victim Event",
+    );
+    if (!isTestEvent) {
+      await t.run(async (ctx) => {
+        await ctx.db.patch(victimTournamentId, { isTestEvent: false });
+      });
+    }
+    const victimRound = await currentRound(t, victimTournamentId);
+    expect(await roundResultCounts(t, victimRound._id)).toEqual({
+      matches: VICTIM_MATCH_COUNT,
+      withResult: 0,
+    });
 
-  await expect(
-    t
+    await expect(
+      t
+        .withIdentity(organizerIdentity)
+        .mutation(api.tournaments.testing.generateTestRoundResults, {
+          tournamentId: ownTournamentId,
+          roundId: victimRound._id,
+        }),
+    ).rejects.toThrow("Round does not belong to this tournament");
+
+    // The victim's matches stay untouched.
+    expect(await roundResultCounts(t, victimRound._id)).toEqual({
+      matches: VICTIM_MATCH_COUNT,
+      withResult: 0,
+    });
+
+    // The organizer's own round still simulates normally.
+    const ownRound = await currentRound(t, ownTournamentId);
+    await t
       .withIdentity(organizerIdentity)
       .mutation(api.tournaments.testing.generateTestRoundResults, {
         tournamentId: ownTournamentId,
-        roundId: victimRound._id,
-      }),
-  ).rejects.toThrow("Round does not belong to this tournament");
-
-  // The victim's matches stay untouched.
-  expect(await roundResultCount(t, victimRound._id)).toBe(0);
-
-  // The organizer's own round still simulates normally.
-  const ownRound = await currentRound(t, ownTournamentId);
-  await t
-    .withIdentity(organizerIdentity)
-    .mutation(api.tournaments.testing.generateTestRoundResults, {
-      tournamentId: ownTournamentId,
-      roundId: ownRound._id,
-    });
-  expect(await roundResultCount(t, ownRound._id)).toBeGreaterThan(0);
-});
+        roundId: ownRound._id,
+      });
+    expect((await roundResultCounts(t, ownRound._id)).withResult).toBe(
+      VICTIM_MATCH_COUNT,
+    );
+  },
+);
 
 test("generateTestResults refuses a round outside the given tournament", async () => {
   const t = createConvexTest();
@@ -160,5 +189,8 @@ test("generateTestResults refuses a round outside the given tournament", async (
       );
     }),
   ).rejects.toThrow("Round does not belong to this tournament");
-  expect(await roundResultCount(t, victimRound._id)).toBe(0);
+  expect(await roundResultCounts(t, victimRound._id)).toEqual({
+    matches: VICTIM_MATCH_COUNT,
+    withResult: 0,
+  });
 });
