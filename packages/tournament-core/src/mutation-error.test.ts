@@ -42,8 +42,16 @@ describe("mutationErrorMessage", () => {
     );
   });
 
-  it("does not treat other ConvexError payloads as rate limits", () => {
+  it("reads a user-facing refusal from the ConvexError payload", () => {
+    // Production deployments redact `message` to "Server Error" and forward
+    // only `data`, so the payload is the source of truth.
     const error = new ConvexError("Registration is closed.");
+    Object.defineProperty(error, "message", { value: "Server Error" });
+    expect(mutationErrorMessage(error, "fb")).toBe("Registration is closed.");
+  });
+
+  it("does not treat other ConvexError payloads as rate limits", () => {
+    const error = new ConvexError({ code: "Other", detail: 1 });
     expect(mutationErrorMessage(error, "fb")).toBe(error.message);
   });
 

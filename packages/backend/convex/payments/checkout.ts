@@ -19,6 +19,7 @@ import {
   setBadgeEntryStatus,
   upsertBadgeRow,
 } from "../model/conventions";
+import { userError } from "../model/errors";
 import { inviteCodeGrantsAccess } from "../model/invites";
 import { ensureParticipantForUser } from "../model/participants";
 import { setRegistrationState } from "../model/participation";
@@ -92,7 +93,7 @@ export const beginEntryCheckout = internalMutation({
     const user = await ensureCurrentUser(ctx);
     const tournament = await requireTournament(ctx, args.tournamentId);
     if (!isPaidEvent(tournament)) {
-      throw new Error("This event has no entry fee");
+      throw userError("This event has no entry fee");
     }
     const existing = await registrationForUser(
       ctx,
@@ -108,7 +109,7 @@ export const beginEntryCheckout = internalMutation({
         existing === null &&
         !(await inviteCodeGrantsAccess(ctx, tournament, args.inviteCode)))
     ) {
-      throw new Error("Tournament is not open for registration");
+      throw userError("Tournament is not open for registration");
     }
     // A badge-gated child event admits paid self-registration only with a
     // confirmed convention badge, same as registerSelf.
@@ -120,7 +121,7 @@ export const beginEntryCheckout = internalMutation({
     // A pass that comps this event registers free through registerSelf —
     // never through a paid checkout.
     if (admission.compedByBadge) {
-      throw new Error(
+      throw userError(
         "Your convention badge includes this event — register directly instead of paying",
       );
     }
@@ -136,19 +137,19 @@ export const beginEntryCheckout = internalMutation({
       // approveEntry created the payable order. Without one, this player has
       // nothing to pay yet.
       if (!existing || existing.entryStatus === "cancelled") {
-        throw new Error(
+        throw userError(
           "This event requires organizer approval — request to register first",
         );
       }
       if (existing.entryStatus === "pending" && order === null) {
-        throw new Error("Your registration is pending organizer approval");
+        throw userError("Your registration is pending organizer approval");
       }
       const blockedBecause =
         existing.entryStatus === "pending"
           ? null
           : entryBlocksCheckout(existing.entryStatus);
       if (blockedBecause !== null) {
-        throw new Error(blockedBecause);
+        throw userError(blockedBecause);
       }
     } else {
       // Direct mode: file (or reuse) the pending row ourselves, exactly the
@@ -160,7 +161,7 @@ export const beginEntryCheckout = internalMutation({
           ? null
           : entryBlocksCheckout(existing.entryStatus);
       if (blockedBecause !== null) {
-        throw new Error(blockedBecause);
+        throw userError(blockedBecause);
       }
       requireCapacityAvailable(tournament);
 
@@ -280,14 +281,14 @@ export const beginBadgeCheckout = internalMutation({
       args.ticketTypeId,
     );
     if (!isPaidTicketType(ticketType)) {
-      throw new Error("This ticket is free — register directly");
+      throw userError("This ticket is free — register directly");
     }
     const existing = await badgeForUser(ctx, args.conventionId, user._id);
     if (
       !isConventionRegistrationOpen(convention) ||
       (convention.visibility === "private" && existing === null)
     ) {
-      throw new Error("Convention registration is not open");
+      throw userError("Convention registration is not open");
     }
     // The sale window gates beginning a purchase only; the webhook's seat
     // decision deliberately re-checks lifecycle and capacity but not this
@@ -305,7 +306,7 @@ export const beginBadgeCheckout = internalMutation({
         ? null
         : badgeBlocksRegistration(existing.entryStatus);
     if (blockedBecause !== null) {
-      throw new Error(blockedBecause);
+      throw userError(blockedBecause);
     }
     requireBadgeCapacityAvailable(convention);
     requireTicketTypeCapacityAvailable(ticketType);
@@ -451,7 +452,7 @@ async function mintAndAttachSession(
       superseded = status === "expired";
     }
     if (!superseded) {
-      throw new Error(
+      throw userError(
         "Your previous checkout is still being processed — please wait a moment and refresh",
       );
     }
@@ -487,7 +488,7 @@ async function mintAndAttachSession(
     } catch {
       // Nothing left to protect; the webhook owns any late event.
     }
-    throw new Error(
+    throw userError(
       "Another checkout for this entry is already in progress — please try again",
     );
   }

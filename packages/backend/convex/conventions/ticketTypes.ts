@@ -10,6 +10,7 @@ import {
   requireConventionEditable,
   requireConventionOrganizerAccess,
 } from "../model/conventions";
+import { userError } from "../model/errors";
 import { requirePayoutsReadyOrganization } from "../model/payments";
 import { feeConfigFromEnv } from "../stripe/config";
 import {
@@ -130,7 +131,7 @@ async function requireCanChargeForTickets(
   convention: Doc<"conventions">,
 ) {
   if (convention.isTestEvent) {
-    throw new Error("Test conventions cannot charge for tickets");
+    throw userError("Test conventions cannot charge for tickets");
   }
   await requirePayoutsReadyOrganization(ctx, convention.organizationId);
 }
@@ -150,13 +151,13 @@ export const createTicketType = mutation({
     // editing existing ones — sale windows included — stays open for the
     // whole live run.
     if (Date.now() >= convention.startDate) {
-      throw new Error(
+      throw userError(
         "New ticket types cannot be added once the convention has started",
       );
     }
     const existing = await listTicketTypes(ctx, args.conventionId);
     if (existing.length >= MAX_TICKET_TYPES_PER_CONVENTION) {
-      throw new Error(
+      throw userError(
         `A convention can offer at most ${MAX_TICKET_TYPES_PER_CONVENTION} ticket types`,
       );
     }
@@ -220,7 +221,7 @@ export const updateTicketType = mutation({
       inputs.capacity !== undefined &&
       inputs.capacity < ticketType.confirmedCount
     ) {
-      throw new Error(
+      throw userError(
         "Ticket capacity cannot be lower than its confirmed badge count",
       );
     }
