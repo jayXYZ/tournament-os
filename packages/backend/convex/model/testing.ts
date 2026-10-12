@@ -178,6 +178,9 @@ export async function generateTestResults(
   round: Doc<"tournamentRounds">,
 ) {
   requireTestTournament(tournament);
+  if (round.tournamentId !== tournament._id) {
+    throw new Error("Round does not belong to this tournament");
+  }
   // Only tournaments created through createTestTournament have a config row;
   // events merely flagged as test events fall back to a deterministic seed.
   const config = await getTestConfig(ctx, tournament._id);
