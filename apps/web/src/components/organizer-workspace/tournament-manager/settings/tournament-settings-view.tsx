@@ -4,7 +4,7 @@ import { api } from '@paper-pairings/backend/convex/_generated/api'
 import { DangerZoneCard } from './danger-zone-card'
 import { EntryFeeCard } from './entry-fee-card'
 import { EventDetailsCard } from './event-details-card'
-import { InviteLinkCard } from './invite-link-card'
+import { JoinLinkCard } from './join-link-card'
 import { isPreStartLocked } from './is-pre-start-locked'
 import { PairingsPublicationCard } from './pairings-publication-card'
 import { PayoutCard } from './payout-card'
@@ -51,7 +51,7 @@ export function TournamentSettingsView({
               key={setup.tournament._id}
               tournament={setup.tournament}
             />
-            <InviteLinkCard tournament={setup.tournament} />
+            <JoinLinkCard tournament={setup.tournament} />
             <EntryFeeCard
               key={`${setup.tournament._id}-entry-fee`}
               tournament={setup.tournament}

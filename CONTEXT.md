@@ -161,6 +161,15 @@ nothing before publication.
 _Avoid_: invite code (as a distinct concept — the code is the link's
 URL-embedded, human-readable form)
 
+**Join QR**:
+The QR form of an event's join URL, `/join/<code>`, which an organizer
+shows, downloads, or prints. A public or unlisted event's QR code encodes
+its Public Code; a private event's encodes its Invite Link. An event gets
+one only while registration is open: before publication its code opens
+nothing, and once registration closes there is nothing left to join.
+Revoking one depends on which code it carries: going private revokes a
+public poster, and rotating the invite revokes a private one.
+
 **Entry Status**:
 A registration's admission state (pending, waitlisted, confirmed, cancelled,
 rejected). Independent of competitive state.

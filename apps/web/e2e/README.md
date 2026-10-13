@@ -38,8 +38,11 @@ session through `window.Clerk`, and saves the browser storage state to
 - `organizer-mid-round-drop.spec.ts` — a drop during an unreported match
   concedes it to the opponent immediately (required-wins–0, typed
   `match_conceded` audit event) and the round completes off the concession.
-- `invite-links.spec.ts` — the `/join/<code>` route and `?invite` param for
-  private events, plus the invite-link settings card (regenerate/disable).
+- `invite-links.spec.ts` — the `/join/<code>` route for both kinds of code:
+  a public event's join link and QR dialog (no code during setup or after
+  registration closes, and none admitting strangers once the event goes
+  private), and a private event's invite link through the `?invite` param,
+  with the QR dialog and the Regenerate and Disable confirmations.
 
 ## Test data
 
