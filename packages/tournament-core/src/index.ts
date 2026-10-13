@@ -33,6 +33,12 @@ export {
   useEnsureUserRow,
 } from "./ensure-user-row";
 export {
+  CLIENT_CLOCK_RESOLUTION_MS,
+  roundedClock,
+  useClientClock,
+} from "./client-clock";
+export type { ClientClockOptions, SubscribeToWake } from "./client-clock";
+export {
   displayPlayerName,
   formatGameScoreline,
   formatPercent,
@@ -61,6 +67,7 @@ export type {
   PlayerBadge,
 } from "./player-view";
 export { useRoundTimer } from "./use-round-timer";
+export { useStableQuery } from "./use-stable-query";
 export type {
   LatestStandings,
   MyActiveMatch,

@@ -4,6 +4,7 @@ import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { api } from '@paper-pairings/backend/convex/_generated/api'
+import { useStableQuery } from '@paper-pairings/core'
 import { isConventionLocked } from './is-convention-locked'
 import type { FormEvent } from 'react'
 import type { FunctionReturnType } from 'convex/server'
@@ -51,7 +52,6 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
 import { useBusyAction } from '@/hooks/use-busy-action'
 import { useClientClock } from '@/hooks/use-client-clock'
-import { useStableQuery } from '@/hooks/use-stable-query'
 import { formatCents } from '@/lib/money'
 
 type OrganizerTicketType = FunctionReturnType<

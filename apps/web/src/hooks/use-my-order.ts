@@ -1,7 +1,6 @@
-import { useAuthedQueryArgs } from '@paper-pairings/core'
+import { useAuthedQueryArgs, useStableQuery } from '@paper-pairings/core'
 import { api } from '@paper-pairings/backend/convex/_generated/api'
 import { useClientClock } from './use-client-clock'
-import { useStableQuery } from './use-stable-query'
 import type { Id } from '@paper-pairings/backend/convex/_generated/dataModel'
 
 // The viewer's payment order for an event or convention, shared by the
