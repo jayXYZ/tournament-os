@@ -1,11 +1,11 @@
 import { useAction, useQuery } from 'convex/react'
 
 import { api } from '@paper-pairings/backend/convex/_generated/api'
+import { useStableQuery } from '@paper-pairings/core'
 import type { Doc } from '@paper-pairings/backend/convex/_generated/dataModel'
 import type { PaidEventPayoutCopy } from '@/components/organizer-workspace/paid-event/payout-card'
 import { PaidEventPayoutCard } from '@/components/organizer-workspace/paid-event/payout-card'
 import { useClientClock } from '@/hooks/use-client-clock'
-import { useStableQuery } from '@/hooks/use-stable-query'
 
 const copy: PaidEventPayoutCopy = {
   title: 'Badge fee payout',

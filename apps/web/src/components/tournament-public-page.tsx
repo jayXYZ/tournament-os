@@ -1,6 +1,10 @@
 import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
-import { mutationErrorMessage, useMyRegistration } from '@paper-pairings/core'
+import {
+  mutationErrorMessage,
+  useMyRegistration,
+  useStableQuery,
+} from '@paper-pairings/core'
 import { useAction, useMutation, useQuery } from 'convex/react'
 import { Building2, CalendarDays, LogIn, Swords, Users } from 'lucide-react'
 import { toast } from 'sonner'
@@ -20,7 +24,6 @@ import {
 } from '@/components/tournaments'
 import { useBusyAction } from '@/hooks/use-busy-action'
 import { useClientClock } from '@/hooks/use-client-clock'
-import { useStableQuery } from '@/hooks/use-stable-query'
 import { useAppAuth } from '@/lib/use-app-auth'
 
 import { Badge } from '@/components/ui/badge'
