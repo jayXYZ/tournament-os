@@ -29,17 +29,24 @@ import { useBusyAction } from '@/hooks/use-busy-action'
 // code; private events encode the invite link. It follows the live
 // tournament document, so flipping the event to private while this is open
 // swaps the code for the invite.
+//
+// It wraps its triggers (JoinQrTrigger, anywhere among the children) rather
+// than taking one, so the open dialog outlives them: the share card swaps
+// its whole body when visibility changes, trigger included, and the dialog
+// has to stay open through that swap to show the new code.
 export function JoinQrDialog({
   tournament,
-  trigger,
+  children,
 }: {
   tournament: Doc<'tournaments'>
-  trigger: ReactNode
+  children: ReactNode
 }) {
   return (
     <Dialog>
-      <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent>
+      {children}
+      {/* Capped to the viewport and scrollable, so a short landscape screen
+          or enlarged text never pushes the actions out of reach. */}
+      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Join QR code</DialogTitle>
           <DialogDescription>{tournament.name}</DialogDescription>
@@ -49,6 +56,8 @@ export function JoinQrDialog({
     </Dialog>
   )
 }
+
+export const JoinQrTrigger = DialogTrigger
 
 function JoinQrBody({ tournament }: { tournament: Doc<'tournaments'> }) {
   // Only an event open for registration gets a code to print. Before

@@ -15,7 +15,7 @@ import {
   UnconfirmedResultsCard,
 } from './overview-ledger'
 import { RecentActivityCard } from './overview-activity'
-import { JoinQrDialog } from './join-qr-dialog'
+import { JoinQrDialog, JoinQrTrigger } from './join-qr-dialog'
 import { inProgressRound } from './pairings-board'
 import { phaseLabel } from './phase-label'
 import { useManagedTournament } from './tournament-manager-context'
@@ -72,15 +72,14 @@ export function TournamentOverviewView({
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
-          <JoinQrDialog
-            tournament={tournament}
-            trigger={
+          <JoinQrDialog tournament={tournament}>
+            <JoinQrTrigger asChild>
               <Button type="button" variant="outline">
                 <QrCodeIcon data-icon="inline-start" />
                 QR code
               </Button>
-            }
-          />
+            </JoinQrTrigger>
+          </JoinQrDialog>
           <Button asChild type="button" variant="outline">
             <Link
               to="/tournaments/$tournamentId"
