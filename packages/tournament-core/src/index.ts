@@ -1,14 +1,18 @@
 export {
+  useCancelMyRegistration,
   useDropSelf,
+  useFeePreview,
   useLatestStandings,
   useMyBadge,
   useMyBadgeRefundFlag,
   useMyCurrentMatch,
   useMyDecklist,
+  useMyEntryOrder,
   useMyMatchHistory,
   useMyRefundFlag,
   useMyRegistration,
   useMyTournaments,
+  useRegisterSelf,
   useReportResult,
 } from "./hooks";
 export {
@@ -46,6 +50,10 @@ export {
   matchResultKindLabel,
   standingStatusLabel,
 } from "./format";
+export { badgeGateFor, deriveJoinAction } from "./join-action";
+export type { BadgeGate, JoinAction, JoinActionInput } from "./join-action";
+export { useJoinCode } from "./join-code";
+export type { JoinCodeResolution } from "./join-code";
 export { mutationErrorMessage, userErrorMessage } from "./mutation-error";
 export { usePlayerTournamentAccess } from "./player-access";
 export type {

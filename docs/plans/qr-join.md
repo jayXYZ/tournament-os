@@ -8,6 +8,8 @@ moved the order query and clock hooks into PR 2a and added the PR 4
 cancel/dismiss handling and the PR 2b camera lifecycle. Their verdicts,
 findings, and suggested phase order are folded in below.
 
+Status: PR 0, PR 1, and PR 2a are built. PR 2b (the scanner) is next.
+
 ## Goal
 
 An organizer shows or prints a QR code for a tournament. A player scans it,
@@ -343,6 +345,31 @@ Everything here is reachable through simulator deep links. No native module
 is installed, so no dev-client rebuild and no device. The scanner (PR 2b)
 and the web-to-app bridge (PR 2c) build on it separately, so a reviewer
 never sees a pure-function refactor mixed with a native module install.
+
+**As built**, beyond the steps below:
+
+- Native never calls `useQuery` itself, so core gained the hooks the screen
+  needs: `useJoinCode` (the `resolveJoinCode` ladder, with the access hook's
+  rule that a null answer for a signed-in viewer waits for Convex auth),
+  `useMyEntryOrder`, `useFeePreview`, `useRegisterSelf`,
+  `useCancelMyRegistration`, and `badgeGateFor`. The web's
+  `RegistrationPanel` still computes its own badge gate; PR 3 moves it onto
+  `badgeGateFor`.
+- The web hand-off needs an origin, so native reads an optional
+  `EXPO_PUBLIC_WEB_ORIGIN` (`lib/web-links.ts`). Unset, the "Pay on the web"
+  and convention buttons are left out. The hand-off opens
+  `/tournaments/<publicCode>?invite=<code>`, which is where the web's
+  `/join` forwards.
+- The root layout sets `unstable_settings.anchor = "index"`, so a deep link
+  opens with home beneath it and a back arrow.
+- Buttons use the web's labels ("Register for this event", "Request to
+  register") rather than "Join", per Decisions.
+- A pending entry whose order is payable after registration has closed
+  derives `closed`. The web shows the payment badge with its closed note;
+  there is nothing left to do either way.
+- `@paper-pairings/shared/app-links` keeps its own copy of the two code
+  lengths, since shared can't import the backend;
+  `joinCodes.convex.spec.ts` pins that they match.
 
 1. **Rename `tournament/[code]` to `tournaments/[code]`** so the native path
    matches the web.

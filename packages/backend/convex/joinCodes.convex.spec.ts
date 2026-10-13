@@ -6,6 +6,7 @@
 // code an event already holds, and resolveJoinCode's public-code branch — who
 // it resolves for and when it says nothing. inviteLinks.convex.spec.ts covers
 // the invite-code branch.
+import { JOIN_CODE_LENGTHS } from "@paper-pairings/shared/app-links";
 import type { TestConvex } from "convex-test";
 import { afterEach, expect, test, vi } from "vitest";
 
@@ -59,6 +60,14 @@ test("a code is a public code or an invite code, never both", () => {
   expect(normalizeInviteCode("7K3M9Q")).toBeNull();
   expect(normalizeInviteCode("ABCDE-FGHJK")).toBe("ABCDEFGHJK");
   expect(parsePublicCode("ABCDE-FGHJK")).toBeNull();
+});
+
+test("the native link parser accepts exactly the two code lengths", () => {
+  // @paper-pairings/shared/app-links keeps its own copy of the lengths,
+  // since shared can't import the backend; a new length must reach both.
+  expect(new Set(JOIN_CODE_LENGTHS)).toEqual(
+    new Set([PUBLIC_CODE_LENGTH, INVITE_CODE_LENGTH]),
+  );
 });
 
 afterEach(() => {
