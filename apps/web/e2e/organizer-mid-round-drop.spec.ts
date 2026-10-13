@@ -32,7 +32,7 @@ test('mid-round drop: an unreported match is conceded to the opponent', async ({
   await advanceStep(page, 'Hold to generate pairings')
   await advanceStep(page, 'Hold to publish pairings')
   await page.goto(`${managerUrl}/pairings`)
-  await expect(page.getByText('Awaiting result')).toHaveCount(2)
+  await expect(page.getByLabel('Awaiting result')).toHaveCount(2)
 
   // Table 1 reports normally; its 2–1 scoreline stays distinct from the
   // concession's required-wins–0 so the assertions can't cross-match.
@@ -64,7 +64,7 @@ test('mid-round drop: an unreported match is conceded to the opponent', async ({
 
   // -- The unfinished match became an immediate concession ------------------
   await page.goto(`${managerUrl}/pairings`)
-  await expect(page.getByText('Awaiting result')).toHaveCount(0)
+  await expect(page.getByLabel('Awaiting result')).toHaveCount(0)
   await expect(page.getByText(`${opponentName} wins 2–0`)).toBeVisible()
 
   // The concession lands as its own typed audit event naming the dropped
