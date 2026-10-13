@@ -3,7 +3,7 @@ import { Copy, Link2, Link2Off, QrCodeIcon, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { api } from '@paper-pairings/backend/convex/_generated/api'
-import { JoinQrDialog } from '../join-qr-dialog'
+import { JoinQrDialog, JoinQrTrigger } from '../join-qr-dialog'
 import { joinUrl } from '../join-link'
 import type { Doc } from '@paper-pairings/backend/convex/_generated/dataModel'
 import { ConfirmActionDialog } from '@/components/shared/confirm-action-dialog'
@@ -16,16 +16,22 @@ import { useBusyAction } from '@/hooks/use-busy-action'
 // The settings card for sharing the event, which follows its visibility. A
 // public or unlisted event shares its join link, built on the stable public
 // code; a private event shares its invite link instead (CONTEXT.md "Invite
-// Link"), the one card where minting, rotating, and disabling it live.
+// Link"), the one card where minting, rotating, and disabling it live. The
+// QR dialog wraps both bodies, so one left open stays open when the
+// visibility changes and switches to the other code.
 export function JoinLinkCard({
   tournament,
 }: {
   tournament: Doc<'tournaments'>
 }) {
-  return tournament.visibility === 'private' ? (
-    <InviteLinkSection tournament={tournament} />
-  ) : (
-    <PublicJoinLinkSection tournament={tournament} />
+  return (
+    <JoinQrDialog tournament={tournament}>
+      {tournament.visibility === 'private' ? (
+        <InviteLinkSection tournament={tournament} />
+      ) : (
+        <PublicJoinLinkSection tournament={tournament} />
+      )}
+    </JoinQrDialog>
   )
 }
 
@@ -44,7 +50,7 @@ function PublicJoinLinkSection({
       <div className="flex flex-wrap items-center gap-2">
         <LinkField label="Join link" value={url} />
         <CopyLinkButton url={url} copiedMessage="Join link copied." />
-        <ShowQrButton tournament={tournament} />
+        <ShowQrButton />
       </div>
       <UnpublishedNote tournament={tournament} />
     </section>
@@ -86,7 +92,7 @@ function InviteLinkSection({ tournament }: { tournament: Doc<'tournaments'> }) {
               url={joinUrl(invite.code)}
               copiedMessage="Invite link copied."
             />
-            <ShowQrButton tournament={tournament} />
+            <ShowQrButton />
             {/* Rotation is the only way to revoke an invite, and it kills
                 every shared and printed copy at once, so neither action runs
                 on a single click. */}
@@ -179,17 +185,14 @@ function CopyLinkButton({
 
 // Always enabled, whatever the lifecycle: the dialog itself explains why an
 // unpublished or closed event has no code to show.
-function ShowQrButton({ tournament }: { tournament: Doc<'tournaments'> }) {
+function ShowQrButton() {
   return (
-    <JoinQrDialog
-      tournament={tournament}
-      trigger={
-        <Button type="button" variant="outline">
-          <QrCodeIcon data-icon="inline-start" />
-          Show QR code
-        </Button>
-      }
-    />
+    <JoinQrTrigger asChild>
+      <Button type="button" variant="outline">
+        <QrCodeIcon data-icon="inline-start" />
+        Show QR code
+      </Button>
+    </JoinQrTrigger>
   )
 }
 
