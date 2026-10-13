@@ -20,6 +20,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { Badge } from "@/components/badge";
+import { JoinEventView } from "@/components/join-event-view";
 import { ReportResultScoreboard } from "@/components/report-result-scoreboard";
 import { SignInButton } from "@/components/sign-in-button";
 import { Toast, useToast } from "@/components/toast";
@@ -92,15 +93,17 @@ export default function TournamentScreen() {
     );
   }
 
+  // No confirmed seat: offer the join panel a /join link would, without an
+  // invite code (a private event only reaches this screen for viewers who
+  // hold a row). Once a registration takes a seat the ladder moves to
+  // `ready` and the match page replaces it.
   if (access.state === "notRegistered") {
     return (
-      <SafeAreaView style={styles.container} edges={["bottom"]}>
-        <View style={styles.content}>
-          <Text style={styles.muted}>
-            You are not registered for this tournament.
-          </Text>
-        </View>
-      </SafeAreaView>
+      <JoinEventView
+        event={access.event}
+        signedIn
+        registration={access.registration}
+      />
     );
   }
 

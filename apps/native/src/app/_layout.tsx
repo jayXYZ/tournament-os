@@ -39,6 +39,12 @@ const navigationTheme = {
   },
 };
 
+// Puts home under any deep-linked screen (a scanned /join link, say), so it
+// opens with a back arrow instead of as the only screen in the stack.
+export const unstable_settings = {
+  anchor: "index",
+};
+
 const envPublishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
 if (!envPublishableKey) {
@@ -84,10 +90,19 @@ function RootLayout() {
           >
             <Stack.Screen name="index" />
             <Stack.Screen
-              name="tournament/[code]"
+              name="tournaments/[code]"
               options={{
                 headerShown: true,
                 title: "Tournament",
+                headerStyle: { backgroundColor: palette.background },
+                headerTintColor: palette.foreground,
+              }}
+            />
+            <Stack.Screen
+              name="join/[code]"
+              options={{
+                headerShown: true,
+                title: "Join event",
                 headerStyle: { backgroundColor: palette.background },
                 headerTintColor: palette.foreground,
               }}

@@ -10,7 +10,13 @@ import { palette } from "@/lib/palette";
 // pending tasks (e.g. MFA) as signed out, and AuthView completes those tasks
 // too, so the button is the path back to a working session rather than a
 // dead end.
-export function SignInButton({ style }: { style?: StyleProp<ViewStyle> }) {
+export function SignInButton({
+  label = "Sign in",
+  style,
+}: {
+  label?: string;
+  style?: StyleProp<ViewStyle>;
+}) {
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -22,7 +28,7 @@ export function SignInButton({ style }: { style?: StyleProp<ViewStyle> }) {
         ]}
         onPress={() => setOpen(true)}
       >
-        <Text style={styles.label}>Sign in</Text>
+        <Text style={styles.label}>{label}</Text>
       </Pressable>
       <Modal
         visible={open}
