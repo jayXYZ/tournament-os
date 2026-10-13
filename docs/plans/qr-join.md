@@ -2,8 +2,9 @@
 
 Branch: `feat/qr-codes`
 
-Revised after two review passes. Their verdicts, findings, and suggested
-phase order are folded in below.
+Revised after two review passes and a third that split the event identifier
+from the invite grant (PR 0). Their verdicts, findings, and suggested phase
+order are folded in below.
 
 ## Goal
 
@@ -22,23 +23,54 @@ the event is set up:
 ## Decisions
 
 - **"Waiting room" means approval mode** (`registrationRequiresApproval`).
-  No new backend concept. CONTEXT.md has no entry for the admission mode
-  itself (Review Queue is the organizer's view of it), so add a short
-  "Approval Mode" entry and record "waiting room" as its _Avoid_ alias.
+  No new backend concept. The waiting room is the player's side of the
+  Review Queue: the players there are waiting for the organizer to decide
+  their application.
+  - CONTEXT.md has no entry for the setting itself, so add an "Approval
+    Mode" entry.
+  - "Waiting room" is not an _Avoid_ term, but it stays out of the glossary
+    unless it ends up in UI copy. If it does, add it as the player-side name
+    for the Review Queue, after settling two edges:
+    - Approved-but-unpaid players are outside the Review Queue, so they are
+      outside the waiting room too. They're waiting on themselves, not the
+      organizer.
+    - Waitlisted players have already been decided, so they are outside the
+      queue. But they are still waiting, and `approveEntry` still accepts
+      them. Decide whether they count as in the waiting room.
+  - Player copy is still open. Until it's decided, native uses the web's
+    existing strings (`tournament-public-page.tsx:525-531, 636-637`):
+    "Registration pending organizer approval", "Registration submitted for
+    organizer approval.", "You're on the waitlist", and "Application
+    approved — payment required". "Waiting room" can suggest a live lobby
+    with a place in line, while these say who acts next.
 - **Scanning never registers anyone by itself.** It opens a join screen with
   one primary button, the same as landing on the web event page today.
-- **The QR code encodes the existing Invite Link**,
-  `https://<web origin>/join/<code>`:
-  - A phone's camera app opens it on the web today, through the
-    `/join/$inviteCode` → event page `?invite=` flow.
-  - The app scanner pulls the code out of the same URL.
-  - Once universal links ship (PR 5), the same printed code opens the app
-    directly, with no reprint.
-  - There is one secret and one way to revoke it (rotate or disable). It also
-    covers private events.
+- **Identifier and grant are two different things.** An event's public code
+  is its stable identifier: it sits in bookmarks, Stripe return URLs, payment
+  metadata, and printed slips, so it can never rotate. The Invite Link is a
+  grant: it opens a private event and has to be revocable, so it rotates.
+  One value can't do both jobs. Public and unlisted events need only the
+  identifier; private events need both.
+  - Today the public code is a sequential integer (100001, 100002, …), so
+    unlisted events are enumerable and the invite link is the only short
+    URL worth printing for any event. PR 0 makes the public code random.
+  - Public and unlisted events: the QR code encodes
+    `https://<web origin>/join/<publicCode>`. No invite row, nothing to
+    rotate. If the event later goes private, the poster stops admitting
+    anyone, which is the right outcome rather than a leak.
+  - Private events: the QR code encodes
+    `https://<web origin>/join/<inviteCode>`, the existing Invite Link with
+    its existing 50-bit secret.
+  - One `/join/<code>` route takes both. The lengths are fixed constants (6
+    for a public code, 10 for an invite code), so the server tells them
+    apart. "Type a code" stays one code either way.
+  - A phone's camera app opens the URL on the web today; the app scanner
+    pulls the code out of the same URL; once universal links ship (PR 5),
+    the same printed code opens the app directly, with no reprint.
 - **Organizers create QR codes on web only.** The native app has no organizer
   screens, so native gets the player side: the scanner and the join screen.
-- **The web organizer QR ships first, on its own.** It's useful as soon as it
+- **PR 0 ships first, then the web organizer QR on its own.** PR 0 stands
+  alone (unlisted events stop being enumerable). PR 1 is useful as soon as it
   lands, because a camera-app scan already works end-to-end through `/join`.
 
 ## Libraries (prebuilt, no hand-rolled QR code)
@@ -72,6 +104,26 @@ Options considered and not chosen:
 
 ## Current state
 
+- **Public codes:**
+  - `publicCode: v.number()` on tournaments, conventions, and users,
+    allocated from per-entity `appCounters` by `nextPublicCode`
+    (`model/publicCodes.ts`). Tournaments and conventions start at 100001;
+    users at 1.
+  - `parsePublicCode` accepts any positive integer, so `/tournaments/100001`,
+    `/tournaments/100002`, … walks every event. Unlisted is meant to be
+    "reachable by link/code only" (`validators.ts:78`); sequential codes make
+    that a formality.
+  - `pairing.ts:255` falls back to `publicCode` as the shuffle seed for rows
+    without `seed`. `createTournament` has set a seed since the field
+    existed, so the fallback only serves pre-seed rows.
+  - The user's numeric `publicCode` feeds `tiebreakRandom` (`model/random.ts`)
+    and seeded test players (TODO.md:77). This plan leaves it alone.
+  - 68 backend references outside `_generated` and specs, 41 web and native
+    files. The routes already take strings and most consumers already call
+    `String(publicCode)`. `conventions.convex.spec.ts`,
+    `rateLimits.convex.spec.ts`, and `tournaments.convex.spec.ts` assert on
+    the sequential values. `e2e/invite-links.spec.ts:32` reads the code off
+    the manager URL, so it doesn't care.
 - **Invite links:**
   - Storage and logic: the `tournamentInvites` table and `model/invites.ts`.
     Codes are 10 characters of Crockford base32, about 50 bits. The server's
@@ -83,12 +135,18 @@ Options considered and not chosen:
     (`invites.ts:65-75`).
   - A code opens nothing while the event is in `setup`. A scan then reads as
     "Invite not found" (`invites.ts:45-47`).
-- **Private vs public:**
-  - The invite code only matters for private events. `registerSelf` checks it
-    only when `visibility === "private"` (`registrations.ts:162-169`), and
-    `getPublicTournament` only for non-public events (`lifecycle.ts:151-153`).
-  - On a public event the code is a no-op, but it still gets printed. If the
-    event later goes private, those posters still let people in.
+- **What the invite gates:**
+  - Only private events. `registerSelf` checks it only when
+    `visibility === "private"` (`registrations.ts:162-169`), and
+    `getPublicTournament` only when `isPubliclyViewable` is false
+    (`lifecycle.ts:151-153`). On a public or unlisted event the code grants
+    nothing.
+  - It is still the only short URL for any event, so today it gets printed
+    for public events too. If the event later goes private, those posters
+    still let people in. PR 0 removes the reason to print it.
+  - `InviteLinkCard` (`settings/invite-link-card.tsx`) renders for every
+    visibility, with a description that only makes sense for a private
+    event.
 - **Web:**
   - `/join/$inviteCode` redirects to `/tournaments/$id?invite=`.
   - `RegistrationPanel` (`components/tournament-public-page.tsx:255-657`)
@@ -131,9 +189,62 @@ Options considered and not chosen:
   deployment the organizer has open, so a poster printed from a Vercel
   preview URL dies with that preview.
 
+## PR 0: random public codes
+
+Backend, plus the web and native call sites that assume a number.
+Pre-production, so no migration: reset the DB.
+
+1. **Tournaments and conventions get a random 6-character public code**,
+   Crockford base32, about 30 bits.
+   - `publicCode: v.string()` on both tables. `by_publicCode` stays.
+   - Mint through a uniqueness check on `by_publicCode`, the same shape as
+     `mintUniqueInviteCode`, retrying on collision.
+   - Users keep their numeric `publicCode`: `/users/$publicCode`,
+     `tiebreakRandom`, and seeded test players depend on it.
+   - Delete `nextTournamentPublicCode`, `nextConventionPublicCode`, and their
+     `appCounters` keys. `nextPublicCode` stays for users.
+2. **One alphabet, one normalizer.** Move `INVITE_CODE_ALPHABET` and the
+   lookalike rule out of `model/invites.ts` into `model/codes.ts`, shared by
+   both kinds: `normalizeCode(value, length)` returns the canonical form or
+   null. `normalizeInviteCode` becomes the 10-character case;
+   `parsePublicCode` becomes the 6-character case and returns a string. The
+   alphabet has no I, L, O, or U, so a 6-character code reads aloud as well
+   as the invite code does today.
+3. **Make `seed` required** on tournaments and drop the `publicCode` fallback
+   at `pairing.ts:255`. It only served pre-seed rows, which the reset
+   removes.
+4. **Call sites.** Routes already take strings. Remove the `String(...)`
+   wrappers on tournament and convention codes (`checkout.ts:216, 357`,
+   `invites.ts:50`, `tournament-public-page.tsx:158-346`). Keep the ones on
+   `user.publicCode` (`checkout.ts:179`, `registrations.ts:239`,
+   `profile-privacy-card.tsx:109`).
+5. **`/join/<code>` resolves both kinds.** Rename `resolveInviteCode` to
+   `resolveJoinCode`. It normalizes the raw text as a 6-character code, then
+   as a 10-character code:
+   - 6 characters: look the tournament up by `publicCode`. Return
+     `{ publicCode }` when it exists and is past `setup`, else null.
+     Visibility stays with `getPublicTournament`, which already lets
+     registered players and organizers into a private event and shows
+     everyone else not found. The join URL only has to get them there.
+   - 10 characters: today's invite lookup. Return `{ publicCode, inviteCode }`.
+   - Anything else: null. All three nulls are identical, so a bad code says
+     nothing about which kind it was.
+   - Rename `join.$inviteCode.tsx` to `join.$code.tsx`. It forwards to
+     `/tournaments/<publicCode>`, adding `?invite=` only when the resolver
+     returned one. Its empty state becomes "Code not found", since the route
+     no longer knows it was handed an invite.
+6. **Specs.** Move `conventions.convex.spec.ts`, `rateLimits.convex.spec.ts`,
+   and `tournaments.convex.spec.ts` off the 100001-style values onto shape
+   assertions (6 characters of the alphabet, unique across a batch). Add:
+   the shared normalizer table (both lengths, lookalikes, separators),
+   `resolveJoinCode` for each branch above, and `getPublicTournament` for an
+   unknown code.
+7. **Docs.** `docs/` and CONTEXT.md references to numeric codes, and the
+   `validators.ts:78` comment, which becomes true.
+
 ## PR 1: organizer QR on web
 
-No backend changes.
+Depends on PR 0. No backend changes of its own.
 
 1. Add `qrcode.react` to `apps/web`.
    - Import it explicitly. `nodeLinker: hoisted` exposes a stray transitive
@@ -144,16 +255,21 @@ No backend changes.
      and a `title`.
    - No download helpers in the wrapper.
 3. Add a `JoinQrDialog`:
-   - **Data:** it reads `getInviteLink`.
-     - When that returns null, it shows "Create invite link", which calls
-       `regenerateInviteLink` (a plain create when no row exists).
-     - It never calls regenerate when a link already exists.
-     - `ensureInviteLink` isn't needed. The only case it would close is a
-       race between two tabs.
+   - **Data, by visibility:**
+     - Public and unlisted: the code is `tournament.publicCode`, already on
+       the managed tournament. No query, no row to create.
+     - Private: it reads `getInviteLink`. When that returns null, it shows
+       "Create invite link", which calls `regenerateInviteLink` (a plain
+       create when no row exists). It never calls regenerate when a link
+       already exists. `ensureInviteLink` isn't needed; the only case it
+       would close is a race between two tabs.
+     - Visibility is a live query, so flipping the event to private while
+       the dialog is open swaps the QR code to the invite (or to "Create
+       invite link").
    - **Lifecycle:** the QR code renders only while the event is in
      `registration`.
      - In `setup`: no QR code, only "Publish the event to get a QR code". A
-       poster printed before publishing scans as "Invite not found", which
+       poster printed before publishing scans as "Code not found", which
        looks broken.
      - After registration closes (`in_progress`, `completed`, `cancelled`):
        no QR code, only "Registration is closed, so there's nothing to
@@ -161,9 +277,10 @@ No backend changes.
        a code printed now would scan to a closed page. The entry points
        below stay visible and open this note, matching how `InviteLinkCard`
        already disables its actions on a cancelled event.
-   - **Contents:** the QR code, the event name, the code formatted as
-     `XXXXX-XXXXX` for typing in by hand (a local `formatInviteCode`, with a
-     dash after 5 characters), and the URL.
+   - **Contents:** the QR code, the event name, the code for typing in by
+     hand, and the URL. A public code is 6 characters and prints as is. An
+     invite code prints as `XXXXX-XXXXX` (a local `formatInviteCode`, with a
+     dash after 5 characters).
    - **Origin:** the URL is `${window.location.origin}/join/<code>`, the
      same as `InviteLinkCard`. That is whichever deployment the organizer
      has open, so a poster printed from a Vercel preview URL stops working
@@ -176,8 +293,9 @@ No backend changes.
    - **Trust copy:**
      - Private events: "This QR code is the invite. Anyone with a photo of it
        can join. Regenerate to cancel it."
-     - Public events: "Making the event private later doesn't cancel this
-       code. Regenerate it."
+     - Public and unlisted events: "Making the event private stops this code
+       from admitting anyone." There is nothing to rotate, so no rotation
+       warning.
    - **Actions:**
      - Download PNG: a hidden `QRCodeCanvas` at about 1024px, saved with
        `canvas.toBlob`.
@@ -186,15 +304,23 @@ No backend changes.
      - Present mode and SVG download are cut from v1. Add them if someone
        asks.
 4. Entry points:
-   - "Show QR code" on `InviteLinkCard`.
+   - Turn `InviteLinkCard` into a share card that follows visibility.
+     - Public and unlisted: the `/join/<publicCode>` URL with Copy and "Show
+       QR code", and a note that going private is how you revoke it.
+     - Private: today's invite link with Copy, Regenerate, Disable, and "Show
+       QR code". Its current description stays, since it now only appears
+       where it is true.
    - "QR code" next to "View public page" on the organizer Overview
      (`tournament-overview-view.tsx:73-83`).
 5. Regenerate and Disable each get an `AlertDialog` saying that shared links
    and printed QR codes will stop working. Rotation is the only way to revoke
-   a code, so this is a must, not polish.
+   an invite, so this is a must, not polish.
 6. Extend `e2e/invite-links.spec.ts`:
-   - The dialog opens, the rendered URL matches the invite link, and the SVG
-     is present.
+   - The dialog opens, the rendered URL matches the share card's link, and
+     the SVG is present. One run on a public event (`/join/<publicCode>`),
+     one on a private event (the invite link).
+   - A public event's join URL, opened after the event goes private, lands
+     on not found.
    - Setup-stage events show no QR code, and neither do events whose
      registration has closed.
    - The Regenerate and Disable confirmations.
@@ -214,11 +340,13 @@ never sees a pure-function refactor mixed with a native module install.
    - Pre-production, so no compatibility shim. This removes the need for a
      `+native-intent.tsx` rewrite in PR 5.
 2. **Add `@paper-pairings/shared/app-links`.**
-   - `parseAppLink(raw)` returns `{ kind: 'join', inviteCode } | null`.
+   - `parseAppLink(raw)` returns `{ kind: 'join', code } | null`. It doesn't
+     say which kind of code it found; `resolveJoinCode` does.
    - It accepts `…/join/<code>` on any host, `paperpairings://join/<code>`,
-     and a bare code (10 alphanumerics after stripping spaces and dashes).
-   - The server's `normalizeInviteCode` stays the only authority on the code.
-     The invite helpers don't move into shared.
+     and a bare code (6 or 10 alphanumerics after stripping spaces and
+     dashes).
+   - The server's normalizer (`model/codes.ts`, PR 0) stays the only
+     authority on the code. The code helpers don't move into shared.
    - No origin allow-list and no env var. The scanner never opens a scanned
      URL; it only extracts a code and resolves it against our backend, so a
      lookalike-domain QR code can't phish anyone.
@@ -250,8 +378,9 @@ badgeBlocked`.
 5. **Add `src/app/join/[code].tsx`.** The path matches the web, so universal
    links route here later without a rewrite.
    - **Data:**
-     - `resolveInviteCode`
-     - `getPublicTournament` with the invite code
+     - `resolveJoinCode`, which yields the public code and, for an invite,
+       the invite code
+     - `getPublicTournament` with the invite code when there is one
      - the registration row from the updated access hook
      - `getFeePreview` (`payments/queries.ts:23`) for the "Pay $X" label
      - spots left
@@ -261,8 +390,9 @@ badgeBlocked`.
        survive the modal.
      - Join (including comped): `registerSelf`, then
        `router.replace('/tournaments/<publicCode>')`.
-     - Request to join: `registerSelf`, then a live "Waiting for organizer
-       approval" state with Withdraw (`cancelMyRegistration`).
+     - Request to join: `registerSelf`, then a live "Registration pending
+       organizer approval" state (the web's copy, see Decisions) with
+       Withdraw (`cancelMyRegistration`).
      - Pay or Complete payment, until PR 4 lands: a "Pay on the web" button
        that opens the web join URL in `expo-web-browser`. The in-app
        browser carries no Clerk session, so the player signs in again
@@ -273,7 +403,9 @@ badgeBlocked`.
      - Pending, waitlisted, rejected, full, or closed: a status card.
      - Badge-gated convention child events: a status card that opens the
        convention page on the web.
-     - Unknown, disabled, or setup-stage code: "Invite not found".
+     - Unknown, disabled, or setup-stage code, or a public code whose event
+       has since gone private: "Code not found". The same copy for both
+       kinds, so the screen never says which kind a bad code was.
 6. **Fix the `notRegistered` dead end on `tournaments/[code]`:** render the
    same join panel there, without an invite code, using the registration row
    the hook now exposes.
@@ -439,12 +571,20 @@ Blocked on the custom domain, the Apple Team ID, and the Android signing cert
 
 ## Security notes
 
+- **A public code is an identifier, not a secret.** At 30 bits it stops
+  unlisted events being enumerated, which sequential codes never did. But
+  `resolveJoinCode` and `getPublicTournament` are queries and can't be
+  rate-limited (queries can't write; `docs/rate-limiting.md:55`), so
+  unlisted means obscure, not protected. An organizer who needs to revoke
+  access goes private and hands out the invite. Keep the invite at 10
+  characters for the same reason; don't shorten it to match.
 - **The poster is the exposure, not guessing.**
   - The invite code is a bearer secret printed with no expiry.
-  - At 50 bits, guessing is moot. `resolveInviteCode` is a query, so it can't
-    be rate-limited (queries can't write; `docs/rate-limiting.md:55`).
-  - Rotation is the only way to revoke a code, and it kills every poster at
-    once. Hence the PR 1 confirmations and trust copy.
+  - At 50 bits, guessing is moot.
+  - Rotation is the only way to revoke an invite, and it kills every private
+    poster at once. Hence the PR 1 confirmations and trust copy.
+  - A public or unlisted poster is revoked by going private. It then reads
+    as not found, the same as an unknown code.
 - **Scanned URLs are never opened.** The scanner extracts a code and checks it
   against our backend; anything else gets a toast.
 - **`returnTo` is an enum**, so checkout can't be made to redirect anywhere
@@ -465,12 +605,22 @@ Blocked on the custom domain, the Apple Team ID, and the Android signing cert
 ## Docs and roadmap
 
 - **CONTEXT.md:**
-  - Add a "Join QR" entry: the QR form of the Invite Link, the rotation rule,
-    no QR code during setup, and the posters-outlive-going-private note.
+  - Add a "Public Code" entry: the event's stable, random, 6-character
+    identifier in every URL; never a secret, never rotated; an unlisted event
+    is reachable by it and nothing else. _Avoid_: tournament id (the Convex
+    document id, which never reaches a URL).
+  - Add a "Join QR" entry: the QR form of the event's join URL. Public and
+    unlisted events encode the Public Code; private events encode the Invite
+    Link. No QR code during setup. Going private revokes a public poster;
+    rotating revokes a private one.
   - Add an "Approval Mode" entry: the `registrationRequiresApproval`
     admission mode, where `registerSelf` files a pending application and the
-    Review Queue decides it. _Avoid_: waiting room.
+    Review Queue decides it. No _Avoid_ line.
+  - Add "Waiting Room" only if the term reaches UI copy: the player-side
+    name for the Review Queue, with the two edges from Decisions settled.
 - **TODO.md:**
+  - PR 0 goes under §3 (admission), next to the visibility item
+    (TODO.md:307).
   - PR 1 goes under §3 (admission).
   - Under the custom-domain item in §0, add the printed-QR origin follow-up
     from PR 1: once the domain exists, print it from a public env var, not
@@ -493,8 +643,10 @@ Blocked on the custom domain, the Apple Team ID, and the Android signing cert
     rows), the updated `player-access`, the PR 3 characterization rows for
     `RegistrationPanel`, the payment dispatch, and the moved
     `useClientClock` / `useStableQuery` tests
-  - backend: `checkoutReturnUrls` (tournament and convention paths),
-    `returnTo` threading, and badge checkout URLs unchanged
+  - backend: the shared normalizer, public code shape and uniqueness,
+    `resolveJoinCode`, the three specs moved off sequential values,
+    `checkoutReturnUrls` (tournament and convention paths), `returnTo`
+    threading, and badge checkout URLs unchanged
   - web: e2e
 - **Simulator deep links cover the whole of PR 2a without a camera**,
   because expo-router already handles the scheme:
@@ -506,9 +658,11 @@ Blocked on the custom domain, the Apple Team ID, and the Android signing cert
     `adb shell am start -a android.intent.action.VIEW -d "paperpairings://join/<CODE>"`
     on Android.
   - Cases: free / approval / paid / paid + approval, a comped badge holder
-    on a paid event, a badge-gated child event, private event, disabled or
-    rotated code, setup-stage code, signed out then sign in, event full,
-    approval mode while full, already registered.
+    on a paid event, a badge-gated child event, a public code, an unlisted
+    event's public code, a public code after the event went private, a
+    private event's invite, disabled or rotated invite, setup-stage code of
+    either kind, signed out then sign in, event full, approval mode while
+    full, already registered.
 - **Physical devices only** (expo-camera is device-only), for PR 2b and PR
   4, on an iPhone and an Android phone:
   - the scanner: lock and re-arm, a QR code from somewhere else, torch
