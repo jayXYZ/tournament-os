@@ -19,6 +19,7 @@ import type * as maintenance from "../maintenance.js";
 import type * as model_access from "../model/access.js";
 import type * as model_auditLog from "../model/auditLog.js";
 import type * as model_batching from "../model/batching.js";
+import type * as model_codes from "../model/codes.js";
 import type * as model_conventions from "../model/conventions.js";
 import type * as model_cutoffs from "../model/cutoffs.js";
 import type * as model_decklists from "../model/decklists.js";
@@ -92,6 +93,7 @@ declare const fullApi: ApiFromModules<{
   "model/access": typeof model_access;
   "model/auditLog": typeof model_auditLog;
   "model/batching": typeof model_batching;
+  "model/codes": typeof model_codes;
   "model/conventions": typeof model_conventions;
   "model/cutoffs": typeof model_cutoffs;
   "model/decklists": typeof model_decklists;

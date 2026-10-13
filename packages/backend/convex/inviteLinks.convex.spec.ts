@@ -83,14 +83,14 @@ test("under approval mode an invited player files a pending application", async 
   });
 });
 
-test("resolveInviteCode routes a code to its event and tolerates lookalike typing", async () => {
+test("resolveJoinCode routes an invite code to its event and tolerates lookalike typing", async () => {
   const t = createConvexTest();
   const { tournamentId, publicCode } = await seedPrivateTournament(t);
   const code = await regenerateInviteLink(t, tournamentId);
 
   expect(
-    await t.query(api.tournaments.invites.resolveInviteCode, {
-      inviteCode: code,
+    await t.query(api.tournaments.invites.resolveJoinCode, {
+      code: code,
     }),
   ).toEqual({ publicCode, inviteCode: code });
 
@@ -104,20 +104,20 @@ test("resolveInviteCode routes a code to its event and tolerates lookalike typin
     .split("")
     .join("-")} `;
   expect(
-    await t.query(api.tournaments.invites.resolveInviteCode, {
-      inviteCode: asTyped,
+    await t.query(api.tournaments.invites.resolveJoinCode, {
+      code: asTyped,
     }),
   ).toEqual({ publicCode, inviteCode: code });
 
   // Unknown and malformed codes resolve to nothing, identically.
   expect(
-    await t.query(api.tournaments.invites.resolveInviteCode, {
-      inviteCode: "0000000000",
+    await t.query(api.tournaments.invites.resolveJoinCode, {
+      code: "0000000000",
     }),
   ).toBeNull();
   expect(
-    await t.query(api.tournaments.invites.resolveInviteCode, {
-      inviteCode: "not a code",
+    await t.query(api.tournaments.invites.resolveJoinCode, {
+      code: "not a code",
     }),
   ).toBeNull();
 });
@@ -139,8 +139,8 @@ test("rotating replaces the code and disabling ends the link; admitted players s
   expect(secondCode).not.toBe(firstCode);
   // Every previously shared link died with the rotation.
   expect(
-    await t.query(api.tournaments.invites.resolveInviteCode, {
-      inviteCode: firstCode,
+    await t.query(api.tournaments.invites.resolveJoinCode, {
+      code: firstCode,
     }),
   ).toBeNull();
   expect(
@@ -150,8 +150,8 @@ test("rotating replaces the code and disabling ends the link; admitted players s
     }),
   ).toBeNull();
   expect(
-    await t.query(api.tournaments.invites.resolveInviteCode, {
-      inviteCode: secondCode,
+    await t.query(api.tournaments.invites.resolveJoinCode, {
+      code: secondCode,
     }),
   ).not.toBeNull();
 
@@ -165,8 +165,8 @@ test("rotating replaces the code and disabling ends the link; admitted players s
     }),
   ).toBeNull();
   expect(
-    await t.query(api.tournaments.invites.resolveInviteCode, {
-      inviteCode: secondCode,
+    await t.query(api.tournaments.invites.resolveJoinCode, {
+      code: secondCode,
     }),
   ).toBeNull();
   await expect(
@@ -229,8 +229,8 @@ test("an invite code never reveals an unpublished event", async () => {
   const publicCode = await tournamentPublicCode(t, tournamentId);
 
   expect(
-    await t.query(api.tournaments.invites.resolveInviteCode, {
-      inviteCode: code,
+    await t.query(api.tournaments.invites.resolveJoinCode, {
+      code: code,
     }),
   ).toBeNull();
   expect(
@@ -244,8 +244,8 @@ test("an invite code never reveals an unpublished event", async () => {
     tournamentId,
   });
   expect(
-    await t.query(api.tournaments.invites.resolveInviteCode, {
-      inviteCode: code,
+    await t.query(api.tournaments.invites.resolveJoinCode, {
+      code: code,
     }),
   ).toEqual({ publicCode, inviteCode: code });
 });
@@ -364,7 +364,7 @@ async function tournamentPublicCode(
   if (!tournament) {
     throw new Error("Tournament not found");
   }
-  return String(tournament.publicCode);
+  return tournament.publicCode;
 }
 
 async function insertPlayerUser(

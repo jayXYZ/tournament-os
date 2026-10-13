@@ -444,9 +444,8 @@ test("a pass that comps a child event registers its holder free; other badges st
 
   // The public page's flag routes the holder to free direct registration
   // instead of Checkout.
-  const publicCode = String(
-    (await t.run(async (ctx) => ctx.db.get(tournamentId)))!.publicCode,
-  );
+  const publicCode = (await t.run(async (ctx) => ctx.db.get(tournamentId)))!
+    .publicCode;
   expect(
     (await vip.query(api.tournaments.lifecycle.getPublicTournament, {
       publicCode,
@@ -661,9 +660,8 @@ test("the badge gate requires the pass's admission window to cover the child eve
 
   // The public page's flag warns the wrong-day pass holder before they
   // click Register; an unrestricted pass covers the event.
-  const publicCode = String(
-    (await t.run(async (ctx) => ctx.db.get(tournamentId)))!.publicCode,
-  );
+  const publicCode = (await t.run(async (ctx) => ctx.db.get(tournamentId)))!
+    .publicCode;
   const playerView = (await player.query(
     api.tournaments.lifecycle.getPublicTournament,
     { publicCode },

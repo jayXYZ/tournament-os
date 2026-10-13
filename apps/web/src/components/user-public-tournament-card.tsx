@@ -47,7 +47,7 @@ export function UserPublicTournamentCard({
           <div className="min-w-0">
             <Link
               to="/tournaments/$tournamentId"
-              params={{ tournamentId: String(result.tournamentPublicCode) }}
+              params={{ tournamentId: result.tournamentPublicCode }}
               className="text-base font-semibold hover:underline"
             >
               {result.tournamentName}

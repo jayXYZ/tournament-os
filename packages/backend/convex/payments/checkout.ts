@@ -175,7 +175,7 @@ export const beginEntryCheckout = internalMutation({
           playerName: playerDisplayName(user),
           createdAt: now,
           tiebreakRandom: tiebreakRandom(
-            tournament.seed ?? tournament.publicCode,
+            tournament.seed,
             String(user.publicCode),
           ),
           updatedAt: now,
@@ -213,7 +213,7 @@ export const beginEntryCheckout = internalMutation({
       transferGroup: orderTransferGroup(order._id),
       totalCents: order.amountBreakdown.totalCents,
       productName: `${tournament.name} — entry`,
-      tournamentPublicCode: String(tournament.publicCode),
+      tournamentPublicCode: tournament.publicCode,
       // A previous session to expire before minting the replacement, so two
       // live sessions can never both pay for one order.
       existingSessionId,
@@ -354,7 +354,7 @@ export const beginBadgeCheckout = internalMutation({
       transferGroup: orderTransferGroup(order._id),
       totalCents: order.amountBreakdown.totalCents,
       productName: `${convention.name} — ${ticketType.name}`,
-      conventionPublicCode: String(convention.publicCode),
+      conventionPublicCode: convention.publicCode,
       existingSessionId,
     };
   },

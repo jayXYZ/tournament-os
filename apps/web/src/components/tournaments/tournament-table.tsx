@@ -189,13 +189,13 @@ export function TournamentTable({
                     ? {
                         to: '/admin/conventions/$conventionId',
                         params: {
-                          conventionId: String(row.convention.publicCode),
+                          conventionId: row.convention.publicCode,
                         },
                       }
                     : {
                         to: '/admin/tournaments/$tournamentId',
                         params: {
-                          tournamentId: String(row.tournament.publicCode),
+                          tournamentId: row.tournament.publicCode,
                         },
                       },
                 )
@@ -534,12 +534,12 @@ function buildTournamentColumns(
       cell: ({ row }) =>
         row.original.kind === 'convention' ? (
           <ConventionTableAction
-            publicCode={String(row.original.convention.publicCode)}
+            publicCode={row.original.convention.publicCode}
             variant={variant}
           />
         ) : (
           <TournamentTableAction
-            publicCode={String(row.original.tournament.publicCode)}
+            publicCode={row.original.tournament.publicCode}
             tournament={row.original.tournament}
             variant={variant}
           />

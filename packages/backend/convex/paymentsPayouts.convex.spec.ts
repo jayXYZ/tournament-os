@@ -409,7 +409,7 @@ test("payout sweeps and retries reject an owner pair naming both entities", asyn
       .first();
     return await ctx.db.insert("conventions", {
       name: "Other Owner",
-      publicCode: 999_001,
+      publicCode: "999001",
       organizationId,
       createdBy: membership!.userId,
       visibility: "public",

@@ -373,7 +373,7 @@ test("timer state rides on the public tournament query alone", async () => {
 
   const publicCode = await t.run(async (ctx) => {
     const tournament = await ctx.db.get(tournamentId);
-    return String(tournament!.publicCode);
+    return tournament!.publicCode;
   });
   const publicView = await t.query(
     api.tournaments.lifecycle.getPublicTournament,

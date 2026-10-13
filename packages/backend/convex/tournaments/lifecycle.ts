@@ -17,7 +17,6 @@ import { logAuditEvent } from "../model/auditLog";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
 import { badgeChildEventAdmission, badgeForUser } from "../model/conventions";
 import { deleteTournamentOperationalDataBatch } from "../model/deletion";
-import { inviteCodeGrantsAccess } from "../model/invites";
 import {
   phasesInOrder,
   requireCurrentPhase,
@@ -30,13 +29,11 @@ import {
   requireValidEntryFee,
 } from "../model/payments";
 import { parsePublicCode } from "../model/publicCodes";
-import {
-  registrationForUser,
-  syncRegistrationStartDatesBatch,
-} from "../model/registrations";
+import { syncRegistrationStartDatesBatch } from "../model/registrations";
 import { completeTournament as completeTournamentTransition } from "../model/progression";
 import { enforceRateLimit } from "../rateLimits";
 import {
+  canViewTournament,
   cleanName,
   createTournament as createTournamentModel,
   isPubliclyViewable,
@@ -137,38 +134,11 @@ export const getPublicTournament = query({
   args: { publicCode: v.string(), inviteCode: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const tournament = await tournamentByPublicCode(ctx, args.publicCode);
-    if (!tournament) {
-      return null;
-    }
-    // Setup events stay hidden from everyone except the organizing team, even
-    // if test data or an organizer-created row already registered a player.
-    // After publication, going private only removes public access: registered
-    // players must still resolve the code or a live visibility change would
-    // lock them out of pairings and result reporting — and the event's invite
-    // code opens the page too (never a setup event; inviteCodeGrantsAccess
-    // excludes that lifecycle), so an invited player can read what they are
-    // joining before they register.
     if (
-      !isPubliclyViewable(tournament) &&
-      !(await inviteCodeGrantsAccess(ctx, tournament, args.inviteCode))
+      !tournament ||
+      !(await canViewTournament(ctx, tournament, args.inviteCode))
     ) {
-      const user = await currentUserOrNull(ctx);
-      const membership = user
-        ? await getActiveMembership(ctx, tournament.organizationId, user._id)
-        : null;
-      const registration =
-        tournament.lifecycle !== "setup" && !membership && user
-          ? await registrationForUser(ctx, tournament._id, user._id)
-          : null;
-      // Any registration row resolves the code, not only a confirmed one.
-      // Cancelling now leaves a "cancelled" row behind instead of deleting it,
-      // so gating on "confirmed" would swap the page a player is standing on
-      // for "Tournament not found" the moment they cancel — and registerSelf
-      // accepts that same row as the invitation back in, which they could
-      // never act on from a page they can no longer open.
-      if (!membership && !registration) {
-        return null;
-      }
+      return null;
     }
 
     const organization = await ctx.db.get(tournament.organizationId);
@@ -184,7 +154,7 @@ export const getPublicTournament = query({
     // name and code through a public child event.
     let convention: {
       name: string;
-      publicCode: number;
+      publicCode: string;
       badgeRequiredForChildEvents: boolean;
       myBadgeStatus: Doc<"conventionRegistrations">["entryStatus"] | null;
       myBadgeCompsThisEvent: boolean;
