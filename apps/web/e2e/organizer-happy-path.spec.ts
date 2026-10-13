@@ -44,7 +44,7 @@ test('organizer happy path: create → publish → register → pair → report 
     await advanceStep(page, 'Hold to publish pairings')
 
     await page.goto(`${managerUrl}/pairings`)
-    await expect(page.getByText('Awaiting result')).toHaveCount(
+    await expect(page.getByLabel('Awaiting result')).toHaveCount(
       MATCHES_PER_ROUND,
     )
 
