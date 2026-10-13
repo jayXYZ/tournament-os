@@ -2,7 +2,7 @@ import { Link, createFileRoute } from '@tanstack/react-router'
 import { useQuery } from 'convex/react'
 import { SearchX } from 'lucide-react'
 import { api } from '@paper-pairings/backend/convex/_generated/api'
-import { useMyRegistration } from '@paper-pairings/core'
+import { useMyRegistration, useStableQuery } from '@paper-pairings/core'
 import type { ReactNode } from 'react'
 import type { Id } from '@paper-pairings/backend/convex/_generated/dataModel'
 import type { PaymentReturnCopy } from '@/components/shared/payment-return'
@@ -14,7 +14,6 @@ import {
 } from '@/components/shared/payment-return'
 import { SiteShell, SiteShellBackLink } from '@/components/shared/site-shell'
 import { useClientClock } from '@/hooks/use-client-clock'
-import { useStableQuery } from '@/hooks/use-stable-query'
 
 // Stripe Checkout return page for tournament entry fees. The status dispatch
 // and outcome UI live in components/shared/payment-return.tsx; this route

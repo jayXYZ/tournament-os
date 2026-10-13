@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { mutationErrorMessage } from '@paper-pairings/core'
+import { mutationErrorMessage, useStableQuery } from '@paper-pairings/core'
 import {
   useAction,
   useMutation,
@@ -28,7 +28,6 @@ import {
 } from '@/components/tournaments'
 import { useBusyAction } from '@/hooks/use-busy-action'
 import { useClientClock } from '@/hooks/use-client-clock'
-import { useStableQuery } from '@/hooks/use-stable-query'
 import { useAppAuth } from '@/lib/use-app-auth'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
