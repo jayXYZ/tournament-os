@@ -2,9 +2,11 @@
 
 Branch: `feat/qr-codes`
 
-Revised after two review passes and a third that split the event identifier
-from the invite grant (PR 0). Their verdicts, findings, and suggested phase
-order are folded in below.
+Revised after two review passes, a third that split the event identifier
+from the invite grant (PR 0), and a fourth over the PR 0 implementation that
+moved the order query and clock hooks into PR 2a and added the PR 4
+cancel/dismiss handling and the PR 2b camera lifecycle. Their verdicts,
+findings, and suggested phase order are folded in below.
 
 ## Goal
 
@@ -52,8 +54,9 @@ the event is set up:
   One value can't do both jobs. Public and unlisted events need only the
   identifier; private events need both.
   - Today the public code is a sequential integer (100001, 100002, …), so
-    unlisted events are enumerable and the invite link is the only short
-    URL worth printing for any event. PR 0 makes the public code random.
+    anyone can count through unlisted events, and the invite link is the
+    only short URL worth printing for any event. PR 0 makes the public code
+    random.
   - Public and unlisted events: the QR code encodes
     `https://<web origin>/join/<publicCode>`. No invite row, nothing to
     rotate. If the event later goes private, the poster stops admitting
@@ -70,7 +73,7 @@ the event is set up:
 - **Organizers create QR codes on web only.** The native app has no organizer
   screens, so native gets the player side: the scanner and the join screen.
 - **PR 0 ships first, then the web organizer QR on its own.** PR 0 stands
-  alone (unlisted events stop being enumerable). PR 1 is useful as soon as it
+  alone (unlisted events can no longer be found by counting). PR 1 is useful as soon as it
   lands, because a camera-app scan already works end-to-end through `/join`.
 
 ## Libraries (prebuilt, no hand-rolled QR code)
@@ -222,10 +225,14 @@ Pre-production, so no migration: reset the DB.
    `resolveJoinCode`. It normalizes the raw text as a 6-character code, then
    as a 10-character code:
    - 6 characters: look the tournament up by `publicCode`. Return
-     `{ publicCode }` when it exists and is past `setup`, else null.
-     Visibility stays with `getPublicTournament`, which already lets
-     registered players and organizers into a private event and shows
-     everyone else not found. The join URL only has to get them there.
+     `{ publicCode }` when it exists, is past `setup`, and the caller could
+     open the event page, else null. "Could open the page" is
+     `canViewTournament` (`model/tournaments.ts`), the rule moved out of
+     `getPublicTournament` so both apply it: published public and unlisted
+     events for anyone, private ones for registered players and the
+     organizing team. Returning `{ publicCode }` for every published event
+     would let anyone test whether a private event holds a given code, since
+     the page itself answers null.
    - 10 characters: today's invite lookup. Return `{ publicCode, inviteCode }`.
    - Anything else: null. All three nulls are identical, so a bad code says
      nothing about which kind it was.
@@ -238,7 +245,11 @@ Pre-production, so no migration: reset the DB.
    assertions (6 characters of the alphabet, unique across a batch). Add:
    the shared normalizer table (both lengths, lookalikes, separators),
    `resolveJoinCode` for each branch above, and `getPublicTournament` for an
-   unknown code.
+   unknown code. Test collisions deterministically, since random draws
+   almost never collide: `mintUniqueCode` with a stubbed "taken" check (taken
+   once, then free; taken five times, then the error), and
+   `mintUniquePublicCode` against each table with `crypto.getRandomValues`
+   stubbed so the first draw is a code the table already holds.
 7. **Docs.** `docs/` and CONTEXT.md references to numeric codes, and the
    `validators.ts:78` comment, which becomes true.
 
@@ -360,11 +371,20 @@ never sees a pure-function refactor mixed with a native module install.
 4. **Add `deriveJoinAction` in core.** It's a pure function, limited to what
    the join screen needs.
    - Inputs: tournament flags, the viewer's auth, the registration row, the
-     order, the badge gate, `badgeCompsThisEvent` (getPublicTournament's
+     order (`getMyEntryOrder`, undefined while loading), the badge gate,
+     `badgeCompsThisEvent` (getPublicTournament's
      `convention.myBadgeCompsThisEvent`), and spots left.
-   - Outputs: `signIn | register | requestToRegister | pay | completePayment
-| pendingReview | waitlisted | registered | rejected | full | closed |
-badgeBlocked`.
+   - The order is what separates a pending application from a pending entry
+     that owes payment: both have `entryStatus: 'pending'`. On a paid event,
+     pending with a `requires_payment` or `awaiting_payment` order is
+     `completePayment`, whether the order is `post_approval` or the player's
+     own unfinished direct checkout (`tournament-public-page.tsx:514-531`).
+     Pending with the order still loading is `loading`, never
+     `pendingReview`, so an approved player doesn't see "pending approval"
+     flash before "Complete payment".
+   - Outputs: `loading | signIn | register | requestToRegister | pay |
+completePayment | pendingReview | waitlisted | registered | rejected |
+full | closed | badgeBlocked`.
    - `register` and `requestToRegister` carry `comped: boolean`. A comped
      viewer on a paid event never gets `pay`: the server refuses a comped
      checkout and files the comp through `registerSelf` (ADR 0004), and the
@@ -382,6 +402,8 @@ badgeBlocked`.
        the invite code
      - `getPublicTournament` with the invite code when there is one
      - the registration row from the updated access hook
+     - `getMyEntryOrder`, with `now` from the shared clock hook (step 7) and
+       held across ticks with `useStableQuery`
      - `getFeePreview` (`payments/queries.ts:23`) for the "Pay $X" label
      - spots left
    - **Screen:** the event summary (name, date, venue, fee, spots left, and
@@ -409,6 +431,17 @@ badgeBlocked`.
 6. **Fix the `notRegistered` dead end on `tournaments/[code]`:** render the
    same join panel there, without an invite code, using the registration row
    the hook now exposes.
+7. **Shared clock and query hooks** (moved here from PR 4, because
+   `getMyEntryOrder` needs `now` and the join screen needs the order):
+   - Move `useStableQuery` to `@paper-pairings/core` unchanged. It uses only
+     `convex/react` and a ref; nothing in it is browser-specific.
+   - Move `roundedClock`, `CLIENT_CLOCK_RESOLUTION_MS`, and the
+     bucket-boundary scheduling of `useClientClock` into core, with the
+     wake-up source injected as `subscribeToWake(refresh) => unsubscribe`.
+     The web wrapper passes `visibilitychange` + window focus; the native
+     wrapper passes `AppState` 'change' → 'active'. One copy of the rounding
+     rule (`round: 'up'` matters for the refund verdict), two thin platform
+     wrappers. The two hook tests move with them.
 
 ## PR 2b: native scanner
 
@@ -433,6 +466,11 @@ Needs a dev-client rebuild and physical devices (expo-camera is device-only).
        1.5 s.
      - Re-arm in `useFocusEffect`, so backing out of the join screen lets the
        player scan again.
+   - **Camera lifecycle:** pushing the join screen leaves `scan.tsx` mounted
+     underneath, and a mounted `CameraView` keeps the camera session (and
+     the torch) running. Render `CameraView` only while the screen is
+     focused (`useIsFocused`) and the app is active (`AppState`), as Expo's
+     camera docs require, and turn the torch off on blur.
    - Haptic feedback on a valid scan.
    - A QR code from somewhere else shows a "Not a Paper Pairings code" toast
      and never opens the URL.
@@ -503,20 +541,23 @@ Needs a dev-client rebuild and physical devices (expo-camera is device-only).
      session create (`stripe/client.ts:208-227`). Stripe documents it as the
      app-to-web optimized UI.
    - Specs: the URL builder, and `returnTo` reaching the session.
-3. **Shared hooks, not a native fork:**
-   - Move `useStableQuery` to `@paper-pairings/core` unchanged. It uses only
-     `convex/react` and a ref; nothing in it is browser-specific.
-   - Move `roundedClock`, `CLIENT_CLOCK_RESOLUTION_MS`, and the
-     bucket-boundary scheduling of `useClientClock` into core, with the
-     wake-up source injected as `subscribeToWake(refresh) => unsubscribe`.
-     The web wrapper passes `visibilitychange` + window focus; the native
-     wrapper passes `AppState` 'change' → 'active'. One copy of the rounding
-     rule (`round: 'up'` matters for the refund verdict), two thin platform
-     wrappers. The two hook tests move with them.
-   - `getMyEntryOrder` needs `now`.
+3. **Shared hooks:** already in core since PR 2a (step 7 there).
 4. **Payment-status dispatch:** pull the status dispatch out of
    `apps/web/src/components/shared/payment-return.tsx` into core, so native
    shows the same outcomes.
+   - Give it a `returnHint: 'success' | 'cancelled' | 'dismissed' | null`
+     input. The order is `awaiting_payment` from the moment the Checkout
+     session is attached (`checkout.ts:394`), before anyone pays, and the web
+     dispatch shows "Confirming your payment" for that status with no way
+     out (`payment-return.tsx:138`). On the web that is fine, because only
+     Stripe's success redirect reaches the payment page. Native reaches it
+     after a cancel or a closed browser too.
+   - With `cancelled` or `dismissed`, `awaiting_payment` renders "Payment
+     not finished" with "Try again" (a fresh `createEntryCheckout`, which
+     supersedes the old session) and "Back to the event", instead of the
+     spinner. The order stays authoritative: if the webhook lands anyway
+     (the player paid, then closed the browser before the redirect), the
+     card flips to `paid` like any other.
 5. **Native flow:**
    - Split `tournaments/[code].tsx` into `tournaments/[code]/index.tsx` and
      `tournaments/[code]/payment.tsx`.
@@ -524,8 +565,21 @@ Needs a dev-client rebuild and physical devices (expo-camera is device-only).
      `createEntryCheckout({ ..., returnTo: 'app' })`, then
      `WebBrowser.openBrowserAsync(url)`.
    - A `Linking` 'url' listener catches `paperpairings://…/payment`, calls
-     `WebBrowser.dismissBrowser()`, and navigates to the payment screen.
-   - Closing the browser by hand also lands on the payment screen.
+     `WebBrowser.dismissBrowser()`, and navigates to the payment screen with
+     the hint the URL carries (`success` or `cancelled`, see step 6).
+   - Closing the browser by hand lands on the payment screen with
+     `dismissed`. Detecting it differs by platform:
+     - iOS: `openBrowserAsync` resolves with `cancel` when the player closes
+       the browser (and `dismiss` after our own `dismissBrowser()` call,
+       which the deep link has already handled).
+     - Android: `openBrowserAsync` resolves with `opened` as soon as the
+       Custom Tab launches (`WebBrowserModule.kt`), so the promise says
+       nothing about closing. Set an "in checkout" ref when opening, and on
+       `AppState` → 'active' with the ref set, clear it and go to the
+       payment screen with `dismissed`. A deep link arriving around the same
+       time replaces that with its own hint (`router.replace`, so the screen
+       never stacks twice). Clear the ref and the listener when the screen
+       unmounts.
    - Stripe holds the success redirect until our webhook acknowledges
      `checkout.session.completed`, up to 10 s, so in deployed environments
      the order is usually already `paid` when the app gets focus back. That
@@ -546,7 +600,9 @@ Needs a dev-client rebuild and physical devices (expo-camera is device-only).
      for iOS. Android Chrome blocks script-initiated navigation to an
      external scheme when there was no user gesture, which is the case after
      Stripe's redirect.
-   - Cancelling returns the same way.
+   - Cancelling returns the same way, with `cancelled=1` on Stripe's
+     `cancel_url` and on the deep link, so the app shows "Payment not
+     finished" rather than waiting on a payment that never started.
 7. **Docs:** add the native flow, `returnTo`, and the Android caveat to
    `docs/payments.md`.
 
@@ -571,11 +627,12 @@ Blocked on the custom domain, the Apple Team ID, and the Android signing cert
 
 ## Security notes
 
-- **A public code is an identifier, not a secret.** At 30 bits it stops
-  unlisted events being enumerated, which sequential codes never did. But
-  `resolveJoinCode` and `getPublicTournament` are queries and can't be
-  rate-limited (queries can't write; `docs/rate-limiting.md:55`), so
-  unlisted means obscure, not protected. An organizer who needs to revoke
+- **A public code is an identifier, not a secret.** Random codes stop anyone
+  counting from one event to the next, which sequential codes allowed. They
+  don't stop random guessing: with N unlisted events, a guess finds one about
+  once in 2³⁰ / N tries, and `resolveJoinCode` and `getPublicTournament` are
+  queries, which can't be rate-limited (queries can't write;
+  `docs/rate-limiting.md:55`). So unlisted means obscure, not protected. An organizer who needs to revoke
   access goes private and hands out the invite. Keep the invite at 10
   characters for the same reason; don't shorten it to match.
 - **The poster is the exposure, not guessing.**
@@ -639,12 +696,14 @@ Blocked on the custom domain, the Apple Team ID, and the Android signing cert
 
 - `pnpm check`. The new tests are:
   - shared: `app-links`
-  - core: `deriveJoinAction` (including approval × full and the comped
-    rows), the updated `player-access`, the PR 3 characterization rows for
-    `RegistrationPanel`, the payment dispatch, and the moved
-    `useClientClock` / `useStableQuery` tests
+  - core: `deriveJoinAction` (including approval × full, the comped rows,
+    pending with a payable order of each purpose, and pending with the
+    order loading), the updated `player-access`, the PR 3 characterization
+    rows for `RegistrationPanel`, the payment dispatch (each status × each
+    return hint), and the moved `useClientClock` / `useStableQuery` tests
   - backend: the shared normalizer, public code shape and uniqueness,
-    `resolveJoinCode`, the three specs moved off sequential values,
+    deterministic code collisions, `resolveJoinCode`, the three specs moved
+    off sequential values,
     `checkoutReturnUrls` (tournament and convention paths), `returnTo`
     threading, and badge checkout URLs unchanged
   - web: e2e
@@ -665,11 +724,13 @@ Blocked on the custom domain, the Apple Team ID, and the Android signing cert
     full, already registered.
 - **Physical devices only** (expo-camera is device-only), for PR 2b and PR
   4, on an iPhone and an Android phone:
-  - the scanner: lock and re-arm, a QR code from somewhere else, torch
+  - the scanner: lock and re-arm, a QR code from somewhere else, torch,
+    and the camera (and torch) going off once the join screen is pushed
   - camera permission denied, then allowed through Settings
   - haptics
   - the PR 4 payment round trip, including the Android Custom Tab
-    back-stack check
+    back-stack check, and closing Checkout without paying on each platform
+    (by hand and through Stripe's cancel link)
 - Use the `verify` skill for the web organizer flow.
 
 ## Later QR uses this sets up
