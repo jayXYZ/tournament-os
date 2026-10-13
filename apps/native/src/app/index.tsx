@@ -87,7 +87,7 @@ export default function HomeScreen() {
                 // Routes carry the public code, not the Convex id, so links
                 // are interchangeable with the web app's player pages.
                 router.push({
-                  pathname: "/tournament/[code]",
+                  pathname: "/tournaments/[code]",
                   params: { code: item.tournament.publicCode },
                 })
               }

@@ -174,6 +174,12 @@ public poster, and rotating the invite revokes a private one.
 A registration's admission state (pending, waitlisted, confirmed, cancelled,
 rejected). Independent of competitive state.
 
+**Approval Mode**:
+An event setting (`registrationRequiresApproval`) under which registering
+files a pending application rather than taking a seat, and the organizer
+decides each one from the Review Queue. On a paid event the player pays
+after approval.
+
 **Review Queue**:
 The pending applications an organizer has yet to decide (approve, reject, or
 waitlist). A pending entry that is instead awaiting its payment — approved on

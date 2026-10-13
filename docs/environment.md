@@ -23,12 +23,13 @@ Production: set in the Vercel project (except `VITE_CONVEX_URL`, see below).
 Local: copy `apps/native/.env.example` to `apps/native/.env.local`.
 Release builds: set in the EAS build environment.
 
-| Variable                                            | Required | Purpose                                                                           |
-| --------------------------------------------------- | -------- | --------------------------------------------------------------------------------- |
-| `EXPO_PUBLIC_CONVEX_URL`                            | yes      | Same Convex deployment URL as the web app's `VITE_CONVEX_URL`.                    |
-| `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY`                 | yes      | Publishable key from the same Clerk app as web.                                   |
-| `EXPO_PUBLIC_SENTRY_DSN`                            | no       | Enables native error reporting; see [error-monitoring.md](./error-monitoring.md). |
-| `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN` | no       | Build-time source-map/dSYM upload via the Sentry Expo plugin.                     |
+| Variable                                            | Required | Purpose                                                                                                                                                                 |
+| --------------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `EXPO_PUBLIC_CONVEX_URL`                            | yes      | Same Convex deployment URL as the web app's `VITE_CONVEX_URL`.                                                                                                          |
+| `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY`                 | yes      | Publishable key from the same Clerk app as web.                                                                                                                         |
+| `EXPO_PUBLIC_SENTRY_DSN`                            | no       | Enables native error reporting; see [error-monitoring.md](./error-monitoring.md).                                                                                       |
+| `EXPO_PUBLIC_WEB_ORIGIN`                            | no       | Web app origin (e.g. `https://example.com`) for the pages the app hands off to the web: paying an entry fee and a convention's page. Unset, those buttons are left out. |
+| `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN` | no       | Build-time source-map/dSYM upload via the Sentry Expo plugin.                                                                                                           |
 
 ## Convex deployment (`packages/backend`)
 

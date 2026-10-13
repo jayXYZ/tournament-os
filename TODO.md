@@ -589,6 +589,28 @@ push, analytics, and monitoring should be independent consumers.
         fails in the router's static render (`requireNativeComponent` is not
         a function), so the native build script and the CI smoke check export
         ios+android only
+- [ ] Join events from the native app (`docs/plans/qr-join.md`)
+  - [x] Add the native join screen for free and approval-mode events
+        (2026-10-13): `/join/<code>` resolves either code kind
+        (`useJoinCode`), shows the event summary and the one action
+        `deriveJoinAction` picks, and registers or files the application in
+        the app; paid entry hands off to the web event page
+        (`EXPO_PUBLIC_WEB_ORIGIN`). The event page's not-registered dead
+        end now renders the same panel, and the native event route is
+        `tournaments/[code]` to match the web. `@paper-pairings/shared/app-links`
+        parses join URLs and bare codes for the scanner, and the client
+        clock and `useStableQuery` moved into core
+  - [ ] Add the native QR scanner (`expo-camera`; needs a dev-client
+        rebuild and physical devices)
+  - [ ] Offer "Open in the app" on the mobile web event page reached
+        through `/join`, until universal links exist
+  - [ ] Pay in the app: Stripe Checkout in `expo-web-browser`, returning
+        through a `paperpairings://` deep link, with the payment-status
+        dispatch shared from core
+  - [ ] Claim `/join/*` as universal links (blocked on the custom domain,
+        the Apple Team ID, and the Android signing cert)
+  - [ ] Run device E2E with Maestro (EAS Workflows supports it), so the
+        scanner and payment device matrix stops being manual
 - [ ] Add real safe-area support to the web app chrome; ship all parts together
   - [ ] Add `viewport-fit=cover` to the root viewport meta in `apps/web/src/routes/__root.tsx`
   - [ ] Add bottom safe-area padding to SiteShell's fixed bottom-bar chrome
@@ -682,7 +704,12 @@ organizer is paid exactly the entry cost per paid seat.
       orders flowing into Checkout `price_data.currency`, transfers in a
       currency the platform balance holds (or accepting conversion),
       per-currency payout sums, and every `formatCents` call site
-      (`apps/web/src/lib/money.ts` is hardcoded to en-US/USD).
+      (`apps/web/src/lib/money.ts` and its native twin
+      `apps/native/src/lib/format.ts` are hardcoded to en-US/USD).
+- [ ] Let `createEntryCheckout` return to the native app: a
+      `returnTo: 'app'` enum that points Checkout's success and cancel URLs
+      at a web bounce page linking back into the app
+      (`docs/plans/qr-join.md` PR 4)
 
 ## 10. Design system and platform polish
 
