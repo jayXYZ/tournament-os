@@ -7,9 +7,13 @@ const ADVANCE_TIMEOUT = 30_000
 
 export const ORGANIZATION_NAME = 'E2E Test Organization'
 
+// The advance control sits in the compact progress bar on every manager page
+// except the Overview, which shows it in the live status band instead.
 export function advanceButton(page: Page, label: string): Locator {
   return page
-    .locator('nav[aria-label="Tournament progress"]')
+    .locator(
+      'nav[aria-label="Tournament progress"], [aria-label="Live status"]',
+    )
     .getByRole('button', { name: label })
 }
 

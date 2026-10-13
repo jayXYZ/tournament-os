@@ -37,6 +37,11 @@ external setup or on later sections.
 - [ ] Configure and verify the custom domain (blocked on human-only
       registrar/DNS and Vercel dashboard setup; any code-side follow-ups
       such as allowed auth origins land once the domain exists)
+  - [ ] Print join links and QR codes from the canonical domain: they are
+        built from `window.location.origin` today
+        (`tournament-manager/join-link.ts`), so a poster printed from a
+        Vercel preview stops working with the preview. Source the origin
+        from a public env var once the domain exists
 
 ## 1. Result and adjudication foundation
 
@@ -314,6 +319,14 @@ claimed by one.
         (`resolveJoinCode`, told apart by length; a public code resolves
         only for viewers who could open the event page). User codes stay
         numeric. Reset the dev DB (string `publicCode`, required `seed`)
+  - [x] Add the organizer's join QR code on web (2026-10-13, CONTEXT.md
+        "Join QR"): the settings share card follows visibility — a public
+        or unlisted event shares `/join/<public code>`, a private one its
+        invite link — and both it and the Overview open a QR dialog with
+        PNG download and a print sheet (`qrcode.react`). The QR code shows
+        only while registration is open. Regenerating or disabling the
+        invite link now asks for confirmation, since it kills printed codes
+        too; covered by `e2e/invite-links.spec.ts`
   - [x] Add join-by-link/code invitations (2026-08-22, CONTEXT.md "Invite
         Link"): one shared join code per tournament in its own
         `tournamentInvites` table — a bearer secret, kept off the tournament
