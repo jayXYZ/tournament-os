@@ -28,7 +28,7 @@ function item(
     tournament: {
       _id: name as Id<'tournaments'>,
       name,
-      publicCode: 1,
+      publicCode: '7K3M9Q',
       format,
       lifecycle: 'registration',
       startDate,

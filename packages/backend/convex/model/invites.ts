@@ -1,5 +1,6 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
+import { mintUniqueCode, normalizeCode } from "./codes";
 
 // Invite links (see CONTEXT.md "Invite Link"): one shared join code per
 // tournament that grants view and registration access whatever the event's
@@ -7,39 +8,16 @@ import type { MutationCtx, QueryCtx } from "../_generated/server";
 // it lives in its own table (see schema.ts "tournamentInvites") and only the
 // organizer invite endpoints ever return it.
 
-// Crockford base32: no I, L, O, or U, so a code read aloud or off a phone
-// screen has no lookalike ambiguity — normalizeInviteCode maps the excluded
-// letters back onto the digits they resemble. 32 characters also divide 256
-// evenly, so sampling bytes modulo the alphabet is unbiased.
-const INVITE_CODE_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
-
 // 10 characters × 5 bits = 50 bits of entropy: far beyond guessable for a
-// tournament join code, short enough to read aloud.
+// tournament join code, short enough to read aloud. Fixed apart from the
+// 6-character public code so /join/<code> can tell the two apart (see
+// model/codes.ts).
 export const INVITE_CODE_LENGTH = 10;
 
-const INVITE_CODE_PATTERN = new RegExp(
-  `^[${INVITE_CODE_ALPHABET}]{${INVITE_CODE_LENGTH}}$`,
-);
-
-export function generateInviteCode(): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(INVITE_CODE_LENGTH));
-  return Array.from(
-    bytes,
-    (byte) => INVITE_CODE_ALPHABET[byte % INVITE_CODE_ALPHABET.length],
-  ).join("");
-}
-
-// Parses a code as it arrives from a URL or a keyboard: case-insensitive,
-// separator-tolerant, and forgiving of the lookalike characters the alphabet
-// excludes. Returns the canonical stored form, or null for anything that
-// still doesn't fit — callers treat unknown and malformed codes identically.
+// Parses a code as it arrives from a URL or a keyboard (see normalizeCode).
+// Returns the canonical stored form, or null for anything that doesn't fit.
 export function normalizeInviteCode(value: string): string | null {
-  const normalized = value
-    .toUpperCase()
-    .replace(/[\s-]/g, "")
-    .replace(/O/g, "0")
-    .replace(/[IL]/g, "1");
-  return INVITE_CODE_PATTERN.test(normalized) ? normalized : null;
+  return normalizeCode(value, INVITE_CODE_LENGTH);
 }
 
 // At most one invite row exists per tournament (the management mutations
@@ -78,17 +56,13 @@ export async function inviteCodeGrantsAccess(
 
 // Mints a code no other tournament holds. Collisions are astronomically
 // unlikely at 50 bits, but the by_code index makes ruling them out one read,
-// and resolveInviteCode's unique() lookup depends on it.
+// and resolveJoinCode's unique() lookup depends on it.
 export async function mintUniqueInviteCode(ctx: MutationCtx): Promise<string> {
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    const code = generateInviteCode();
+  return await mintUniqueCode(INVITE_CODE_LENGTH, async (code) => {
     const taken = await ctx.db
       .query("tournamentInvites")
       .withIndex("by_code", (q) => q.eq("code", code))
       .unique();
-    if (!taken) {
-      return code;
-    }
-  }
-  throw new Error("Could not generate an invite code");
+    return taken !== null;
+  });
 }

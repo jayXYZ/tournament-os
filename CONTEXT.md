@@ -246,6 +246,19 @@ paid-event rules (fee presence, capacity, refund window, the fee freeze)
 apply to both; everything competitive belongs to tournaments alone.
 _Avoid_: event as a synonym for tournament specifically
 
+**Public Code**:
+An Event's stable identifier: 6 random characters, the code in every URL for
+it (`/tournaments/<code>`, `/join/<code>`) and the one a player types off a
+poster. It is never a secret and never rotates, because bookmarks, payment
+records, and printed codes all hold it. An unlisted event is reachable by
+its public code and nothing else. Random codes keep anyone from counting
+through unlisted events, but random guessing still finds them, so unlisted
+means obscure, not protected. A private event's code opens it only for
+the players and organizers who could already see it; everyone else needs
+the Invite Link. Players have a numeric public code of their own for profile
+URLs, which is a different thing.
+_Avoid_: tournament id (the Convex document id, which never reaches a URL)
+
 **Convention**:
 A first-class umbrella event spanning a date range: it sells Badges, holds
 Child Events, and never nests inside another convention. It has the

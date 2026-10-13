@@ -9,7 +9,7 @@ import {
 import type { AuditActorRole } from "./auditLog";
 import { conventionAuditPlayerRef, logConventionAuditEvent } from "./auditLog";
 import { ensureParticipantForUser, participantForUser } from "./participants";
-import { nextPublicCode } from "./publicCodes";
+import { mintUniquePublicCode } from "./publicCodes";
 import {
   adjustConfirmedRegistrationCount,
   hasCapacityAvailable,
@@ -31,26 +31,11 @@ import { cleanName, isPubliclyViewable, validStartDate } from "./tournaments";
 // (a badge has no competitive state, so the roster machinery does not
 // apply), the child-event gate, and the attach/detach rules.
 
-export const CONVENTION_PUBLIC_CODE_COUNTER_KEY = "conventionPublicCode";
-export const FIRST_CONVENTION_PUBLIC_CODE = 100_001;
-
 // Badge capacity ceiling. Deliberately independent of
 // MAX_TOURNAMENT_PLAYERS: that constant bounds per-tournament `.take()`s on
 // competitive reads, while badge rosters are always paginated, so a
 // convention can be much larger than any single event it hosts.
 export const MAX_CONVENTION_ATTENDEES = 10_000;
-
-export async function nextConventionPublicCode(
-  ctx: MutationCtx,
-  now = Date.now(),
-) {
-  return await nextPublicCode(
-    ctx,
-    CONVENTION_PUBLIC_CODE_COUNTER_KEY,
-    FIRST_CONVENTION_PUBLIC_CODE,
-    now,
-  );
-}
 
 export type ConventionAccess = {
   convention: Doc<"conventions">;
@@ -180,7 +165,7 @@ export async function createConvention(
 ) {
   const { user } = await requireActiveMembership(ctx, args.organizationId);
   const now = Date.now();
-  const publicCode = await nextConventionPublicCode(ctx, now);
+  const publicCode = await mintUniquePublicCode(ctx, "conventions");
   const { startDate, endDate } = validDateRange(args.startDate, args.endDate);
   const conventionId = await ctx.db.insert("conventions", {
     name: cleanName(args.name, "Convention name"),

@@ -88,7 +88,7 @@ export default function HomeScreen() {
                 // are interchangeable with the web app's player pages.
                 router.push({
                   pathname: "/tournament/[code]",
-                  params: { code: String(item.tournament.publicCode) },
+                  params: { code: item.tournament.publicCode },
                 })
               }
             >

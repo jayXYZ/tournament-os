@@ -7,7 +7,7 @@ import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "./batching";
 import { storedOutcomeForPlayer } from "./matchResults";
 import { publicIdentityForRegistration } from "./participants";
 import { MAX_MATCHES_PER_PLAYER, latestCompletedRound } from "./phases";
-import { parsePublicCode } from "./publicCodes";
+import { parseUserPublicCode } from "./publicCodes";
 import { registrationForUser } from "./registrations";
 import { isPairingsVisibleToPlayers, isPubliclyViewable } from "./tournaments";
 
@@ -281,7 +281,7 @@ export async function resolvePublicPlayer(
   ctx: QueryCtx,
   rawPublicCode: string,
 ) {
-  const publicCode = parsePublicCode(rawPublicCode);
+  const publicCode = parseUserPublicCode(rawPublicCode);
   if (publicCode === null) {
     return null;
   }

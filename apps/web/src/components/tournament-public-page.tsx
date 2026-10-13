@@ -155,7 +155,7 @@ function TournamentDetails({
               {' · part of '}
               <Link
                 to="/conventions/$conventionId"
-                params={{ conventionId: String(convention.publicCode) }}
+                params={{ conventionId: convention.publicCode }}
                 className="underline underline-offset-4"
               >
                 {convention.name}
@@ -201,7 +201,7 @@ function TournamentDetails({
                 This event requires a confirmed {convention.name} badge —{' '}
                 <Link
                   to="/conventions/$conventionId"
-                  params={{ conventionId: String(convention.publicCode) }}
+                  params={{ conventionId: convention.publicCode }}
                   className="underline underline-offset-4"
                 >
                   register for the convention
@@ -214,7 +214,7 @@ function TournamentDetails({
                 date —{' '}
                 <Link
                   to="/conventions/$conventionId"
-                  params={{ conventionId: String(convention.publicCode) }}
+                  params={{ conventionId: convention.publicCode }}
                   className="underline underline-offset-4"
                 >
                   upgrade your badge
@@ -343,7 +343,7 @@ function RegistrationPanel({
     <Button asChild type="button">
       <Link
         to="/tournaments/$tournamentId/play"
-        params={{ tournamentId: String(tournament.publicCode) }}
+        params={{ tournamentId: tournament.publicCode }}
       >
         <Swords data-icon="inline-start" />
         Open my player view

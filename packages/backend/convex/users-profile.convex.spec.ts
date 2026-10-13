@@ -17,6 +17,7 @@ import {
   playOutCurrentRound,
   playerIdentity,
   seedOrganizer,
+  specPublicCode,
 } from "./specHelpers";
 import { createConvexTest } from "./specHelpers.runtime";
 
@@ -218,7 +219,8 @@ test("getPublicPlayerResults paginates completed tournaments newest first", asyn
     for (const [index, event] of events.entries()) {
       const tournamentId = await ctx.db.insert("tournaments", {
         name: event.name,
-        publicCode: 2_000 + index,
+        publicCode: specPublicCode(2_000 + index),
+        seed: 1,
         organizationId,
         createdBy: organizerId,
         visibility: "public",
@@ -282,7 +284,8 @@ test("getPublicPlayerResults bounds hostile and non-finite page sizes", async ()
       const startDate = now - index * 1_000;
       const tournamentId = await ctx.db.insert("tournaments", {
         name: `Bounded Event ${index}`,
-        publicCode: 8_000 + index,
+        publicCode: specPublicCode(8_000 + index),
+        seed: 1,
         organizationId,
         createdBy: organizerId,
         visibility: "public",
@@ -359,7 +362,8 @@ test("getPublicPlayerResults pages through tournaments sharing a start date", as
     for (const [index, event] of events.entries()) {
       const tournamentId = await ctx.db.insert("tournaments", {
         name: event.name,
-        publicCode: 5_000 + index,
+        publicCode: specPublicCode(5_000 + index),
+        seed: 1,
         organizationId,
         createdBy: organizerId,
         visibility: "public",
@@ -453,7 +457,8 @@ test("getPublicPlayerResults filters hidden registrations out of every page", as
     for (const [index, event] of events.entries()) {
       const tournamentId = await ctx.db.insert("tournaments", {
         name: event.name,
-        publicCode: 3_000 + index,
+        publicCode: specPublicCode(3_000 + index),
+        seed: 1,
         organizationId,
         createdBy: organizerId,
         visibility: event.visibility,
@@ -509,7 +514,8 @@ test("getPublicPlayerResults exhausts an entirely hidden history in one page", a
   await t.run(async (ctx) => {
     const tournamentId = await ctx.db.insert("tournaments", {
       name: "Hidden Event",
-      publicCode: 4_000,
+      publicCode: "004000",
+      seed: 1,
       organizationId,
       createdBy: organizerId,
       visibility: "private",
@@ -561,7 +567,8 @@ test("getPublicPlayerResults surfaces sparse visible rows in a single request", 
   await t.run(async (ctx) => {
     const hiddenTournamentId = await ctx.db.insert("tournaments", {
       name: "Hidden Club Event",
-      publicCode: 6_000,
+      publicCode: "006000",
+      seed: 1,
       organizationId,
       createdBy: organizerId,
       visibility: "private",
@@ -597,7 +604,8 @@ test("getPublicPlayerResults surfaces sparse visible rows in a single request", 
       const startDate = now - 100_000 - index * 1_000;
       const tournamentId = await ctx.db.insert("tournaments", {
         name,
-        publicCode: 6_100 + index,
+        publicCode: specPublicCode(6_100 + index),
+        seed: 1,
         organizationId,
         createdBy: organizerId,
         visibility: "public",
@@ -659,7 +667,8 @@ test("getPublicPlayerResults caps an all-hidden scan at the read budget but keep
   await t.run(async (ctx) => {
     const hiddenTournamentId = await ctx.db.insert("tournaments", {
       name: "Hidden Marathon Event",
-      publicCode: 7_000,
+      publicCode: "007000",
+      seed: 1,
       organizationId,
       createdBy: organizerId,
       visibility: "private",
@@ -690,7 +699,8 @@ test("getPublicPlayerResults caps an all-hidden scan at the read budget but keep
     const visibleStartDate = now - 1_000_000;
     const visibleTournamentId = await ctx.db.insert("tournaments", {
       name: "Visible Beyond Budget",
-      publicCode: 7_100,
+      publicCode: "007100",
+      seed: 1,
       organizationId,
       createdBy: organizerId,
       visibility: "public",
@@ -819,7 +829,8 @@ test("getPublicPlayerResults cursor keys come from the deployment environment", 
     for (const [index, event] of events.entries()) {
       const tournamentId = await ctx.db.insert("tournaments", {
         name: event.name,
-        publicCode: 8_000 + index,
+        publicCode: specPublicCode(8_000 + index),
+        seed: 1,
         organizationId,
         createdBy: organizerId,
         visibility: "public",

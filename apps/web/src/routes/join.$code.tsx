@@ -13,19 +13,18 @@ import {
   EmptyTitle,
 } from '@/components/ui/empty'
 
-// The invite-link landing URL: the one an organizer shares (or a player types
-// from a code read aloud). It resolves the code to its event and forwards to
-// the event page with the code in the ?invite search param, where it opens a
-// private event and rides along on registration.
-export const Route = createFileRoute('/join/$inviteCode')({
+// The join URL an organizer shares or prints (or a player types from a code
+// read aloud). The code is either the event's public code or, for a private
+// event, its invite code; the server tells them apart and resolves either to
+// the event page. An invite code rides along in the ?invite search param,
+// where it opens the private event and is passed on to registration.
+export const Route = createFileRoute('/join/$code')({
   component: RouteComponent,
 })
 
 function RouteComponent() {
-  const { inviteCode } = Route.useParams()
-  const resolved = useQuery(api.tournaments.invites.resolveInviteCode, {
-    inviteCode,
-  })
+  const { code } = Route.useParams()
+  const resolved = useQuery(api.tournaments.invites.resolveJoinCode, { code })
 
   if (resolved) {
     return (
@@ -39,22 +38,19 @@ function RouteComponent() {
   }
 
   return (
-    <SiteShell subtitle="Tournament invite" readingColumn>
+    <SiteShell subtitle="Join a tournament" readingColumn>
       {resolved === undefined ? (
-        <LoadingCard
-          title="Opening invite"
-          description="Looking up the event."
-        />
+        <LoadingCard title="Opening event" description="Looking up the code." />
       ) : (
         <Empty className="min-h-80">
           <EmptyHeader>
             <EmptyMedia variant="icon">
               <SearchX aria-hidden="true" />
             </EmptyMedia>
-            <EmptyTitle>Invite not found</EmptyTitle>
+            <EmptyTitle>Code not found</EmptyTitle>
             <EmptyDescription>
-              This invite link is invalid or has been disabled. Ask the
-              organizer for a current link.
+              This code is invalid or no longer works. Ask the organizer for a
+              current link.
             </EmptyDescription>
           </EmptyHeader>
           <Button asChild type="button" variant="outline">

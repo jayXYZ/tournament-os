@@ -305,6 +305,15 @@ claimed by one.
         remain blocked on section 6's publication/submission policy work)
 - [ ] Add invite-only admission modes
   - [x] Support public, unlisted, and private tournament visibility
+  - [x] Make event public codes random (2026-10-13, CONTEXT.md "Public
+        Code"): tournaments and conventions get a 6-character Crockford
+        base32 code minted through a uniqueness check instead of a
+        sequential counter, so unlisted events can't be walked by code.
+        It shares the invite code's alphabet and normalizer
+        (`model/codes.ts`), and `/join/<code>` takes either kind
+        (`resolveJoinCode`, told apart by length; a public code resolves
+        only for viewers who could open the event page). User codes stay
+        numeric. Reset the dev DB (string `publicCode`, required `seed`)
   - [x] Add join-by-link/code invitations (2026-08-22, CONTEXT.md "Invite
         Link"): one shared join code per tournament in its own
         `tournamentInvites` table — a bearer secret, kept off the tournament

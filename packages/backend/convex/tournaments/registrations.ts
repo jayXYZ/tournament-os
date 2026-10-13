@@ -235,7 +235,7 @@ export const registerSelf = mutation({
         playerName,
         createdAt: now,
         tiebreakRandom: tiebreakRandom(
-          tournament.seed ?? tournament.publicCode,
+          tournament.seed,
           String(user.publicCode),
         ),
         updatedAt: now,

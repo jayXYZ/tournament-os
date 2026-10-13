@@ -159,10 +159,7 @@ export async function seedTestPlayers(
       // the same seed reproduces identical pairings across test-tournament
       // resets and re-creations (real registrations key on the user's
       // stable publicCode instead).
-      tiebreakRandom: tiebreakRandom(
-        tournament.seed ?? tournament.publicCode,
-        String(playerNumber),
-      ),
+      tiebreakRandom: tiebreakRandom(tournament.seed, String(playerNumber)),
       updatedAt: now,
     });
     created += 1;

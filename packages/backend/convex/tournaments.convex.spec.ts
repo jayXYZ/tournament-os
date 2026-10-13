@@ -9,6 +9,7 @@ import { setRegistrationState } from "./model/participation";
 import { MAX_TOURNAMENT_PLAYERS } from "./model/registrations";
 import { generateTestResults } from "./model/testing";
 import {
+  PUBLIC_CODE_SHAPE,
   insertLinkedParticipant,
   organizerIdentity,
   seedOrganizer,
@@ -25,7 +26,8 @@ test("listUpcomingPublic returns future public tournaments in start date order",
     const base = {
       organizationId,
       createdBy: userId,
-      publicCode: 100_001,
+      publicCode: "100001",
+      seed: 1,
       playerCapacity: 32,
       format: "standard" as const,
       isTestEvent: false,
@@ -140,7 +142,8 @@ test("getPublicTournament hides private and unpublished events and reports regis
     const publicId = await ctx.db.insert("tournaments", {
       ...base,
       name: "Open Event",
-      publicCode: 100_001,
+      publicCode: "100001",
+      seed: 1,
       visibility: "public",
       lifecycle: "registration",
       startDate: now + 60_000,
@@ -148,7 +151,8 @@ test("getPublicTournament hides private and unpublished events and reports regis
     const privateId = await ctx.db.insert("tournaments", {
       ...base,
       name: "Hidden Event",
-      publicCode: 100_002,
+      publicCode: "100002",
+      seed: 1,
       visibility: "private",
       lifecycle: "registration",
       startDate: now + 60_000,
@@ -156,7 +160,8 @@ test("getPublicTournament hides private and unpublished events and reports regis
     const unlistedId = await ctx.db.insert("tournaments", {
       ...base,
       name: "Unlisted Event",
-      publicCode: 100_003,
+      publicCode: "100003",
+      seed: 1,
       visibility: "unlisted",
       lifecycle: "registration",
       startDate: now + 60_000,
@@ -164,7 +169,8 @@ test("getPublicTournament hides private and unpublished events and reports regis
     const setupId = await ctx.db.insert("tournaments", {
       ...base,
       name: "Setup Event",
-      publicCode: 100_004,
+      publicCode: "100004",
+      seed: 1,
       visibility: "public",
       lifecycle: "setup",
       startDate: now + 60_000,
@@ -281,7 +287,8 @@ test("getPublicTournament keeps private events resolvable for registered players
     const tournamentId = await ctx.db.insert("tournaments", {
       organizationId,
       createdBy: userId,
-      publicCode: 100_001,
+      publicCode: "100001",
+      seed: 1,
       playerCapacity: 32,
       format: "standard",
       isTestEvent: false,
@@ -407,7 +414,8 @@ test("registerSelf lets a cancelled player rejoin a private event but admits no 
     return await ctx.db.insert("tournaments", {
       organizationId,
       createdBy: userId,
-      publicCode: 100_002,
+      publicCode: "100002",
+      seed: 1,
       playerCapacity: 32,
       format: "standard",
       isTestEvent: false,
@@ -508,7 +516,8 @@ test("listMyTournaments returns every confirmed seat for ongoing and upcoming ev
     const base = {
       organizationId,
       createdBy: userId,
-      publicCode: 100_001,
+      publicCode: "100001",
+      seed: 1,
       playerCapacity: 32,
       format: "standard" as const,
       isTestEvent: false,
@@ -659,7 +668,8 @@ test("listForOrganization returns every tournament for one organization, newest 
     const base = {
       organizationId,
       createdBy: userId,
-      publicCode: 100_001,
+      publicCode: "100001",
+      seed: 1,
       playerCapacity: 32,
       format: "standard" as const,
       isTestEvent: false,
@@ -770,7 +780,8 @@ test("listForOrganization reads only the requested lifecycles and says whether t
     const base = {
       organizationId,
       createdBy: userId,
-      publicCode: 100_001,
+      publicCode: "100001",
+      seed: 1,
       playerCapacity: 32,
       format: "standard" as const,
       visibility: "public" as const,
@@ -852,7 +863,8 @@ test("listForOrganization keeps a live event reachable behind a long completed h
     const base = {
       organizationId,
       createdBy: userId,
-      publicCode: 100_001,
+      publicCode: "100001",
+      seed: 1,
       playerCapacity: 32,
       format: "standard" as const,
       visibility: "public" as const,
@@ -919,7 +931,7 @@ test("createTournamentWithPhases creates an unpublished public tournament with o
     .query(api.tournaments.lifecycle.getTournamentSetup, { tournamentId });
 
   expect(setup.tournament.name).toBe("Store Championship");
-  expect(setup.tournament.publicCode).toBe(100_001);
+  expect(setup.tournament.publicCode).toMatch(PUBLIC_CODE_SHAPE);
   expect(setup.tournament.visibility).toBe("public");
   expect(setup.tournament.lifecycle).toBe("setup");
   expect(setup.tournament.format).toBe("modern");
@@ -1001,7 +1013,7 @@ test("unlisted registration events are direct-link accessible but absent from di
     api.tournaments.lifecycle.getTournamentSetup,
     { tournamentId },
   );
-  const publicCode = String(setup.tournament.publicCode);
+  const publicCode = setup.tournament.publicCode;
 
   expect(
     (
@@ -1222,7 +1234,7 @@ test("updateTournamentDetails stores trimmed markdown and clears it when emptied
   ).rejects.toThrow("Tournament has been cancelled");
 });
 
-test("tournament creation assigns sequential public codes", async () => {
+test("tournament creation assigns random, unique public codes", async () => {
   const t = createConvexTest();
   const now = Date.now();
   const { organizationId } = await seedOrganizer(t);
@@ -1271,9 +1283,19 @@ test("tournament creation assigns sequential public codes", async () => {
     }),
   ]);
 
-  expect(first.tournament.publicCode).toBe(100_001);
-  expect(second.tournament.publicCode).toBe(100_002);
-  expect(testTournament.tournament.publicCode).toBe(100_003);
+  // Random rather than counted, so an unlisted event's code says nothing
+  // about its neighbours' (CONTEXT.md "Public Code").
+  const codes = [first, second, testTournament].map(
+    ({ tournament }) => tournament.publicCode,
+  );
+  for (const code of codes) {
+    expect(code).toMatch(PUBLIC_CODE_SHAPE);
+  }
+  expect(new Set(codes).size).toBe(codes.length);
+  // No counter row backs them any more; only users still number theirs.
+  expect(
+    await t.run(async (ctx) => ctx.db.query("appCounters").collect()),
+  ).toEqual([]);
 });
 
 test("createTournamentWithPhases can mark a tournament as a test event", async () => {
