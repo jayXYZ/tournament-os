@@ -796,10 +796,7 @@ export async function registerEntry(
       ...admission,
       ...nameStamp,
       createdAt: now,
-      tiebreakRandom: tiebreakRandom(
-        tournament.seed ?? tournament.publicCode,
-        String(user.publicCode),
-      ),
+      tiebreakRandom: tiebreakRandom(tournament.seed, String(user.publicCode)),
       updatedAt: now,
     }));
   if (existing) {
@@ -980,10 +977,7 @@ async function seatEnrolledEntry(
       ...nameStamp,
       organizerNamed: args.organizerNamed,
       createdAt: now,
-      tiebreakRandom: tiebreakRandom(
-        tournament.seed ?? tournament.publicCode,
-        args.tiebreakKey,
-      ),
+      tiebreakRandom: tiebreakRandom(tournament.seed, args.tiebreakKey),
       updatedAt: now,
     });
   }

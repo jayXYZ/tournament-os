@@ -34,7 +34,8 @@ async function seedPublicTournament(
   return await t.run(async (ctx) => {
     return await ctx.db.insert("tournaments", {
       name: "Rate Limit Open",
-      publicCode: 100_001,
+      publicCode: "100001",
+      seed: 1,
       organizationId,
       createdBy: userId,
       visibility: "public",

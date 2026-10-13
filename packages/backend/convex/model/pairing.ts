@@ -252,7 +252,7 @@ export async function createRoundWithPairings(
     previousRoundId: args.previousRoundId,
   });
   const pairings = buildSwissPairings(ranked, {
-    seed: args.tournament.seed ?? args.tournament.publicCode,
+    seed: args.tournament.seed,
     roundNumber: args.roundNumber,
     finalRound,
     powerPairFinalRound: args.phase.powerPairFinalRound ?? true,

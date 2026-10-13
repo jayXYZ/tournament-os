@@ -96,7 +96,7 @@ export function ConventionTable({
                           variant === 'manage'
                             ? '/admin/conventions/$conventionId'
                             : '/conventions/$conventionId',
-                        params: { conventionId: String(convention.publicCode) },
+                        params: { conventionId: convention.publicCode },
                       })
                     }
                   >

@@ -4,6 +4,7 @@ import { expect, test } from "vitest";
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import {
+  PUBLIC_CODE_SHAPE,
   organizerIdentity,
   playerIdentity,
   seedOrganizer,
@@ -75,15 +76,17 @@ test("a convention is created in setup with its own public code and publishes in
   expect(convention).toMatchObject({
     lifecycle: "setup",
     visibility: "public",
-    publicCode: 100_001,
+    publicCode: expect.stringMatching(PUBLIC_CODE_SHAPE),
     confirmedRegistrationCount: 0,
     badgeRequiredForChildEvents: false,
   });
 
+  const publicCode = convention!.publicCode;
+
   // Hidden from the public while in setup, even by code.
   expect(
     await t.query(api.conventions.lifecycle.getPublicConvention, {
-      publicCode: "100001",
+      publicCode,
     }),
   ).toBeNull();
 
@@ -93,7 +96,7 @@ test("a convention is created in setup with its own public code and publishes in
   });
   const published = await t.query(
     api.conventions.lifecycle.getPublicConvention,
-    { publicCode: "100001" },
+    { publicCode },
   );
   expect(published?.convention.lifecycle).toBe("registration");
   expect(published?.organizationName).toBe("Test Org");
@@ -446,9 +449,8 @@ test("a private parent convention never leaks through its public child's page", 
   await organizer.mutation(api.tournaments.lifecycle.publishTournament, {
     tournamentId,
   });
-  const publicCode = String(
-    (await t.run(async (ctx) => ctx.db.get(tournamentId)))!.publicCode,
-  );
+  const publicCode = (await t.run(async (ctx) => ctx.db.get(tournamentId)))!
+    .publicCode;
 
   // Public parent: the child page names it.
   const before = await t.query(api.tournaments.lifecycle.getPublicTournament, {

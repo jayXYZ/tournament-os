@@ -10,6 +10,7 @@ import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { nextUserPublicCode } from "./model/users";
+import { PUBLIC_CODE_LENGTH } from "./model/publicCodes";
 import type schema from "./schema";
 
 // Resolves to whatever `call` rejected with, so a refused mutation runs once
@@ -61,6 +62,18 @@ export async function insertLinkedParticipant(
     userId,
     updatedAt: Date.now(),
   });
+}
+
+// What every minted event public code looks like: 6 characters of the
+// Crockford base32 alphabet (model/codes.ts), so suites assert on the shape
+// instead of a particular random value.
+export const PUBLIC_CODE_SHAPE = /^[0-9A-HJKMNP-TV-Z]{6}$/;
+
+// A fixed, well-formed event public code for a row a suite inserts by hand
+// (createTournament mints random ones): the number, zero-padded to the code's
+// length. Digits are all in the code alphabet, so parsePublicCode accepts it.
+export function specPublicCode(n: number) {
+  return String(n).padStart(PUBLIC_CODE_LENGTH, "0");
 }
 
 export const organizerIdentity = {

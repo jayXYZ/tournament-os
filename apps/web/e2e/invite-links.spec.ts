@@ -60,7 +60,7 @@ test('a player joins a private event through its invite link', async ({
   await expect(anonPage.getByText('Tournament not found')).toBeVisible()
 
   await anonPage.goto('/join/0000000000')
-  await expect(anonPage.getByText('Invite not found')).toBeVisible()
+  await expect(anonPage.getByText('Code not found')).toBeVisible()
 
   await anonPage.goto(joinPath)
   await expect(anonPage).toHaveURL(new RegExp(`${eventPath}\\?invite=`))
