@@ -13,6 +13,7 @@ import {
   insertLinkedParticipant,
   organizerIdentity,
   seedOrganizer,
+  specPublicCode,
 } from "./specHelpers";
 import { createConvexTest } from "./specHelpers.runtime";
 import { tournamentLifecycles } from "./validators";
@@ -26,7 +27,7 @@ test("listUpcomingPublic returns future public tournaments in start date order",
     const base = {
       organizationId,
       createdBy: userId,
-      publicCode: "100001",
+      publicCode: specPublicCode(100_001),
       seed: 1,
       playerCapacity: 32,
       format: "standard" as const,
@@ -142,7 +143,7 @@ test("getPublicTournament hides private and unpublished events and reports regis
     const publicId = await ctx.db.insert("tournaments", {
       ...base,
       name: "Open Event",
-      publicCode: "100001",
+      publicCode: specPublicCode(100_001),
       seed: 1,
       visibility: "public",
       lifecycle: "registration",
@@ -151,7 +152,7 @@ test("getPublicTournament hides private and unpublished events and reports regis
     const privateId = await ctx.db.insert("tournaments", {
       ...base,
       name: "Hidden Event",
-      publicCode: "100002",
+      publicCode: specPublicCode(100_002),
       seed: 1,
       visibility: "private",
       lifecycle: "registration",
@@ -160,7 +161,7 @@ test("getPublicTournament hides private and unpublished events and reports regis
     const unlistedId = await ctx.db.insert("tournaments", {
       ...base,
       name: "Unlisted Event",
-      publicCode: "100003",
+      publicCode: specPublicCode(100_003),
       seed: 1,
       visibility: "unlisted",
       lifecycle: "registration",
@@ -169,7 +170,7 @@ test("getPublicTournament hides private and unpublished events and reports regis
     const setupId = await ctx.db.insert("tournaments", {
       ...base,
       name: "Setup Event",
-      publicCode: "100004",
+      publicCode: specPublicCode(100_004),
       seed: 1,
       visibility: "public",
       lifecycle: "setup",
@@ -207,7 +208,7 @@ test("getPublicTournament hides private and unpublished events and reports regis
   });
 
   const visible = await t.query(api.tournaments.lifecycle.getPublicTournament, {
-    publicCode: "100001",
+    publicCode: specPublicCode(100_001),
   });
   expect(visible?.tournament.name).toBe("Open Event");
   expect(visible?.organizationName).toBe("Test Org");
@@ -215,18 +216,18 @@ test("getPublicTournament hides private and unpublished events and reports regis
 
   expect(
     await t.query(api.tournaments.lifecycle.getPublicTournament, {
-      publicCode: "100002",
+      publicCode: specPublicCode(100_002),
     }),
   ).toBeNull();
   // Unlisted events stay reachable by code; setup-stage events are hidden even when public.
   const unlisted = await t.query(
     api.tournaments.lifecycle.getPublicTournament,
-    { publicCode: "100003" },
+    { publicCode: specPublicCode(100_003) },
   );
   expect(unlisted?.tournament.name).toBe("Unlisted Event");
   expect(
     await t.query(api.tournaments.lifecycle.getPublicTournament, {
-      publicCode: "100004",
+      publicCode: specPublicCode(100_004),
     }),
   ).toBeNull();
   const registeredSetupPlayer = {
@@ -240,7 +241,7 @@ test("getPublicTournament hides private and unpublished events and reports regis
     await t
       .withIdentity(registeredSetupPlayer)
       .query(api.tournaments.lifecycle.getPublicTournament, {
-        publicCode: "100004",
+        publicCode: specPublicCode(100_004),
       }),
   ).toBeNull();
   expect(
@@ -248,7 +249,7 @@ test("getPublicTournament hides private and unpublished events and reports regis
       await t
         .withIdentity(organizerIdentity)
         .query(api.tournaments.lifecycle.getPublicTournament, {
-          publicCode: "100004",
+          publicCode: specPublicCode(100_004),
         })
     )?.tournament.lifecycle,
   ).toBe("setup");
@@ -287,7 +288,7 @@ test("getPublicTournament keeps private events resolvable for registered players
     const tournamentId = await ctx.db.insert("tournaments", {
       organizationId,
       createdBy: userId,
-      publicCode: "100001",
+      publicCode: specPublicCode(100_001),
       seed: 1,
       playerCapacity: 32,
       format: "standard",
@@ -319,13 +320,13 @@ test("getPublicTournament keeps private events resolvable for registered players
   const asPlayer = await t
     .withIdentity(playerIdentity)
     .query(api.tournaments.lifecycle.getPublicTournament, {
-      publicCode: "100001",
+      publicCode: specPublicCode(100_001),
     });
   expect(asPlayer?.tournament.name).toBe("Private Live Event");
 
   expect(
     await t.query(api.tournaments.lifecycle.getPublicTournament, {
-      publicCode: "100001",
+      publicCode: specPublicCode(100_001),
     }),
   ).toBeNull();
   // Organizing-team members resolve private events too: the admin Overview
@@ -333,7 +334,7 @@ test("getPublicTournament keeps private events resolvable for registered players
   const asOrganizer = await t
     .withIdentity(organizerIdentity)
     .query(api.tournaments.lifecycle.getPublicTournament, {
-      publicCode: "100001",
+      publicCode: specPublicCode(100_001),
     });
   expect(asOrganizer?.tournament.name).toBe("Private Live Event");
   // Signed in without a registration or membership is still not enough.
@@ -347,7 +348,7 @@ test("getPublicTournament keeps private events resolvable for registered players
         name: "Stranger",
       })
       .query(api.tournaments.lifecycle.getPublicTournament, {
-        publicCode: "100001",
+        publicCode: specPublicCode(100_001),
       }),
   ).toBeNull();
 
@@ -371,7 +372,7 @@ test("getPublicTournament keeps private events resolvable for registered players
       await t
         .withIdentity(playerIdentity)
         .query(api.tournaments.lifecycle.getPublicTournament, {
-          publicCode: "100001",
+          publicCode: specPublicCode(100_001),
         })
     )?.tournament.name,
   ).toBe("Private Live Event");
@@ -414,7 +415,7 @@ test("registerSelf lets a cancelled player rejoin a private event but admits no 
     return await ctx.db.insert("tournaments", {
       organizationId,
       createdBy: userId,
-      publicCode: "100002",
+      publicCode: specPublicCode(100_002),
       seed: 1,
       playerCapacity: 32,
       format: "standard",
@@ -516,7 +517,7 @@ test("listMyTournaments returns every confirmed seat for ongoing and upcoming ev
     const base = {
       organizationId,
       createdBy: userId,
-      publicCode: "100001",
+      publicCode: specPublicCode(100_001),
       seed: 1,
       playerCapacity: 32,
       format: "standard" as const,
@@ -668,7 +669,7 @@ test("listForOrganization returns every tournament for one organization, newest 
     const base = {
       organizationId,
       createdBy: userId,
-      publicCode: "100001",
+      publicCode: specPublicCode(100_001),
       seed: 1,
       playerCapacity: 32,
       format: "standard" as const,
@@ -780,7 +781,7 @@ test("listForOrganization reads only the requested lifecycles and says whether t
     const base = {
       organizationId,
       createdBy: userId,
-      publicCode: "100001",
+      publicCode: specPublicCode(100_001),
       seed: 1,
       playerCapacity: 32,
       format: "standard" as const,
@@ -863,7 +864,7 @@ test("listForOrganization keeps a live event reachable behind a long completed h
     const base = {
       organizationId,
       createdBy: userId,
-      publicCode: "100001",
+      publicCode: specPublicCode(100_001),
       seed: 1,
       playerCapacity: 32,
       format: "standard" as const,
