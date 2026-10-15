@@ -3,7 +3,11 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import { api, internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
-import { organizerIdentity, seedOrganizer } from "./specHelpers";
+import {
+  organizerIdentity,
+  seedOrganizer,
+  specPublicCode,
+} from "./specHelpers";
 import { createConvexTest } from "./specHelpers.runtime";
 import type { TestConvex } from "convex-test";
 import type schema from "./schema";
@@ -409,7 +413,7 @@ test("payout sweeps and retries reject an owner pair naming both entities", asyn
       .first();
     return await ctx.db.insert("conventions", {
       name: "Other Owner",
-      publicCode: "999001",
+      publicCode: specPublicCode(999_001),
       organizationId,
       createdBy: membership!.userId,
       visibility: "public",

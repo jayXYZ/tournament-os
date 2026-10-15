@@ -514,7 +514,7 @@ test("getPublicPlayerResults exhausts an entirely hidden history in one page", a
   await t.run(async (ctx) => {
     const tournamentId = await ctx.db.insert("tournaments", {
       name: "Hidden Event",
-      publicCode: "004000",
+      publicCode: specPublicCode(4_000),
       seed: 1,
       organizationId,
       createdBy: organizerId,
@@ -567,7 +567,7 @@ test("getPublicPlayerResults surfaces sparse visible rows in a single request", 
   await t.run(async (ctx) => {
     const hiddenTournamentId = await ctx.db.insert("tournaments", {
       name: "Hidden Club Event",
-      publicCode: "006000",
+      publicCode: specPublicCode(6_000),
       seed: 1,
       organizationId,
       createdBy: organizerId,
@@ -667,7 +667,7 @@ test("getPublicPlayerResults caps an all-hidden scan at the read budget but keep
   await t.run(async (ctx) => {
     const hiddenTournamentId = await ctx.db.insert("tournaments", {
       name: "Hidden Marathon Event",
-      publicCode: "007000",
+      publicCode: specPublicCode(7_000),
       seed: 1,
       organizationId,
       createdBy: organizerId,
@@ -699,7 +699,7 @@ test("getPublicPlayerResults caps an all-hidden scan at the read budget but keep
     const visibleStartDate = now - 1_000_000;
     const visibleTournamentId = await ctx.db.insert("tournaments", {
       name: "Visible Beyond Budget",
-      publicCode: "007100",
+      publicCode: specPublicCode(7_100),
       seed: 1,
       organizationId,
       createdBy: organizerId,
