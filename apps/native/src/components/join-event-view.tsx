@@ -380,6 +380,7 @@ function ActionSection({
               onPress={() => onOpenWeb(conventionUrl)}
             />
           ) : null}
+          {action.canWithdraw ? withdrawButton : null}
         </View>
       );
     }

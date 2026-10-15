@@ -38,7 +38,15 @@ export type JoinAction =
   | { kind: "full" }
   | { kind: "closed" }
   // A badge-gated convention child event the viewer's badge doesn't admit.
-  | { kind: "badgeBlocked"; reason: Exclude<BadgeGate, null> };
+  // `canWithdraw` when the viewer already holds a pending entry (an approved
+  // application or unfinished checkout) that the gate now stops them from
+  // paying for: a cancelled badge or a rescheduled event does this. The
+  // server still lets them withdraw, so the screen keeps offering it.
+  | {
+      kind: "badgeBlocked";
+      reason: Exclude<BadgeGate, null>;
+      canWithdraw: boolean;
+    };
 
 type EntryOrder = NonNullable<
   FunctionReturnType<typeof api.payments.queries.getMyEntryOrder>
@@ -125,7 +133,7 @@ export function deriveJoinAction({
         }
         return badgeGate === null
           ? { kind: "completePayment", purpose: order.purpose }
-          : { kind: "badgeBlocked", reason: badgeGate };
+          : { kind: "badgeBlocked", reason: badgeGate, canWithdraw: true };
       }
       return { kind: "pendingReview", canWithdraw: open };
     }
@@ -153,7 +161,7 @@ export function deriveJoinAction({
     return { kind: "full" };
   }
   if (badgeGate !== null) {
-    return { kind: "badgeBlocked", reason: badgeGate };
+    return { kind: "badgeBlocked", reason: badgeGate, canWithdraw: false };
   }
   // A comped viewer never gets Checkout: the server refuses a comped
   // checkout and files the comp through registerSelf.
