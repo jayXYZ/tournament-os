@@ -4,7 +4,7 @@ import { expect, test, vi } from "vitest";
 
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { seedOrganizer } from "./specHelpers";
+import { seedOrganizer, specPublicCode } from "./specHelpers";
 import { createConvexTest } from "./specHelpers.runtime";
 
 function identity(subject: string) {
@@ -34,7 +34,7 @@ async function seedPublicTournament(
   return await t.run(async (ctx) => {
     return await ctx.db.insert("tournaments", {
       name: "Rate Limit Open",
-      publicCode: "100001",
+      publicCode: specPublicCode(100_001),
       seed: 1,
       organizationId,
       createdBy: userId,
