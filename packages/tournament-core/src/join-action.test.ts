@@ -237,20 +237,32 @@ const matrix: Array<[string, Scenario, Record<Setup, JoinAction>]> = [
     "a badge-gated event without a badge",
     { badgeGate: "missing" },
     {
-      free: { kind: "badgeBlocked", reason: "missing" },
-      approval: { kind: "badgeBlocked", reason: "missing" },
-      paid: { kind: "badgeBlocked", reason: "missing" },
-      paidApproval: { kind: "badgeBlocked", reason: "missing" },
+      free: { kind: "badgeBlocked", reason: "missing", canWithdraw: false },
+      approval: { kind: "badgeBlocked", reason: "missing", canWithdraw: false },
+      paid: { kind: "badgeBlocked", reason: "missing", canWithdraw: false },
+      paidApproval: {
+        kind: "badgeBlocked",
+        reason: "missing",
+        canWithdraw: false,
+      },
     },
   ],
   [
     "a badge-gated event with a wrong-day badge",
     { badgeGate: "wrong_day" },
     {
-      free: { kind: "badgeBlocked", reason: "wrong_day" },
-      approval: { kind: "badgeBlocked", reason: "wrong_day" },
-      paid: { kind: "badgeBlocked", reason: "wrong_day" },
-      paidApproval: { kind: "badgeBlocked", reason: "wrong_day" },
+      free: { kind: "badgeBlocked", reason: "wrong_day", canWithdraw: false },
+      approval: {
+        kind: "badgeBlocked",
+        reason: "wrong_day",
+        canWithdraw: false,
+      },
+      paid: { kind: "badgeBlocked", reason: "wrong_day", canWithdraw: false },
+      paidApproval: {
+        kind: "badgeBlocked",
+        reason: "wrong_day",
+        canWithdraw: false,
+      },
     },
   ],
   [
@@ -329,8 +341,11 @@ describe("deriveJoinAction", () => {
       },
     );
 
+    // The badge can stop admitting the event after the entry exists (a
+    // cancelled badge, a rescheduled event). The gate blocks payment, but
+    // the entry is still the viewer's to withdraw, as on the web.
     it.each(paidSetups)(
-      "%s: a payable order behind the badge gate is blocked",
+      "%s: a payable order behind the badge gate is blocked but can be withdrawn",
       (setup) => {
         expect(
           derive(setup, {
@@ -338,7 +353,22 @@ describe("deriveJoinAction", () => {
             order: { status: "requires_payment", purpose: "post_approval" },
             badgeGate: "wrong_day",
           }),
-        ).toEqual({ kind: "badgeBlocked", reason: "wrong_day" });
+        ).toEqual({
+          kind: "badgeBlocked",
+          reason: "wrong_day",
+          canWithdraw: true,
+        });
+        expect(
+          derive(setup, {
+            registration: row("pending"),
+            order: { status: "awaiting_payment", purpose: "registration" },
+            badgeGate: "missing",
+          }),
+        ).toEqual({
+          kind: "badgeBlocked",
+          reason: "missing",
+          canWithdraw: true,
+        });
       },
     );
 
