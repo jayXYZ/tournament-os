@@ -3,7 +3,7 @@ import type { Infer } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { parseMoneyRowEntry, parseMoneyRowOwner } from "./paidEventOwner";
-import { participantOrganizerName } from "./participants";
+import { registrationOrganizerLabel } from "./registrations";
 import type {
   conventionAuditEventValidator,
   tournamentAuditEventValidator,
@@ -15,10 +15,11 @@ export type ConventionAuditEvent = Infer<typeof conventionAuditEventValidator>;
 export type AuditActorRole = "organizer" | "player" | "system";
 
 // The organizer label for an account the caller already holds: the same
-// name-then-email rule as participantOrganizerName, with no read. Used for
-// the actor of every append and for the player reference when the registrant
-// is acting on their own entry (registering, cancelling, submitting a
-// decklist), where the acting user is the player.
+// name-then-email rule as the registration's organizerLabel stamp
+// (registrationNameStamp), with no read. Used for the actor of every append
+// and for the player reference when the registrant is acting on their own
+// entry (registering, cancelling, submitting a decklist), where the acting
+// user is the player.
 export function auditUserLabel(user: Doc<"users">): string | null {
   return user.name ?? user.email ?? null;
 }
@@ -44,7 +45,7 @@ export async function logAuditEvent(
     tournamentId: args.tournamentId,
     actorUserId: actor?._id,
     // Organizer-only log, so the actor label may fall back to the email
-    // (unlike playerDisplayName, whose stamp reaches other players).
+    // (unlike the playerName stamp, whose copies reach other players).
     actorName: actor ? auditUserLabel(actor) : null,
     actorRole: args.actorRole,
     event: args.event,
@@ -69,46 +70,36 @@ export async function logConventionAuditEvent(
   });
 }
 
-// The label an audit row stores for a registration or badge: the stamped
-// playerName when the account has one, otherwise the participant's organizer
-// label, which falls back to the email. The stamp is name-only because its
-// copies reach other players (playerDisplayName); both audit logs are
-// organizer-only by access, so they are the one place that label is
-// denormalized. Resolving it here, once per append, keeps the two list
-// queries free of per-row joins and off every user document's subscription.
-// A named account reads nothing; a nameless one costs two reads (participant,
-// user) per event — and none when the caller holds the registrant's user
-// document (auditUserLabel). Null only when the participant is gone.
-async function auditPlayerLabel(
-  ctx: MutationCtx,
-  registration: { playerName?: string; participantId: Id<"participants"> },
-): Promise<string | null> {
-  if (registration.playerName !== undefined) {
-    return registration.playerName;
-  }
-  const participant = await ctx.db.get(registration.participantId);
-  return participant ? await participantOrganizerName(ctx, participant) : null;
+// The label an audit row stores for a registration or badge: the row's
+// organizer label — the account's name, or its email when it has none
+// (registrationNameStamp). Both audit logs are organizer-only by access, so
+// the email may be denormalized here; the player-safe playerName copies on
+// standings, match players, and seats never carry it. Read straight off
+// the row the caller already holds, so an append costs no extra read. Null
+// only for a row with neither stamp (an account with neither name nor
+// email).
+function auditPlayerLabel(registration: {
+  playerName?: string;
+  organizerLabel?: string;
+}): string | null {
+  return registrationOrganizerLabel(registration) ?? null;
 }
 
 // Shapes a registration into the audit log's denormalized player reference.
-export async function auditPlayerRef(
-  ctx: MutationCtx,
-  registration: Doc<"tournamentRegistrations">,
-) {
+export function auditPlayerRef(registration: Doc<"tournamentRegistrations">) {
   return {
     registrationId: registration._id,
-    playerName: await auditPlayerLabel(ctx, registration),
+    playerName: auditPlayerLabel(registration),
   };
 }
 
 // Shapes a badge registration into the convention log's player reference.
-export async function conventionAuditPlayerRef(
-  ctx: MutationCtx,
+export function conventionAuditPlayerRef(
   registration: Doc<"conventionRegistrations">,
 ) {
   return {
     registrationId: registration._id,
-    playerName: await auditPlayerLabel(ctx, registration),
+    playerName: auditPlayerLabel(registration),
   };
 }
 
@@ -128,7 +119,7 @@ export async function auditMatchPlayerRef(
   const registration = await ctx.db.get(playerRow.playerId);
   return {
     registrationId: playerRow.playerId,
-    playerName: registration ? await auditPlayerLabel(ctx, registration) : null,
+    playerName: registration ? auditPlayerLabel(registration) : null,
   };
 }
 
@@ -161,7 +152,7 @@ export async function logEntryPaymentAudit(
     registration: {
       _id: Id<"tournamentRegistrations"> | Id<"conventionRegistrations">;
       playerName?: string;
-      participantId: Id<"participants">;
+      organizerLabel?: string;
     };
     event: PaidEntryAuditEvent;
   } & AuditActorArgs,
@@ -174,7 +165,7 @@ export async function logEntryPaymentAudit(
     ...args.owner,
     registrationId: args.registration._id,
   });
-  const playerName = await auditPlayerLabel(ctx, args.registration);
+  const playerName = auditPlayerLabel(args.registration);
   // One construction for both logs; generic over the per-table
   // registrationId each log's player ref demands.
   const eventWithPlayer = <RegistrationId>(registrationId: RegistrationId) => ({

@@ -3,6 +3,10 @@ import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { requireIdentity } from "../auth";
 import { claimGuestParticipants } from "./participants";
 import { nextPublicCode } from "./publicCodes";
+import {
+  registrationNameStamp,
+  syncRegistrationNameStamps,
+} from "./registrations";
 import { normalizeEmail } from "../validators";
 
 export const USER_PUBLIC_CODE_COUNTER_KEY = "userPublicCode";
@@ -62,6 +66,24 @@ export async function upsertUser(
         historyVisibility: "public",
         ...patch,
       });
+  // This patch is the only writer of users.name and users.email, so it is
+  // where the name stamps denormalized onto the account's registrations,
+  // badges, and standings rows are kept true (see registrationNameStamp):
+  // a provider that starts supplying a name, or drops one, reaches every
+  // roster and the player standings on the next sign-in. Compared before
+  // the patch so an unchanged sign-in — the common case — writes nothing
+  // beyond the user row.
+  if (
+    existing &&
+    (existing.name !== fields.name || existing.email !== fields.email)
+  ) {
+    await syncRegistrationNameStamps(
+      ctx,
+      userId,
+      registrationNameStamp(fields),
+      now,
+    );
+  }
 
   await acceptPendingInvitations(ctx, {
     userId,

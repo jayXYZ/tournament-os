@@ -38,8 +38,8 @@ import {
 } from "../model/ticketTypes";
 import { tiebreakRandom } from "../model/random";
 import {
-  playerDisplayName,
   registrationForUser,
+  registrationNameStamp,
   requireCapacityAvailable,
 } from "../model/registrations";
 import { requireTournament } from "../model/tournaments";
@@ -172,7 +172,7 @@ export const beginEntryCheckout = internalMutation({
           participantId: participant._id,
           tournamentStartDate: tournament.startDate,
           entryStatus: "pending",
-          playerName: playerDisplayName(user),
+          ...registrationNameStamp(user),
           createdAt: now,
           tiebreakRandom: tiebreakRandom(
             tournament.seed ?? tournament.publicCode,
@@ -185,7 +185,7 @@ export const beginEntryCheckout = internalMutation({
         await setRegistrationState(ctx, registration._id, {
           entryStatus: "pending",
           awaitingReview: false,
-          playerName: playerDisplayName(user),
+          ...registrationNameStamp(user),
           tournamentStartDate: tournament.startDate,
           updatedAt: Date.now(),
         });

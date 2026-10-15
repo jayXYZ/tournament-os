@@ -78,14 +78,15 @@ export const getLatestStandings = query({
     // player on every execution.
     //
     // The same goes for names: the stamped playerName is the whole answer.
-    // It is name-only by construction (playerDisplayName), and an absent
-    // stamp means the account has no name — not a cache miss to read
-    // through. Reading through here would hang every player's subscription
-    // on every nameless account's user document (which upsertUser patches
-    // on each sign-in) and spend three reads per such row against the
-    // transaction's index-range budget. Organizer surfaces, whose audience
-    // is small, resolve the email label at read time instead
-    // (resolveOrganizerDisplayName).
+    // It is name-only by construction (registrationNameStamp), and the
+    // sign-in re-stamp (syncRegistrationNameStamps) rewrites this round's
+    // row whenever the account's name changes, so an absent stamp means the
+    // account has no name today — not a cache miss to read through. Reading
+    // through here would hang every player's subscription on every nameless
+    // account's user document (which upsertUser patches on each sign-in)
+    // and spend reads per such row against the transaction's index-range
+    // budget. Organizer surfaces label such a row by email from the
+    // registration's organizerLabel instead (resolveOrganizerDisplayName).
     const rows = await mapAsyncInBatches(
       standings,
       DATABASE_IO_BATCH_SIZE,

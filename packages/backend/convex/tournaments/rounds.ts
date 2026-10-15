@@ -268,9 +268,10 @@ export const listRoundPairings = query({
     await requireOrganizerAccess(ctx, round.tournamentId);
     const matchesWithPlayers = await roundMatchesWithPlayers(ctx, args.roundId);
 
-    // Names come from the denormalized copy on each match-player row; only rows
-    // missing it (legacy data) fall back to a live lookup, keeping this query
-    // off the per-row user join that would otherwise blow the read budget.
+    // Names come from the denormalized copy on each match-player row; only a
+    // nameless row reads its registration (one document) for the organizer's
+    // email label, keeping this query off the per-row user join that would
+    // otherwise blow the read budget.
     return await mapAsyncInBatches(
       matchesWithPlayers,
       DATABASE_IO_BATCH_SIZE,

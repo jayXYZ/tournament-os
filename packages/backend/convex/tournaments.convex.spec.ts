@@ -6,7 +6,10 @@ import { expect, test } from "vitest";
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { setRegistrationState } from "./model/participation";
-import { MAX_TOURNAMENT_PLAYERS } from "./model/registrations";
+import {
+  MAX_TOURNAMENT_PLAYERS,
+  registrationNameStamp,
+} from "./model/registrations";
 import { generateTestResults } from "./model/testing";
 import {
   insertLinkedParticipant,
@@ -1499,7 +1502,7 @@ test("organizers can search registrations by player name scoped to one tournamen
         participantId: participant5Id,
         tournamentStartDate: now + 86_400_000,
         entryStatus: "cancelled",
-        playerName,
+        ...registrationNameStamp({ name: playerName }),
         createdAt: now + index,
         tiebreakRandom: index + 1,
         updatedAt: now + index,

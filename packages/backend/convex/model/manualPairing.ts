@@ -163,10 +163,7 @@ export async function pairPlayersManually(
       roundId: round._id,
       roundNumber: round.roundNumber,
       tableNumber,
-      players: [
-        await auditPlayerRef(ctx, playerOne),
-        await auditPlayerRef(ctx, playerTwo),
-      ],
+      players: [auditPlayerRef(playerOne), auditPlayerRef(playerTwo)],
       isBye: false,
     },
   });
@@ -211,7 +208,7 @@ export async function assignByeManually(
       roundId: round._id,
       roundNumber: round.roundNumber,
       tableNumber: null,
-      players: [await auditPlayerRef(ctx, registration)],
+      players: [auditPlayerRef(registration)],
       isBye: true,
     },
   });

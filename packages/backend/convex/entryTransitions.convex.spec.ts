@@ -17,6 +17,7 @@ import { expect, test } from "vitest";
 import { api } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { TournamentAuditEvent } from "./model/auditLog";
+import { registrationNameStamp } from "./model/registrations";
 import schema from "./schema";
 import type { RegistrationFilter } from "./validators";
 import {
@@ -820,7 +821,7 @@ async function seedApplication(
       tournamentStartDate: tournament.startDate,
       entryStatus,
       ...(entryStatus === "pending" ? { awaitingReview: true as const } : {}),
-      playerName: playerIdentity(playerNumber).name,
+      ...registrationNameStamp(playerIdentity(playerNumber)),
       createdAt: now,
       tiebreakRandom: playerNumber,
       updatedAt: now,
@@ -863,7 +864,7 @@ async function seedApplications(
         tournamentStartDate: tournament.startDate,
         entryStatus,
         ...(entryStatus === "pending" ? { awaitingReview: true as const } : {}),
-        playerName: identity.name,
+        ...registrationNameStamp(identity),
         createdAt: now,
         tiebreakRandom: playerNumber,
         updatedAt: now,

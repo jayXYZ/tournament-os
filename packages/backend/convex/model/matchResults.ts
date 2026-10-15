@@ -218,7 +218,7 @@ export async function applyMatchResult(
         ? {
             type: "match_conceded",
             ...eventBase,
-            player: await auditPlayerRef(ctx, policy.concededBy),
+            player: auditPlayerRef(policy.concededBy),
           }
         : policy.kind === "organizer"
           ? { type: "match_result_recorded", ...eventBase, previousResult }

@@ -89,25 +89,6 @@ export async function participantPublicIdentity(
   return { name: user?.name ?? null, avatarUrl: user?.avatarUrl ?? null };
 }
 
-// The label an ORGANIZER sees for a participant: the same name as the public
-// identity, but an account without a name falls back to its email so the
-// roster, pairings board, and seating list still identify the player.
-// Organizer-only by construction — never call this from a player-facing
-// reader, and never denormalize its result onto a row a player can read
-// (registrations, standings, match players, seats: see playerDisplayName in
-// model/registrations.ts). The organizer-only audit logs are the one place
-// it is stored (model/auditLog.ts auditPlayerLabel).
-export async function participantOrganizerName(
-  ctx: QueryCtx,
-  participant: Doc<"participants">,
-): Promise<string | null> {
-  if (participant.userId === undefined) {
-    return participant.displayName ?? null;
-  }
-  const user = await ctx.db.get(participant.userId);
-  return user?.name ?? user?.email ?? null;
-}
-
 // A registration's public identity, resolved through its participant. The
 // shared read for surfaces that show an opponent to other players (the Player
 // View's match card, the profile match log): always through the participant

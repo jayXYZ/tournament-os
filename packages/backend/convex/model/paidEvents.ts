@@ -119,7 +119,7 @@ export async function confirmPaidEntry(
       ...actorArgs,
       event: {
         type: "player_registered",
-        player: await auditPlayerRef(ctx, args.entry.registration),
+        player: auditPlayerRef(args.entry.registration),
       },
     });
     return;
@@ -141,7 +141,7 @@ export async function confirmPaidEntry(
       ...actorArgs,
       event: {
         type: "badge_registered",
-        player: await conventionAuditPlayerRef(ctx, args.entry.registration),
+        player: conventionAuditPlayerRef(args.entry.registration),
       },
     });
     return;

@@ -7,6 +7,7 @@ import type { FunctionArgs } from "convex/server";
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
+import { registrationNameStamp } from "./model/registrations";
 import type schema from "./schema";
 
 // Registrations belong to participants (ADR 0002), so spec seeding that
@@ -207,7 +208,7 @@ export async function seedTournamentWithPlayers(
           tournamentStartDate: tournament.startDate,
           entryStatus: "confirmed",
           participationStatus: "active",
-          ...(playerNames ? { playerName } : {}),
+          ...(playerNames ? registrationNameStamp({ name: playerName }) : {}),
           createdAt: now + playerNumber,
           tiebreakRandom:
             tiebreak === "descending" ? 100_000 - playerNumber : playerNumber,

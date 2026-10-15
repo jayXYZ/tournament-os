@@ -17,7 +17,7 @@ import { nextPublicCode } from "./publicCodes";
 import {
   adjustConfirmedRegistrationCount,
   hasCapacityAvailable,
-  playerDisplayName,
+  registrationNameStamp,
 } from "./registrations";
 import {
   adjustTicketTypeConfirmedCount,
@@ -262,6 +262,7 @@ export async function setBadgeEntryStatus(
     // A revived row may switch passes (upsertBadgeRow re-stamps it).
     ticketTypeId?: Id<"conventionTicketTypes">;
     playerName?: string;
+    organizerLabel?: string;
     updatedAt: number;
   },
 ) {
@@ -321,7 +322,7 @@ export async function upsertBadgeRow(
     await setBadgeEntryStatus(ctx, existing._id, {
       ticketTypeId: args.ticketType._id,
       entryStatus: args.entryStatus,
-      playerName: playerDisplayName(args.user),
+      ...registrationNameStamp(args.user),
       updatedAt: now,
     });
     return (await ctx.db.get(existing._id))!;
@@ -331,7 +332,7 @@ export async function upsertBadgeRow(
     participantId: participant._id,
     ticketTypeId: args.ticketType._id,
     entryStatus: args.entryStatus,
-    playerName: playerDisplayName(args.user),
+    ...registrationNameStamp(args.user),
     createdAt: now,
     updatedAt: now,
   });
@@ -413,7 +414,7 @@ async function exitBadge(
     actorRole: args.actorRole,
     event: {
       type: args.auditType,
-      player: await conventionAuditPlayerRef(ctx, args.badge),
+      player: conventionAuditPlayerRef(args.badge),
     },
   });
   await settleOrdersOnEntryExit(ctx, {

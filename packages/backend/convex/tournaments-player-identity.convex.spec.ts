@@ -10,6 +10,7 @@ import {
   organizerIdentity,
   playOutCurrentRound,
   playerIdentity,
+  seedOrganizer,
   seedTournamentWithPlayers,
 } from "./specHelpers";
 import { createConvexTest } from "./specHelpers.runtime";
@@ -165,6 +166,174 @@ test("the organizer audit log labels a nameless player by email", async () => {
     `registration_cancelled:${NAMELESS_EMAIL}`,
     `player_registered:${NAMELESS_EMAIL}`,
   ]);
+});
+
+test("the organizer roster search finds a nameless account by its email", async () => {
+  const t = createConvexTest();
+  const { tournamentId } = await seedTournamentWithPlayers(t, {
+    name: "Nameless Search Event",
+    playerCount: 2,
+    playerNames: true,
+  });
+  const organizer = t.withIdentity(organizerIdentity);
+  const namelessRegistrationId = await t
+    .withIdentity(namelessIdentity)
+    .mutation(api.tournaments.registrations.registerSelf, { tournamentId });
+
+  // The search index is over the organizer label, which stamps the email
+  // for an account without a name — so the row the roster labels by email
+  // is also the row the search finds by it.
+  const byEmail = await organizer.query(
+    api.tournaments.registrations.searchRegistrations,
+    { tournamentId, search: NAMELESS_EMAIL },
+  );
+  expect(byEmail.map((row) => [row.registration._id, row.playerName])).toEqual([
+    [namelessRegistrationId, NAMELESS_EMAIL],
+  ]);
+  // Named rows are found by name exactly as before.
+  const byName = await organizer.query(
+    api.tournaments.registrations.searchRegistrations,
+    { tournamentId, search: "Player 2" },
+  );
+  expect(byName.map((row) => row.playerName)).toContain("Player 2");
+
+  // The stored row carries the email only in the organizer label; the
+  // player-safe stamp (the one copied onto standings and seats) is absent.
+  const stored = await t.run(
+    async (ctx) => await ctx.db.get(namelessRegistrationId),
+  );
+  expect(stored?.playerName).toBeUndefined();
+  expect(stored?.organizerLabel).toBe(NAMELESS_EMAIL);
+});
+
+test("the organizer badge search finds a nameless badge holder by email", async () => {
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const organizer = t.withIdentity(organizerIdentity);
+  const conventionId: Id<"conventions"> = await organizer.mutation(
+    api.conventions.lifecycle.createConvention,
+    {
+      organizationId,
+      name: "Nameless Badge Gathering",
+      startDate: Date.UTC(2027, 7, 6, 16, 0, 0),
+      endDate: Date.UTC(2027, 7, 8, 23, 0, 0),
+      playerCapacity: 100,
+    },
+  );
+  await organizer.mutation(api.conventions.lifecycle.publishConvention, {
+    conventionId,
+  });
+  const [ticketType] = await organizer.query(
+    api.conventions.ticketTypes.listTicketTypesForOrganizer,
+    { conventionId },
+  );
+  const badgeId = await t
+    .withIdentity(namelessIdentity)
+    .mutation(api.conventions.registrations.registerSelfForConvention, {
+      conventionId,
+      ticketTypeId: ticketType!._id,
+    });
+
+  const found = await organizer.query(
+    api.conventions.registrations.searchBadges,
+    { conventionId, search: NAMELESS_EMAIL },
+  );
+  expect(found.map((row) => [row.registration._id, row.playerName])).toEqual([
+    [badgeId, NAMELESS_EMAIL],
+  ]);
+});
+
+test("a name gained after registering reaches the standings and roster on the next sign-in", async () => {
+  const t = createConvexTest();
+  const { tournamentId } = await seedTournamentWithPlayers(t, {
+    name: "Renamed Standings Event",
+    playerCount: 3,
+    phases: [{ phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 2 }],
+    playerNames: true,
+  });
+  const organizer = t.withIdentity(organizerIdentity);
+  const namelessRegistrationId = await t
+    .withIdentity(namelessIdentity)
+    .mutation(api.tournaments.registrations.registerSelf, { tournamentId });
+  await organizer.mutation(api.tournaments.rounds.startTournament, {
+    tournamentId,
+  });
+  await playOutCurrentRound(t, tournamentId);
+
+  // The player-facing rows carry no registration id, so the nameless
+  // player's row is picked out by the rank its stored standings row holds.
+  const namelessRank = await t.run(async (ctx) => {
+    const [row] = await ctx.db
+      .query("roundStandings")
+      .withIndex("by_playerId", (q) => q.eq("playerId", namelessRegistrationId))
+      .order("desc")
+      .take(1);
+    return row!.rank;
+  });
+  const standingsNameFor = async (viewer: { tokenIdentifier: string }) => {
+    const standings = await t
+      .withIdentity(viewer)
+      .query(api.tournaments.player.getLatestStandings, { tournamentId });
+    const row = standings?.rows.find(
+      (candidate) => candidate.rank === namelessRank,
+    );
+    expect(row?.isMe).toBe(
+      viewer.tokenIdentifier === namelessIdentity.tokenIdentifier,
+    );
+    return row?.name;
+  };
+  const rosterNameFor = async () => {
+    const roster = await organizer.query(
+      api.tournaments.registrations.listRegistrationPage,
+      { tournamentId, paginationOpts: { numItems: 10, cursor: null } },
+    );
+    return roster.page.find(
+      (row) => row.registration._id === namelessRegistrationId,
+    )?.playerName;
+  };
+  // Nameless at registration: the completed round's standings carry no
+  // name for the row, for other players and for the player themself.
+  expect(await standingsNameFor(playerIdentity(1))).toBeNull();
+  expect(await standingsNameFor(namelessIdentity)).toBeNull();
+  expect(await rosterNameFor()).toBe(NAMELESS_EMAIL);
+
+  // The provider starts supplying a name. The sign-in re-stamps the
+  // registration and the latest completed round's standings row, so the
+  // player-facing standings — which never read through — show the name
+  // without waiting for another round to complete.
+  const named = { ...namelessIdentity, name: "Newly Named" };
+  await t.withIdentity(named).mutation(api.users.upsertMe, {});
+  expect(await standingsNameFor(playerIdentity(1))).toBe("Newly Named");
+  expect(await standingsNameFor(named)).toBe("Newly Named");
+  expect(await rosterNameFor()).toBe("Newly Named");
+  const renamed = await t.run(
+    async (ctx) => await ctx.db.get(namelessRegistrationId),
+  );
+  expect(renamed?.playerName).toBe("Newly Named");
+  expect(renamed?.organizerLabel).toBe("Newly Named");
+
+  // An unchanged sign-in touches no registration row.
+  await t.withIdentity(named).mutation(api.users.upsertMe, {});
+  expect(
+    (await t.run(async (ctx) => await ctx.db.get(namelessRegistrationId)))
+      ?.updatedAt,
+  ).toBe(renamed?.updatedAt);
+
+  // The provider drops the name again: the player-safe stamp is cleared
+  // everywhere it was copied, and the organizer label falls back to the
+  // email — the email never reaches the standings.
+  await t.withIdentity(namelessIdentity).mutation(api.users.upsertMe, {});
+  const standings = await t
+    .withIdentity(playerIdentity(1))
+    .query(api.tournaments.player.getLatestStandings, { tournamentId });
+  expect(JSON.stringify(standings)).not.toContain(NAMELESS_EMAIL);
+  expect(await standingsNameFor(playerIdentity(1))).toBeNull();
+  expect(await rosterNameFor()).toBe(NAMELESS_EMAIL);
+  const unnamed = await t.run(
+    async (ctx) => await ctx.db.get(namelessRegistrationId),
+  );
+  expect(unnamed?.playerName).toBeUndefined();
+  expect(unnamed?.organizerLabel).toBe(NAMELESS_EMAIL);
 });
 
 async function currentRound(
