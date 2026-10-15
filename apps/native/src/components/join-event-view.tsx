@@ -84,16 +84,17 @@ export function JoinEventView({
   });
 
   // Runs one mutation at a time and reports how it went; resolves false on
-  // failure, after the toast has said why.
+  // failure, after the toast has said why. `success` is null where the
+  // outcome shows itself and this view is about to unmount.
   const run = async (
     work: () => Promise<unknown>,
-    success: string,
+    success: string | null,
     fallback: string,
   ) => {
     setBusy(true);
     try {
       await work();
-      show(success);
+      if (success) show(success);
       return true;
     } catch (error) {
       show(mutationErrorMessage(error, fallback), "destructive");
@@ -105,11 +106,13 @@ export function JoinEventView({
 
   const register = async () => {
     const approval = tournament.registrationRequiresApproval;
+    // A direct registration gets no toast: the seat it takes either
+    // replaces this route (onOpenEvent) or flips the event page's access
+    // ladder to the match view, and this view's toast goes with it. The
+    // match page itself is the confirmation.
     const ok = await run(
       () => registerSelf({ tournamentId: tournament._id, inviteCode }),
-      approval
-        ? "Registration submitted for organizer approval."
-        : "You're registered. See you at the event!",
+      approval ? "Registration submitted for organizer approval." : null,
       "Could not register.",
     );
     // An application stays here and turns into its live pending state.
