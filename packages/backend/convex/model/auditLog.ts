@@ -106,6 +106,10 @@ export function auditPlayerRef(registration: Doc<"tournamentRegistrations">) {
   return auditPlayerRefOf(registration._id, registration);
 }
 
+// The tournament log's player reference, as every player, players, and
+// result arm of its events stores it.
+export type AuditPlayerRef = ReturnType<typeof auditPlayerRef>;
+
 // Shapes a badge registration into the convention log's player reference.
 export function conventionAuditPlayerRef(
   registration: Doc<"conventionRegistrations">,
@@ -131,7 +135,7 @@ export function auditPlayerRefForUser(
 export async function auditMatchPlayerRef(
   ctx: MutationCtx,
   playerRow: Doc<"tournamentMatchPlayers">,
-) {
+): Promise<AuditPlayerRef> {
   const stamp =
     playerRow.playerName !== undefined
       ? playerRow
@@ -229,41 +233,37 @@ export async function logEventPayoutAudit(
   });
 }
 
-// One side of a match result as captured in the log.
-export async function auditResultLine(
-  ctx: MutationCtx,
-  playerRow: Doc<"tournamentMatchPlayers">,
+// One side of a match result as captured in the log, on a reference the
+// caller resolved for the row (auditMatchPlayerRef) — once, however many
+// lines the row appears in.
+export function auditResultLine(
+  player: AuditPlayerRef,
   gameWins: number,
   gameLosses: number,
   gameDraws: number,
 ) {
-  return {
-    ...(await auditMatchPlayerRef(ctx, playerRow)),
-    gameWins,
-    gameLosses,
-    gameDraws,
-  };
+  return { ...player, gameWins, gameLosses, gameDraws };
 }
 
 // The result already on a match's player rows, for logging what an organizer
-// override replaced. Null when the match had no result yet.
-export async function existingResultLines(
-  ctx: MutationCtx,
+// override replaced; each row comes with its resolved reference. Null when
+// the match had no result yet.
+export function existingResultLines(
   match: Doc<"tournamentMatches">,
-  playerRows: Doc<"tournamentMatchPlayers">[],
+  players: readonly {
+    row: Doc<"tournamentMatchPlayers">;
+    player: AuditPlayerRef;
+  }[],
 ) {
   if (match.matchStatus !== "completed") {
     return null;
   }
-  return await Promise.all(
-    playerRows.map((row) =>
-      auditResultLine(
-        ctx,
-        row,
-        row.gameWins ?? 0,
-        row.gameLosses ?? 0,
-        row.gameDraws ?? 0,
-      ),
+  return players.map(({ row, player }) =>
+    auditResultLine(
+      player,
+      row.gameWins ?? 0,
+      row.gameLosses ?? 0,
+      row.gameDraws ?? 0,
     ),
   );
 }

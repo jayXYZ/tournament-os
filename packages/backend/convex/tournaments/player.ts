@@ -3,7 +3,6 @@ import { v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import { mutation, query } from "../_generated/server";
 import type { MutationCtx } from "../_generated/server";
-import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
 import { applyMatchResult } from "../model/matchResults";
 import { latestCompletedRound, requirePhase } from "../model/phases";
 import { dropPlayer } from "../model/roster";
@@ -87,27 +86,22 @@ export const getLatestStandings = query({
     // and spend reads per such row against the transaction's index-range
     // budget. Organizer surfaces label such a row by email from the
     // registration's organizerLabel instead (resolveOrganizerDisplayName).
-    const rows = await mapAsyncInBatches(
-      standings,
-      DATABASE_IO_BATCH_SIZE,
-      async (standing) => {
-        return {
-          rank: standing.rank,
-          name: standing.playerName ?? null,
-          matchPoints: standing.matchPoints,
-          matchWins: standing.matchWins,
-          matchLosses: standing.matchLosses,
-          matchDraws: standing.matchDraws,
-          opponentMatchWinPct: standing.opponentMatchWinPct,
-          gameWinPct: standing.gameWinPct,
-          opponentGameWinPct: standing.opponentGameWinPct,
-          playoffStatus: standing.playoffStatus,
-          eliminatedInRoundNumber: standing.eliminatedInRoundNumber ?? null,
-          registrationStatus: standing.participationStatus ?? "active",
-          isMe: standing.playerId === registration._id,
-        };
-      },
-    );
+    // So the rows are a plain projection of the standings documents.
+    const rows = standings.map((standing) => ({
+      rank: standing.rank,
+      name: standing.playerName ?? null,
+      matchPoints: standing.matchPoints,
+      matchWins: standing.matchWins,
+      matchLosses: standing.matchLosses,
+      matchDraws: standing.matchDraws,
+      opponentMatchWinPct: standing.opponentMatchWinPct,
+      gameWinPct: standing.gameWinPct,
+      opponentGameWinPct: standing.opponentGameWinPct,
+      playoffStatus: standing.playoffStatus,
+      eliminatedInRoundNumber: standing.eliminatedInRoundNumber ?? null,
+      registrationStatus: standing.participationStatus ?? "active",
+      isMe: standing.playerId === registration._id,
+    }));
 
     return { roundNumber: latestCompleted.roundNumber, rows };
   },
