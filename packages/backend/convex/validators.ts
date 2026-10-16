@@ -17,6 +17,19 @@ export {
   slugifyOrganizationName,
 } from "@paper-pairings/shared/organizer-utils";
 
+// A provider-supplied profile string as the app stores it: trimmed, and
+// absent when blank. An identity provider can hand over "" for a claim the
+// user never filled in (Clerk's full_name on an account without one), and a
+// stored "" would pass every `?? fallback` and `!== undefined` check that
+// decides whether an account has a name — labelling the player with an empty
+// string instead of the email (organizer surfaces) or "Unknown player"
+// (player surfaces). Applied where identity fields enter the database:
+// upsertUser and registrationNameStamp.
+export function presentText(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
 export const userProfileVisibilityValidator = v.union(
   v.literal("public"),
   v.literal("private"),

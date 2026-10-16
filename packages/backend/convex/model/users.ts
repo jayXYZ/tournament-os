@@ -7,7 +7,7 @@ import {
   registrationNameStamp,
   syncRegistrationNameStamps,
 } from "./registrations";
-import { normalizeEmail } from "../validators";
+import { normalizeEmail, presentText } from "../validators";
 
 export const USER_PUBLIC_CODE_COUNTER_KEY = "userPublicCode";
 // Player codes are purely cosmetic and namespaced by their own route/table, so
@@ -44,9 +44,17 @@ export async function userByTokenIdentifier(
 
 export async function upsertUser(
   ctx: MutationCtx,
-  fields: UserIdentityFields,
+  identity: UserIdentityFields,
 ): Promise<Id<"users">> {
   const now = Date.now();
+  // Blank provider strings are stored as absent (presentText), so every
+  // reader's name-then-email fallback — and the re-stamp comparison below —
+  // sees an account with a "" name as nameless.
+  const fields = {
+    ...identity,
+    name: presentText(identity.name),
+    email: presentText(identity.email),
+  };
   const existing = await userByTokenIdentifier(ctx, fields.tokenIdentifier);
   const patch = {
     email: fields.email,

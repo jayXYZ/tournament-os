@@ -336,6 +336,143 @@ test("a name gained after registering reaches the standings and roster on the ne
   expect(unnamed?.organizerLabel).toBe(NAMELESS_EMAIL);
 });
 
+test("a blank provider name counts as no name", async () => {
+  const t = createConvexTest();
+  const { tournamentId } = await seedTournamentWithPlayers(t, {
+    name: "Blank Name Event",
+    playerCount: 2,
+    phases: [{ phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 1 }],
+    playerNames: true,
+  });
+  const organizer = t.withIdentity(organizerIdentity);
+  // The provider supplies the name claim, but empty — what an account that
+  // never filled in a name can look like. It must stamp exactly as a
+  // missing name does: nothing player-safe, the email for organizers.
+  const blankNamed = { ...namelessIdentity, name: "   " };
+  const registrationId = await t
+    .withIdentity(blankNamed)
+    .mutation(api.tournaments.registrations.registerSelf, { tournamentId });
+
+  const stored = await t.run(async (ctx) => {
+    const registration = await ctx.db.get(registrationId);
+    const participant = registration
+      ? await ctx.db.get(registration.participantId)
+      : null;
+    const user = participant?.userId
+      ? await ctx.db.get(participant.userId)
+      : null;
+    return { registration, user };
+  });
+  expect(stored.user?.name).toBeUndefined();
+  expect(stored.registration?.playerName).toBeUndefined();
+  expect(stored.registration?.organizerLabel).toBe(NAMELESS_EMAIL);
+
+  // Organizer surfaces label the row by email, never by "".
+  const roster = await organizer.query(
+    api.tournaments.registrations.listRegistrationPage,
+    { tournamentId, paginationOpts: { numItems: 10, cursor: null } },
+  );
+  expect(
+    roster.page.find((row) => row.registration._id === registrationId)
+      ?.playerName,
+  ).toBe(NAMELESS_EMAIL);
+  const page = await organizer.query(api.tournaments.auditLog.listAuditEvents, {
+    tournamentId,
+    paginationOpts: { numItems: 20, cursor: null },
+  });
+  const registered = page.page.find(
+    (row) =>
+      row.event.type === "player_registered" &&
+      row.event.player.registrationId === registrationId,
+  );
+  expect(registered?.actorName).toBe(NAMELESS_EMAIL);
+  expect(
+    registered && "player" in registered.event
+      ? registered.event.player.playerName
+      : undefined,
+  ).toBe(NAMELESS_EMAIL);
+
+  // The player standings carry no name for the row (rendered as "Unknown
+  // player"), not an empty string.
+  await organizer.mutation(api.tournaments.rounds.startTournament, {
+    tournamentId,
+  });
+  await playOutCurrentRound(t, tournamentId);
+  const standings = await t
+    .withIdentity(playerIdentity(1))
+    .query(api.tournaments.player.getLatestStandings, { tournamentId });
+  expect(JSON.stringify(standings)).not.toContain(NAMELESS_EMAIL);
+  expect(
+    standings?.rows
+      .map((row) => row.name)
+      .sort((a, b) => (a ?? "").localeCompare(b ?? "")),
+  ).toEqual([null, "Player 1", "Player 2"]);
+});
+
+test("the organizer seating list is alphabetical by the label it prints", async () => {
+  const t = createConvexTest();
+  const { tournamentId } = await seedTournamentWithPlayers(t, {
+    name: "Nameless Seating Event",
+    playerCount: 2,
+    phases: [{ phaseOrder: 1, phaseRoundMode: "dynamic", playerMeeting: true }],
+    playerNames: true,
+  });
+  const organizer = t.withIdentity(organizerIdentity);
+  // An email that sorts after every named player: seating by the sheet's
+  // label files this account last, where the organizer reading
+  // "zed@example.test" aloud expects it — not first under an empty name.
+  const zedEmail = "zed@example.test";
+  await t
+    .withIdentity({
+      ...namelessIdentity,
+      subject: "zed",
+      tokenIdentifier: "https://convex.test|zed",
+      email: zedEmail,
+    })
+    .mutation(api.tournaments.registrations.registerSelf, { tournamentId });
+  const phaseId = await firstPhaseId(t, tournamentId);
+  await organizer.mutation(api.tournaments.playerMeeting.startPlayerMeeting, {
+    phaseId,
+  });
+
+  const seating = await organizer.query(
+    api.tournaments.playerMeeting.listPlayerMeetingSeats,
+    { phaseId },
+  );
+  expect(
+    seating.seats.map((seat) => [seat.tableNumber, seat.playerName]),
+  ).toEqual([
+    [1, "Player 1"],
+    [1, "Player 2"],
+    [2, zedEmail],
+  ]);
+  // Only the ordering saw the email: the seat rows themselves still carry
+  // the player-safe name, and the seatmate players see is name-only.
+  const storedSeats = await t.run(
+    async (ctx) =>
+      await ctx.db
+        .query("playerMeetingSeats")
+        .withIndex("by_tournamentPhaseId_and_tableNumber", (q) =>
+          q.eq("tournamentPhaseId", phaseId),
+        )
+        .collect(),
+  );
+  expect(storedSeats.map((seat) => seat.playerName)).toEqual([
+    "Player 1",
+    "Player 2",
+    null,
+  ]);
+  const view = await t
+    .withIdentity(playerIdentity(1))
+    .query(api.tournaments.player.getMyCurrentMatch, { tournamentId });
+  expect(JSON.stringify(view)).not.toContain(zedEmail);
+  expect(view.kind).toBe("player_meeting");
+  if (view.kind === "player_meeting") {
+    expect(view.meeting.tableNumber).toBe(1);
+    expect(view.meeting.seatmateName).toBe("Player 2");
+  }
+});
+
 async function currentRound(
   t: TestConvex<typeof schema>,
   tournamentId: Id<"tournaments">,

@@ -6,7 +6,7 @@ import type {
 
 import type { DataModel, Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
-import type { RegistrationFilter } from "../validators";
+import { presentText, type RegistrationFilter } from "../validators";
 import { ORGANIZER_LIST_PAGE_SIZE } from "./pagination";
 import { participantForUser, participantPublicIdentity } from "./participants";
 
@@ -83,7 +83,7 @@ export async function syncRegistrationStartDatesBatch(
 //   It is the copy carried onward onto standings rows, match players, and
 //   meeting seats, which other players read (the player standings, a
 //   seatmate's name), so the stamp itself must be safe to show anyone. An
-//   account without a name stamps nothing here.
+//   account without a name — or with a blank one — stamps nothing here.
 // - organizerLabel is the ORGANIZER label: the same name, or the account's
 //   email when it has none, so an organizer can still tell who a nameless
 //   player is and the roster search (search_organizerLabel) can still find
@@ -107,10 +107,12 @@ export function registrationNameStamp(identity: {
   name?: string;
   email?: string;
 }): RegistrationNameStamp {
-  const playerName = identity.name ?? undefined;
+  // Blank provider strings count as absent (presentText): a "" name would
+  // otherwise stamp "" and pass as present on every reader's fallback check.
+  const playerName = presentText(identity.name);
   return {
     playerName,
-    organizerLabel: playerName ?? identity.email ?? undefined,
+    organizerLabel: playerName ?? presentText(identity.email),
   };
 }
 
@@ -242,22 +244,24 @@ export async function syncRegistrationNameStamps(
   }
 }
 
-// Seating order for player meetings: alphabetical by display name (case-
-// insensitive, locale-aware), tie-broken by registration createdAt so players
-// with identical names still seat deterministically (the same tie-break
-// pairing and standings use).
+// Seating order for player meetings: alphabetical (case-insensitive,
+// locale-aware) by the label the organizer's seating sheet prints — the
+// organizer label, so a nameless account files under its email where the
+// organizer reading the sheet will look for it rather than under "" at the
+// front — tie-broken by registration createdAt so players with identical
+// labels still seat deterministically (the same tie-break pairing and
+// standings use). Only the ordering key sees the email; the seat's stored
+// playerName stays the player-safe copy.
 export function comparePlayersAlphabetically(
-  a: { playerName: string | null; createdAt: number },
-  b: { playerName: string | null; createdAt: number },
+  a: { seatingLabel: string | null; createdAt: number },
+  b: { seatingLabel: string | null; createdAt: number },
 ) {
-  const byName = (a.playerName ?? "").localeCompare(
-    b.playerName ?? "",
+  const byLabel = (a.seatingLabel ?? "").localeCompare(
+    b.seatingLabel ?? "",
     undefined,
-    {
-      sensitivity: "base",
-    },
+    { sensitivity: "base" },
   );
-  return byName !== 0 ? byName : a.createdAt - b.createdAt;
+  return byLabel !== 0 ? byLabel : a.createdAt - b.createdAt;
 }
 
 export async function requireRegistration(
