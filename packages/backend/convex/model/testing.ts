@@ -12,6 +12,7 @@ import { createSeededRandom, tiebreakRandom } from "./random";
 import {
   MAX_TOURNAMENT_PLAYERS,
   adjustConfirmedRegistrationCount,
+  registrationNameStamp,
 } from "./registrations";
 import {
   matchPlayers,
@@ -153,7 +154,8 @@ export async function seedTestPlayers(
       tournamentStartDate: tournament.startDate,
       entryStatus: "confirmed",
       participationStatus: "active",
-      playerName,
+      // A guest's organizer label is its display name, like any named row.
+      ...registrationNameStamp({ name: playerName }),
       createdAt: now + playerNumber,
       // Keyed on the player number — a test player's stable identity — so
       // the same seed reproduces identical pairings across test-tournament

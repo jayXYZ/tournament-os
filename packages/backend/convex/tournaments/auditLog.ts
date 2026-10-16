@@ -7,7 +7,9 @@ import { requireOrganizerAccess } from "../model/tournaments";
 
 // The tournament's audit trail, newest first. Organizer-only: the log exists
 // for dispute resolution and can reference players who are no longer on the
-// public roster.
+// public roster. Rows come back as stored — every player reference was
+// labelled at append time (model/auditLog.ts auditPlayerLabel), so a page
+// costs exactly its rows and subscribes to nothing else.
 export const listAuditEvents = query({
   args: {
     tournamentId: v.id("tournaments"),

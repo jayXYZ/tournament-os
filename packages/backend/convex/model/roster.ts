@@ -98,7 +98,10 @@ export async function dropPlayer(
     tournamentId: tournament._id,
     actor,
     actorRole,
-    event: { type: "player_dropped", player: auditPlayerRef(registration) },
+    event: {
+      type: "player_dropped",
+      player: auditPlayerRef(registration),
+    },
   });
   // A drop during the player's own unfinished match concedes it (see
   // CONTEXT.md "Concession"), recorded with the drop's actor.
@@ -152,7 +155,10 @@ export async function reinstatePlayer(
     tournamentId: tournament._id,
     actor,
     actorRole,
-    event: { type: "player_reinstated", player: auditPlayerRef(registration) },
+    event: {
+      type: "player_reinstated",
+      player: auditPlayerRef(registration),
+    },
   });
 }
 

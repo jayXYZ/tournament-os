@@ -4,7 +4,10 @@ import { beforeEach, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { ORGANIZER_LIST_PAGE_SIZE } from "./model/pagination";
-import { PAYMENT_FILTER_ROWS_PER_PAGE } from "./model/registrations";
+import {
+  PAYMENT_FILTER_ROWS_PER_PAGE,
+  registrationNameStamp,
+} from "./model/registrations";
 import {
   organizerIdentity,
   playerIdentity,
@@ -458,7 +461,7 @@ async function seedMirroredRegistrations(
         tournamentStartDate: tournament.startDate,
         entryStatus: "confirmed",
         participationStatus: "active",
-        playerName: row.playerName,
+        ...registrationNameStamp({ name: row.playerName }),
         paymentStatus: row.paymentStatus,
         createdAt: now + index,
         tiebreakRandom: index,

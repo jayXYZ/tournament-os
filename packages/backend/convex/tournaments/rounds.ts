@@ -30,7 +30,7 @@ import {
 import {
   MAX_TOURNAMENT_PLAYERS,
   nonActiveParticipationStatuses,
-  resolveRegistrationDisplayName,
+  resolveOrganizerDisplayName,
 } from "../model/registrations";
 import {
   matchPlayers,
@@ -143,7 +143,7 @@ export const listUnpairedPlayers = query({
       DATABASE_IO_BATCH_SIZE,
       async (registration) => ({
         registrationId: registration._id,
-        playerName: await resolveRegistrationDisplayName(
+        playerName: await resolveOrganizerDisplayName(
           ctx,
           registration.playerName,
           registration._id,
@@ -268,9 +268,10 @@ export const listRoundPairings = query({
     await requireOrganizerAccess(ctx, round.tournamentId);
     const matchesWithPlayers = await roundMatchesWithPlayers(ctx, args.roundId);
 
-    // Names come from the denormalized copy on each match-player row; only rows
-    // missing it (legacy data) fall back to a live lookup, keeping this query
-    // off the per-row user join that would otherwise blow the read budget.
+    // Names come from the denormalized copy on each match-player row; only a
+    // nameless row reads its registration (one document) for the organizer's
+    // email label, keeping this query off the per-row user join that would
+    // otherwise blow the read budget.
     return await mapAsyncInBatches(
       matchesWithPlayers,
       DATABASE_IO_BATCH_SIZE,
@@ -278,7 +279,7 @@ export const listRoundPairings = query({
         const resolvedPlayers = await Promise.all(
           players.map(async (player) => ({
             ...player,
-            playerName: await resolveRegistrationDisplayName(
+            playerName: await resolveOrganizerDisplayName(
               ctx,
               player.playerName,
               player.playerId,
@@ -361,7 +362,7 @@ export const listRoundStandings = query({
       DATABASE_IO_BATCH_SIZE,
       async (standing) => ({
         standing,
-        playerName: await resolveRegistrationDisplayName(
+        playerName: await resolveOrganizerDisplayName(
           ctx,
           standing.playerName,
           standing.playerId,

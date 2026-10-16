@@ -403,9 +403,11 @@ export default defineSchema({
     // and a checkout begun for a different type re-stamps the revived row.
     ticketTypeId: v.id("conventionTicketTypes"),
     entryStatus: tournamentEntryStatusValidator,
-    // Denormalized like tournamentRegistrations.playerName so the badge
-    // roster renders without per-row user joins.
+    // Denormalized like tournamentRegistrations.playerName and
+    // organizerLabel so the badge roster renders without per-row user joins
+    // (see registrationNameStamp in model/registrations.ts).
     playerName: v.optional(v.string()),
+    organizerLabel: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -423,15 +425,18 @@ export default defineSchema({
     .index("by_conventionId_and_createdAt", ["conventionId", "createdAt"])
     .index("by_conventionId_and_entryStatus", ["conventionId", "entryStatus"])
     .index("by_participantId_and_entryStatus", ["participantId", "entryStatus"])
-    .searchIndex("search_playerName", {
-      searchField: "playerName",
+    // Over the organizer label, not playerName, so a badge holder whose
+    // account has no name is still findable by email (organizer-only).
+    .searchIndex("search_organizerLabel", {
+      searchField: "organizerLabel",
       filterFields: ["conventionId"],
     }),
 
   // Append-only audit trail of convention actions, the parallel of
   // tournamentAuditEvents (see conventionAuditEventValidator for why it is
   // a separate table). Rows are immutable; deleted only when the convention
-  // is deleted.
+  // is deleted. Organizer-only, so player references may carry an email
+  // label (see auditPlayerRefValidator).
   conventionAuditEvents: defineTable({
     conventionId: v.id("conventions"),
     // Absent exactly when actorRole is "system".
@@ -597,11 +602,20 @@ export default defineSchema({
     // "eliminated". Rewinding that round can then restore exactly those
     // players without reviving voluntary drops or disqualifications.
     eliminatedByRoundId: v.optional(v.id("tournamentRounds")),
-    // Display name (user.name ?? user.email) denormalized at registration time
-    // so roster, standings, and pairings list queries never join through to the
-    // user document per row. Optional only for rows written before this field
-    // existed; readers fall back to a live user lookup when it is missing.
+    // The player-safe display name (user.name — never the email) stamped at
+    // registration time and copied onto standings rows, match players, and
+    // meeting seats, so roster, standings, and pairings list queries never
+    // join through to the user document per row. Absent when the account
+    // has no name: player-facing readers show nothing for such a row.
+    // Kept current by the sign-in re-stamp (syncRegistrationNameStamps in
+    // model/registrations.ts, which also documents both fields).
     playerName: v.optional(v.string()),
+    // The organizer label: the same name, or the account's email when it
+    // has none. The roster search indexes it and the organizer readers
+    // label nameless rows with it. Organizer-only by construction: the
+    // registration document is returned to its holder and to organizers
+    // only, so this must never be copied onto a row other players read.
+    organizerLabel: v.optional(v.string()),
     // Denormalized from the player's decklist at submission time (see
     // submitMyDecklist, the only writer of both) so the organizer roster
     // shows who has submitted — and which deck — without a per-row decklist
@@ -672,8 +686,8 @@ export default defineSchema({
     // field rather than a `.filter` after the search, because a search reads
     // at most 1024 ranked rows out of the index and a post-filter sees only
     // those — a matching player ranked past them would read as absent.
-    .searchIndex("search_playerName", {
-      searchField: "playerName",
+    .searchIndex("search_organizerLabel", {
+      searchField: "organizerLabel",
       filterFields: [
         "tournamentId",
         "entryStatus",
@@ -876,9 +890,13 @@ export default defineSchema({
     tournamentPhaseId: v.id("tournamentPhases"),
     tournamentRoundId: v.id("tournamentRounds"),
     playerId: v.id("tournamentRegistrations"),
-    // Denormalized from the registration when the standings row is written, so
-    // the standings list query renders names without a per-row user join.
-    // Optional for legacy rows; readers fall back to a live user lookup.
+    // The player-safe name, copied from the registration when the standings
+    // row is written so the standings list query renders names without a
+    // per-row user join, and re-stamped on the latest completed round's row
+    // when the account's name changes (syncRegistrationNameStamps). Absent
+    // when the account has no name; the player-facing standings query treats
+    // that as final (no read-through), the organizer one resolves the
+    // registration's organizer label with one read.
     playerName: v.optional(v.string()),
     rank: v.number(),
     matchPoints: v.number(),
@@ -934,7 +952,8 @@ export default defineSchema({
   // Append-only audit trail of tournament actions (result entries and edits,
   // drops, lifecycle changes) for dispute resolution. Rows are immutable — no
   // updatedAt; _creationTime is the event timestamp. Deleted only when the
-  // whole tournament is deleted.
+  // whole tournament is deleted. Organizer-only: a player reference may
+  // carry an account's email as its label (see auditPlayerRefValidator).
   tournamentAuditEvents: defineTable({
     tournamentId: v.id("tournaments"),
     // Absent exactly when actorRole is "system" (payment webhooks and

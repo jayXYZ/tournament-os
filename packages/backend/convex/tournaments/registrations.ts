@@ -9,7 +9,7 @@ import {
   type QueryCtx,
 } from "../_generated/server";
 import { currentUserOrNull } from "../model/access";
-import { logAuditEvent } from "../model/auditLog";
+import { auditPlayerRefForUser, logAuditEvent } from "../model/auditLog";
 import { inviteCodeGrantsAccess } from "../model/invites";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
 import { registrationsConcededByDrop } from "../model/matchResults";
@@ -27,13 +27,13 @@ import {
   entryReviewActions,
   paginateRegistrationHistory,
   pendingReviewCount,
-  playerDisplayName,
   registrationDropEffect,
   registrationForUser,
+  registrationNameStamp,
+  registrationOrganizerLabel,
   registrationReinstateEffect,
   requireCapacityAvailable,
   requireRegistration,
-  resolveRegistrationDisplayName,
   searchRegistrationHistory,
 } from "../model/registrations";
 import {
@@ -64,41 +64,33 @@ async function registrationRows(
 ) {
   // One open-round scan serves every row's concession fact below.
   const concededByDrop = await registrationsConcededByDrop(ctx, tournament);
-  // Names come from the denormalized copy on the registration; only rows
-  // missing it fall back to a live identity lookup, so the common path does
-  // zero per-row joins.
-  return await mapAsyncInBatches(
-    registrations,
-    DATABASE_IO_BATCH_SIZE,
-    async (registration) => ({
-      registration,
-      playerName: await resolveRegistrationDisplayName(
-        ctx,
-        registration.playerName,
-        registration._id,
-      ),
-      // What dropRegistration would do to this row right now (null when it
-      // is unavailable), so the client renders the drop action from server
-      // truth instead of mirroring the lifecycle rules.
-      dropEffect: registrationDropEffect(tournament.lifecycle, registration),
-      // Whether that drop would also concede the row's unfinished match in
-      // the open round — same predicate the drop applies, so the dialog's
-      // wording always matches what confirming it will do.
-      dropWouldConcede: concededByDrop.has(registration._id),
-      // The entry-review actions available on this row (null when
-      // unavailable), from the same projections and capacity rule the verbs
-      // enforce, so the approve/reject/waitlist menu items and their wording
-      // always match what confirming them will do.
-      ...entryReviewActions(tournament, registration),
-      // The row's payment state on paid events: the newest order's status,
-      // read from the mirror every order write maintains (schema.ts
-      // tournamentRegistrations.paymentStatus) rather than a per-row order
-      // lookup; null on free events or when the player has no order yet.
-      paymentStatus: isPaidEvent(tournament)
-        ? (registration.paymentStatus ?? null)
-        : null,
-    }),
-  );
+  // Names come straight off the registration's stamps — no per-row read at
+  // all. Organizer-only surface: a nameless account is labelled by its
+  // email (registrationOrganizerLabel).
+  return registrations.map((registration) => ({
+    registration,
+    playerName: registrationOrganizerLabel(registration),
+    // What dropRegistration would do to this row right now (null when it
+    // is unavailable), so the client renders the drop action from server
+    // truth instead of mirroring the lifecycle rules.
+    dropEffect: registrationDropEffect(tournament.lifecycle, registration),
+    // Whether that drop would also concede the row's unfinished match in
+    // the open round — same predicate the drop applies, so the dialog's
+    // wording always matches what confirming it will do.
+    dropWouldConcede: concededByDrop.has(registration._id),
+    // The entry-review actions available on this row (null when
+    // unavailable), from the same projections and capacity rule the verbs
+    // enforce, so the approve/reject/waitlist menu items and their wording
+    // always match what confirming them will do.
+    ...entryReviewActions(tournament, registration),
+    // The row's payment state on paid events: the newest order's status,
+    // read from the mirror every order write maintains (schema.ts
+    // tournamentRegistrations.paymentStatus) rather than a per-row order
+    // lookup; null on free events or when the player has no order yet.
+    paymentStatus: isPaidEvent(tournament)
+      ? (registration.paymentStatus ?? null)
+      : null,
+  }));
 }
 
 // What finding an existing registration row means for a new registerSelf
@@ -223,7 +215,7 @@ export const registerSelf = mutation({
           participationStatus: "active" as const,
         };
     const now = Date.now();
-    const playerName = playerDisplayName(user);
+    const nameStamp = registrationNameStamp(user);
     const participant = await ensureParticipantForUser(ctx, user._id);
     const registrationId =
       existing?._id ??
@@ -232,7 +224,7 @@ export const registerSelf = mutation({
         participantId: participant._id,
         tournamentStartDate: tournament.startDate,
         ...admission,
-        playerName,
+        ...nameStamp,
         createdAt: now,
         tiebreakRandom: tiebreakRandom(
           tournament.seed ?? tournament.publicCode,
@@ -243,7 +235,7 @@ export const registerSelf = mutation({
     if (existing) {
       await setRegistrationState(ctx, existing._id, {
         ...admission,
-        playerName,
+        ...nameStamp,
         tournamentStartDate: tournament.startDate,
         updatedAt: now,
       });
@@ -251,18 +243,18 @@ export const registerSelf = mutation({
     if (!requiresApproval) {
       await adjustConfirmedRegistrationCount(ctx, tournament, 1, now);
     }
+    // The registrant is the player: labelled from the stamp the row was just
+    // written with, without reading the row back.
+    const player = auditPlayerRefForUser(registrationId, user);
     await logAuditEvent(ctx, {
       tournamentId: tournament._id,
       actor: user,
       actorRole: "player",
       event: requiresApproval
-        ? {
-            type: "registration_requested",
-            player: { registrationId, playerName: playerName ?? null },
-          }
+        ? { type: "registration_requested", player }
         : {
             type: "player_registered",
-            player: { registrationId, playerName: playerName ?? null },
+            player,
             compedByBadge: compedByBadge || undefined,
           },
     });
