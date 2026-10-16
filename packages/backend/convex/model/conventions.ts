@@ -7,11 +7,7 @@ import {
   requireActiveMembership,
 } from "./access";
 import type { AuditActorRole } from "./auditLog";
-import {
-  auditUserLabel,
-  conventionAuditPlayerRef,
-  logConventionAuditEvent,
-} from "./auditLog";
+import { conventionAuditPlayerRef, logConventionAuditEvent } from "./auditLog";
 import { ensureParticipantForUser, participantForUser } from "./participants";
 import { nextPublicCode } from "./publicCodes";
 import {
@@ -370,10 +366,7 @@ export async function registerBadge(
     actorRole: "player",
     event: {
       type: "badge_registered",
-      player: {
-        registrationId: badge._id,
-        playerName: auditUserLabel(args.user),
-      },
+      player: conventionAuditPlayerRef(badge),
     },
   });
   return badge;

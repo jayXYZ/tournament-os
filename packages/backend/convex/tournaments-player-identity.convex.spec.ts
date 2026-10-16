@@ -7,6 +7,8 @@ import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import schema from "./schema";
 import {
+  matchForPlayer,
+  opponentNumber,
   organizerIdentity,
   playOutCurrentRound,
   playerIdentity,
@@ -208,30 +210,13 @@ test("the organizer roster search finds a nameless account by its email", async 
 
 test("the organizer badge search finds a nameless badge holder by email", async () => {
   const t = createConvexTest();
-  const { organizationId } = await seedOrganizer(t);
+  const { conventionId, ticketTypeId } = await seedConvention(t);
   const organizer = t.withIdentity(organizerIdentity);
-  const conventionId: Id<"conventions"> = await organizer.mutation(
-    api.conventions.lifecycle.createConvention,
-    {
-      organizationId,
-      name: "Nameless Badge Gathering",
-      startDate: Date.UTC(2027, 7, 6, 16, 0, 0),
-      endDate: Date.UTC(2027, 7, 8, 23, 0, 0),
-      playerCapacity: 100,
-    },
-  );
-  await organizer.mutation(api.conventions.lifecycle.publishConvention, {
-    conventionId,
-  });
-  const [ticketType] = await organizer.query(
-    api.conventions.ticketTypes.listTicketTypesForOrganizer,
-    { conventionId },
-  );
   const badgeId = await t
     .withIdentity(namelessIdentity)
     .mutation(api.conventions.registrations.registerSelfForConvention, {
       conventionId,
-      ticketTypeId: ticketType!._id,
+      ticketTypeId,
     });
 
   const found = await organizer.query(
@@ -241,6 +226,228 @@ test("the organizer badge search finds a nameless badge holder by email", async 
   expect(found.map((row) => [row.registration._id, row.playerName])).toEqual([
     [badgeId, NAMELESS_EMAIL],
   ]);
+});
+
+test("the organizer badge roster and convention log label a nameless badge holder by email", async () => {
+  const t = createConvexTest();
+  const { conventionId, ticketTypeId } = await seedConvention(t);
+  const organizer = t.withIdentity(organizerIdentity);
+  const badgeId = await t
+    .withIdentity(namelessIdentity)
+    .mutation(api.conventions.registrations.registerSelfForConvention, {
+      conventionId,
+      ticketTypeId,
+    });
+
+  // The roster page labels the badge off the row's organizer stamp.
+  const roster = await organizer.query(
+    api.conventions.registrations.listBadgePage,
+    { conventionId, paginationOpts: { numItems: 10, cursor: null } },
+  );
+  expect(
+    roster.page.map((row) => [row.registration._id, row.playerName]),
+  ).toEqual([[badgeId, NAMELESS_EMAIL]]);
+
+  await organizer.mutation(api.conventions.registrations.removeBadge, {
+    registrationId: badgeId,
+  });
+
+  // The holder's own append (registering) and the organizer's (removing)
+  // label the badge the same way: both read the row's stamp.
+  const log = await organizer.query(api.conventions.auditLog.listAuditEvents, {
+    conventionId,
+    paginationOpts: { numItems: 20, cursor: null },
+  });
+  expect(
+    log.page.flatMap(({ event }) =>
+      "player" in event && event.player.registrationId === badgeId
+        ? [`${event.type}:${event.player.playerName}`]
+        : [],
+    ),
+  ).toEqual([
+    `badge_removed:${NAMELESS_EMAIL}`,
+    `badge_registered:${NAMELESS_EMAIL}`,
+  ]);
+});
+
+test("organizer pairing edits and results label a nameless player by email", async () => {
+  const t = createConvexTest();
+  const { tournamentId, registrationIds } = await seedTournamentWithPlayers(t, {
+    name: "Nameless Pairing Edits Event",
+    playerCount: 3,
+    autoPublishPairings: false,
+    phases: [{ phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 1 }],
+    playerNames: true,
+  });
+  const organizer = t.withIdentity(organizerIdentity);
+  const nameless = t.withIdentity(namelessIdentity);
+  const namelessRegistrationId = await nameless.mutation(
+    api.tournaments.registrations.registerSelf,
+    { tournamentId },
+  );
+  const roundId = await organizer.mutation(
+    api.tournaments.rounds.startTournament,
+    { tournamentId },
+  );
+
+  // The organizer pairings list resolves the nameless match-player row to
+  // the email with its one registration read; named rows read nothing.
+  const pairings = await organizer.query(
+    api.tournaments.rounds.listRoundPairings,
+    { roundId },
+  );
+  const seats = pairings.flatMap(({ players }) => players);
+  expect(seats.map((seat) => seat.playerName).sort()).toEqual([
+    "Player 1",
+    "Player 2",
+    "Player 3",
+    NAMELESS_EMAIL,
+  ]);
+  const namelessMatch = pairings.find(({ players }) =>
+    players.some((seat) => seat.playerId === namelessRegistrationId),
+  )!;
+  const opponentId = namelessMatch.players.find(
+    (seat) => seat.playerId !== namelessRegistrationId,
+  )!.playerId;
+  const opponentNumber = registrationIds.indexOf(opponentId) + 1;
+
+  // Break the pairing, bye the nameless player, break the bye, and re-pair
+  // the two freed players: every edit references the nameless row.
+  await organizer.mutation(api.tournaments.rounds.breakPairing, {
+    matchId: namelessMatch.match._id,
+  });
+  const freed = await organizer.query(
+    api.tournaments.rounds.listUnpairedPlayers,
+    { roundId },
+  );
+  expect(
+    freed.map((row) => [row.registrationId, row.playerName]).sort(),
+  ).toEqual(
+    [
+      [namelessRegistrationId, NAMELESS_EMAIL],
+      [opponentId, `Player ${opponentNumber}`],
+    ].sort(),
+  );
+  const byeMatchId = await organizer.mutation(
+    api.tournaments.rounds.assignBye,
+    { roundId, registrationId: namelessRegistrationId },
+  );
+  await organizer.mutation(api.tournaments.rounds.breakPairing, {
+    matchId: byeMatchId,
+  });
+  const matchId = await organizer.mutation(api.tournaments.rounds.pairPlayers, {
+    roundId,
+    playerOneRegistrationId: namelessRegistrationId,
+    playerTwoRegistrationId: opponentId,
+  });
+  await organizer.mutation(api.tournaments.rounds.publishPairings, {
+    roundId,
+  });
+
+  // The nameless player reports the result, then the organizer overrides it.
+  await nameless.mutation(api.tournaments.player.reportMyMatchResult, {
+    matchId,
+    myGameWins: 2,
+    opponentGameWins: 0,
+  });
+  await organizer.mutation(api.tournaments.rounds.recordMatchResult, {
+    matchId,
+    playerOneRegistrationId: namelessRegistrationId,
+    playerTwoRegistrationId: opponentId,
+    playerOneGameWins: 0,
+    playerTwoGameWins: 2,
+  });
+
+  // Every arm that references the row — the single-player registration
+  // event, the freed/paired player lists, and both result-line arrays of
+  // the override — carries the email, newest first.
+  expect(await auditLabelsFor(t, tournamentId, namelessRegistrationId)).toEqual(
+    [
+      `match_result_recorded:${NAMELESS_EMAIL}`,
+      `match_result_recorded:${NAMELESS_EMAIL}`,
+      `match_result_reported:${NAMELESS_EMAIL}`,
+      `pairing_created:${NAMELESS_EMAIL}`,
+      `pairing_broken:${NAMELESS_EMAIL}`,
+      `pairing_created:${NAMELESS_EMAIL}`,
+      `pairing_broken:${NAMELESS_EMAIL}`,
+      `player_registered:${NAMELESS_EMAIL}`,
+    ],
+  );
+  // The opponent's lines in the same events are labelled by name.
+  expect(await auditLabelsFor(t, tournamentId, opponentId)).toEqual([
+    `match_result_recorded:Player ${opponentNumber}`,
+    `match_result_recorded:Player ${opponentNumber}`,
+    `match_result_reported:Player ${opponentNumber}`,
+    `pairing_created:Player ${opponentNumber}`,
+    `pairing_broken:Player ${opponentNumber}`,
+  ]);
+
+  // The opponent's own match card never carries the email.
+  const view = await t
+    .withIdentity(playerIdentity(opponentNumber))
+    .query(api.tournaments.player.getMyCurrentMatch, { tournamentId });
+  expect(JSON.stringify(view)).not.toContain(NAMELESS_EMAIL);
+  expect(view.kind).toBe("match");
+  if (view.kind === "match") {
+    expect(view.opponent?.name ?? null).toBeNull();
+  }
+});
+
+test("a nameless player's mid-round drop is logged as a concession labelled by email", async () => {
+  const t = createConvexTest();
+  const { tournamentId, registrationIds } = await seedTournamentWithPlayers(t, {
+    name: "Nameless Concession Event",
+    playerCount: 3,
+    phases: [{ phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 1 }],
+    playerNames: true,
+  });
+  const organizer = t.withIdentity(organizerIdentity);
+  const nameless = t.withIdentity(namelessIdentity);
+  const namelessRegistrationId = await nameless.mutation(
+    api.tournaments.registrations.registerSelf,
+    { tournamentId },
+  );
+  await organizer.mutation(api.tournaments.rounds.startTournament, {
+    tournamentId,
+  });
+  const match = await matchForPlayer(
+    t,
+    tournamentId,
+    1,
+    namelessRegistrationId,
+  );
+  const opponent = await opponentNumber(
+    t,
+    match._id,
+    namelessRegistrationId,
+    registrationIds,
+  );
+
+  await nameless.mutation(api.tournaments.player.dropSelf, { tournamentId });
+
+  // The drop and the concession it awards both label the conceding player
+  // by the organizer label — on the event's player and on its result line.
+  expect(await auditLabelsFor(t, tournamentId, namelessRegistrationId)).toEqual(
+    [
+      `match_conceded:${NAMELESS_EMAIL}`,
+      `match_conceded:${NAMELESS_EMAIL}`,
+      `player_dropped:${NAMELESS_EMAIL}`,
+      `player_registered:${NAMELESS_EMAIL}`,
+    ],
+  );
+  expect(
+    await auditLabelsFor(t, tournamentId, registrationIds[opponent - 1]),
+  ).toEqual([`match_conceded:Player ${opponent}`]);
+
+  // The opponent sees the walkover without the conceder's email.
+  const view = await t
+    .withIdentity(playerIdentity(opponent))
+    .query(api.tournaments.player.getMyCurrentMatch, { tournamentId });
+  expect(JSON.stringify(view)).not.toContain(NAMELESS_EMAIL);
+  expect(view.kind).toBe("match");
+  if (view.kind === "match") {
+    expect(view.opponent?.name ?? null).toBeNull();
+  }
 });
 
 test("a name gained after registering reaches the standings and roster on the next sign-in", async () => {
@@ -472,6 +679,58 @@ test("the organizer seating list is alphabetical by the label it prints", async 
     expect(view.meeting.seatmateName).toBe("Player 2");
   }
 });
+
+// A published convention with its seeded free pass, for the badge suites.
+async function seedConvention(t: TestConvex<typeof schema>) {
+  const { organizationId } = await seedOrganizer(t);
+  const organizer = t.withIdentity(organizerIdentity);
+  const conventionId: Id<"conventions"> = await organizer.mutation(
+    api.conventions.lifecycle.createConvention,
+    {
+      organizationId,
+      name: "Nameless Badge Gathering",
+      startDate: Date.UTC(2027, 7, 6, 16, 0, 0),
+      endDate: Date.UTC(2027, 7, 8, 23, 0, 0),
+      playerCapacity: 100,
+    },
+  );
+  await organizer.mutation(api.conventions.lifecycle.publishConvention, {
+    conventionId,
+  });
+  const [ticketType] = await organizer.query(
+    api.conventions.ticketTypes.listTicketTypesForOrganizer,
+    { conventionId },
+  );
+  return { conventionId, ticketTypeId: ticketType!._id };
+}
+
+// Every label the organizer log stored for the registration, newest first,
+// as "<type>:<label>" — across the single-player (player), multi-player
+// (players), and result-line (result, previousResult) arms of the event
+// union, so one assertion pins every path that labels a row.
+async function auditLabelsFor(
+  t: TestConvex<typeof schema>,
+  tournamentId: Id<"tournaments">,
+  registrationId: Id<"tournamentRegistrations">,
+) {
+  const page = await t
+    .withIdentity(organizerIdentity)
+    .query(api.tournaments.auditLog.listAuditEvents, {
+      tournamentId,
+      paginationOpts: { numItems: 100, cursor: null },
+    });
+  return page.page.flatMap(({ event }) => {
+    const refs = [
+      ...("player" in event ? [event.player] : []),
+      ...("players" in event ? event.players : []),
+      ...("result" in event ? event.result : []),
+      ...("previousResult" in event ? (event.previousResult ?? []) : []),
+    ];
+    return refs
+      .filter((ref) => ref.registrationId === registrationId)
+      .map((ref) => `${event.type}:${ref.playerName}`);
+  });
+}
 
 async function currentRound(
   t: TestConvex<typeof schema>,

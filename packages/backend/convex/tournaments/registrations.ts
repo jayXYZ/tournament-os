@@ -9,7 +9,7 @@ import {
   type QueryCtx,
 } from "../_generated/server";
 import { currentUserOrNull } from "../model/access";
-import { auditUserLabel, logAuditEvent } from "../model/auditLog";
+import { auditPlayerRefForUser, logAuditEvent } from "../model/auditLog";
 import { inviteCodeGrantsAccess } from "../model/invites";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
 import { registrationsConcededByDrop } from "../model/matchResults";
@@ -243,18 +243,18 @@ export const registerSelf = mutation({
     if (!requiresApproval) {
       await adjustConfirmedRegistrationCount(ctx, tournament, 1, now);
     }
+    // The registrant is the player: labelled from the stamp the row was just
+    // written with, without reading the row back.
+    const player = auditPlayerRefForUser(registrationId, user);
     await logAuditEvent(ctx, {
       tournamentId: tournament._id,
       actor: user,
       actorRole: "player",
       event: requiresApproval
-        ? {
-            type: "registration_requested",
-            player: { registrationId, playerName: auditUserLabel(user) },
-          }
+        ? { type: "registration_requested", player }
         : {
             type: "player_registered",
-            player: { registrationId, playerName: auditUserLabel(user) },
+            player,
             compedByBadge: compedByBadge || undefined,
           },
     });
