@@ -3,14 +3,12 @@ import { v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import { mutation, query } from "../_generated/server";
 import type { MutationCtx } from "../_generated/server";
-import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
 import { applyMatchResult } from "../model/matchResults";
 import { latestCompletedRound, requirePhase } from "../model/phases";
 import { dropPlayer } from "../model/roster";
 import {
   MAX_TOURNAMENT_PLAYERS,
   registrationForUser,
-  resolveRegistrationDisplayName,
 } from "../model/registrations";
 import { matchLogForRegistration } from "../model/playerResults";
 import { currentMatchForPlayer } from "../model/playerView";
@@ -77,32 +75,33 @@ export const getLatestStandings = query({
     // it patches the very rows this query reads — while a 500-player field no
     // longer costs one read and one subscription dependency per non-active
     // player on every execution.
-    const rows = await mapAsyncInBatches(
-      standings,
-      DATABASE_IO_BATCH_SIZE,
-      async (standing) => {
-        const name = await resolveRegistrationDisplayName(
-          ctx,
-          standing.playerName,
-          standing.playerId,
-        );
-        return {
-          rank: standing.rank,
-          name: name ?? null,
-          matchPoints: standing.matchPoints,
-          matchWins: standing.matchWins,
-          matchLosses: standing.matchLosses,
-          matchDraws: standing.matchDraws,
-          opponentMatchWinPct: standing.opponentMatchWinPct,
-          gameWinPct: standing.gameWinPct,
-          opponentGameWinPct: standing.opponentGameWinPct,
-          playoffStatus: standing.playoffStatus,
-          eliminatedInRoundNumber: standing.eliminatedInRoundNumber ?? null,
-          registrationStatus: standing.participationStatus ?? "active",
-          isMe: standing.playerId === registration._id,
-        };
-      },
-    );
+    //
+    // The same goes for names: the stamped playerName is the whole answer.
+    // It is name-only by construction (registrationNameStamp), and the
+    // sign-in re-stamp (syncRegistrationNameStamps) rewrites this round's
+    // row whenever the account's name changes, so an absent stamp means the
+    // account has no name today — not a cache miss to read through. Reading
+    // through here would hang every player's subscription on every nameless
+    // account's user document (which upsertUser patches on each sign-in)
+    // and spend reads per such row against the transaction's index-range
+    // budget. Organizer surfaces label such a row by email from the
+    // registration's organizerLabel instead (resolveOrganizerDisplayName).
+    // So the rows are a plain projection of the standings documents.
+    const rows = standings.map((standing) => ({
+      rank: standing.rank,
+      name: standing.playerName ?? null,
+      matchPoints: standing.matchPoints,
+      matchWins: standing.matchWins,
+      matchLosses: standing.matchLosses,
+      matchDraws: standing.matchDraws,
+      opponentMatchWinPct: standing.opponentMatchWinPct,
+      gameWinPct: standing.gameWinPct,
+      opponentGameWinPct: standing.opponentGameWinPct,
+      playoffStatus: standing.playoffStatus,
+      eliminatedInRoundNumber: standing.eliminatedInRoundNumber ?? null,
+      registrationStatus: standing.participationStatus ?? "active",
+      isMe: standing.playerId === registration._id,
+    }));
 
     return { roundNumber: latestCompleted.roundNumber, rows };
   },
