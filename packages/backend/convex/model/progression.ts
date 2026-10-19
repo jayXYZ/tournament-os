@@ -657,8 +657,9 @@ export async function startTournament(
     },
   });
   // Starting a paid event lapses its open checkouts: an approved-but-unpaid
-  // application can no longer seat, so its order closes and its session
-  // expires (payments/refunds.ts).
+  // application (or a direct checkout still in progress) can no longer
+  // seat, so its order closes, its session expires, and its pending entry
+  // withdraws (payments/refunds.ts).
   if ((tournament.entryFeeCents ?? 0) > 0) {
     await ctx.scheduler.runAfter(
       0,
