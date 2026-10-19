@@ -82,16 +82,20 @@ export const listForOrganization = query({
   },
 });
 
+// `now` is the client's clock (see the web app's useClientClock): a query
+// is not rerun merely because time advances, so reading Date.now() here
+// would leave a started event in the list until an unrelated write
+// re-executed it. Clients round it coarsely so they share a cache entry.
 export const listUpcomingPublic = query({
-  args: {},
-  handler: async (ctx) => {
+  args: { now: v.number() },
+  handler: async (ctx, args) => {
     const conventions = await ctx.db
       .query("conventions")
       .withIndex("by_visibility_and_lifecycle_and_startDate", (q) =>
         q
           .eq("visibility", "public")
           .eq("lifecycle", "registration")
-          .gte("startDate", Date.now()),
+          .gte("startDate", args.now),
       )
       .order("asc")
       .take(100);

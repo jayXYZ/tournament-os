@@ -19,6 +19,8 @@ import {
   formatTournamentDateLong,
 } from '@/components/tournaments'
 import { useBusyAction } from '@/hooks/use-busy-action'
+import { useClientClock } from '@/hooks/use-client-clock'
+import { useStableQuery } from '@/hooks/use-stable-query'
 import { useAppAuth } from '@/lib/use-app-auth'
 
 import { Badge } from '@/components/ui/badge'
@@ -286,9 +288,12 @@ function RegistrationPanel({
     api.payments.queries.getFeePreview,
     isPaid ? { entryFeeCents: tournament.entryFeeCents! } : 'skip',
   )
-  const myOrder = useQuery(
+  // The cancel outcome reads as a promise, so its clock never runs behind
+  // the server's (see useClientClock's `round`).
+  const now = useClientClock({ round: 'up' })
+  const myOrder = useStableQuery(
     api.payments.queries.getMyEntryOrder,
-    isPaid && user ? { tournamentId: tournament._id } : 'skip',
+    isPaid && user ? { tournamentId: tournament._id, now } : 'skip',
   )
   const refundFlag = useQuery(
     api.payments.queries.getMyRefundFlag,

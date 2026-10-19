@@ -59,7 +59,7 @@ async function seedConvention(
   // free-registration tests register with.
   const ticketTypes = await organizer.query(
     api.conventions.ticketTypes.listTicketTypesForOrganizer,
-    { conventionId },
+    { conventionId, now: Date.now() },
   );
   return { conventionId, ticketTypeId: ticketTypes[0]!._id };
 }

@@ -1,6 +1,5 @@
 import { Link } from '@tanstack/react-router'
 import { useMyTournaments } from '@paper-pairings/core'
-import { useQuery } from 'convex/react'
 import { CalendarDays, LogIn, Settings, ShieldCheck, Users } from 'lucide-react'
 import { api } from '@paper-pairings/backend/convex/_generated/api'
 
@@ -10,6 +9,8 @@ import { TournamentTable } from '@/components/tournaments'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Spinner } from '@/components/ui/spinner'
+import { useClientClock } from '@/hooks/use-client-clock'
+import { useStableQuery } from '@/hooks/use-stable-query'
 import { useAppAuth } from '@/lib/use-app-auth'
 
 export function PlayerHome({
@@ -22,8 +23,15 @@ export function PlayerHome({
   onScheduleSearchChange: (next: TournamentTableSearchParams) => void
 }) {
   const { user, loading, refreshAuth, signOut } = useAppAuth()
-  const tournaments = useQuery(api.tournaments.lifecycle.listUpcomingPublic)
-  const conventions = useQuery(api.conventions.lifecycle.listUpcomingPublic)
+  const now = useClientClock()
+  const tournaments = useStableQuery(
+    api.tournaments.lifecycle.listUpcomingPublic,
+    { now },
+  )
+  const conventions = useStableQuery(
+    api.conventions.lifecycle.listUpcomingPublic,
+    { now },
+  )
   const myTournaments = useMyTournaments()
 
   // The public schedule groups each convention's events under it, so both

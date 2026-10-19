@@ -94,6 +94,7 @@ test("listUpcomingPublic returns future public tournaments in start date order",
 
   const tournaments = await t.query(
     api.tournaments.lifecycle.listUpcomingPublic,
+    { now },
   );
 
   expect(tournaments.map((tournament) => tournament._id)).toEqual([
@@ -107,6 +108,16 @@ test("listUpcomingPublic returns future public tournaments in start date order",
   expect(tournaments.map((tournament) => tournament.organizationName)).toEqual([
     "Test Org",
     "Test Org",
+  ]);
+
+  // The cutoff is the client's clock, not the server's: once the client
+  // reports a time past "Earlier Public"'s start, that event drops out
+  // without any write to the table.
+  const laterOn = await t.query(api.tournaments.lifecycle.listUpcomingPublic, {
+    now: now + 100_000,
+  });
+  expect(laterOn.map((tournament) => tournament.name)).toEqual([
+    "Later Public",
   ]);
 });
 
@@ -1003,9 +1014,11 @@ test("unlisted registration events are direct-link accessible but absent from di
     )?.tournament.visibility,
   ).toBe("unlisted");
   expect(
-    (await t.query(api.tournaments.lifecycle.listUpcomingPublic)).some(
-      (tournament) => tournament._id === tournamentId,
-    ),
+    (
+      await t.query(api.tournaments.lifecycle.listUpcomingPublic, {
+        now: Date.now(),
+      })
+    ).some((tournament) => tournament._id === tournamentId),
   ).toBe(false);
 
   const player = t.withIdentity({
