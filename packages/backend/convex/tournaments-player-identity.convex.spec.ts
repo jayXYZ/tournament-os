@@ -699,7 +699,7 @@ async function seedConvention(t: TestConvex<typeof schema>) {
   });
   const [ticketType] = await organizer.query(
     api.conventions.ticketTypes.listTicketTypesForOrganizer,
-    { conventionId },
+    { conventionId, now: Date.now() },
   );
   return { conventionId, ticketTypeId: ticketType!._id };
 }
