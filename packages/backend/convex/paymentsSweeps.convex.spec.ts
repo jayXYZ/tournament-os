@@ -340,6 +340,25 @@ test("starting a paid tournament lapses open checkouts without touching paid sea
   expect(gatewayState.expired).toContain(openOrder.stripeCheckoutSessionId);
   expect((await orderById(t, paidOne)).status).toBe("paid");
   expect((await orderById(t, paidTwo)).status).toBe("paid");
+
+  // The lapsed checkout's entry withdraws with its order (it was never
+  // reviewed and can never seat), and the lapse reaches the audit log.
+  const lapsedRegistration = await t.run(
+    async (ctx) => (await ctx.db.get(openOrder.registrationId))!,
+  );
+  expect(lapsedRegistration.entryStatus).toBe("cancelled");
+  const expiredAudit = await t.run(async (ctx) =>
+    (
+      await ctx.db
+        .query("tournamentAuditEvents")
+        .withIndex("by_tournamentId", (q) => q.eq("tournamentId", tournamentId))
+        .take(64)
+    ).filter((row) => row.event.type === "payment_expired"),
+  );
+  expect(expiredAudit).toHaveLength(1);
+  expect(expiredAudit[0]!.event).toMatchObject({
+    player: { registrationId: openOrder.registrationId },
+  });
 });
 
 test("hard deletion refuses while payments are unsettled and proceeds after the cancel sweep", async () => {

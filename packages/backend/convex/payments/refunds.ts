@@ -12,6 +12,10 @@ import {
 import type { AuditActorRole } from "../model/auditLog";
 import { logEntryPaymentAudit } from "../model/auditLog";
 import {
+  registrationForOrder,
+  withdrawPendingEntry,
+} from "../model/paidEvents";
+import {
   moneyRowOwnerArgs,
   moneyRowOwnerColumns,
   ownerOrdersQuery,
@@ -192,8 +196,12 @@ const SWEEP_BATCH = 32;
 
 // Closes every open (unpaid) order for an event — scheduled when it starts
 // (unpaid approvals lapse; they never seat) and as the first stage of the
-// cancellation sweep. Terminates because closed orders leave the queried
-// status ranges.
+// cancellation sweep. The pending entry behind each order withdraws with it:
+// registration is over, so neither a direct checkout nor an approved
+// application can seat any more, and a row left pending would read as "still
+// under review" to the player while never reaching the organizer's queue
+// (awaitingReview is unset on both). Terminates because closed orders leave
+// the queried status ranges.
 export const closeOpenOrdersSweep = internalMutation({
   args: moneyRowOwnerArgs,
   handler: async (ctx, args) => {
@@ -205,16 +213,31 @@ export const closeOpenOrdersSweep = internalMutation({
       );
       sawFullPage ||= orders.length === SWEEP_BATCH;
       for (const order of orders) {
+        const now = Date.now();
         await patchOrder(ctx, order, {
           status: "canceled",
-          updatedAt: Date.now(),
+          updatedAt: now,
         });
+        const entry = await registrationForOrder(ctx, order);
+        if (entry) {
+          await withdrawPendingEntry(ctx, entry, now);
+        }
         if (order.stripeCheckoutSessionId) {
           await ctx.scheduler.runAfter(
             0,
             internal.payments.checkout.expireAbandonedSession,
             { sessionId: order.stripeCheckoutSessionId },
           );
+          // The webhook's own expiry handler no-ops once the order is
+          // canceled, so the lapse is logged here, as it logs it.
+          if (entry) {
+            await logEntryPaymentAudit(ctx, {
+              owner: order,
+              registration: entry.registration,
+              actorRole: "system",
+              event: { type: "payment_expired" },
+            });
+          }
         }
       }
     }
