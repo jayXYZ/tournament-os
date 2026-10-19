@@ -539,6 +539,35 @@ Needs a dev-client rebuild and physical devices (expo-camera is device-only).
   badge-gated, comped, paid direct, approval, and the repeat-drop refund
   flag. Those rows are characterization tests of the panel as it is; the
   refactor then has to keep them green.
+- **The "pending, paid, order not payable" state is no longer stored.**
+  Both clients say "Registration pending organizer approval" for a pending
+  row on a paid event whose order is neither payable nor loading
+  (`deriveJoinAction`'s pending fall-through; `tournament-public-page.tsx`
+  RegistrationPanel). It used to be reachable through the normal start
+  path: `startTournament` and `cancelTournament` schedule
+  `closeOpenOrdersSweep`, which moved an unfinished checkout's order to
+  `canceled` but left its registration row `pending`. Only the webhook's
+  `closeUnpaidSession` withdrew the row, and it returns early once the
+  order is no longer `awaiting_payment`. The player then saw "pending
+  organizer approval" plus the closed note on an event that had started,
+  the row stayed in `listMyTournaments` as an open application, and it was
+  never in the Review Queue (`awaitingReview` is unset on direct rows and
+  cleared by approval), so the organizer never saw it either.
+  - Fixed on the backend in PR 42 (`fix/sweep-withdraws-pending-direct-rows`,
+    merged ahead of this branch): the sweep now withdraws the pending entry
+    behind every order it closes, direct or post-approval, since
+    registration is over for both, and logs `payment_expired` only for an
+    order with a live session, the way the webhook handler does (a
+    `requires_payment` order never opened Checkout, or the webhook already
+    logged its expiry). `paymentsSweeps.convex.spec.ts` pins the row and
+    the audit line for direct rows, approved-but-unpaid rows, and both
+    no-session cases; `conventionPayments.convex.spec.ts` pins the badge
+    twin.
+  - The client fall-through stays as a defensive default. If PR 3's
+    characterization pass wants it pinned, `getMyRegistration` returns the
+    raw row, so `PlayerRegistration` carries `awaitingReview`: a pending row
+    without it is never under review and can derive `closed` instead of
+    `pendingReview`.
 
 ## PR 4: native payment
 
