@@ -83,10 +83,11 @@ suites are `paymentsConnect` / `entryFeeSettings` / `paymentsCheckout` /
   executor exhausts its retries on ambiguous Stripe failures parks in
   `needs_attention` (its attempt count and last error on the row, a
   `refund_stalled` audit line) rather than settling as failed, since Stripe
-  may have created it; it blocks the payout with a reason naming it, and
-  the same settings page offers an owner-only refund retry that re-drives
-  it under its original idempotency key (the `refund.updated` webhook can
-  also settle it). Stripe prunes idempotency keys after a day, so a
+  may have created it; it blocks the payout with a generic reason, and the
+  same settings page lists the parked refunds (player, amount, attempts,
+  last error) with an owner-only refund retry that re-drives each under its
+  original idempotency key (the `refund.updated` webhook can also settle
+  it). Stripe prunes idempotency keys after a day, so a
   definitive rejection of a late retry or re-drive may be refusing a charge
   an earlier, lost attempt already refunded: on any definitive rejection
   the executor looks the row's refund up on Stripe (`refunds.list` by

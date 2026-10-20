@@ -97,39 +97,48 @@ export function PaidEventPayoutCard({
     <section className="flex flex-col gap-4">
       <SectionHeader title={copy.title} description={copy.description} />
       {refundsNeedingAttention && refundsNeedingAttention.length > 0 ? (
-        <ul className="flex flex-col gap-2">
-          {refundsNeedingAttention.map((refund) => (
-            <li
-              key={refund.refundId}
-              className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-destructive/40 p-3"
-            >
-              <div className="flex flex-col gap-1 text-sm">
-                <span>
-                  Refund of {formatCents(refund.amountCents)} to{' '}
-                  {refund.playerName ?? 'a player'} failed after{' '}
-                  {refund.attemptCount} attempts and needs attention.
-                </span>
-                {refund.lastError ? (
-                  <span className="text-muted-foreground">
-                    {refund.lastError}
-                  </span>
-                ) : null}
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={!canRetry || retryingRefundId !== null}
-                onClick={() => void handleRetryRefund(refund.refundId)}
+        <div className="flex flex-col gap-2">
+          <ul className="flex flex-col gap-2">
+            {refundsNeedingAttention.map((refund) => (
+              <li
+                key={refund.refundId}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-destructive/40 p-3"
               >
-                {retryingRefundId === refund.refundId ? (
-                  <Spinner data-icon="inline-start" />
-                ) : null}
-                Retry refund
-              </Button>
-            </li>
-          ))}
-        </ul>
+                <div className="flex flex-col gap-1 text-sm">
+                  <span>
+                    Refund of {formatCents(refund.amountCents)} to{' '}
+                    {refund.playerName ?? 'a player'} failed after{' '}
+                    {refund.attemptCount}{' '}
+                    {refund.attemptCount === 1 ? 'attempt' : 'attempts'} and
+                    needs attention.
+                  </span>
+                  {refund.lastError ? (
+                    <span className="text-muted-foreground">
+                      {refund.lastError}
+                    </span>
+                  ) : null}
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={!canRetry || retryingRefundId !== null}
+                  onClick={() => void handleRetryRefund(refund.refundId)}
+                >
+                  {retryingRefundId === refund.refundId ? (
+                    <Spinner data-icon="inline-start" />
+                  ) : null}
+                  Retry refund
+                </Button>
+              </li>
+            ))}
+          </ul>
+          {!canRetry && (
+            <p className="text-sm text-muted-foreground">
+              Only the organization owner can retry a refund.
+            </p>
+          )}
+        </div>
       ) : null}
       <div className="flex flex-col gap-3">
         {!completed ? (

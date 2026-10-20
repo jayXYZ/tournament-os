@@ -526,11 +526,9 @@ export const recordRefundRejection = internalMutation({
     if (!refund || refund.status !== "pending") {
       return null;
     }
-    await ctx.db.patch(refund._id, {
+    await applyRefundOutcome(ctx, refund, "failed", {
       lastError: args.errorMessage,
-      updatedAt: Date.now(),
     });
-    await applyRefundOutcome(ctx, refund, "failed");
     return null;
   },
 });
@@ -578,8 +576,13 @@ async function applyRefundOutcome(
   ctx: MutationCtx,
   refund: Doc<"paymentRefunds">,
   outcome: "succeeded" | "failed",
-  stripeRefundId?: string,
-  opts?: { recoverFailed?: boolean },
+  opts?: {
+    stripeRefundId?: string;
+    // The rejection that settled the row (a definitive Stripe refusal);
+    // written in the same patch as the status so the row is updated once.
+    lastError?: string;
+    recoverFailed?: boolean;
+  },
 ) {
   const applies =
     refund.status === "pending" ||
@@ -593,7 +596,8 @@ async function applyRefundOutcome(
   const now = Date.now();
   await ctx.db.patch(refund._id, {
     status: outcome,
-    stripeRefundId: stripeRefundId ?? refund.stripeRefundId,
+    stripeRefundId: opts?.stripeRefundId ?? refund.stripeRefundId,
+    ...(opts?.lastError !== undefined ? { lastError: opts.lastError } : {}),
     updatedAt: now,
   });
 
@@ -666,7 +670,9 @@ export const markRefundResult = internalMutation({
       }
       return null;
     }
-    await applyRefundOutcome(ctx, refund, args.outcome, args.stripeRefundId);
+    await applyRefundOutcome(ctx, refund, args.outcome, {
+      stripeRefundId: args.stripeRefundId,
+    });
     return null;
   },
 });
@@ -717,14 +723,17 @@ export const handleRefundEvent = internalMutation({
       return null;
     }
     if (args.refundStatus === "succeeded") {
-      await applyRefundOutcome(ctx, refund, "succeeded", args.stripeRefundId, {
+      await applyRefundOutcome(ctx, refund, "succeeded", {
+        stripeRefundId: args.stripeRefundId,
         recoverFailed: true,
       });
     } else if (
       args.refundStatus === "failed" ||
       args.refundStatus === "canceled"
     ) {
-      await applyRefundOutcome(ctx, refund, "failed", args.stripeRefundId);
+      await applyRefundOutcome(ctx, refund, "failed", {
+        stripeRefundId: args.stripeRefundId,
+      });
     }
     return null;
   },

@@ -333,8 +333,10 @@ test("a refund that exhausted its retries blocks the payout with a specific reas
     );
     expect(refund!.status).toBe("needs_attention");
 
-    // Not "still settling": the organizer is told which refund stalled and
-    // why, so the payout is never silently stuck behind it.
+    // Not "still settling": the organizer is told a refund stalled and what
+    // to do, so the payout is never silently stuck behind it. The reason
+    // stays generic; the row itself (player, amount, attempts, error) is
+    // listed by listRefundsNeedingAttention beside the payout.
     await markCompleted(t, tournamentId);
     await t.mutation(internal.payments.payouts.startPayoutSweep, {
       tournamentId,
@@ -343,8 +345,23 @@ test("a refund that exhausted its retries blocks the payout with a specific reas
     const blocked = await payoutDoc(t, tournamentId);
     expect(blocked.status).toBe("blocked");
     expect(blocked.error).toBe(
-      "Refund of $21.94 to Player 1 failed after 5 attempts: socket hang up. Retry the refund (or resolve it in Stripe), then retry the payout.",
+      "A refund needs attention. Retry it (or resolve it in Stripe), then retry the payout.",
     );
+    expect(
+      await t
+        .withIdentity(organizerIdentity)
+        .query(api.payments.refunds.listRefundsNeedingAttention, {
+          tournamentId,
+        }),
+    ).toMatchObject([
+      {
+        refundId: refund!._id,
+        playerName: "Player 1",
+        amountCents: 2194,
+        attemptCount: 5,
+        lastError: "socket hang up",
+      },
+    ]);
     expect(
       await t
         .withIdentity(organizerIdentity)

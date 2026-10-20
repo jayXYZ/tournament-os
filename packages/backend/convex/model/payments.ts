@@ -331,7 +331,8 @@ async function firstOrderWithStatus(
 // deleted. Open or disputed orders and unsettled refunds always block; paid
 // orders block unless the payout completed (the money reached the
 // organization). Resolution: cancel the event (refunds everyone) or
-// complete it (pays out), then delete.
+// complete it (pays out), then delete — except a refund the executor gave
+// up on, which neither action settles: it names the refund retry instead.
 export async function requireEventPaymentsSettled(
   ctx: QueryCtx,
   ref: PaidEventRef,
@@ -348,10 +349,17 @@ export async function requireEventPaymentsSettled(
   const owner = paidEventMoneyRowOwner(ref);
   // A needs_attention refund is unsettled too: deleting the event would
   // destroy the only record of money that may already have left Stripe.
-  for (const status of ["pending", "needs_attention"] as const) {
-    if (await ownerRefundsQuery(ctx, owner, status).first()) {
-      throw new Error(blockedMessage);
-    }
+  // Nothing settles it on its own (the event may already be cancelled),
+  // so the message points at the retry on the settings page.
+  if (await ownerRefundsQuery(ctx, owner, "needs_attention").first()) {
+    throw new Error(
+      `This ${ref.kind} has a refund that needs attention — retry it from ` +
+        "the payout section of the settings page (or resolve it in Stripe) " +
+        "before deleting",
+    );
+  }
+  if (await ownerRefundsQuery(ctx, owner, "pending").first()) {
+    throw new Error(blockedMessage);
   }
   const paidOrder = await firstOrderWithStatus(ctx, ref, "paid");
   if (paidOrder) {

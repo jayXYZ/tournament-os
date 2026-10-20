@@ -74,9 +74,12 @@ async function payoutSourceEvent(
   return tournament;
 }
 
-// The blocked-payout reason for the owner's first unsettled refund, or null
-// when every refund has settled. Rows the executor gave up on come first so
-// the reason is actionable (a plain pending row only needs time).
+// The blocked-payout reason for the owner's unsettled refunds, or null when
+// every refund has settled. Rows the executor gave up on take precedence so
+// the reason is actionable (a plain pending row only needs time). The
+// reason stays generic: the offending rows (player, amount, attempts, last
+// error) are listed beside the payout by listRefundsNeedingAttention, which
+// formats them for the organizer.
 async function unsettledOwnerRefund(
   ctx: MutationCtx,
   owner: MoneyRowOwner,
@@ -87,11 +90,7 @@ async function unsettledOwnerRefund(
     "needs_attention",
   ).take(1);
   if (needsAttention) {
-    const registration = await ctx.db.get(needsAttention.registrationId);
-    const player = registration?.playerName ?? "a player";
-    const amount = `$${(needsAttention.amountCents / 100).toFixed(2)}`;
-    const cause = needsAttention.lastError ?? "unknown error";
-    return `Refund of ${amount} to ${player} failed after ${needsAttention.attemptCount} attempts: ${cause}. Retry the refund (or resolve it in Stripe), then retry the payout.`;
+    return "A refund needs attention. Retry it (or resolve it in Stripe), then retry the payout.";
   }
   const [pending] = await ownerRefundsQuery(ctx, owner, "pending").take(1);
   return pending ? "Refunds are still settling" : null;
