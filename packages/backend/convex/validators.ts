@@ -649,6 +649,15 @@ export const tournamentAuditEventValidator = v.union(
     amountCents: v.number(),
   }),
   v.object({
+    // The refund executor gave up on the Stripe call (payments/refunds.ts):
+    // the money may or may not have moved, and the refund waits on the
+    // payout page for an operator re-drive or Stripe's webhook report.
+    type: v.literal("refund_stalled"),
+    player: auditPlayerRefValidator,
+    amountCents: v.number(),
+  }),
+  v.object({
+    // Stripe definitively returned nothing for this refund.
     type: v.literal("refund_failed"),
     player: auditPlayerRefValidator,
     amountCents: v.number(),
@@ -732,6 +741,11 @@ export const conventionAuditEventValidator = v.union(
     player: conventionAuditPlayerRefValidator,
     kind: paymentRefundKindValidator,
     reason: paymentRefundReasonValidator,
+    amountCents: v.number(),
+  }),
+  v.object({
+    type: v.literal("refund_stalled"),
+    player: conventionAuditPlayerRefValidator,
     amountCents: v.number(),
   }),
   v.object({

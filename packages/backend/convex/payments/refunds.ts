@@ -11,7 +11,7 @@ import {
   query,
   type MutationCtx,
 } from "../_generated/server";
-import type { AuditActorRole } from "../model/auditLog";
+import type { AuditActorRole, PaidEntryAuditEvent } from "../model/auditLog";
 import { logEntryPaymentAudit } from "../model/auditLog";
 import {
   moneyRowOwnerArgs,
@@ -21,7 +21,7 @@ import {
   parseMoneyRowOwner,
 } from "../model/paidEventOwner";
 import { requireConventionOrganizerAccess } from "../model/conventions";
-import { requirePaymentsPermission } from "../model/stripeAccounts";
+import { requireOwnerPaymentsPermission } from "../model/stripeAccounts";
 import { requireOrganizerAccess } from "../model/tournaments";
 import type {
   AnyEntryRegistration,
@@ -37,7 +37,7 @@ import {
   patchOrder,
   refundsReturningForOrder,
 } from "../model/payments";
-import { getStripeGateway } from "../stripe/client";
+import { getStripeGateway, type StripeRefundStatus } from "../stripe/client";
 import { requireStripeSecretKey } from "../stripe/config";
 import { isDefinitiveStripeFailure } from "../stripe/errors";
 
@@ -349,6 +349,22 @@ export const beginRefundExecution = internalMutation({
 const REFUND_RETRY_DELAY_MS = 60_000;
 export const MAX_REFUND_ATTEMPTS = 5;
 
+// Stripe accepting a refund is not the money moving: a refund can sit
+// pending (bank rails) or requires_action, and only its terminal status
+// settles the row — for the in-between states the row stays pending,
+// carrying the Stripe id so the refund.updated webhook can settle it.
+function refundOutcomeFromStatus(status: StripeRefundStatus) {
+  return status === "succeeded"
+    ? ("succeeded" as const)
+    : status === "failed" || status === "canceled"
+      ? ("failed" as const)
+      : ("pending" as const);
+}
+
+function errorMessageOf(error: unknown) {
+  return error instanceof Error ? error.message : "Unknown";
+}
+
 export const executeRefund = internalAction({
   args: { refundId: v.id("paymentRefunds") },
   handler: async (ctx, args) => {
@@ -360,16 +376,30 @@ export const executeRefund = internalAction({
       return null;
     }
 
-    const gateway = getStripeGateway(requireStripeSecretKey());
-    let created: {
-      stripeRefundId: string;
-      status:
-        | "pending"
-        | "requires_action"
-        | "succeeded"
-        | "failed"
-        | "canceled";
+    // An ambiguous failure (a connection drop, a Stripe 5xx) can land AFTER
+    // Stripe created the refund, and a row settled "failed" would keep its
+    // order in the payout while the charge's money went back — so the row
+    // stays pending and the call retries under its idempotency key, with
+    // refund.updated reconciliation settling whichever truth emerges. Each
+    // such failure is recorded on the row; once the attempts are exhausted
+    // the row parks in needs_attention (never "failed", because the money
+    // may have moved) for an operator to re-drive.
+    const recordAmbiguousFailure = async (errorMessage: string) => {
+      const recorded: { exhausted: boolean } = await ctx.runMutation(
+        internal.payments.refunds.recordRefundAttemptFailure,
+        { refundId: args.refundId, errorMessage },
+      );
+      if (!recorded.exhausted) {
+        await ctx.scheduler.runAfter(
+          REFUND_RETRY_DELAY_MS,
+          internal.payments.refunds.executeRefund,
+          { refundId: args.refundId },
+        );
+      }
     };
+
+    const gateway = getStripeGateway(requireStripeSecretKey());
+    let created: { stripeRefundId: string; status: StripeRefundStatus };
     try {
       created = await gateway.createRefund({
         chargeId: begin.stripeChargeId,
@@ -378,71 +408,88 @@ export const executeRefund = internalAction({
         idempotencyKey: `refund:${args.refundId}`,
       });
     } catch (error) {
-      // Only a definitive Stripe rejection settles the row as failed. An
-      // ambiguous failure (a connection drop, a Stripe 5xx) can land AFTER
-      // Stripe created the refund, and a row settled "failed" would keep its
-      // order in the payout while the charge's money went back — so the row
-      // stays pending and the call retries under its idempotency key, with
-      // refund.updated reconciliation settling whichever truth emerges.
-      // Each ambiguous failure is recorded on the row; once the attempts
-      // are exhausted the row parks in needs_attention (never "failed",
-      // because the money may have moved) for an operator to re-drive.
-      if (isDefinitiveStripeFailure(error)) {
-        await (ctx.runMutation(
-          internal.payments.refunds.recordRefundRejection,
-          {
-            refundId: args.refundId,
-            errorMessage: error instanceof Error ? error.message : "Unknown",
-          },
-        ) satisfies Promise<null>);
-      } else {
-        const recorded: { exhausted: boolean } = await ctx.runMutation(
-          internal.payments.refunds.recordRefundAttemptFailure,
-          {
-            refundId: args.refundId,
-            errorMessage: error instanceof Error ? error.message : "Unknown",
-          },
-        );
-        if (!recorded.exhausted) {
-          await ctx.scheduler.runAfter(
-            REFUND_RETRY_DELAY_MS,
-            internal.payments.refunds.executeRefund,
-            { refundId: args.refundId },
-          );
-        }
+      const errorMessage = errorMessageOf(error);
+      if (!isDefinitiveStripeFailure(error)) {
+        await recordAmbiguousFailure(errorMessage);
+        // Rethrown so the failure is visible in function logs; the refund
+        // row carries the user-facing record.
+        throw error;
       }
-      // Rethrown so the failure is visible in function logs; the refund row
-      // and refund_failed audit line carry the user-facing record.
+      // A definitive rejection proves THIS request created nothing, but
+      // says nothing about the row's earlier attempts: Stripe prunes
+      // idempotency keys after a day, so a retry or re-drive that lands
+      // late is a fresh request Stripe may refuse precisely because a
+      // lost earlier attempt already refunded the charge. Settling that
+      // "failed" would pay the order out on top of the refund, so the row
+      // settles from Stripe's record instead — the refund stamped with
+      // this row's id if one exists, "failed" only when there is none.
+      let earlier: {
+        stripeRefundId: string;
+        status: StripeRefundStatus;
+      } | null;
+      try {
+        earlier = await gateway.findRefundForRow({
+          chargeId: begin.stripeChargeId,
+          refundRowId: args.refundId,
+        });
+      } catch (lookupError) {
+        // Without Stripe's answer the outcome is as unknown as after a
+        // dropped connection; the row retries and parks like one.
+        await recordAmbiguousFailure(
+          `${errorMessage} (refund lookup failed: ${errorMessageOf(lookupError)})`,
+        );
+        throw error;
+      }
+      if (earlier) {
+        await (ctx.runMutation(internal.payments.refunds.markRefundResult, {
+          refundId: args.refundId,
+          outcome: refundOutcomeFromStatus(earlier.status),
+          stripeRefundId: earlier.stripeRefundId,
+        }) satisfies Promise<null>);
+        return null;
+      }
+      await (ctx.runMutation(internal.payments.refunds.recordRefundRejection, {
+        refundId: args.refundId,
+        errorMessage,
+      }) satisfies Promise<null>);
       throw error;
     }
-    // Stripe accepting the creation is not the money moving: a refund can
-    // come back pending (bank rails) or requires_action, and only its
-    // terminal status settles the row — for the in-between states the row
-    // stays pending, carrying the Stripe id so the refund.updated webhook
-    // can settle it.
-    const outcome =
-      created.status === "succeeded"
-        ? ("succeeded" as const)
-        : created.status === "failed" || created.status === "canceled"
-          ? ("failed" as const)
-          : ("pending" as const);
     await (ctx.runMutation(internal.payments.refunds.markRefundResult, {
       refundId: args.refundId,
-      outcome,
+      outcome: refundOutcomeFromStatus(created.status),
       stripeRefundId: created.stripeRefundId,
     }) satisfies Promise<null>);
     return null;
   },
 });
 
+// Appends a refund lifecycle event to the owning event's audit log,
+// attributed to the system (the executor and webhooks have no acting user).
+// A refund whose registration is gone has no log line to anchor to.
+async function logRefundAudit(
+  ctx: MutationCtx,
+  refund: Doc<"paymentRefunds">,
+  event: PaidEntryAuditEvent,
+) {
+  const registration = await ctx.db.get(refund.registrationId);
+  if (registration) {
+    await logEntryPaymentAudit(ctx, {
+      owner: refund,
+      registration,
+      actorRole: "system",
+      event,
+    });
+  }
+}
+
 // Records one ambiguous executor failure on the row. The attempt counter
 // lives here (not in scheduler args) so the dead end is visible: on the
 // last allowed attempt the row leaves "pending" for "needs_attention" and
-// a refund_failed audit line is written — the only exhaustion signal
-// outside function logs. The row is deliberately not settled "failed":
-// Stripe may have created the refund, and only reconciliation (the
-// refund.updated webhook, or an operator re-drive under the same
-// idempotency key) can say which.
+// a refund_stalled audit line is written. The row is deliberately not
+// settled "failed" (and the audit line is not refund_failed): Stripe may
+// have created the refund, and only reconciliation (the refund.updated
+// webhook, or an operator re-drive) can say which — refund_failed is
+// written once, by applyRefundOutcome, when that answer is "no".
 export const recordRefundAttemptFailure = internalMutation({
   args: { refundId: v.id("paymentRefunds"), errorMessage: v.string() },
   handler: async (ctx, args) => {
@@ -459,43 +506,24 @@ export const recordRefundAttemptFailure = internalMutation({
       updatedAt: Date.now(),
     });
     if (exhausted) {
-      const registration = await ctx.db.get(refund.registrationId);
-      if (registration) {
-        await logEntryPaymentAudit(ctx, {
-          owner: refund,
-          registration,
-          actorRole: "system",
-          event: { type: "refund_failed", amountCents: refund.amountCents },
-        });
-      }
+      await logRefundAudit(ctx, refund, {
+        type: "refund_stalled",
+        amountCents: refund.amountCents,
+      });
     }
     return { exhausted };
   },
 });
 
-// Records a definitive Stripe rejection of the create call. On a first-run
-// row the request provably created nothing, so the row settles "failed".
-// On a re-driven row the rejection proves nothing about the earlier, lost
-// attempts: Stripe prunes idempotency keys after a day, so a late re-drive
-// can be a fresh request refused precisely because an earlier attempt
-// already refunded the charge — settling it "failed" would pay the order
-// out on top of the refund. Such a row parks in needs_attention again with
-// the rejection as its lastError, keeping the payout blocked until the
-// refund.updated webhook or support resolves it.
+// Records a definitive Stripe rejection of the create call once the
+// executor has confirmed with Stripe (findRefundForRow) that no earlier
+// attempt refunded the charge for this row: the money provably never
+// moved, so the row settles "failed" with the rejection as its lastError.
 export const recordRefundRejection = internalMutation({
   args: { refundId: v.id("paymentRefunds"), errorMessage: v.string() },
   handler: async (ctx, args) => {
     const refund = await ctx.db.get(args.refundId);
     if (!refund || refund.status !== "pending") {
-      return null;
-    }
-    if (refund.redriven) {
-      await ctx.db.patch(refund._id, {
-        status: "needs_attention",
-        attemptCount: refund.attemptCount + 1,
-        lastError: args.errorMessage,
-        updatedAt: Date.now(),
-      });
       return null;
     }
     await ctx.db.patch(refund._id, {
@@ -510,7 +538,9 @@ export const recordRefundRejection = internalMutation({
 // Organizer re-drive for a refund parked in needs_attention: the attempt
 // budget resets and the executor runs again under the row's unchanged
 // idempotency key, so a refund Stripe did create on an earlier attempt is
-// returned (not duplicated) and one it never saw is created now. Gated on
+// returned (not duplicated) and one it never saw is created now; should
+// the key have expired and Stripe refuse the fresh request, the executor
+// settles the row from Stripe's record of the charge's refunds. Gated on
 // the organization's payments permission, the same check the payout retry
 // uses.
 export const retryRefund = mutation({
@@ -520,15 +550,7 @@ export const retryRefund = mutation({
     if (!refund) {
       throw new Error("Refund not found");
     }
-    const owner = parseMoneyRowOwner(refund);
-    const event =
-      owner.kind === "convention"
-        ? await ctx.db.get(owner.conventionId)
-        : await ctx.db.get(owner.tournamentId);
-    if (!event) {
-      throw new Error("Event not found");
-    }
-    await requirePaymentsPermission(ctx, event.organizationId);
+    await requireOwnerPaymentsPermission(ctx, parseMoneyRowOwner(refund));
     if (refund.status !== "needs_attention") {
       throw new Error("This refund is not awaiting a retry");
     }
@@ -536,7 +558,6 @@ export const retryRefund = mutation({
       status: "pending",
       attemptCount: 0,
       lastError: undefined,
-      redriven: true,
       updatedAt: Date.now(),
     });
     await ctx.scheduler.runAfter(0, internal.payments.refunds.executeRefund, {
@@ -610,20 +631,14 @@ async function applyRefundOutcome(
     return;
   }
 
-  const registration = await ctx.db.get(refund.registrationId);
-  if (registration) {
-    await logEntryPaymentAudit(ctx, {
-      owner: refund,
-      registration,
-      actorRole: "system",
-      event: {
-        type: "refund_failed",
-        amountCents: refund.amountCents,
-      },
-    });
-  }
+  await logRefundAudit(ctx, refund, {
+    type: "refund_failed",
+    amountCents: refund.amountCents,
+  });
 }
 
+// The executor's result write, from the refund Stripe created now or the
+// one it reports an earlier attempt created (findRefundForRow).
 export const markRefundResult = internalMutation({
   args: {
     refundId: v.id("paymentRefunds"),

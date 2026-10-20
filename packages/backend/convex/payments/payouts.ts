@@ -21,7 +21,7 @@ import {
   parseMoneyRowOwner,
 } from "../model/paidEventOwner";
 import { orderTransferGroup } from "../model/payments";
-import { requirePaymentsPermission } from "../model/stripeAccounts";
+import { requireOwnerPaymentsPermission } from "../model/stripeAccounts";
 import { conventionHasPaidTicketType } from "../model/ticketTypes";
 import { requireOrganizerAccess } from "../model/tournaments";
 import { getStripeGateway } from "../stripe/client";
@@ -568,14 +568,7 @@ export const beginPayoutRetry = internalMutation({
   args: moneyRowOwnerArgs,
   handler: async (ctx, args) => {
     const owner = parseMoneyRowOwner(args);
-    const event =
-      owner.kind === "convention"
-        ? await ctx.db.get(owner.conventionId)
-        : await ctx.db.get(owner.tournamentId);
-    if (!event) {
-      throw new Error("Event not found");
-    }
-    await requirePaymentsPermission(ctx, event.organizationId);
+    await requireOwnerPaymentsPermission(ctx, owner);
 
     const payout = await ownerPayoutsQuery(ctx, owner).unique();
     if (

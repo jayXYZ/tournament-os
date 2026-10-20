@@ -1,6 +1,7 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { requireActiveMembership, requireActiveOrganization } from "./access";
+import type { MoneyRowOwner } from "./paidEventOwner";
 import type { TransfersCapabilityStatus } from "../stripe/client";
 import { canManageOrganizationPayments } from "../validators";
 
@@ -96,4 +97,23 @@ export async function requirePaymentsPermission(
 
   const organization = await requireActiveOrganization(ctx, organizationId);
   return { organization, membership, user };
+}
+
+// The payments gate for an operator action on a money row (a payout retry,
+// a refund re-drive): resolves the owning event and requires the payments
+// permission on its organization. The one place that resolution lives, so
+// a change to how a money row's owner authorizes payments actions lands in
+// every gated verb at once.
+export async function requireOwnerPaymentsPermission(
+  ctx: QueryCtx,
+  owner: MoneyRowOwner,
+) {
+  const event =
+    owner.kind === "convention"
+      ? await ctx.db.get(owner.conventionId)
+      : await ctx.db.get(owner.tournamentId);
+  if (!event) {
+    throw new Error("Event not found");
+  }
+  return await requirePaymentsPermission(ctx, event.organizationId);
 }

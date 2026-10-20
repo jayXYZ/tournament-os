@@ -34,6 +34,13 @@ const gatewayState = vi.hoisted(() => ({
   // When set, createRefund throws instead of returning — models the call
   // failing (a connection drop, a Stripe rejection).
   createRefundError: null as Error | null,
+  // What Stripe reports when the executor asks whether an earlier attempt
+  // for the row already refunded the charge (after a definitive rejection).
+  existingRefund: null as {
+    stripeRefundId: string;
+    status: "succeeded" | "pending" | "failed";
+  } | null,
+  findRefundError: null as Error | null,
 }));
 
 vi.mock("./stripe/config", async (importOriginal) => {
@@ -69,6 +76,12 @@ vi.mock("./stripe/client", () => ({
         status: gatewayState.createRefundStatus,
       };
     },
+    findRefundForRow: async () => {
+      if (gatewayState.findRefundError) {
+        throw gatewayState.findRefundError;
+      }
+      return gatewayState.existingRefund;
+    },
   }),
 }));
 
@@ -78,6 +91,8 @@ beforeEach(() => {
   gatewayState.nextSessionNumber = 1;
   gatewayState.createRefundStatus = "succeeded";
   gatewayState.createRefundError = null;
+  gatewayState.existingRefund = null;
+  gatewayState.findRefundError = null;
 });
 
 const START_DATE = Date.UTC(2027, 5, 12, 17, 0, 0);
@@ -204,6 +219,27 @@ async function refundsFor(
         .withIndex("by_orderId", (q) => q.eq("orderId", orderId))
         .take(8),
   );
+}
+
+// How the refund's lifecycle landed on the tournament's audit trail: a stall
+// (executor gave up, outcome unknown) versus a failure (Stripe returned
+// nothing), each expected at most once per refund.
+async function refundAuditCounts(
+  t: TestConvex<typeof schema>,
+  tournamentId: Id<"tournaments">,
+) {
+  const types = await t.run(async (ctx) =>
+    (
+      await ctx.db
+        .query("tournamentAuditEvents")
+        .withIndex("by_tournamentId", (q) => q.eq("tournamentId", tournamentId))
+        .take(64)
+    ).map((row) => row.event.type),
+  );
+  return {
+    refund_stalled: types.filter((type) => type === "refund_stalled").length,
+    refund_failed: types.filter((type) => type === "refund_failed").length,
+  };
 }
 
 async function runQueuedRefund(
@@ -622,19 +658,12 @@ test("a refund that exhausts its retries parks in needs_attention and an organiz
       lastError: "socket hang up",
     });
     expect((await latestOrder(t, tournamentId)).status).toBe("paid");
-    const auditTypes = await t.run(async (ctx) =>
-      (
-        await ctx.db
-          .query("tournamentAuditEvents")
-          .withIndex("by_tournamentId", (q) =>
-            q.eq("tournamentId", tournamentId),
-          )
-          .take(32)
-      ).map((row) => row.event.type),
-    );
-    expect(auditTypes.filter((type) => type === "refund_failed")).toHaveLength(
-      1,
-    );
+    // The stall is on the record, but not as a failure: the money may yet
+    // prove to have moved.
+    expect(await refundAuditCounts(t, tournamentId)).toEqual({
+      refund_stalled: 1,
+      refund_failed: 0,
+    });
     expect(
       await asOwner.query(api.payments.refunds.listRefundsNeedingAttention, {
         tournamentId,
@@ -675,9 +704,30 @@ test("a refund that exhausts its retries parks in needs_attention and an organiz
   }
 });
 
-test("a definitive rejection on a re-driven refund parks it again instead of settling it failed", async () => {
+// Stripe refused the re-driven call: the row must settle from Stripe's
+// record of the charge, never from a guess about the lost earlier attempts.
+async function parkExhaustedRefund(
+  t: TestConvex<typeof schema>,
+  refundId: Id<"paymentRefunds">,
+) {
+  await t.run(async (ctx) => {
+    await ctx.db.patch(refundId, {
+      status: "needs_attention",
+      attemptCount: MAX_REFUND_ATTEMPTS,
+      lastError: "socket hang up",
+    });
+  });
+}
+
+const alreadyRefunded = () =>
+  new Stripe.errors.StripeInvalidRequestError({
+    type: "invalid_request_error",
+    code: "charge_already_refunded",
+    message: "Charge ch_one has already been refunded.",
+  });
+
+test("a definitive rejection explained by an earlier attempt's refund settles the row from Stripe's record", async () => {
   vi.useFakeTimers();
-  const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
   try {
     const t = createConvexTest();
     const { organizationId } = await seedOrganizer(t);
@@ -691,39 +741,66 @@ test("a definitive rejection on a re-driven refund parks it again instead of set
       { tournamentId },
     );
     const [refund] = await refundsFor(t, orderId);
-    await t.run(async (ctx) => {
-      await ctx.db.patch(refund!._id, {
-        status: "needs_attention",
-        attemptCount: MAX_REFUND_ATTEMPTS,
-        lastError: "socket hang up",
-      });
-    });
+    await parkExhaustedRefund(t, refund!._id);
 
     // Days later the idempotency key has expired and Stripe refuses the
     // re-driven call because a lost earlier attempt already refunded the
-    // charge. That is not proof the money never moved, so the row must
-    // not settle "failed" (which would pay the order out).
-    gatewayState.createRefundError =
-      new Stripe.errors.StripeInvalidRequestError({
-        type: "invalid_request_error",
-        code: "charge_already_refunded",
-        message: "Charge ch_one has already been refunded.",
-      });
+    // charge. The executor asks Stripe for that refund and settles from
+    // it — no parking, no second operator step.
+    gatewayState.createRefundError = alreadyRefunded();
+    gatewayState.existingRefund = {
+      stripeRefundId: "re_late_1",
+      status: "succeeded",
+    };
     await asOwner.mutation(api.payments.refunds.retryRefund, {
       refundId: refund!._id,
     });
     await t.finishAllScheduledFunctions(vi.runAllTimers);
     expect((await refundsFor(t, orderId))[0]).toMatchObject({
-      status: "needs_attention",
-      redriven: true,
-      lastError: "Charge ch_one has already been refunded.",
+      status: "succeeded",
+      stripeRefundId: "re_late_1",
     });
-    expect((await latestOrder(t, tournamentId)).status).toBe("paid");
+    expect((await latestOrder(t, tournamentId)).status).toBe("refunded");
+    expect(gatewayState.refunds).toHaveLength(0);
+  } finally {
+    vi.useRealTimers();
+  }
+});
 
-    // Stripe's report of the earlier refund settles it.
+test("a definitive rejection explained by an earlier refund still processing leaves the row pending for the webhook", async () => {
+  vi.useFakeTimers();
+  try {
+    const t = createConvexTest();
+    const { organizationId } = await seedOrganizer(t);
+    const tournamentId = await seedPaidTournament(t, organizationId);
+    const asPlayer = t.withIdentity(playerOne);
+    const asOwner = t.withIdentity(organizerIdentity);
+
+    const orderId = await payForEntry(t, tournamentId, "one");
+    await asPlayer.mutation(
+      api.tournaments.registrations.cancelMyRegistration,
+      { tournamentId },
+    );
+    const [refund] = await refundsFor(t, orderId);
+    await parkExhaustedRefund(t, refund!._id);
+
+    gatewayState.createRefundError = alreadyRefunded();
+    gatewayState.existingRefund = {
+      stripeRefundId: "re_late_2",
+      status: "pending",
+    };
+    await asOwner.mutation(api.payments.refunds.retryRefund, {
+      refundId: refund!._id,
+    });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    // Stripe's refund id is recorded so refund.updated can find the row.
+    expect((await refundsFor(t, orderId))[0]).toMatchObject({
+      status: "pending",
+      stripeRefundId: "re_late_2",
+    });
     await t.mutation(internal.payments.refunds.handleRefundEvent, {
       stripeEventId: "evt_refund_late",
-      stripeRefundId: "re_late_1",
+      stripeRefundId: "re_late_2",
       refundStatus: "succeeded",
       refundRowId: refund!._id,
     });
@@ -731,8 +808,86 @@ test("a definitive rejection on a re-driven refund parks it again instead of set
     expect((await latestOrder(t, tournamentId)).status).toBe("refunded");
   } finally {
     vi.useRealTimers();
+  }
+});
+
+test("a definitive rejection with no refund on the charge settles a re-driven row failed, logged once", async () => {
+  vi.useFakeTimers();
+  const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+  try {
+    const t = createConvexTest();
+    const { organizationId } = await seedOrganizer(t);
+    const tournamentId = await seedPaidTournament(t, organizationId);
+    const asPlayer = t.withIdentity(playerOne);
+    const asOwner = t.withIdentity(organizerIdentity);
+
+    const orderId = await payForEntry(t, tournamentId, "one");
+    // Exhaust for real so the stall is on the audit log.
+    gatewayState.createRefundError = new Error("socket hang up");
+    await asPlayer.mutation(
+      api.tournaments.registrations.cancelMyRegistration,
+      { tournamentId },
+    );
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    const [refund] = await refundsFor(t, orderId);
+    expect(refund!.status).toBe("needs_attention");
+
+    // Stripe refuses the re-drive (the charge was disputed, say) and holds
+    // no refund for this row: the money provably never moved, so the row
+    // settles failed and the payout can proceed — no permanent parking.
+    gatewayState.createRefundError =
+      new Stripe.errors.StripeInvalidRequestError({
+        type: "invalid_request_error",
+        code: "charge_disputed",
+        message: "Charge ch_one has been charged back; cannot issue a refund.",
+      });
+    await asOwner.mutation(api.payments.refunds.retryRefund, {
+      refundId: refund!._id,
+    });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect((await refundsFor(t, orderId))[0]).toMatchObject({
+      status: "failed",
+      lastError: "Charge ch_one has been charged back; cannot issue a refund.",
+    });
+    expect((await latestOrder(t, tournamentId)).status).toBe("paid");
+    // One stall, one failure — not a failure line per attempt.
+    expect(await refundAuditCounts(t, tournamentId)).toEqual({
+      refund_stalled: 1,
+      refund_failed: 1,
+    });
+  } finally {
+    vi.useRealTimers();
     consoleError.mockRestore();
   }
+});
+
+test("a definitive rejection whose Stripe lookup fails is retried like an ambiguous failure", async () => {
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const tournamentId = await seedPaidTournament(t, organizationId);
+  const asPlayer = t.withIdentity(playerOne);
+
+  const orderId = await payForEntry(t, tournamentId, "one");
+  await asPlayer.mutation(api.tournaments.registrations.cancelMyRegistration, {
+    tournamentId,
+  });
+  // Stripe refused the create, but the follow-up lookup dropped: without
+  // Stripe's answer the row must not settle either way.
+  gatewayState.createRefundError = alreadyRefunded();
+  gatewayState.findRefundError = new Error("socket hang up");
+  const [refund] = await refundsFor(t, orderId);
+  await expect(
+    t.action(internal.payments.refunds.executeRefund, {
+      refundId: refund!._id,
+    }),
+  ).rejects.toThrow("already been refunded");
+  expect((await refundsFor(t, orderId))[0]).toMatchObject({
+    status: "pending",
+    attemptCount: 1,
+    lastError:
+      "Charge ch_one has already been refunded. (refund lookup failed: socket hang up)",
+  });
+  expect((await latestOrder(t, tournamentId)).status).toBe("paid");
 });
 
 test("a definitive rejection on a first-run refund settles it failed", async () => {
@@ -760,6 +915,10 @@ test("a definitive rejection on a first-run refund settles it failed", async () 
     lastError: "No such charge: ch_one",
   });
   expect((await latestOrder(t, tournamentId)).status).toBe("paid");
+  expect(await refundAuditCounts(t, tournamentId)).toEqual({
+    refund_stalled: 0,
+    refund_failed: 1,
+  });
 });
 
 test("a webhook report settles a needs_attention refund without an operator", async () => {
