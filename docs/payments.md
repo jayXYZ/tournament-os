@@ -79,23 +79,33 @@ suites are `paymentsConnect` / `entryFeeSettings` / `paymentsCheckout` /
   to derive completion from); the two settle independently even when the
   tournament is a child of the convention. Blocked payouts (refunds
   settling, account not payouts-ready) and exhausted-retry failures surface
-  on the event's settings page with an owner-only retry. A refund whose
-  executor exhausts its retries on ambiguous Stripe failures parks in
-  `needs_attention` (its attempt count and last error on the row, a
-  `refund_stalled` audit line) rather than settling as failed, since Stripe
-  may have created it; it blocks the payout with a generic reason, and the
-  same settings page lists the parked refunds (player, amount, attempts,
-  last error) with an owner-only refund retry that re-drives each under its
-  original idempotency key (the `refund.updated` webhook can also settle
-  it). Stripe prunes idempotency keys after a day, so a
-  definitive rejection of a late retry or re-drive may be refusing a charge
-  an earlier, lost attempt already refunded: on any definitive rejection
-  the executor looks the row's refund up on Stripe (`refunds.list` by
-  charge, matched on the row id in the refund's metadata) and settles from
-  that record — succeeded, failed, or pending for the webhook — and only
-  settles `failed` (the one `refund_failed` audit line) when Stripe holds
-  no such refund. A `needs_attention` refund also blocks hard deletion of
-  the event.
+  on the event's settings page with an owner-only retry. The refund
+  executor settles a row `failed` only on a definitive Stripe rejection
+  (`stripe/errors.ts`: invalid request, card error, idempotency error);
+  everything else — a connection drop or 5xx (the refund may exist), a rate
+  limit, an authentication or permission error (nothing created, but
+  transient) — is a retriable attempt: the recording mutation bumps the
+  row's attempt count and schedules the retry in the same transaction, so
+  a crash can never strand a counted attempt. On the final attempt the
+  executor asks Stripe for the row's refund (`refunds.list` by charge,
+  matched on the row id in the refund's metadata) and settles from that
+  record when a lost attempt did land; only when Stripe holds none does
+  the row park in `needs_attention` (last error on the row, a
+  `refund_stalled` audit line) rather than settling as failed, since the
+  refund is still owed. A parked refund blocks the payout with a generic
+  reason, and the settings page lists the parked refunds (player, amount,
+  attempts, last error; capped with a "more" flag) with owner-only
+  retries — one row, or all of them by a scheduler-continued sweep. A
+  re-drive asks Stripe's record first (its idempotency key may have
+  expired) and otherwise creates the refund under the row's original key;
+  the `refund.updated` webhook can also settle a parked row, or un-park one
+  whose refund Stripe reports as still processing. A definitive rejection
+  likewise settles from Stripe's record — succeeded, failed (carrying
+  Stripe's failure reason), or pending for the webhook — and only settles
+  `failed` (the one `refund_failed` audit line) when Stripe holds no such
+  refund. The unsettled-refund probe the payout sweep and the hard-delete
+  guard share is `model/payments.ts` `firstUnsettledRefundStatus`; the
+  re-drive rule and the parked-refund read live beside it.
 - **Webhooks** — two signed endpoints, one per Stripe event format.
   - Snapshot events: `POST <deployment>.convex.site/stripe/events`.
     Fulfillment happens only here; success pages just watch the order

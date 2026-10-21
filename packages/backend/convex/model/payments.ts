@@ -5,6 +5,7 @@ import {
 
 import type { WithoutSystemFields } from "convex/server";
 
+import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { feeConfigFromEnv } from "../stripe/config";
@@ -314,6 +315,110 @@ export async function paidEntryCancelOutcome(
     : "full_refund";
 }
 
+// The refund statuses that are "not settled yet": the money's whereabouts
+// are undecided, so nothing that assumes a final answer (a payout, a hard
+// delete) may proceed. A row the executor gave up on (needs_attention)
+// outranks a plain pending one so the caller's message can be actionable —
+// a pending row only needs time, a parked one needs an operator. Both the
+// payout sweep and the delete guard read this one probe, so the two can
+// never disagree on what "unsettled" means.
+export async function firstUnsettledRefundStatus(
+  ctx: QueryCtx,
+  owner: MoneyRowOwner,
+): Promise<"needs_attention" | "pending" | null> {
+  for (const status of ["needs_attention", "pending"] as const) {
+    if (await ownerRefundsQuery(ctx, owner, status).first()) {
+      return status;
+    }
+  }
+  return null;
+}
+
+// The organizer re-drive for a refund parked in needs_attention: the attempt
+// budget resets and the executor runs again, asking Stripe first whether an
+// earlier attempt already created the refund (reconcileFirst) and
+// otherwise creating it under the row's unchanged idempotency key — so a
+// refund Stripe did create is returned, never duplicated. The one place
+// the re-drive rule lives (which statuses are retriable, what the reset
+// clears), shared by the single-row verb and the bulk sweep.
+export async function redriveRefund(
+  ctx: MutationCtx,
+  refund: Doc<"paymentRefunds">,
+) {
+  if (refund.status !== "needs_attention") {
+    throw new Error("This refund is not awaiting a retry");
+  }
+  await ctx.db.patch(refund._id, {
+    status: "pending",
+    attemptCount: 0,
+    lastError: undefined,
+    updatedAt: Date.now(),
+  });
+  await ctx.scheduler.runAfter(0, internal.payments.refunds.executeRefund, {
+    refundId: refund._id,
+    reconcileFirst: true,
+  });
+}
+
+const REDRIVE_BATCH = 32;
+
+// Re-drives one page of the owner's parked refunds and schedules the next
+// page when this one was full. Terminates because a re-driven row leaves
+// needs_attention (it is pending again); a row that stalls a second time
+// returns only after its retries exhaust, long after the sweep has moved
+// on. Returns how many rows this page re-drove.
+export async function redriveRefundsBatch(
+  ctx: MutationCtx,
+  owner: MoneyRowOwner,
+) {
+  const parked = await ownerRefundsQuery(ctx, owner, "needs_attention").take(
+    REDRIVE_BATCH,
+  );
+  for (const refund of parked) {
+    await redriveRefund(ctx, refund);
+  }
+  if (parked.length === REDRIVE_BATCH) {
+    await ctx.scheduler.runAfter(
+      0,
+      internal.payments.refunds.redriveRefundsSweep,
+      moneyRowOwnerColumns(owner),
+    );
+  }
+  return parked.length;
+}
+
+// How many parked refunds the organizer's payout card lists at once; past
+// this it reports that more exist (hasMore) and offers the bulk re-drive.
+export const REFUNDS_NEEDING_ATTENTION_PAGE = 64;
+
+// The owner's refunds the executor gave up on, shaped for the organizer's
+// payout card: each blocks the payout until it is re-driven or the
+// refund.updated webhook settles it. Capped read with an explicit "more"
+// flag, so a mass stall (a Stripe outage during a cancellation sweep) is
+// never mistaken for the full list.
+export async function refundsNeedingAttention(
+  ctx: QueryCtx,
+  owner: MoneyRowOwner,
+) {
+  const page = await ownerRefundsQuery(ctx, owner, "needs_attention").take(
+    REFUNDS_NEEDING_ATTENTION_PAGE + 1,
+  );
+  const hasMore = page.length > REFUNDS_NEEDING_ATTENTION_PAGE;
+  const refunds = [];
+  for (const refund of page.slice(0, REFUNDS_NEEDING_ATTENTION_PAGE)) {
+    const registration = await ctx.db.get(refund.registrationId);
+    refunds.push({
+      refundId: refund._id,
+      playerName: registration?.playerName ?? null,
+      amountCents: refund.amountCents,
+      attemptCount: refund.attemptCount,
+      lastError: refund.lastError ?? null,
+      updatedAt: refund.updatedAt,
+    });
+  }
+  return { refunds, hasMore };
+}
+
 // The event's first order in one status, read through the owner's index.
 async function firstOrderWithStatus(
   ctx: QueryCtx,
@@ -351,14 +456,15 @@ export async function requireEventPaymentsSettled(
   // destroy the only record of money that may already have left Stripe.
   // Nothing settles it on its own (the event may already be cancelled),
   // so the message points at the retry on the settings page.
-  if (await ownerRefundsQuery(ctx, owner, "needs_attention").first()) {
+  const unsettledRefund = await firstUnsettledRefundStatus(ctx, owner);
+  if (unsettledRefund === "needs_attention") {
     throw new Error(
       `This ${ref.kind} has a refund that needs attention — retry it from ` +
         "the payout section of the settings page (or resolve it in Stripe) " +
         "before deleting",
     );
   }
-  if (await ownerRefundsQuery(ctx, owner, "pending").first()) {
+  if (unsettledRefund === "pending") {
     throw new Error(blockedMessage);
   }
   const paidOrder = await firstOrderWithStatus(ctx, ref, "paid");

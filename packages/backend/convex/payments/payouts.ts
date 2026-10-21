@@ -20,12 +20,16 @@ import {
   ownerRefundsQuery,
   parseMoneyRowOwner,
 } from "../model/paidEventOwner";
-import { orderTransferGroup } from "../model/payments";
+import {
+  firstUnsettledRefundStatus,
+  orderTransferGroup,
+} from "../model/payments";
 import { requireOwnerPaymentsPermission } from "../model/stripeAccounts";
 import { conventionHasPaidTicketType } from "../model/ticketTypes";
 import { requireOrganizerAccess } from "../model/tournaments";
 import { getStripeGateway } from "../stripe/client";
 import { requireStripeSecretKey } from "../stripe/config";
+import { errorMessageOf } from "../stripe/errors";
 
 // The event payout sweep, scheduled when a paid tournament or convention
 // completes: one transfer per paid order (source_transaction = the order's
@@ -75,25 +79,20 @@ async function payoutSourceEvent(
 }
 
 // The blocked-payout reason for the owner's unsettled refunds, or null when
-// every refund has settled. Rows the executor gave up on take precedence so
-// the reason is actionable (a plain pending row only needs time). The
-// reason stays generic: the offending rows (player, amount, attempts, last
-// error) are listed beside the payout by listRefundsNeedingAttention, which
+// every refund has settled (the probe itself is model/payments.ts
+// firstUnsettledRefundStatus, shared with the delete guard). The reason
+// stays generic: the offending rows (player, amount, attempts, last error)
+// are listed beside the payout by listRefundsNeedingAttention, which
 // formats them for the organizer.
 async function unsettledOwnerRefund(
   ctx: MutationCtx,
   owner: MoneyRowOwner,
 ): Promise<string | null> {
-  const [needsAttention] = await ownerRefundsQuery(
-    ctx,
-    owner,
-    "needs_attention",
-  ).take(1);
-  if (needsAttention) {
+  const unsettled = await firstUnsettledRefundStatus(ctx, owner);
+  if (unsettled === "needs_attention") {
     return "A refund needs attention. Retry it (or resolve it in Stripe), then retry the payout.";
   }
-  const [pending] = await ownerRefundsQuery(ctx, owner, "pending").take(1);
-  return pending ? "Refunds are still settling" : null;
+  return unsettled === "pending" ? "Refunds are still settling" : null;
 }
 
 export const startPayoutSweep = internalMutation({
@@ -493,7 +492,7 @@ export const sendTransfers = internalAction({
           await (ctx.runMutation(internal.payments.payouts.markTransferResult, {
             transferRowId: row.transferRowId,
             outcome: "failed",
-            errorMessage: error instanceof Error ? error.message : "Unknown",
+            errorMessage: errorMessageOf(error),
           }) satisfies Promise<null>);
         }
       }

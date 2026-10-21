@@ -29,6 +29,7 @@ export function PayoutCard({ tournament }: { tournament: Doc<'tournaments'> }) {
   )
   const retryPayout = useAction(api.payments.payouts.retryPayout)
   const retryRefund = useMutation(api.payments.refunds.retryRefund)
+  const retryAllRefunds = useMutation(api.payments.refunds.retryAllRefunds)
 
   return (
     <PaidEventPayoutCard
@@ -38,6 +39,9 @@ export function PayoutCard({ tournament }: { tournament: Doc<'tournaments'> }) {
       refundsNeedingAttention={refundsNeedingAttention}
       onRetry={() => retryPayout({ tournamentId: tournament._id })}
       onRetryRefund={(refundId) => retryRefund({ refundId })}
+      onRetryAllRefunds={() =>
+        retryAllRefunds({ tournamentId: tournament._id })
+      }
       copy={copy}
     />
   )

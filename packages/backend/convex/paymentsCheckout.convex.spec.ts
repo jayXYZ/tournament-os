@@ -56,6 +56,7 @@ vi.mock("./stripe/client", () => ({
         status: "succeeded" as const,
       };
     },
+    findRefundForRow: async () => null,
   }),
 }));
 

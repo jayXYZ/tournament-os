@@ -15,9 +15,10 @@ import { Spinner } from '@/components/ui/spinner'
 type PayoutSummary = FunctionReturnType<
   typeof api.payments.payouts.getTournamentPayout
 >
-type RefundNeedingAttention = FunctionReturnType<
+type RefundsNeedingAttention = FunctionReturnType<
   typeof api.payments.refunds.listRefundsNeedingAttention
->[number]
+>
+type RefundNeedingAttention = RefundsNeedingAttention['refunds'][number]
 
 export type PaidEventPayoutCopy = {
   title: string
@@ -31,8 +32,9 @@ export type PaidEventPayoutCopy = {
 // Payout status for either paid-event kind: fees transfer to the
 // organization's Stripe account when the event completes
 // (payments/payouts.ts); blocked or failed payouts retry from here, as do
-// refunds whose executor gave up (they block the payout until settled).
-// The wrappers supply the query results and the retry verbs.
+// refunds whose executor gave up (they block the payout until settled) —
+// one at a time, or all at once when a mass stall parked many. The
+// wrappers supply the query results and the retry verbs.
 export function PaidEventPayoutCard({
   isPaid,
   completed,
@@ -40,23 +42,26 @@ export function PaidEventPayoutCard({
   refundsNeedingAttention,
   onRetry,
   onRetryRefund,
+  onRetryAllRefunds,
   copy,
 }: {
   isPaid: boolean
   completed: boolean
   // undefined while loading (or while the query is skipped pre-completion).
   payout: PayoutSummary | undefined
-  refundsNeedingAttention: ReadonlyArray<RefundNeedingAttention> | undefined
+  refundsNeedingAttention: RefundsNeedingAttention | undefined
   onRetry: () => Promise<unknown>
   onRetryRefund: (
     refundId: RefundNeedingAttention['refundId'],
   ) => Promise<unknown>
+  onRetryAllRefunds: () => Promise<unknown>
   copy: PaidEventPayoutCopy
 }) {
   const { selectedOrganization } = useOrganization()
   const [retrying, setRetrying] = useState(false)
-  const [retryingRefundId, setRetryingRefundId] = useState<
-    RefundNeedingAttention['refundId'] | null
+  // The refund re-drive in flight: a row id, 'all' for the bulk verb.
+  const [retryingRefund, setRetryingRefund] = useState<
+    RefundNeedingAttention['refundId'] | 'all' | null
   >(null)
 
   if (!isPaid) {
@@ -82,24 +87,40 @@ export function PaidEventPayoutCard({
   async function handleRetryRefund(
     refundId: RefundNeedingAttention['refundId'],
   ) {
-    setRetryingRefundId(refundId)
+    setRetryingRefund(refundId)
     try {
       await onRetryRefund(refundId)
       toast.success('Refund retry started.')
     } catch (error) {
       toast.error(mutationErrorMessage(error, 'Could not retry the refund.'))
     } finally {
-      setRetryingRefundId(null)
+      setRetryingRefund(null)
     }
   }
+
+  async function handleRetryAllRefunds() {
+    setRetryingRefund('all')
+    try {
+      await onRetryAllRefunds()
+      toast.success('Retrying every refund that needs attention.')
+    } catch (error) {
+      toast.error(mutationErrorMessage(error, 'Could not retry the refunds.'))
+    } finally {
+      setRetryingRefund(null)
+    }
+  }
+
+  const parkedRefunds = refundsNeedingAttention?.refunds ?? []
+  const offerRetryAll =
+    parkedRefunds.length > 1 || (refundsNeedingAttention?.hasMore ?? false)
 
   return (
     <section className="flex flex-col gap-4">
       <SectionHeader title={copy.title} description={copy.description} />
-      {refundsNeedingAttention && refundsNeedingAttention.length > 0 ? (
+      {parkedRefunds.length > 0 ? (
         <div className="flex flex-col gap-2">
           <ul className="flex flex-col gap-2">
-            {refundsNeedingAttention.map((refund) => (
+            {parkedRefunds.map((refund) => (
               <li
                 key={refund.refundId}
                 className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-destructive/40 p-3"
@@ -122,10 +143,10 @@ export function PaidEventPayoutCard({
                   type="button"
                   variant="outline"
                   size="sm"
-                  disabled={!canRetry || retryingRefundId !== null}
+                  disabled={!canRetry || retryingRefund !== null}
                   onClick={() => void handleRetryRefund(refund.refundId)}
                 >
-                  {retryingRefundId === refund.refundId ? (
+                  {retryingRefund === refund.refundId ? (
                     <Spinner data-icon="inline-start" />
                   ) : null}
                   Retry refund
@@ -133,6 +154,26 @@ export function PaidEventPayoutCard({
               </li>
             ))}
           </ul>
+          {refundsNeedingAttention?.hasMore ? (
+            <p className="text-sm text-muted-foreground">
+              More refunds need attention than are shown here.
+            </p>
+          ) : null}
+          {offerRetryAll ? (
+            <div>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={!canRetry || retryingRefund !== null}
+                onClick={() => void handleRetryAllRefunds()}
+              >
+                {retryingRefund === 'all' ? (
+                  <Spinner data-icon="inline-start" />
+                ) : null}
+                Retry all refunds
+              </Button>
+            </div>
+          ) : null}
           {!canRetry && (
             <p className="text-sm text-muted-foreground">
               Only the organization owner can retry a refund.

@@ -37,6 +37,7 @@ export function ConventionPayoutCard({
   )
   const retryPayout = useAction(api.payments.payouts.retryPayout)
   const retryRefund = useMutation(api.payments.refunds.retryRefund)
+  const retryAllRefunds = useMutation(api.payments.refunds.retryAllRefunds)
 
   return (
     <PaidEventPayoutCard
@@ -46,6 +47,9 @@ export function ConventionPayoutCard({
       refundsNeedingAttention={refundsNeedingAttention}
       onRetry={() => retryPayout({ conventionId: convention._id })}
       onRetryRefund={(refundId) => retryRefund({ refundId })}
+      onRetryAllRefunds={() =>
+        retryAllRefunds({ conventionId: convention._id })
+      }
       copy={copy}
     />
   )
