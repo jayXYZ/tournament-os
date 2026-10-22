@@ -79,10 +79,11 @@ function describeRefundCheck(
 // Payout status for either paid-event kind: fees transfer to the
 // organization's Stripe account when the event completes
 // (payments/payouts.ts); blocked or failed payouts retry from here. Refunds
-// whose outcome could not be confirmed block the payout and are listed
-// above it, each with a status check against Stripe's record — the check
-// settles what Stripe knows about and never issues a refund itself. The
-// wrappers supply the query results and the two verbs.
+// whose outcome could not be confirmed, and refunds Stripe is still
+// processing, block the payout and are listed above it, each with a status
+// check against Stripe's record — the check settles what Stripe knows
+// about and never issues a refund itself. The wrappers supply the query
+// results and the two verbs.
 export function PaidEventPayoutCard({
   isPaid,
   completed,
@@ -159,26 +160,48 @@ export function PaidEventPayoutCard({
             {parkedRefunds.map((refund) => (
               <li
                 key={refund.refundId}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-destructive/40 p-3"
+                className={
+                  refund.status === 'needs_attention'
+                    ? 'flex flex-wrap items-center justify-between gap-2 rounded-md border border-destructive/40 p-3'
+                    : 'flex flex-wrap items-center justify-between gap-2 rounded-md border p-3'
+                }
               >
                 <div className="flex flex-col gap-1 text-sm">
-                  <span>
-                    We couldn't confirm the outcome of the{' '}
-                    {formatCents(refund.amountCents)} refund to{' '}
-                    {refund.playerName ?? 'a player'}. The payout remains
-                    paused.
-                  </span>
-                  {refund.lastError ? (
-                    <span className="text-muted-foreground">
-                      {refund.lastError}
-                    </span>
-                  ) : null}
-                  <span className="text-muted-foreground">
-                    Check its status, or contact the platform operator with
-                    reference {refund.refundId} ({refund.attemptCount} recorded{' '}
-                    {refund.attemptCount === 1 ? 'attempt' : 'attempts'}
-                    ).
-                  </span>
+                  {refund.status === 'needs_attention' ? (
+                    <>
+                      <span>
+                        We couldn't confirm the outcome of the{' '}
+                        {formatCents(refund.amountCents)} refund to{' '}
+                        {refund.playerName ?? 'a player'}. The payout remains
+                        paused.
+                      </span>
+                      {refund.lastError ? (
+                        <span className="text-muted-foreground">
+                          {refund.lastError}
+                        </span>
+                      ) : null}
+                      <span className="text-muted-foreground">
+                        Check its status, or contact the platform operator with
+                        reference {refund.refundId} ({refund.attemptCount}{' '}
+                        recorded{' '}
+                        {refund.attemptCount === 1 ? 'attempt' : 'attempts'}
+                        ).
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span>
+                        Stripe is still processing the{' '}
+                        {formatCents(refund.amountCents)} refund to{' '}
+                        {refund.playerName ?? 'a player'}. The payout stays
+                        paused until it settles.
+                      </span>
+                      <span className="text-muted-foreground">
+                        It settles on its own once Stripe reports it; check its
+                        status to confirm sooner (reference {refund.refundId}).
+                      </span>
+                    </>
+                  )}
                 </div>
                 <Button
                   type="button"

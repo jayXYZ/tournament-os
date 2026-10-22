@@ -55,17 +55,25 @@ Its lifecycle is `pending` → `succeeded` | `failed` | `needs_attention`.
     refunded, absorbed-fee accounting unchanged), `failed` (one
     `refund_failed` audit line, Stripe's failure reason as `lastError`), or
     `pending` / `requires_action` (row back to `pending` with the Stripe id,
-    for the webhook to finish). A refund whose amount disagrees with the row
-    settles nothing. Settled rows are never regressed; a later success report
+    for the webhook to finish). Both paths accept only a refund on the row's
+    charge (the order's, or the row's own for a stray-charge refund) for the
+    row's exact amount: a refund that names the row but is on another charge
+    or for another amount settles nothing, so a wrongly stamped refund cannot
+    settle a row. Settled rows are never regressed; a later success report
     may still recover a `failed` row.
 - **A pending row with a Stripe id waits.** Once Stripe has accepted a
   refund for the row, the executor sends nothing more for it; the webhook or
-  a status check carries its status.
+  a status check carries its status. Such a row stays on the payout card,
+  with its check button, until it settles — the check is the only way to
+  finish it if the final webhook never arrives.
 
 The status check reports one of: `settled` (succeeded or failed),
 `processing`, `unresolved` (Stripe holds no refund stamped with the row),
 `mismatch` (a stamped refund with a different amount), or `check_failed`
 (the lookup itself failed). The last three leave the row exactly as it was.
+`settled` and `processing` describe the row as stored after the check: a
+webhook that settled the row while the check's lookup was in flight wins
+over the lookup's older snapshot.
 
 What this does **not** promise: that every parked refund resolves on its
 own, or that the payments system as a whole is exactly-once. Confirmed
@@ -128,4 +136,5 @@ and `failed` would pay the order out on top of it.
    out; the player's claim is a support matter outside this system).
 
 Refunds Stripe reports as `processing` need no operator action; they settle
-by webhook, and a status check can confirm them at any time.
+by webhook, and they stay on the payout card so the owner can check them at
+any time.

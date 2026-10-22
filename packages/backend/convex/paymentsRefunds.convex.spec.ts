@@ -57,6 +57,9 @@ const gatewayState = vi.hoisted(() => ({
   // How many times the gateway was asked.
   lookups: 0,
   findRefundError: null as Error | null,
+  // Runs inside the lookup, before it returns — models something landing
+  // (a webhook) while a status check is between its lookup and its write.
+  onFindRefund: null as (() => Promise<void>) | null,
   // When set, the executor cannot even build its gateway — models an
   // execution dying before any Stripe call, with nothing recorded.
   secretKeyError: null as Error | null,
@@ -106,6 +109,7 @@ vi.mock("./stripe/client", () => ({
       if (gatewayState.findRefundError) {
         throw gatewayState.findRefundError;
       }
+      await gatewayState.onFindRefund?.();
       return gatewayState.existingRefund;
     },
   }),
@@ -121,6 +125,7 @@ beforeEach(() => {
   gatewayState.existingRefund = null;
   gatewayState.lookups = 0;
   gatewayState.findRefundError = null;
+  gatewayState.onFindRefund = null;
   gatewayState.secretKeyError = null;
 });
 
@@ -437,6 +442,7 @@ test("a refund Stripe reports as pending stays pending until the webhook settles
   // The refund.updated webhook settles it by Stripe refund id.
   await t.mutation(internal.payments.refunds.handleRefundEvent, {
     stripeEventId: "evt_refund_settle",
+    stripeChargeId: "ch_one",
     stripeRefundId: "re_test_1",
     refundStatus: "succeeded",
     refundRowId: refundId,
@@ -479,6 +485,7 @@ test("a pending refund a webhook reports canceled is recorded as failed", async 
 
   await t.mutation(internal.payments.refunds.handleRefundEvent, {
     stripeEventId: "evt_refund_cancel",
+    stripeChargeId: "ch_one",
     stripeRefundId: "re_test_1",
     refundStatus: "canceled",
     refundRowId: null,
@@ -649,6 +656,7 @@ test("an ambiguous createRefund failure leaves the row pending for the webhook t
   // The refund.updated webhook carries the truth and settles the row.
   await t.mutation(internal.payments.refunds.handleRefundEvent, {
     stripeEventId: "evt_refund_recover",
+    stripeChargeId: "ch_one",
     stripeRefundId: "re_recovered_1",
     refundStatus: "succeeded",
     refundRowId: refund!._id,
@@ -887,11 +895,20 @@ test.each([
     });
     expect((await latestOrder(t, tournamentId)).status).toBe(orderStatus);
     expect(await refundAuditCounts(t, tournamentId)).toEqual(audits);
+    // A settled row leaves the payout card; a processing one stays on it,
+    // with its check, until Stripe's final report arrives.
     expect(
       await asOwner.query(api.payments.refunds.listRefundsNeedingAttention, {
         tournamentId,
       }),
-    ).toEqual({ refunds: [], hasMore: false });
+    ).toMatchObject(
+      stripeStatus === "pending"
+        ? {
+            refunds: [{ refundId: refund!._id, status: "pending" }],
+            hasMore: false,
+          }
+        : { refunds: [], hasMore: false },
+    );
     // Settling from Stripe's record is the whole of it: no create.
     expect(gatewayState.creates).toBe(0);
 
@@ -904,6 +921,7 @@ test.each([
     ).toEqual(check);
     await t.mutation(internal.payments.refunds.handleRefundEvent, {
       stripeEventId: "evt_duplicate",
+      stripeChargeId: "ch_one",
       stripeRefundId: "re_found",
       refundStatus: stripeStatus,
       refundRowId: refund!._id,
@@ -924,6 +942,7 @@ test.each([
       expect(gatewayState.creates).toBe(0);
       await t.mutation(internal.payments.refunds.handleRefundEvent, {
         stripeEventId: "evt_late_success",
+        stripeChargeId: "ch_one",
         stripeRefundId: "re_found",
         refundStatus: "succeeded",
         refundRowId: refund!._id,
@@ -952,6 +971,7 @@ test("a settled refund is never regressed by a later failure report", async () =
   // A stale or contradictory failure report after success changes nothing.
   await t.mutation(internal.payments.refunds.handleRefundEvent, {
     stripeEventId: "evt_stale_failure",
+    stripeChargeId: "ch_one",
     stripeRefundId: "re_test_1",
     refundStatus: "failed",
     refundRowId: refundId,
@@ -1004,6 +1024,7 @@ test("a refund whose amount disagrees with the row settles nothing, from a check
   });
   await t.mutation(internal.payments.refunds.handleRefundEvent, {
     stripeEventId: "evt_other_amount",
+    stripeChargeId: "ch_one",
     stripeRefundId: "re_other_amount",
     refundStatus: "succeeded",
     refundRowId: refund!._id,
@@ -1150,6 +1171,7 @@ test("a definitive rejection after an uncertain attempt parks the refund instead
     // Stripe's own report of the lost attempt's refund settles the row.
     await t.mutation(internal.payments.refunds.handleRefundEvent, {
       stripeEventId: "evt_lost_attempt",
+      stripeChargeId: "ch_one",
       stripeRefundId: "re_lost_attempt",
       refundStatus: "succeeded",
       refundRowId: refund!._id,
@@ -1358,6 +1380,7 @@ test("an execution that dies before recording anything is parked by its guard, a
     // the row with the usual accounting.
     await t.mutation(internal.payments.refunds.handleRefundEvent, {
       stripeEventId: "evt_after_crash",
+      stripeChargeId: "ch_one",
       stripeRefundId: "re_after_crash",
       refundStatus: "succeeded",
       refundRowId: refund!._id,
@@ -1630,10 +1653,13 @@ test("a webhook reporting a parked refund as processing un-parks it for the webh
 
   // Stripe reports the refund a lost attempt created, still on the bank
   // rails: the money is moving, so the row is no longer an operator's
-  // problem — it records the Stripe id and goes back to pending, off the
-  // needs-attention list, for refund.updated to settle.
+  // problem — it records the Stripe id and goes back to pending, for
+  // refund.updated to settle. It stays on the payout card as processing
+  // (not parked: no stall error, no destructive framing) so the owner can
+  // still check it if that final webhook never comes.
   await t.mutation(internal.payments.refunds.handleRefundEvent, {
     stripeEventId: "evt_refund_processing",
+    stripeChargeId: "ch_one",
     stripeRefundId: "re_processing_1",
     refundStatus: "pending",
     refundRowId: refund!._id,
@@ -1649,10 +1675,14 @@ test("a webhook reporting a parked refund as processing un-parks it for the webh
     await asOwner.query(api.payments.refunds.listRefundsNeedingAttention, {
       tournamentId,
     }),
-  ).toEqual({ refunds: [], hasMore: false });
+  ).toMatchObject({
+    refunds: [{ refundId: refund!._id, status: "pending", lastError: null }],
+    hasMore: false,
+  });
 
   await t.mutation(internal.payments.refunds.handleRefundEvent, {
     stripeEventId: "evt_refund_processed",
+    stripeChargeId: "ch_one",
     stripeRefundId: "re_processing_1",
     refundStatus: "succeeded",
     refundRowId: refund!._id,
@@ -1681,6 +1711,7 @@ test("a webhook success recovers a refund row wrongly settled as failed", async 
   // local failure and flips the order off "paid" so the payout skips it.
   await t.mutation(internal.payments.refunds.handleRefundEvent, {
     stripeEventId: "evt_refund_override",
+    stripeChargeId: "ch_one",
     stripeRefundId: "re_override_1",
     refundStatus: "succeeded",
     refundRowId: refund!._id,
@@ -1708,6 +1739,7 @@ test("refund reconciliation recovers a lost executor write by row id", async () 
   // metadata and settles it.
   await t.mutation(internal.payments.refunds.handleRefundEvent, {
     stripeEventId: "evt_refund_1",
+    stripeChargeId: "ch_one",
     stripeRefundId: "re_lost_1",
     refundStatus: "succeeded",
     refundRowId: refund!._id,
@@ -1720,4 +1752,298 @@ test("refund reconciliation recovers a lost executor write by row id", async () 
     stripeRefundId: "re_lost_1",
   });
   expect((await latestOrder(t, tournamentId)).status).toBe("refunded");
+});
+
+test("a processing refund the webhook never finishes stays checkable from the payout card", async () => {
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const tournamentId = await seedPaidTournament(t, organizationId);
+  const asPlayer = t.withIdentity(playerOne);
+  const asOwner = t.withIdentity(organizerIdentity);
+
+  const orderId = await payForEntry(t, tournamentId, "one");
+  await asPlayer.mutation(api.tournaments.registrations.cancelMyRegistration, {
+    tournamentId,
+  });
+  const [refund] = await refundsFor(t, orderId);
+  await parkByHand(t, refund!._id);
+
+  // The owner's check finds the refund still on the rails: the row
+  // un-parks to pending but keeps its place on the card.
+  gatewayState.existingRefund = {
+    stripeRefundId: "re_slow",
+    status: "pending",
+    amountCents: 2194,
+    failureReason: null,
+  };
+  expect(
+    await asOwner.action(api.payments.refunds.checkRefundStatus, {
+      refundId: refund!._id,
+    }),
+  ).toEqual({ result: "processing" });
+  expect((await refundsFor(t, orderId))[0]).toMatchObject({
+    status: "pending",
+    stripeRefundId: "re_slow",
+  });
+  expect(
+    await asOwner.query(api.payments.refunds.listRefundsNeedingAttention, {
+      tournamentId,
+    }),
+  ).toMatchObject({
+    refunds: [{ refundId: refund!._id, status: "pending" }],
+    hasMore: false,
+  });
+
+  // No final webhook ever arrives; a later check settles it from the card.
+  gatewayState.existingRefund = {
+    stripeRefundId: "re_slow",
+    status: "succeeded",
+    amountCents: 2194,
+    failureReason: null,
+  };
+  expect(
+    await asOwner.action(api.payments.refunds.checkRefundStatus, {
+      refundId: refund!._id,
+    }),
+  ).toEqual({ result: "settled", status: "succeeded" });
+  expect((await refundsFor(t, orderId))[0]!.status).toBe("succeeded");
+  expect((await latestOrder(t, tournamentId)).status).toBe("refunded");
+  expect(
+    await asOwner.query(api.payments.refunds.listRefundsNeedingAttention, {
+      tournamentId,
+    }),
+  ).toEqual({ refunds: [], hasMore: false });
+  expect(gatewayState.creates).toBe(0);
+
+  // A pending row the executor is still working on (no Stripe id yet) is
+  // the executor's business, not the card's.
+  const secondOrderId = await payForEntry(t, tournamentId, "two");
+  await asPlayer.mutation(api.tournaments.registrations.cancelMyRegistration, {
+    tournamentId,
+  });
+  const [queued] = await refundsFor(t, secondOrderId);
+  expect(queued!.status).toBe("pending");
+  expect(queued!.stripeRefundId).toBeUndefined();
+  expect(
+    await asOwner.query(api.payments.refunds.listRefundsNeedingAttention, {
+      tournamentId,
+    }),
+  ).toEqual({ refunds: [], hasMore: false });
+});
+
+test("a webhook for a refund on another charge settles nothing, even with the row's amount and stamp", async () => {
+  const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+  try {
+    const t = createConvexTest();
+    const { organizationId } = await seedOrganizer(t);
+    const tournamentId = await seedPaidTournament(t, organizationId);
+    const asPlayer = t.withIdentity(playerOne);
+
+    const orderId = await payForEntry(t, tournamentId, "one");
+    await asPlayer.mutation(
+      api.tournaments.registrations.cancelMyRegistration,
+      { tournamentId },
+    );
+    const [refund] = await refundsFor(t, orderId);
+    await parkByHand(t, refund!._id);
+
+    // A replacement an operator stamped with this row but issued against
+    // the wrong charge: right amount, right metadata, not this row's money.
+    for (const stripeChargeId of ["ch_other", null]) {
+      await t.mutation(internal.payments.refunds.handleRefundEvent, {
+        stripeEventId: `evt_wrong_charge_${stripeChargeId}`,
+        stripeChargeId,
+        stripeRefundId: "re_wrong_charge",
+        refundStatus: "succeeded",
+        refundRowId: refund!._id,
+        amountCents: 2194,
+      });
+      expect((await refundsFor(t, orderId))[0]).toMatchObject({
+        status: "needs_attention",
+        lastError: "socket hang up",
+      });
+      expect((await latestOrder(t, tournamentId)).status).toBe("paid");
+    }
+    expect(consoleError).toHaveBeenCalledTimes(2);
+
+    // Nor can it recover a failed row, or settle by Stripe refund id once
+    // the row carries one.
+    await t.run(async (ctx) => {
+      await ctx.db.patch(refund!._id, {
+        status: "failed",
+        stripeRefundId: "re_right_charge",
+      });
+    });
+    await t.mutation(internal.payments.refunds.handleRefundEvent, {
+      stripeEventId: "evt_wrong_charge_by_id",
+      stripeChargeId: "ch_other",
+      stripeRefundId: "re_right_charge",
+      refundStatus: "succeeded",
+      refundRowId: null,
+      amountCents: 2194,
+    });
+    expect((await refundsFor(t, orderId))[0]!.status).toBe("failed");
+    expect((await latestOrder(t, tournamentId)).status).toBe("paid");
+
+    // The refund on the row's own charge settles it.
+    await t.mutation(internal.payments.refunds.handleRefundEvent, {
+      stripeEventId: "evt_right_charge",
+      stripeChargeId: "ch_one",
+      stripeRefundId: "re_right_charge",
+      refundStatus: "succeeded",
+      refundRowId: null,
+      amountCents: 2194,
+    });
+    expect((await refundsFor(t, orderId))[0]!.status).toBe("succeeded");
+    expect((await latestOrder(t, tournamentId)).status).toBe("refunded");
+  } finally {
+    consoleError.mockRestore();
+  }
+});
+
+test("a stray-charge refund's webhook is matched against the row's own charge, not the order's", async () => {
+  const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+  try {
+    const t = createConvexTest();
+    const { organizationId } = await seedOrganizer(t);
+    const tournamentId = await seedPaidTournament(t, organizationId);
+    const asPlayer = t.withIdentity(playerOne);
+
+    const orderId = await payForEntry(t, tournamentId, "one");
+    await asPlayer.mutation(
+      api.tournaments.registrations.cancelMyRegistration,
+      { tournamentId },
+    );
+    const [refund] = await refundsFor(t, orderId);
+    await t.run(async (ctx) => {
+      await ctx.db.patch(refund!._id, {
+        status: "needs_attention",
+        stripeChargeId: "ch_stray",
+      });
+    });
+
+    await t.mutation(internal.payments.refunds.handleRefundEvent, {
+      stripeEventId: "evt_stray_on_order_charge",
+      stripeChargeId: "ch_one",
+      stripeRefundId: "re_stray",
+      refundStatus: "succeeded",
+      refundRowId: refund!._id,
+      amountCents: 2194,
+    });
+    expect((await refundsFor(t, orderId))[0]!.status).toBe("needs_attention");
+
+    await t.mutation(internal.payments.refunds.handleRefundEvent, {
+      stripeEventId: "evt_stray_on_stray_charge",
+      stripeChargeId: "ch_stray",
+      stripeRefundId: "re_stray",
+      refundStatus: "succeeded",
+      refundRowId: refund!._id,
+      amountCents: 2194,
+    });
+    expect((await refundsFor(t, orderId))[0]!.status).toBe("succeeded");
+    // Stray money never drives the order's status.
+    expect((await latestOrder(t, tournamentId)).status).toBe("paid");
+  } finally {
+    consoleError.mockRestore();
+  }
+});
+
+test("a webhook failure settles the row with Stripe's reason, like a status check does", async () => {
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const tournamentId = await seedPaidTournament(t, organizationId);
+  const asPlayer = t.withIdentity(playerOne);
+
+  const orderId = await payForEntry(t, tournamentId, "one");
+  await asPlayer.mutation(api.tournaments.registrations.cancelMyRegistration, {
+    tournamentId,
+  });
+  const [refund] = await refundsFor(t, orderId);
+  await parkByHand(t, refund!._id);
+
+  await t.mutation(internal.payments.refunds.handleRefundEvent, {
+    stripeEventId: "evt_failed_with_reason",
+    stripeChargeId: "ch_one",
+    stripeRefundId: "re_failed",
+    refundStatus: "failed",
+    refundRowId: refund!._id,
+    amountCents: 2194,
+    failureReason: "expired_or_canceled_card",
+  });
+  expect((await refundsFor(t, orderId))[0]).toMatchObject({
+    status: "failed",
+    lastError: "expired_or_canceled_card",
+  });
+  expect((await latestOrder(t, tournamentId)).status).toBe("paid");
+  expect(await refundAuditCounts(t, tournamentId)).toEqual({
+    refund_stalled: 0,
+    refund_failed: 1,
+  });
+
+  // Without a reason from Stripe the stale stall error still gives way
+  // (the row re-parked by hand to take a second report).
+  await parkByHand(t, refund!._id);
+  await t.mutation(internal.payments.refunds.handleRefundEvent, {
+    stripeEventId: "evt_failed_no_reason",
+    stripeChargeId: "ch_one",
+    stripeRefundId: "re_failed",
+    refundStatus: "failed",
+    refundRowId: null,
+    amountCents: 2194,
+  });
+  expect((await refundsFor(t, orderId))[0]).toMatchObject({
+    status: "failed",
+    lastError: "Stripe reports this refund failed",
+  });
+});
+
+test("a status check reports the row as stored when a webhook settles it mid-lookup", async () => {
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const tournamentId = await seedPaidTournament(t, organizationId);
+  const asPlayer = t.withIdentity(playerOne);
+  const asOwner = t.withIdentity(organizerIdentity);
+
+  const orderId = await payForEntry(t, tournamentId, "one");
+  await asPlayer.mutation(api.tournaments.registrations.cancelMyRegistration, {
+    tournamentId,
+  });
+  const [refund] = await refundsFor(t, orderId);
+  await parkByHand(t, refund!._id);
+
+  // Stripe's answer to the lookup is "pending", but the success webhook
+  // lands before the check writes. The row is right (succeeded, never
+  // regressed), and the check must say what the row says — not replay
+  // its older snapshot as "processing".
+  gatewayState.existingRefund = {
+    stripeRefundId: "re_racing",
+    status: "pending",
+    amountCents: 2194,
+    failureReason: null,
+  };
+  gatewayState.onFindRefund = async () => {
+    await t.mutation(internal.payments.refunds.handleRefundEvent, {
+      stripeEventId: "evt_mid_lookup",
+      stripeChargeId: "ch_one",
+      stripeRefundId: "re_racing",
+      refundStatus: "succeeded",
+      refundRowId: refund!._id,
+      amountCents: 2194,
+    });
+  };
+  expect(
+    await asOwner.action(api.payments.refunds.checkRefundStatus, {
+      refundId: refund!._id,
+    }),
+  ).toEqual({ result: "settled", status: "succeeded" });
+  expect((await refundsFor(t, orderId))[0]).toMatchObject({
+    status: "succeeded",
+    stripeRefundId: "re_racing",
+  });
+  expect((await latestOrder(t, tournamentId)).status).toBe("refunded");
+  expect(
+    await asOwner.query(api.payments.refunds.listRefundsNeedingAttention, {
+      tournamentId,
+    }),
+  ).toEqual({ refunds: [], hasMore: false });
 });

@@ -333,29 +333,44 @@ export async function firstUnsettledRefundStatus(
   return null;
 }
 
-// How many parked refunds the organizer's payout card lists at once; past
-// this it reports that more exist (hasMore). Rows leave the list as they
-// settle, so the rest surface in turn.
+// How many unsettled refunds the organizer's payout card lists at once;
+// past this it reports that more exist (hasMore). Rows leave the list as
+// they settle, so the rest surface in turn.
 export const REFUNDS_NEEDING_ATTENTION_PAGE = 64;
 
-// The owner's refunds whose outcome is unknown, shaped for the organizer's
-// payout card: each blocks the payout until Stripe's record settles it (the
-// owner's status check, or the refund.updated webhook). Capped read with
-// an explicit "more" flag, so a mass stall (a Stripe outage during a
-// cancellation sweep) is never mistaken for the full list.
+// The owner's refunds the payout waits on and a status check can move,
+// shaped for the organizer's payout card: parked rows (needs_attention,
+// outcome unknown) first, then rows Stripe holds a refund for that is
+// still processing (pending with a Stripe id) — a check un-parks a row
+// into that state, and if the final webhook never arrives the check is
+// the only way to settle it, so it must stay reachable. A pending row the
+// executor is still working on (no Stripe id) is left to the executor
+// and its guard. Capped read with an explicit "more" flag, so a mass
+// stall (a Stripe outage during a cancellation sweep) is never mistaken
+// for the full list.
 export async function refundsNeedingAttention(
   ctx: QueryCtx,
   owner: MoneyRowOwner,
 ) {
-  const page = await ownerRefundsQuery(ctx, owner, "needs_attention").take(
+  const parked = await ownerRefundsQuery(ctx, owner, "needs_attention").take(
     REFUNDS_NEEDING_ATTENTION_PAGE + 1,
   );
+  const processing =
+    parked.length > REFUNDS_NEEDING_ATTENTION_PAGE
+      ? []
+      : await ownerRefundsQuery(ctx, owner, "pending")
+          .filter((q) => q.neq(q.field("stripeRefundId"), undefined))
+          .take(REFUNDS_NEEDING_ATTENTION_PAGE + 1 - parked.length);
+  const page = [...parked, ...processing];
   const hasMore = page.length > REFUNDS_NEEDING_ATTENTION_PAGE;
   const refunds = [];
   for (const refund of page.slice(0, REFUNDS_NEEDING_ATTENTION_PAGE)) {
     const registration = await ctx.db.get(refund.registrationId);
     refunds.push({
       refundId: refund._id,
+      // needs_attention: the outcome is unknown; pending: Stripe holds the
+      // refund and has not reported its outcome yet.
+      status: refund.status,
       playerName: registration?.playerName ?? null,
       amountCents: refund.amountCents,
       attemptCount: refund.attemptCount,
