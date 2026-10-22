@@ -19,6 +19,9 @@ type RefundsNeedingAttention = FunctionReturnType<
   typeof api.payments.refunds.listRefundsNeedingAttention
 >
 type RefundNeedingAttention = RefundsNeedingAttention['refunds'][number]
+type RefundStatusCheck = FunctionReturnType<
+  typeof api.payments.refunds.checkRefundStatus
+>
 
 export type PaidEventPayoutCopy = {
   title: string
@@ -29,20 +32,64 @@ export type PaidEventPayoutCopy = {
   feesLabel: string
 }
 
+// What a status check established, in the organizer's terms. A check that
+// found nothing leaves the refund (and the payout) exactly as it was; the
+// reference is what the platform operator needs to take it further.
+function describeRefundCheck(
+  check: RefundStatusCheck,
+  refundId: RefundNeedingAttention['refundId'],
+) {
+  const contactOperator = `The payout remains paused. Contact the platform operator with reference ${refundId}.`
+  switch (check.result) {
+    case 'settled':
+      return check.status === 'succeeded'
+        ? {
+            kind: 'success' as const,
+            message: 'Stripe confirmed this refund went through.',
+          }
+        : {
+            kind: 'info' as const,
+            message:
+              'Stripe reports this refund failed, so no money was returned. The payout no longer waits on it.',
+          }
+    case 'processing':
+      return {
+        kind: 'info' as const,
+        message:
+          'Stripe is still processing this refund. The payout stays paused until it settles.',
+      }
+    case 'unresolved':
+      return {
+        kind: 'warning' as const,
+        message: `Stripe has no record of this refund. ${contactOperator}`,
+      }
+    case 'mismatch':
+      return {
+        kind: 'warning' as const,
+        message: `Stripe holds a refund for this entry with a different amount (${formatCents(check.amountCents)}). ${contactOperator}`,
+      }
+    case 'check_failed':
+      return {
+        kind: 'error' as const,
+        message: `Could not check this refund with Stripe: ${check.message}`,
+      }
+  }
+}
+
 // Payout status for either paid-event kind: fees transfer to the
 // organization's Stripe account when the event completes
-// (payments/payouts.ts); blocked or failed payouts retry from here, as do
-// refunds whose executor gave up (they block the payout until settled) —
-// one at a time, or all at once when a mass stall parked many. The
-// wrappers supply the query results and the retry verbs.
+// (payments/payouts.ts); blocked or failed payouts retry from here. Refunds
+// whose outcome could not be confirmed block the payout and are listed
+// above it, each with a status check against Stripe's record — the check
+// settles what Stripe knows about and never issues a refund itself. The
+// wrappers supply the query results and the two verbs.
 export function PaidEventPayoutCard({
   isPaid,
   completed,
   payout,
   refundsNeedingAttention,
   onRetry,
-  onRetryRefund,
-  onRetryAllRefunds,
+  onCheckRefund,
   copy,
 }: {
   isPaid: boolean
@@ -51,17 +98,15 @@ export function PaidEventPayoutCard({
   payout: PayoutSummary | undefined
   refundsNeedingAttention: RefundsNeedingAttention | undefined
   onRetry: () => Promise<unknown>
-  onRetryRefund: (
+  onCheckRefund: (
     refundId: RefundNeedingAttention['refundId'],
-  ) => Promise<unknown>
-  onRetryAllRefunds: () => Promise<unknown>
+  ) => Promise<RefundStatusCheck>
   copy: PaidEventPayoutCopy
 }) {
   const { selectedOrganization } = useOrganization()
   const [retrying, setRetrying] = useState(false)
-  // The refund re-drive in flight: a row id, 'all' for the bulk verb.
-  const [retryingRefund, setRetryingRefund] = useState<
-    RefundNeedingAttention['refundId'] | 'all' | null
+  const [checkingRefund, setCheckingRefund] = useState<
+    RefundNeedingAttention['refundId'] | null
   >(null)
 
   if (!isPaid) {
@@ -84,35 +129,26 @@ export function PaidEventPayoutCard({
     }
   }
 
-  async function handleRetryRefund(
+  async function handleCheckRefund(
     refundId: RefundNeedingAttention['refundId'],
   ) {
-    setRetryingRefund(refundId)
+    setCheckingRefund(refundId)
     try {
-      await onRetryRefund(refundId)
-      toast.success('Refund retry started.')
+      const outcome = describeRefundCheck(
+        await onCheckRefund(refundId),
+        refundId,
+      )
+      toast[outcome.kind](outcome.message)
     } catch (error) {
-      toast.error(mutationErrorMessage(error, 'Could not retry the refund.'))
+      toast.error(
+        mutationErrorMessage(error, 'Could not check the refund status.'),
+      )
     } finally {
-      setRetryingRefund(null)
-    }
-  }
-
-  async function handleRetryAllRefunds() {
-    setRetryingRefund('all')
-    try {
-      await onRetryAllRefunds()
-      toast.success('Retrying every refund that needs attention.')
-    } catch (error) {
-      toast.error(mutationErrorMessage(error, 'Could not retry the refunds.'))
-    } finally {
-      setRetryingRefund(null)
+      setCheckingRefund(null)
     }
   }
 
   const parkedRefunds = refundsNeedingAttention?.refunds ?? []
-  const offerRetryAll =
-    parkedRefunds.length > 1 || (refundsNeedingAttention?.hasMore ?? false)
 
   return (
     <section className="flex flex-col gap-4">
@@ -127,56 +163,48 @@ export function PaidEventPayoutCard({
               >
                 <div className="flex flex-col gap-1 text-sm">
                   <span>
-                    Refund of {formatCents(refund.amountCents)} to{' '}
-                    {refund.playerName ?? 'a player'} failed after{' '}
-                    {refund.attemptCount}{' '}
-                    {refund.attemptCount === 1 ? 'attempt' : 'attempts'} and
-                    needs attention.
+                    We couldn't confirm the outcome of the{' '}
+                    {formatCents(refund.amountCents)} refund to{' '}
+                    {refund.playerName ?? 'a player'}. The payout remains
+                    paused.
                   </span>
                   {refund.lastError ? (
                     <span className="text-muted-foreground">
                       {refund.lastError}
                     </span>
                   ) : null}
+                  <span className="text-muted-foreground">
+                    Check its status, or contact the platform operator with
+                    reference {refund.refundId} ({refund.attemptCount} recorded{' '}
+                    {refund.attemptCount === 1 ? 'attempt' : 'attempts'}
+                    ).
+                  </span>
                 </div>
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  disabled={!canRetry || retryingRefund !== null}
-                  onClick={() => void handleRetryRefund(refund.refundId)}
+                  disabled={!canRetry || checkingRefund !== null}
+                  onClick={() => void handleCheckRefund(refund.refundId)}
                 >
-                  {retryingRefund === refund.refundId ? (
+                  {checkingRefund === refund.refundId ? (
                     <Spinner data-icon="inline-start" />
                   ) : null}
-                  Retry refund
+                  Check refund status
                 </Button>
               </li>
             ))}
           </ul>
           {refundsNeedingAttention?.hasMore ? (
             <p className="text-sm text-muted-foreground">
-              More refunds need attention than are shown here.
+              More refunds need attention than are shown here; they appear as
+              these settle. The platform operator can inspect all of them for
+              this event.
             </p>
-          ) : null}
-          {offerRetryAll ? (
-            <div>
-              <Button
-                type="button"
-                variant="outline"
-                disabled={!canRetry || retryingRefund !== null}
-                onClick={() => void handleRetryAllRefunds()}
-              >
-                {retryingRefund === 'all' ? (
-                  <Spinner data-icon="inline-start" />
-                ) : null}
-                Retry all refunds
-              </Button>
-            </div>
           ) : null}
           {!canRetry && (
             <p className="text-sm text-muted-foreground">
-              Only the organization owner can retry a refund.
+              Only the organization owner can check a refund's status.
             </p>
           )}
         </div>

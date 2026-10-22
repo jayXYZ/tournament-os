@@ -363,11 +363,12 @@ export const paymentRefundReasonValidator = v.union(
 );
 
 // A refund row's lifecycle: pending (queued, or the Stripe call is in
-// flight / retrying), succeeded, failed (Stripe definitively refused — the
-// money never moved), or needs_attention (the executor exhausted its
-// retries on ambiguous failures, so whether Stripe created the refund is
-// unknown: automation stops, the row stays visible to the organizer, and an
-// operator re-drives it or the refund.updated webhook settles it).
+// flight / retrying, or Stripe holds the refund and is still processing
+// it), succeeded, failed (Stripe definitively refused — the money never
+// moved), or needs_attention (the executor could not establish the
+// outcome, so whether Stripe created the refund is unknown: automation
+// stops, the row stays visible to the organizer, and only Stripe's record
+// — the owner's status check or the refund.updated webhook — settles it).
 export const paymentRefundStatusValidator = v.union(
   v.literal("pending"),
   v.literal("succeeded"),
@@ -649,9 +650,10 @@ export const tournamentAuditEventValidator = v.union(
     amountCents: v.number(),
   }),
   v.object({
-    // The refund executor gave up on the Stripe call (payments/refunds.ts):
-    // the money may or may not have moved, and the refund waits on the
-    // payout page for an operator re-drive or Stripe's webhook report.
+    // The refund executor could not establish the Stripe outcome
+    // (payments/refunds.ts): the money may or may not have moved, and the
+    // refund waits on the payout page for a status check against Stripe's
+    // record or the webhook's report.
     type: v.literal("refund_stalled"),
     player: auditPlayerRefValidator,
     amountCents: v.number(),

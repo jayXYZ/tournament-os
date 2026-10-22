@@ -68,7 +68,7 @@ function describeEvent(row: ConventionAuditRow): string {
     case 'refund_issued':
       return `${formatCents(event.amountCents)} refunded to ${player}`
     case 'refund_stalled':
-      return `A ${formatCents(event.amountCents)} refund to ${player} stalled and needs attention`
+      return `A ${formatCents(event.amountCents)} refund to ${player} could not be confirmed and needs attention`
     case 'refund_failed':
       return `A ${formatCents(event.amountCents)} refund to ${player} failed`
     case 'payout_sent':

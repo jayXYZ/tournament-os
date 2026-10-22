@@ -131,6 +131,7 @@ http.route({
           stripeRefundId: refund.id,
           refundStatus: refund.status ?? "unknown",
           refundRowId: refund.metadata?.refundId ?? null,
+          amountCents: refund.amount,
         });
         break;
       }

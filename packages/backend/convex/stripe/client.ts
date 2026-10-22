@@ -110,16 +110,20 @@ export interface StripeGateway {
     // returning.
     status: StripeRefundStatus;
   }>;
-  // The refund an earlier createRefund call for this row may have left on
-  // the charge, found by the row id stamped into its metadata. Null when
-  // Stripe holds no such refund — including when the charge itself is
+  // The refund stamped with this row on the charge — one an earlier
+  // createRefund call left, or a replacement an operator stamped by hand
+  // (docs/refund-recovery.md) — found by the row id in its metadata. Null
+  // when Stripe holds no such refund, including when the charge itself is
   // unknown to Stripe, which it reports as an invalid request rather than
-  // an empty list. Lets the executor settle from Stripe's record instead
-  // of guessing whether a lost attempt landed. failureReason is Stripe's
-  // own reason on a failed refund (an expired card, say), null otherwise.
+  // an empty list. Lets a status check settle from Stripe's record instead
+  // of guessing whether a lost attempt landed. amountCents is the refund's
+  // own amount, for the caller to check against the row's; failureReason
+  // is Stripe's reason on a failed refund (an expired card, say), null
+  // otherwise.
   findRefundForRow(args: { chargeId: string; refundRowId: string }): Promise<{
     stripeRefundId: string;
     status: StripeRefundStatus;
+    amountCents: number;
     failureReason: string | null;
   } | null>;
   createTransfer(args: {
@@ -312,6 +316,7 @@ export function getStripeGateway(secretKey: string): StripeGateway {
             return {
               stripeRefundId: refund.id,
               status: refundStatusFromStripe(refund.status),
+              amountCents: refund.amount,
               failureReason: refund.failure_reason ?? null,
             };
           }

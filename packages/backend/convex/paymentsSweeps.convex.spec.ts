@@ -361,10 +361,10 @@ test("hard deletion refuses while payments are unsettled and proceeds after the 
   });
   await drainScheduler(t);
 
-  // A refund the executor gave up on is still unsettled money: deleting
+  // A refund whose outcome is unknown is still unsettled money: deleting
   // the event would erase the only record of it. The event is already
   // cancelled, so "let payments settle" would be a dead end; the message
-  // names the refund retry instead.
+  // names the status check instead.
   const refund = await t.run(async (ctx) =>
     (
       await ctx.db
@@ -383,7 +383,7 @@ test("hard deletion refuses while payments are unsettled and proceeds after the 
       tournamentId,
     }),
   ).rejects.toThrow(
-    "This tournament has a refund that needs attention — retry it from the payout section of the settings page",
+    "This tournament has a refund that needs attention — check its status from the payout section of the settings page",
   );
   await t.run(async (ctx) => {
     await ctx.db.patch(refund!._id, { status: "succeeded" });

@@ -27,6 +27,13 @@ const gatewayState = vi.hoisted(() => ({
   failTransfers: false,
   // When set, createRefund throws it — an ambiguous failure on every call.
   createRefundError: null as Error | null,
+  // What Stripe reports when asked for the refund stamped with a row.
+  existingRefund: null as {
+    stripeRefundId: string;
+    status: "succeeded";
+    amountCents: number;
+    failureReason: null;
+  } | null,
 }));
 
 vi.mock("./stripe/config", async (importOriginal) => {
@@ -56,8 +63,7 @@ vi.mock("./stripe/client", () => ({
         status: "succeeded" as const,
       };
     },
-    // Stripe holds no refund for any row here: every stall parks.
-    findRefundForRow: async () => null,
+    findRefundForRow: async () => gatewayState.existingRefund,
     retrieveTransfersCapabilityStatus: async () =>
       gatewayState.capabilityStatus,
     createTransfer: async (args: {
@@ -82,6 +88,7 @@ beforeEach(() => {
   gatewayState.capabilityStatus = "active";
   gatewayState.failTransfers = false;
   gatewayState.createRefundError = null;
+  gatewayState.existingRefund = null;
   vi.useFakeTimers();
 });
 
@@ -309,7 +316,7 @@ test("payout blocks while refunds are pending and the owner can retry once they 
   });
 });
 
-test("a refund that exhausted its retries blocks the payout with a specific reason until it is re-driven", async () => {
+test("a refund that exhausted its retries blocks the payout with a specific reason until Stripe's record settles it", async () => {
   const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
   try {
     const t = createConvexTest();
@@ -335,10 +342,11 @@ test("a refund that exhausted its retries blocks the payout with a specific reas
     );
     expect(refund!.status).toBe("needs_attention");
 
-    // Not "still settling": the organizer is told a refund stalled and what
-    // to do, so the payout is never silently stuck behind it. The reason
-    // stays generic; the row itself (player, amount, attempts, error) is
-    // listed by listRefundsNeedingAttention beside the payout.
+    // Not "still settling": the organizer is told a refund's outcome is
+    // unknown and what to do, so the payout is never silently stuck behind
+    // it. The reason stays generic; the row itself (player, amount,
+    // attempts, error) is listed by listRefundsNeedingAttention beside the
+    // payout.
     await markCompleted(t, tournamentId);
     await t.mutation(internal.payments.payouts.startPayoutSweep, {
       tournamentId,
@@ -347,7 +355,7 @@ test("a refund that exhausted its retries blocks the payout with a specific reas
     const blocked = await payoutDoc(t, tournamentId);
     expect(blocked.status).toBe("blocked");
     expect(blocked.error).toBe(
-      "A refund needs attention. Retry it (or resolve it in Stripe), then retry the payout.",
+      "A refund's outcome could not be confirmed. Check its status below (or resolve it with the platform operator), then retry the payout.",
     );
     expect(
       await t
@@ -373,12 +381,23 @@ test("a refund that exhausted its retries blocks the payout with a specific reas
         .query(api.payments.payouts.getTournamentPayout, { tournamentId }),
     ).toMatchObject({ status: "blocked", error: blocked.error });
 
-    // Re-driving the refund settles it; the payout retry then proceeds.
-    gatewayState.createRefundError = null;
-    await t
-      .withIdentity(organizerIdentity)
-      .mutation(api.payments.refunds.retryRefund, { refundId: refund!._id });
-    await drainScheduler(t);
+    // Stripe did hold the refund a dropped attempt created: the owner's
+    // status check settles the row from it (no create), and the payout
+    // retry then proceeds with the absorbed fee deducted.
+    gatewayState.existingRefund = {
+      stripeRefundId: "re_found_1",
+      status: "succeeded",
+      amountCents: 2194,
+      failureReason: null,
+    };
+    expect(
+      await t
+        .withIdentity(organizerIdentity)
+        .action(api.payments.refunds.checkRefundStatus, {
+          refundId: refund!._id,
+        }),
+    ).toEqual({ result: "settled", status: "succeeded" });
+    expect(gatewayState.refunds).toHaveLength(0);
     await t
       .withIdentity(organizerIdentity)
       .mutation(internal.payments.payouts.beginPayoutRetry, { tournamentId });
@@ -390,76 +409,6 @@ test("a refund that exhausted its retries blocks the payout with a specific reas
   } finally {
     consoleError.mockRestore();
   }
-});
-
-test("retrying all refunds re-drives every parked row in one verb and the payout then proceeds", async () => {
-  const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
-  try {
-    const t = createConvexTest();
-    const { organizationId } = await seedOrganizer(t);
-    const tournamentId = await seedPaidTournament(t, organizationId);
-
-    // Two players cancel during an outage: both refunds exhaust and park.
-    await payAsPlayer(t, tournamentId, 1);
-    await payAsPlayer(t, tournamentId, 2);
-    await payAsPlayer(t, tournamentId, 3);
-    gatewayState.createRefundError = new Error("socket hang up");
-    for (const n of [1, 2]) {
-      await t
-        .withIdentity(playerIdentity(n))
-        .mutation(api.tournaments.registrations.cancelMyRegistration, {
-          tournamentId,
-        });
-    }
-    await drainScheduler(t);
-    const parked = await t
-      .withIdentity(organizerIdentity)
-      .query(api.payments.refunds.listRefundsNeedingAttention, {
-        tournamentId,
-      });
-    expect(parked.refunds).toHaveLength(2);
-    expect(parked.hasMore).toBe(false);
-
-    // One click re-drives them all (the sweep continues by scheduler past
-    // its page size); with Stripe back, both settle.
-    gatewayState.createRefundError = null;
-    await t
-      .withIdentity(organizerIdentity)
-      .mutation(api.payments.refunds.retryAllRefunds, { tournamentId });
-    expect(
-      await t
-        .withIdentity(organizerIdentity)
-        .query(api.payments.refunds.listRefundsNeedingAttention, {
-          tournamentId,
-        }),
-    ).toEqual({ refunds: [], hasMore: false });
-    await drainScheduler(t);
-    expect(gatewayState.refunds).toHaveLength(2);
-
-    await markCompleted(t, tournamentId);
-    await t.mutation(internal.payments.payouts.startPayoutSweep, {
-      tournamentId,
-    });
-    await drainScheduler(t);
-    expect(await payoutDoc(t, tournamentId)).toMatchObject({
-      status: "completed",
-      // Player 3's entry, minus both absorbed fees.
-      netCents: 2000 - 94 - 94,
-    });
-  } finally {
-    consoleError.mockRestore();
-  }
-});
-
-test("retrying all refunds is owner-only", async () => {
-  const t = createConvexTest();
-  const { organizationId } = await seedOrganizer(t);
-  const tournamentId = await seedPaidTournament(t, organizationId);
-  await expect(
-    t
-      .withIdentity(playerIdentity(1))
-      .mutation(api.payments.refunds.retryAllRefunds, { tournamentId }),
-  ).rejects.toThrow();
 });
 
 test("an inactive live capability blocks the send stage", async () => {

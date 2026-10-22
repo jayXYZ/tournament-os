@@ -90,7 +90,7 @@ async function unsettledOwnerRefund(
 ): Promise<string | null> {
   const unsettled = await firstUnsettledRefundStatus(ctx, owner);
   if (unsettled === "needs_attention") {
-    return "A refund needs attention. Retry it (or resolve it in Stripe), then retry the payout.";
+    return "A refund's outcome could not be confirmed. Check its status below (or resolve it with the platform operator), then retry the payout.";
   }
   return unsettled === "pending" ? "Refunds are still settling" : null;
 }
@@ -133,12 +133,12 @@ export const startPayoutSweep = internalMutation({
 
     // The payout must not race an in-flight refund's amount out from under
     // it; a blocked payout is retried once refunds settle. A refund whose
-    // executor exhausted its retries (needs_attention) blocks too, but with
-    // a reason naming it: its order is still "paid" and would be paid out
-    // while Stripe may already have returned the player's money, so it has
-    // to be re-driven (retryRefund) or settled by the refund.updated
-    // webhook first. Only a definitively "failed" refund (money never
-    // moved) lets the payout proceed with the order included.
+    // outcome is unknown (needs_attention) blocks too, but with a reason
+    // naming it: its order is still "paid" and would be paid out while
+    // Stripe may already have returned the player's money, so Stripe's
+    // record (the owner's checkRefundStatus, or the refund.updated webhook)
+    // has to settle it first. Only a definitively "failed" refund (money
+    // never moved) lets the payout proceed with the order included.
     const unsettledRefund = await unsettledOwnerRefund(ctx, owner);
     if (unsettledRefund) {
       await ctx.db.insert("eventPayouts", {

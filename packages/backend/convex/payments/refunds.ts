@@ -3,11 +3,12 @@ import { v } from "convex/values";
 import { refundAmountCents } from "@paper-pairings/shared/payment-fees";
 
 import { internal } from "../_generated/api";
-import type { Doc } from "../_generated/dataModel";
+import type { Doc, Id } from "../_generated/dataModel";
 import {
+  action,
   internalAction,
   internalMutation,
-  mutation,
+  internalQuery,
   query,
   type MutationCtx,
 } from "../_generated/server";
@@ -34,12 +35,14 @@ import {
   ordersForRegistration,
   paidEntryRefundWindowOpen,
   patchOrder,
-  redriveRefund,
-  redriveRefundsBatch,
   refundsNeedingAttention,
   refundsReturningForOrder,
 } from "../model/payments";
-import { getStripeGateway, type StripeRefundStatus } from "../stripe/client";
+import {
+  getStripeGateway,
+  type StripeGateway,
+  type StripeRefundStatus,
+} from "../stripe/client";
 import { requireStripeSecretKey } from "../stripe/config";
 import { errorMessageOf, isDefinitiveStripeFailure } from "../stripe/errors";
 
@@ -48,6 +51,15 @@ import { errorMessageOf, isDefinitiveStripeFailure } from "../stripe/errors";
 // removal, cancellation sweep), then a scheduled action performs the single
 // Stripe call and a mutation records the outcome — so every state change
 // stays transactional and the Stripe call is idempotent per refund row.
+//
+// The contract the executor keeps (docs/refund-recovery.md): a row settles
+// "failed" only on proof that no request created a refund, and whenever the
+// outcome is unknown — retries exhausted, a rejection after an earlier
+// uncertain attempt, an execution that died before reporting — the row
+// parks in needs_attention, where it blocks the payout and the event's
+// deletion until Stripe's record (the refund.updated webhook, or the
+// owner's checkRefundStatus) says what happened. Nothing creates a refund
+// outside the row's original bounded execution.
 
 export async function queueRefund(
   ctx: MutationCtx,
@@ -102,9 +114,7 @@ export async function queueRefund(
       amountCents,
     },
   });
-  await ctx.scheduler.runAfter(0, internal.payments.refunds.executeRefund, {
-    refundId,
-  });
+  await scheduleRefundExecution(ctx, refundId, 0, 0);
   return refundId;
 }
 
@@ -323,34 +333,118 @@ export const cancelEventPaymentsSweep = internalMutation({
   },
 });
 
+const REFUND_RETRY_DELAY_MS = 60_000;
+export const MAX_REFUND_ATTEMPTS = 5;
+
+// How long after a refund row is queued its executor may still send the
+// create request. Every attempt replays one idempotency key, and Stripe
+// keeps a key for at least 24 hours: a replay past that would be a fresh
+// request, honoured a second time if a lost earlier attempt had already
+// refunded the charge. Six hours is well past the five-minute retry
+// schedule yet leaves the better part of a day for the action's own
+// runtime (Stripe's client retries, Convex's action limit) before the key
+// could lapse. The row's creation time bounds the first request from below,
+// so no attempt needs its own timestamp.
+export const REFUND_CREATE_WINDOW_MS = 6 * 60 * 60 * 1000;
+
+// How long after an execution's scheduled time its guard first looks in on
+// it, and how often it looks again while the execution is still queued or
+// running. Longer than a healthy execution (one Stripe call) by a wide
+// margin, so the guard almost always finds the row already spoken for.
+const REFUND_GUARD_DELAY_MS = 2 * 60_000;
+
+// Queues one execution of the refund and, in the same transaction, the
+// guard that looks in on it (guardRefundExecution) — the one way an
+// execution is ever scheduled, so no execution can run unobserved. The
+// guard carries the attempt count the row holds now: a later attempt bumps
+// it, which is how an earlier execution's guard recognises that it has
+// been superseded.
+async function scheduleRefundExecution(
+  ctx: MutationCtx,
+  refundId: Id<"paymentRefunds">,
+  attemptCount: number,
+  delayMs: number,
+) {
+  const executionId = await ctx.scheduler.runAfter(
+    delayMs,
+    internal.payments.refunds.executeRefund,
+    { refundId },
+  );
+  await ctx.scheduler.runAfter(
+    delayMs + REFUND_GUARD_DELAY_MS,
+    internal.payments.refunds.guardRefundExecution,
+    { refundId, executionId, attemptCount },
+  );
+}
+
+// Parks a pending row in needs_attention with the diagnostic that explains
+// the unknown outcome, and writes the one refund_stalled audit line. The
+// row keeps its attempt count and blocks the payout and the event's
+// deletion until Stripe's record settles it; nothing automatic touches it
+// again.
+async function parkRefund(
+  ctx: MutationCtx,
+  refund: Doc<"paymentRefunds">,
+  lastError: string,
+) {
+  await ctx.db.patch(refund._id, {
+    status: "needs_attention",
+    lastError,
+    updatedAt: Date.now(),
+  });
+  await logRefundAudit(ctx, refund, {
+    type: "refund_stalled",
+    amountCents: refund.amountCents,
+  });
+}
+
+// The executor's precondition check: the row is still pending, Stripe has
+// not yet accepted a refund for it, and the create window is open. Returns
+// what the Stripe call needs, or null when there is nothing to send — the
+// row was settled or parked meanwhile, or it is settled or parked here.
 export const beginRefundExecution = internalMutation({
   args: { refundId: v.id("paymentRefunds") },
   handler: async (ctx, args) => {
     const refund = await ctx.db.get(args.refundId);
-    if (!refund || refund.status !== "pending") {
+    // Once Stripe holds a refund for the row (stripeRefundId), only that
+    // refund's status matters: a create replayed past the key's life would
+    // be a second refund, so a pending row with an id waits for the webhook
+    // or a status check instead.
+    if (
+      !refund ||
+      refund.status !== "pending" ||
+      refund.stripeRefundId !== undefined
+    ) {
+      return null;
+    }
+    if (Date.now() - refund._creationTime > REFUND_CREATE_WINDOW_MS) {
+      await parkRefund(
+        ctx,
+        refund,
+        "The retry window closed before this attempt could be sent; whether an earlier attempt reached Stripe is unknown",
+      );
       return null;
     }
     const order = await ctx.db.get(refund.orderId);
     const chargeId = refund.stripeChargeId ?? order?.stripeChargeId;
     if (!chargeId) {
       // A paid order always carries its charge id (the webhook records it
-      // before any refund is queued); a missing one is unexecutable.
-      await ctx.db.patch(args.refundId, {
-        status: "failed",
-        updatedAt: Date.now(),
-      });
+      // before any refund is queued), so this is a data fault. With no
+      // attempt sent it is a plain failure; after one, the outcome of that
+      // attempt is as unknown as any other, so the row parks.
+      const diagnostic = "The order has no Stripe charge to refund";
+      if (refund.attemptCount === 0) {
+        await applyRefundOutcome(ctx, refund, "failed", {
+          lastError: diagnostic,
+        });
+      } else {
+        await parkRefund(ctx, refund, diagnostic);
+      }
       return null;
     }
-    return {
-      stripeChargeId: chargeId,
-      amountCents: refund.amountCents,
-      attemptCount: refund.attemptCount,
-    };
+    return { stripeChargeId: chargeId, amountCents: refund.amountCents };
   },
 });
-
-const REFUND_RETRY_DELAY_MS = 60_000;
-export const MAX_REFUND_ATTEMPTS = 5;
 
 // Stripe accepting a refund is not the money moving: a refund can sit
 // pending (bank rails) or requires_action, and only its terminal status
@@ -364,109 +458,23 @@ function refundOutcomeFromStatus(status: StripeRefundStatus) {
       : ("pending" as const);
 }
 
-type StripeRefundRecord = {
-  stripeRefundId: string;
-  status: StripeRefundStatus;
-  failureReason: string | null;
-};
-
+// One attempt at the row's Stripe call. Each outcome is recorded by one
+// mutation: a returned refund by markRefundResult, a thrown call by
+// recordRefundAttemptFailure, which decides whether the attempt is
+// retried, settled, or parked. Every attempt replays the same idempotency
+// key, so a retry can only ever return the refund an earlier attempt
+// created, never a second one.
 export const executeRefund = internalAction({
-  args: {
-    refundId: v.id("paymentRefunds"),
-    // Set by an organizer re-drive: ask Stripe for the row's refund before
-    // creating one. The re-drive can land days after the stalled attempts,
-    // past the life of their idempotency key, so a plain replay would be a
-    // fresh request Stripe might refuse (or, worse, honour twice).
-    reconcileFirst: v.optional(v.boolean()),
-  },
+  args: { refundId: v.id("paymentRefunds") },
   handler: async (ctx, args) => {
-    const begin: {
-      stripeChargeId: string;
-      amountCents: number;
-      attemptCount: number;
-    } | null = await ctx.runMutation(
-      internal.payments.refunds.beginRefundExecution,
-      { refundId: args.refundId },
-    );
+    const begin: { stripeChargeId: string; amountCents: number } | null =
+      await ctx.runMutation(internal.payments.refunds.beginRefundExecution, {
+        refundId: args.refundId,
+      });
     if (!begin) {
       return null;
     }
     const gateway = getStripeGateway(requireStripeSecretKey());
-    const lookupArgs = {
-      chargeId: begin.stripeChargeId,
-      refundRowId: args.refundId,
-    };
-
-    // Settles the row from the refund Stripe holds for it. A failed or
-    // canceled refund carries Stripe's own reason when it gives one, else
-    // the local error that led here.
-    const settleFromStripeRecord = async (
-      earlier: StripeRefundRecord,
-      localError: string,
-    ) => {
-      const outcome = refundOutcomeFromStatus(earlier.status);
-      await (ctx.runMutation(internal.payments.refunds.markRefundResult, {
-        refundId: args.refundId,
-        outcome,
-        stripeRefundId: earlier.stripeRefundId,
-        errorMessage:
-          outcome === "failed"
-            ? (earlier.failureReason ?? localError)
-            : undefined,
-      }) satisfies Promise<null>);
-    };
-
-    // A retriable failure — ambiguous (a connection drop, a Stripe 5xx: the
-    // refund may exist on Stripe's side) or transient (a rate limit, a key
-    // mid-rotation: nothing was created, but the next call may pass) —
-    // must not settle the row either way: "failed" would pay the order out
-    // while the charge's money may have gone back, and the player is still
-    // owed the refund regardless. The row stays pending and the call
-    // retries under its idempotency key (the retry is scheduled by the
-    // same mutation that records the attempt, so a crash can never leave
-    // a counted attempt without its retry). On the final attempt Stripe's
-    // record is consulted before giving up: a refund a lost attempt did
-    // create settles the row right here. Only when Stripe holds none (or
-    // the lookup itself fails) does the row park in needs_attention —
-    // never "failed", since the refund is still owed — for an operator to
-    // re-drive.
-    const recordRetriableFailure = async (errorMessage: string) => {
-      if (begin.attemptCount + 1 >= MAX_REFUND_ATTEMPTS) {
-        let earlier: StripeRefundRecord | null = null;
-        try {
-          earlier = await gateway.findRefundForRow(lookupArgs);
-        } catch (lookupError) {
-          errorMessage = `${errorMessage} (refund lookup failed: ${errorMessageOf(lookupError)})`;
-        }
-        if (earlier) {
-          await settleFromStripeRecord(earlier, errorMessage);
-          return;
-        }
-      }
-      await (ctx.runMutation(
-        internal.payments.refunds.recordRefundAttemptFailure,
-        { refundId: args.refundId, errorMessage },
-      ) satisfies Promise<null>);
-    };
-
-    if (args.reconcileFirst) {
-      let earlier: StripeRefundRecord | null;
-      try {
-        earlier = await gateway.findRefundForRow(lookupArgs);
-      } catch (lookupError) {
-        await recordRetriableFailure(
-          `Refund lookup failed: ${errorMessageOf(lookupError)}`,
-        );
-        // Rethrown so the failure is visible in function logs; the refund
-        // row carries the user-facing record.
-        throw lookupError;
-      }
-      if (earlier) {
-        await settleFromStripeRecord(earlier, "Refund failed on Stripe");
-        return null;
-      }
-    }
-
     let created: { stripeRefundId: string; status: StripeRefundStatus };
     try {
       created = await gateway.createRefund({
@@ -476,38 +484,16 @@ export const executeRefund = internalAction({
         idempotencyKey: `refund:${args.refundId}`,
       });
     } catch (error) {
-      const errorMessage = errorMessageOf(error);
-      if (!isDefinitiveStripeFailure(error)) {
-        await recordRetriableFailure(errorMessage);
-        throw error;
-      }
-      // A definitive rejection proves THIS request created nothing, but
-      // says nothing about the row's earlier attempts: Stripe prunes
-      // idempotency keys after a day, so a retry or re-drive that lands
-      // late is a fresh request Stripe may refuse precisely because a
-      // lost earlier attempt already refunded the charge. Settling that
-      // "failed" would pay the order out on top of the refund, so the row
-      // settles from Stripe's record instead — the refund stamped with
-      // this row's id if one exists, "failed" only when there is none.
-      let earlier: StripeRefundRecord | null;
-      try {
-        earlier = await gateway.findRefundForRow(lookupArgs);
-      } catch (lookupError) {
-        // Without Stripe's answer the outcome is as unknown as after a
-        // dropped connection; the row retries and parks like one.
-        await recordRetriableFailure(
-          `${errorMessage} (refund lookup failed: ${errorMessageOf(lookupError)})`,
-        );
-        throw error;
-      }
-      if (earlier) {
-        await settleFromStripeRecord(earlier, errorMessage);
-        return null;
-      }
-      await (ctx.runMutation(internal.payments.refunds.recordRefundRejection, {
-        refundId: args.refundId,
-        errorMessage,
-      }) satisfies Promise<null>);
+      await (ctx.runMutation(
+        internal.payments.refunds.recordRefundAttemptFailure,
+        {
+          refundId: args.refundId,
+          errorMessage: errorMessageOf(error),
+          definitive: isDefinitiveStripeFailure(error),
+        },
+      ) satisfies Promise<null>);
+      // Rethrown so the failure is visible in function logs; the refund
+      // row carries the user-facing record.
       throw error;
     }
     await (ctx.runMutation(internal.payments.refunds.markRefundResult, {
@@ -538,100 +524,114 @@ async function logRefundAudit(
   }
 }
 
-// Records one retriable executor failure on the row and, while attempts
-// remain, schedules the retry in the same transaction — a counted attempt
-// can never be left without its retry by a crash between the two. The
-// attempt counter lives here (not in scheduler args) so the dead end is
-// visible: on the last allowed attempt the row leaves "pending" for
-// "needs_attention" and a refund_stalled audit line is written. The row is
-// deliberately not settled "failed" (and the audit line is not
-// refund_failed): Stripe may have created the refund, and only
-// reconciliation (the refund.updated webhook, or an operator re-drive) can
-// say which — refund_failed is written once, by applyRefundOutcome, when
-// that answer is "no".
+// Records one thrown Stripe call on the row and decides what follows, in
+// the same transaction so a crash can never leave a counted attempt without
+// its consequence:
+//
+// - A definitive rejection (stripe/errors.ts: the request reached Stripe and
+//   was refused) on the row's first attempt proves no request created a
+//   refund, so the row settles "failed" with the rejection as its error.
+// - The same rejection after an earlier attempt proves only that THIS
+//   request created nothing; the earlier one may have refunded the charge
+//   (which may be exactly why Stripe refuses now). The row parks.
+// - A retriable failure — ambiguous (a connection drop, a 5xx: the refund
+//   may exist) or transient (a rate limit, a key mid-rotation) — retries
+//   under the same key after a delay, until the attempt budget runs out and
+//   the row parks. A 5xx Stripe cached under the key replays through the
+//   remaining budget before parking: a few wasted calls, in exchange for
+//   not giving up on a transient edge error a replay would have cleared.
+//
+// A parked row is never settled "failed": the refund is still owed, and
+// only Stripe's record can say whether it was already paid.
 export const recordRefundAttemptFailure = internalMutation({
-  args: { refundId: v.id("paymentRefunds"), errorMessage: v.string() },
+  args: {
+    refundId: v.id("paymentRefunds"),
+    errorMessage: v.string(),
+    definitive: v.boolean(),
+  },
   handler: async (ctx, args) => {
     const refund = await ctx.db.get(args.refundId);
     if (!refund || refund.status !== "pending") {
       return null;
     }
     const attemptCount = refund.attemptCount + 1;
-    const exhausted = attemptCount >= MAX_REFUND_ATTEMPTS;
     await ctx.db.patch(refund._id, {
       attemptCount,
       lastError: args.errorMessage,
-      status: exhausted ? "needs_attention" : "pending",
       updatedAt: Date.now(),
     });
-    if (exhausted) {
-      await logRefundAudit(ctx, refund, {
-        type: "refund_stalled",
-        amountCents: refund.amountCents,
+    if (args.definitive && refund.attemptCount === 0) {
+      await applyRefundOutcome(ctx, refund, "failed", {
+        lastError: args.errorMessage,
       });
+    } else if (args.definitive || attemptCount >= MAX_REFUND_ATTEMPTS) {
+      await parkRefund(ctx, refund, args.errorMessage);
     } else {
-      await ctx.scheduler.runAfter(
+      await scheduleRefundExecution(
+        ctx,
+        refund._id,
+        attemptCount,
         REFUND_RETRY_DELAY_MS,
-        internal.payments.refunds.executeRefund,
-        { refundId: refund._id },
       );
     }
     return null;
   },
 });
 
-// Records a definitive Stripe rejection of the create call once the
-// executor has confirmed with Stripe (findRefundForRow) that no earlier
-// attempt refunded the charge for this row: the money provably never
-// moved, so the row settles "failed" with the rejection as its lastError.
-export const recordRefundRejection = internalMutation({
-  args: { refundId: v.id("paymentRefunds"), errorMessage: v.string() },
+// The guard scheduled beside every execution (scheduleRefundExecution):
+// closes the one gap the recording mutations cannot — an execution that
+// died before any of them ran (a crash before the Stripe call, a runtime
+// error after it), leaving a pending row nothing will ever touch again.
+//
+// The guard stands down the moment the row shows the execution, or a
+// later attempt, spoke for itself: it is gone, settled, or parked; Stripe
+// has accepted a refund for it (stripeRefundId, which a pending row keeps
+// while the webhook settles it); or its attempt count has moved on. Only a
+// row exactly as the execution found it is examined further, through the
+// scheduler's own record of that execution: still queued or running, and
+// the guard looks again later; ended without recording anything, and the
+// row parks — the request may or may not have reached Stripe, which is
+// precisely what needs_attention means. A record the scheduler no longer
+// holds is read the same way. The guard never creates a refund and never
+// declares one failed.
+export const guardRefundExecution = internalMutation({
+  args: {
+    refundId: v.id("paymentRefunds"),
+    executionId: v.id("_scheduled_functions"),
+    attemptCount: v.number(),
+  },
   handler: async (ctx, args) => {
     const refund = await ctx.db.get(args.refundId);
-    if (!refund || refund.status !== "pending") {
+    if (
+      !refund ||
+      refund.status !== "pending" ||
+      refund.stripeRefundId !== undefined ||
+      refund.attemptCount !== args.attemptCount
+    ) {
       return null;
     }
-    await applyRefundOutcome(ctx, refund, "failed", {
-      lastError: args.errorMessage,
-    });
-    return null;
-  },
-});
-
-// Organizer re-drive for one refund parked in needs_attention (the rule is
-// model/payments.ts redriveRefund). Gated on the organization's payments
-// permission, the same check the payout retry uses.
-export const retryRefund = mutation({
-  args: { refundId: v.id("paymentRefunds") },
-  handler: async (ctx, args) => {
-    const refund = await ctx.db.get(args.refundId);
-    if (!refund) {
-      throw new Error("Refund not found");
+    const execution = await ctx.db.system.get(
+      "_scheduled_functions",
+      args.executionId,
+    );
+    if (
+      execution?.state.kind === "pending" ||
+      execution?.state.kind === "inProgress"
+    ) {
+      await ctx.scheduler.runAfter(
+        REFUND_GUARD_DELAY_MS,
+        internal.payments.refunds.guardRefundExecution,
+        args,
+      );
+      return null;
     }
-    await requireOwnerPaymentsPermission(ctx, parseMoneyRowOwner(refund));
-    await redriveRefund(ctx, refund);
-    return null;
-  },
-});
-
-// The bulk re-drive: every refund of the event parked in needs_attention,
-// a page now and the rest by scheduler continuation (redriveRefundsSweep),
-// so a mass stall — a Stripe outage during a convention's cancellation
-// sweep — is one click rather than one per row. Same gate as retryRefund.
-export const retryAllRefunds = mutation({
-  args: moneyRowOwnerArgs,
-  handler: async (ctx, args) => {
-    const owner = parseMoneyRowOwner(args);
-    await requireOwnerPaymentsPermission(ctx, owner);
-    await redriveRefundsBatch(ctx, owner);
-    return null;
-  },
-});
-
-export const redriveRefundsSweep = internalMutation({
-  args: moneyRowOwnerArgs,
-  handler: async (ctx, args) => {
-    await redriveRefundsBatch(ctx, parseMoneyRowOwner(args));
+    await parkRefund(
+      ctx,
+      refund,
+      execution
+        ? "Refund execution ended without recording an outcome; whether the request reached Stripe is unknown"
+        : "Refund execution left no record and no outcome; whether the request reached Stripe is unknown",
+    );
     return null;
   },
 });
@@ -658,11 +658,11 @@ async function recordRefundInFlight(
 
 // Applies a refund outcome to a pending (or needs_attention — its Stripe
 // outcome is exactly what is unknown, so any report settles it) refund row
-// and its order. Shared by the executor's result write and webhook
-// reconciliation; rows already settled are left alone, with one exception:
-// reconciliation may flip a "failed" row to succeeded (recoverFailed),
-// because a refund.updated success is Stripe's proof the money moved and
-// outranks whatever local error settled the row.
+// and its order. Shared by the executor's result write, the owner's status
+// check and webhook reconciliation; rows already settled are left alone,
+// with one exception: reconciliation may flip a "failed" row to succeeded
+// (recoverFailed), because a refund.updated success is Stripe's proof the
+// money moved and outranks whatever local error settled the row.
 async function applyRefundOutcome(
   ctx: MutationCtx,
   refund: Doc<"paymentRefunds">,
@@ -732,8 +732,8 @@ async function applyRefundOutcome(
   });
 }
 
-// The executor's result write, from the refund Stripe created now or the
-// one it reports an earlier attempt created (findRefundForRow).
+// The result write for a refund Stripe reports holding for the row — the
+// one the executor just created, or the one a status check found.
 export const markRefundResult = internalMutation({
   args: {
     refundId: v.id("paymentRefunds"),
@@ -786,6 +786,11 @@ export const handleRefundEvent = internalMutation({
     // lookup for a row whose executor crashed before recording the Stripe
     // refund id.
     refundRowId: v.union(v.string(), v.null()),
+    // The refund's amount as Stripe reports it. A refund that names a row
+    // (by id or metadata) but returns a different amount is not that row's
+    // refund — a replacement an operator stamped with the wrong row, say —
+    // and must not settle it.
+    amountCents: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const alreadyProcessed = await ctx.db
@@ -816,6 +821,15 @@ export const handleRefundEvent = internalMutation({
     if (!refund) {
       return null;
     }
+    if (
+      args.amountCents !== undefined &&
+      args.amountCents !== refund.amountCents
+    ) {
+      console.error(
+        `Ignoring refund ${args.stripeRefundId}: amount ${args.amountCents} disagrees with row ${refund._id} (${refund.amountCents})`,
+      );
+      return null;
+    }
     if (args.refundStatus === "succeeded") {
       await applyRefundOutcome(ctx, refund, "succeeded", {
         stripeRefundId: args.stripeRefundId,
@@ -838,11 +852,106 @@ export const handleRefundEvent = internalMutation({
   },
 });
 
-// Refunds the executor gave up on, for the organizer's payout card (the
+// What the row looks like to a status check: resolved behind the payments
+// permission on the owning organization, so no caller learns a refund's
+// state (or spends a Stripe call on it) without the right to.
+export const refundForStatusCheck = internalQuery({
+  args: { refundId: v.id("paymentRefunds") },
+  handler: async (ctx, args) => {
+    const refund = await ctx.db.get(args.refundId);
+    if (!refund) {
+      throw new Error("Refund not found");
+    }
+    await requireOwnerPaymentsPermission(ctx, parseMoneyRowOwner(refund));
+    const order = await ctx.db.get(refund.orderId);
+    return {
+      status: refund.status,
+      stripeChargeId: refund.stripeChargeId ?? order?.stripeChargeId ?? null,
+      amountCents: refund.amountCents,
+    };
+  },
+});
+
+// What one status check established. "settled" and "processing" mean the
+// row now reflects Stripe's record; the other three leave the row exactly
+// as it was.
+export type RefundStatusCheck =
+  | { result: "settled"; status: "succeeded" | "failed" }
+  | { result: "processing" }
+  // Stripe holds no refund stamped with this row: the request never
+  // landed, or it landed without the row's stamp (docs/refund-recovery.md).
+  | { result: "unresolved" }
+  // Stripe holds a refund stamped with this row whose amount is not the
+  // row's: not this row's refund, and not something to settle from.
+  | { result: "mismatch"; stripeRefundId: string; amountCents: number }
+  | { result: "check_failed"; message: string };
+
+// The owner's one recovery verb for a refund whose outcome is unknown:
+// asks Stripe for the refund stamped with the row (the charge's refunds,
+// matched on the row id in their metadata) and settles the row from that
+// record through the same mutation the executor uses. A pending row may
+// be checked too — an operator confirming an attempt landed — but a
+// settled row is reported as it stands without a Stripe call. The check
+// never creates a refund, never reschedules the executor, and never
+// resets the row's attempt count or error: finding nothing is reported
+// as nothing, not as failure.
+export const checkRefundStatus = action({
+  args: { refundId: v.id("paymentRefunds") },
+  handler: async (ctx, args): Promise<RefundStatusCheck> => {
+    const refund: {
+      status: Doc<"paymentRefunds">["status"];
+      stripeChargeId: string | null;
+      amountCents: number;
+    } = await ctx.runQuery(internal.payments.refunds.refundForStatusCheck, {
+      refundId: args.refundId,
+    });
+    if (refund.status === "succeeded" || refund.status === "failed") {
+      return { result: "settled", status: refund.status };
+    }
+    if (!refund.stripeChargeId) {
+      return { result: "unresolved" };
+    }
+    let found: Awaited<ReturnType<StripeGateway["findRefundForRow"]>>;
+    try {
+      found = await getStripeGateway(requireStripeSecretKey()).findRefundForRow(
+        { chargeId: refund.stripeChargeId, refundRowId: args.refundId },
+      );
+    } catch (error) {
+      console.error(`Refund status check failed for ${args.refundId}`, error);
+      return { result: "check_failed", message: errorMessageOf(error) };
+    }
+    if (!found) {
+      return { result: "unresolved" };
+    }
+    if (found.amountCents !== refund.amountCents) {
+      return {
+        result: "mismatch",
+        stripeRefundId: found.stripeRefundId,
+        amountCents: found.amountCents,
+      };
+    }
+    const outcome = refundOutcomeFromStatus(found.status);
+    await (ctx.runMutation(internal.payments.refunds.markRefundResult, {
+      refundId: args.refundId,
+      outcome,
+      stripeRefundId: found.stripeRefundId,
+      errorMessage:
+        outcome === "failed"
+          ? (found.failureReason ?? "Stripe reports this refund failed")
+          : undefined,
+    }) satisfies Promise<null>);
+    return outcome === "pending"
+      ? { result: "processing" }
+      : { result: "settled", status: outcome };
+  },
+});
+
+// Refunds whose outcome is unknown, for the organizer's payout card (the
 // read is model/payments.ts refundsNeedingAttention): each one blocks the
-// event's payout until it is re-driven (retryRefund, retryAllRefunds) or
-// the refund.updated webhook settles it. Any organizer of the event can
-// see them; retrying is gated separately on the payments permission.
+// event's payout until Stripe's record settles it — the owner's
+// checkRefundStatus, or the refund.updated webhook. Any organizer of the
+// event can see them; checking is gated separately on the payments
+// permission.
 export const listRefundsNeedingAttention = query({
   args: moneyRowOwnerArgs,
   handler: async (ctx, args) => {
