@@ -33,14 +33,22 @@ export function ConventionPayoutCard({
     api.conventions.ticketTypes.listTicketTypesForOrganizer,
     { conventionId: convention._id, now },
   )
+  const isPaid = ticketTypes?.some((t) => t.priceCents > 0) ?? false
+  const refundsNeedingAttention = useQuery(
+    api.payments.refunds.listRefundsNeedingAttention,
+    isPaid ? { conventionId: convention._id } : 'skip',
+  )
   const retryPayout = useAction(api.payments.payouts.retryPayout)
+  const checkRefundStatus = useAction(api.payments.refunds.checkRefundStatus)
 
   return (
     <PaidEventPayoutCard
-      isPaid={ticketTypes?.some((t) => t.priceCents > 0) ?? false}
+      isPaid={isPaid}
       completed={convention.lifecycle === 'completed'}
       payout={payout}
+      refundsNeedingAttention={refundsNeedingAttention}
       onRetry={() => retryPayout({ conventionId: convention._id })}
+      onCheckRefund={(refundId) => checkRefundStatus({ refundId })}
       copy={copy}
     />
   )

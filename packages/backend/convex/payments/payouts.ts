@@ -20,12 +20,16 @@ import {
   ownerRefundsQuery,
   parseMoneyRowOwner,
 } from "../model/paidEventOwner";
-import { orderTransferGroup } from "../model/payments";
-import { requirePaymentsPermission } from "../model/stripeAccounts";
+import {
+  firstUnsettledRefundStatus,
+  orderTransferGroup,
+} from "../model/payments";
+import { requireOwnerPaymentsPermission } from "../model/stripeAccounts";
 import { conventionHasPaidTicketType } from "../model/ticketTypes";
 import { requireOrganizerAccess } from "../model/tournaments";
 import { getStripeGateway } from "../stripe/client";
 import { requireStripeSecretKey } from "../stripe/config";
+import { errorMessageOf } from "../stripe/errors";
 
 // The event payout sweep, scheduled when a paid tournament or convention
 // completes: one transfer per paid order (source_transaction = the order's
@@ -74,6 +78,23 @@ async function payoutSourceEvent(
   return tournament;
 }
 
+// The blocked-payout reason for the owner's unsettled refunds, or null when
+// every refund has settled (the probe itself is model/payments.ts
+// firstUnsettledRefundStatus, shared with the delete guard). The reason
+// stays generic: the offending rows (player, amount, attempts, last error)
+// are listed beside the payout by listRefundsNeedingAttention, which
+// formats them for the organizer.
+async function unsettledOwnerRefund(
+  ctx: MutationCtx,
+  owner: MoneyRowOwner,
+): Promise<string | null> {
+  const unsettled = await firstUnsettledRefundStatus(ctx, owner);
+  if (unsettled === "needs_attention") {
+    return "A refund's outcome could not be confirmed. Check its status below (or resolve it with the platform operator), then retry the payout.";
+  }
+  return unsettled === "pending" ? "Refunds are still settling" : null;
+}
+
 export const startPayoutSweep = internalMutation({
   args: moneyRowOwnerArgs,
   handler: async (ctx, args) => {
@@ -111,11 +132,15 @@ export const startPayoutSweep = internalMutation({
     }
 
     // The payout must not race an in-flight refund's amount out from under
-    // it; a blocked payout is retried once refunds settle.
-    const pendingRefund = await ownerRefundsQuery(ctx, owner, "pending").take(
-      1,
-    );
-    if (pendingRefund.length > 0) {
+    // it; a blocked payout is retried once refunds settle. A refund whose
+    // outcome is unknown (needs_attention) blocks too, but with a reason
+    // naming it: its order is still "paid" and would be paid out while
+    // Stripe may already have returned the player's money, so Stripe's
+    // record (the owner's checkRefundStatus, or the refund.updated webhook)
+    // has to settle it first. Only a definitively "failed" refund (money
+    // never moved) lets the payout proceed with the order included.
+    const unsettledRefund = await unsettledOwnerRefund(ctx, owner);
+    if (unsettledRefund) {
       await ctx.db.insert("eventPayouts", {
         ...moneyRowOwnerColumns(owner),
         organizationId: event.organizationId,
@@ -125,7 +150,7 @@ export const startPayoutSweep = internalMutation({
         absorbedFeeCents: 0,
         netCents: 0,
         remainingDeductionCents: 0,
-        error: "Refunds are still settling",
+        error: unsettledRefund,
         updatedAt: now,
       });
       return null;
@@ -157,7 +182,7 @@ export const startPayoutSweep = internalMutation({
 // Accumulates the organizer-absorbed refund fees one page at a time onto
 // the payout row (the enumeration cursor is reused between stages; it is
 // cleared when summing hands off). No refund can change the sum underneath
-// the pagination: the sweep starts only after the pending-refund guard
+// the pagination: the sweep starts only after the unsettled-refund guard
 // passes, and a completed event mints no new refunds.
 export const sumAbsorbedFeesBatch = internalMutation({
   args: { payoutId: v.id("eventPayouts") },
@@ -467,7 +492,7 @@ export const sendTransfers = internalAction({
           await (ctx.runMutation(internal.payments.payouts.markTransferResult, {
             transferRowId: row.transferRowId,
             outcome: "failed",
-            errorMessage: error instanceof Error ? error.message : "Unknown",
+            errorMessage: errorMessageOf(error),
           }) satisfies Promise<null>);
         }
       }
@@ -541,14 +566,7 @@ export const beginPayoutRetry = internalMutation({
   args: moneyRowOwnerArgs,
   handler: async (ctx, args) => {
     const owner = parseMoneyRowOwner(args);
-    const event =
-      owner.kind === "convention"
-        ? await ctx.db.get(owner.conventionId)
-        : await ctx.db.get(owner.tournamentId);
-    if (!event) {
-      throw new Error("Event not found");
-    }
-    await requirePaymentsPermission(ctx, event.organizationId);
+    await requireOwnerPaymentsPermission(ctx, owner);
 
     const payout = await ownerPayoutsQuery(ctx, owner).unique();
     if (
@@ -564,8 +582,8 @@ export const beginPayoutRetry = internalMutation({
       .first();
     const now = Date.now();
     if (!anyRow) {
-      // Blocked before enumeration (missing account, refunds settling):
-      // restart the sweep with fresh preconditions.
+      // Blocked before enumeration (missing account, refunds settling or
+      // needing attention): restart the sweep with fresh preconditions.
       await ctx.db.delete(payout._id);
       await ctx.scheduler.runAfter(
         0,

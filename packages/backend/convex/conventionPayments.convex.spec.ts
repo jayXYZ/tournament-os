@@ -54,6 +54,7 @@ vi.mock("./stripe/client", () => ({
         status: "succeeded" as const,
       };
     },
+    findRefundForRow: async () => null,
     retrieveTransfersCapabilityStatus: async () => "active" as const,
     createTransfer: async (args: {
       amountCents: number;

@@ -15,6 +15,13 @@ import { Spinner } from '@/components/ui/spinner'
 type PayoutSummary = FunctionReturnType<
   typeof api.payments.payouts.getTournamentPayout
 >
+type RefundsNeedingAttention = FunctionReturnType<
+  typeof api.payments.refunds.listRefundsNeedingAttention
+>
+type RefundNeedingAttention = RefundsNeedingAttention['refunds'][number]
+type RefundStatusCheck = FunctionReturnType<
+  typeof api.payments.refunds.checkRefundStatus
+>
 
 export type PaidEventPayoutCopy = {
   title: string
@@ -25,26 +32,83 @@ export type PaidEventPayoutCopy = {
   feesLabel: string
 }
 
+// What a status check established, in the organizer's terms. A check that
+// found nothing leaves the refund (and the payout) exactly as it was; the
+// reference is what the platform operator needs to take it further.
+function describeRefundCheck(
+  check: RefundStatusCheck,
+  refundId: RefundNeedingAttention['refundId'],
+) {
+  const contactOperator = `The payout remains paused. Contact the platform operator with reference ${refundId}.`
+  switch (check.result) {
+    case 'settled':
+      return check.status === 'succeeded'
+        ? {
+            kind: 'success' as const,
+            message: 'Stripe confirmed this refund went through.',
+          }
+        : {
+            kind: 'info' as const,
+            message:
+              'Stripe reports this refund failed, so no money was returned. The payout no longer waits on it.',
+          }
+    case 'processing':
+      return {
+        kind: 'info' as const,
+        message:
+          'Stripe is still processing this refund. The payout stays paused until it settles.',
+      }
+    case 'unresolved':
+      return {
+        kind: 'warning' as const,
+        message: `Stripe has no record of this refund. ${contactOperator}`,
+      }
+    case 'mismatch':
+      return {
+        kind: 'warning' as const,
+        message: `Stripe holds a refund for this entry with a different amount (${formatCents(check.amountCents)}). ${contactOperator}`,
+      }
+    case 'check_failed':
+      return {
+        kind: 'error' as const,
+        message: `Could not check this refund with Stripe: ${check.message}`,
+      }
+  }
+}
+
 // Payout status for either paid-event kind: fees transfer to the
 // organization's Stripe account when the event completes
-// (payments/payouts.ts); blocked or failed payouts retry from here. The
-// wrappers supply the payout query result and the retry action.
+// (payments/payouts.ts); blocked or failed payouts retry from here. Refunds
+// whose outcome could not be confirmed, and refunds Stripe is still
+// processing, block the payout and are listed above it, each with a status
+// check against Stripe's record — the check settles what Stripe knows
+// about and never issues a refund itself. The wrappers supply the query
+// results and the two verbs.
 export function PaidEventPayoutCard({
   isPaid,
   completed,
   payout,
+  refundsNeedingAttention,
   onRetry,
+  onCheckRefund,
   copy,
 }: {
   isPaid: boolean
   completed: boolean
   // undefined while loading (or while the query is skipped pre-completion).
   payout: PayoutSummary | undefined
+  refundsNeedingAttention: RefundsNeedingAttention | undefined
   onRetry: () => Promise<unknown>
+  onCheckRefund: (
+    refundId: RefundNeedingAttention['refundId'],
+  ) => Promise<RefundStatusCheck>
   copy: PaidEventPayoutCopy
 }) {
   const { selectedOrganization } = useOrganization()
   const [retrying, setRetrying] = useState(false)
+  const [checkingRefund, setCheckingRefund] = useState<
+    RefundNeedingAttention['refundId'] | null
+  >(null)
 
   if (!isPaid) {
     return null
@@ -66,9 +130,108 @@ export function PaidEventPayoutCard({
     }
   }
 
+  async function handleCheckRefund(
+    refundId: RefundNeedingAttention['refundId'],
+  ) {
+    setCheckingRefund(refundId)
+    try {
+      const outcome = describeRefundCheck(
+        await onCheckRefund(refundId),
+        refundId,
+      )
+      toast[outcome.kind](outcome.message)
+    } catch (error) {
+      toast.error(
+        mutationErrorMessage(error, 'Could not check the refund status.'),
+      )
+    } finally {
+      setCheckingRefund(null)
+    }
+  }
+
+  const parkedRefunds = refundsNeedingAttention?.refunds ?? []
+
   return (
     <section className="flex flex-col gap-4">
       <SectionHeader title={copy.title} description={copy.description} />
+      {parkedRefunds.length > 0 ? (
+        <div className="flex flex-col gap-2">
+          <ul className="flex flex-col gap-2">
+            {parkedRefunds.map((refund) => (
+              <li
+                key={refund.refundId}
+                className={
+                  refund.status === 'needs_attention'
+                    ? 'flex flex-wrap items-center justify-between gap-2 rounded-md border border-destructive/40 p-3'
+                    : 'flex flex-wrap items-center justify-between gap-2 rounded-md border p-3'
+                }
+              >
+                <div className="flex flex-col gap-1 text-sm">
+                  {refund.status === 'needs_attention' ? (
+                    <>
+                      <span>
+                        We couldn't confirm the outcome of the{' '}
+                        {formatCents(refund.amountCents)} refund to{' '}
+                        {refund.playerName ?? 'a player'}. The payout remains
+                        paused.
+                      </span>
+                      {refund.lastError ? (
+                        <span className="text-muted-foreground">
+                          {refund.lastError}
+                        </span>
+                      ) : null}
+                      <span className="text-muted-foreground">
+                        Check its status, or contact the platform operator with
+                        reference {refund.refundId} ({refund.attemptCount}{' '}
+                        recorded{' '}
+                        {refund.attemptCount === 1 ? 'attempt' : 'attempts'}
+                        ).
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span>
+                        Stripe is still processing the{' '}
+                        {formatCents(refund.amountCents)} refund to{' '}
+                        {refund.playerName ?? 'a player'}. The payout stays
+                        paused until it settles.
+                      </span>
+                      <span className="text-muted-foreground">
+                        It settles on its own once Stripe reports it; check its
+                        status to confirm sooner (reference {refund.refundId}).
+                      </span>
+                    </>
+                  )}
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={!canRetry || checkingRefund !== null}
+                  onClick={() => void handleCheckRefund(refund.refundId)}
+                >
+                  {checkingRefund === refund.refundId ? (
+                    <Spinner data-icon="inline-start" />
+                  ) : null}
+                  Check refund status
+                </Button>
+              </li>
+            ))}
+          </ul>
+          {refundsNeedingAttention?.hasMore ? (
+            <p className="text-sm text-muted-foreground">
+              More refunds need attention than are shown here; they appear as
+              these settle. The platform operator can inspect all of them for
+              this event.
+            </p>
+          ) : null}
+          {!canRetry && (
+            <p className="text-sm text-muted-foreground">
+              Only the organization owner can check a refund's status.
+            </p>
+          )}
+        </div>
+      ) : null}
       <div className="flex flex-col gap-3">
         {!completed ? (
           <p className="text-sm text-muted-foreground">{copy.pendingMessage}</p>

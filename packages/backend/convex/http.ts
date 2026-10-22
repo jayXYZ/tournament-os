@@ -129,8 +129,14 @@ http.route({
         await ctx.runMutation(internal.payments.refunds.handleRefundEvent, {
           stripeEventId: event.id,
           stripeRefundId: refund.id,
+          stripeChargeId:
+            typeof refund.charge === "string"
+              ? refund.charge
+              : (refund.charge?.id ?? null),
           refundStatus: refund.status ?? "unknown",
           refundRowId: refund.metadata?.refundId ?? null,
+          amountCents: refund.amount,
+          failureReason: refund.failure_reason ?? undefined,
         });
         break;
       }

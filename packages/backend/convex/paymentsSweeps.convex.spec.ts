@@ -46,6 +46,7 @@ vi.mock("./stripe/client", () => ({
         status: "succeeded" as const,
       };
     },
+    findRefundForRow: async () => null,
     retrieveTransfersCapabilityStatus: async () => "active",
     createTransfer: async (args: {
       amountCents: number;
@@ -359,6 +360,34 @@ test("hard deletion refuses while payments are unsettled and proceeds after the 
     tournamentId,
   });
   await drainScheduler(t);
+
+  // A refund whose outcome is unknown is still unsettled money: deleting
+  // the event would erase the only record of it. The event is already
+  // cancelled, so "let payments settle" would be a dead end; the message
+  // names the status check instead.
+  const refund = await t.run(async (ctx) =>
+    (
+      await ctx.db
+        .query("paymentRefunds")
+        .withIndex("by_tournamentId_and_status", (q) =>
+          q.eq("tournamentId", tournamentId).eq("status", "succeeded"),
+        )
+        .take(1)
+    ).at(0),
+  );
+  await t.run(async (ctx) => {
+    await ctx.db.patch(refund!._id, { status: "needs_attention" });
+  });
+  await expect(
+    asOwner.mutation(api.tournaments.lifecycle.deleteTournament, {
+      tournamentId,
+    }),
+  ).rejects.toThrow(
+    "This tournament has a refund that needs attention — check its status from the payout section of the settings page",
+  );
+  await t.run(async (ctx) => {
+    await ctx.db.patch(refund!._id, { status: "succeeded" });
+  });
 
   await asOwner.mutation(api.tournaments.lifecycle.deleteTournament, {
     tournamentId,

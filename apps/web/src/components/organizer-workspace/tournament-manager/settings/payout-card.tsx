@@ -21,14 +21,23 @@ export function PayoutCard({ tournament }: { tournament: Doc<'tournaments'> }) {
       ? { tournamentId: tournament._id }
       : 'skip',
   )
+  const refundsNeedingAttention = useQuery(
+    api.payments.refunds.listRefundsNeedingAttention,
+    (tournament.entryFeeCents ?? 0) > 0
+      ? { tournamentId: tournament._id }
+      : 'skip',
+  )
   const retryPayout = useAction(api.payments.payouts.retryPayout)
+  const checkRefundStatus = useAction(api.payments.refunds.checkRefundStatus)
 
   return (
     <PaidEventPayoutCard
       isPaid={(tournament.entryFeeCents ?? 0) > 0}
       completed={tournament.lifecycle === 'completed'}
       payout={payout}
+      refundsNeedingAttention={refundsNeedingAttention}
       onRetry={() => retryPayout({ tournamentId: tournament._id })}
+      onCheckRefund={(refundId) => checkRefundStatus({ refundId })}
       copy={copy}
     />
   )

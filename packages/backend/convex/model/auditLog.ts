@@ -155,6 +155,7 @@ export type PaidEntryAuditEvent =
       reason: Doc<"paymentRefunds">["reason"];
       amountCents: number;
     }
+  | { type: "refund_stalled"; amountCents: number }
   | { type: "refund_failed"; amountCents: number }
   | { type: "order_disputed" };
 

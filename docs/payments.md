@@ -78,8 +78,29 @@ suites are `paymentsConnect` / `entryFeeSettings` / `paymentsCheckout` /
   the organizer's explicit `completeConvention` (a convention has no rounds
   to derive completion from); the two settle independently even when the
   tournament is a child of the convention. Blocked payouts (refunds
-  settling, account not payouts-ready) and exhausted-retry failures surface
-  on the event's settings page with an owner-only retry.
+  settling, account not payouts-ready) and failed transfers surface on the
+  event's settings page with an owner-only retry. The unsettled-refund
+  probe the payout sweep and the hard-delete guard share is
+  `model/payments.ts` `firstUnsettledRefundStatus`: a `pending` refund
+  blocks with "still settling", a `needs_attention` one with a reason
+  pointing at the status check.
+- **Refund execution and recovery** — the full contract and the operator
+  runbook are in [refund-recovery.md](./refund-recovery.md). In short: a
+  queued refund gets one bounded execution (`payments/refunds.ts`
+  `executeRefund`, up to `MAX_REFUND_ATTEMPTS` calls a minute apart under
+  one idempotency key, inside a six-hour create window), and a row settles
+  `failed` only when Stripe refused the row's very first request
+  (`stripe/errors.ts` lists the definitive rejections). Every other dead
+  end — retries exhausted, a rejection after an uncertain attempt, an
+  execution that died before reporting (caught by the guard mutation
+  scheduled beside every execution), the create window closing — parks the
+  row in `needs_attention` with its diagnostic and a `refund_stalled` audit
+  line. A parked row blocks the payout and the event's deletion and is
+  settled only from Stripe's record: the `refund.updated` webhook, or the
+  owner's **Check refund status** (`checkRefundStatus`, which looks up the
+  refund stamped with the row on the charge and applies its status through
+  the executor's own result write). Nothing creates a refund outside the
+  original execution; a refund Stripe holds no record of is a support case.
 - **Webhooks** — two signed endpoints, one per Stripe event format.
   - Snapshot events: `POST <deployment>.convex.site/stripe/events`.
     Fulfillment happens only here; success pages just watch the order
