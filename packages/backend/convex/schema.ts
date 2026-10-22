@@ -232,11 +232,25 @@ export default defineSchema({
       "participantId",
     ])
     .index("by_tournamentId_and_status", ["tournamentId", "status"])
+    // Owner + status + Stripe id, so "pending rows Stripe holds a refund
+    // for" (refundsNeedingAttention) is an index range rather than a
+    // filter over every pending row: undefined sorts first, so the rows
+    // with a Stripe id are the tail of the range.
+    .index("by_tournamentId_and_status_and_stripeRefundId", [
+      "tournamentId",
+      "status",
+      "stripeRefundId",
+    ])
     .index("by_conventionId_and_participantId", [
       "conventionId",
       "participantId",
     ])
     .index("by_conventionId_and_status", ["conventionId", "status"])
+    .index("by_conventionId_and_status_and_stripeRefundId", [
+      "conventionId",
+      "status",
+      "stripeRefundId",
+    ])
     .index("by_stripeRefundId", ["stripeRefundId"]),
 
   // One row per completed paid event — a tournament's entry fees or a

@@ -16,6 +16,7 @@ import {
   ownerPayoutsQuery,
   ownerRefundsForParticipantQuery,
   ownerRefundsQuery,
+  ownerRefundsWithStripeIdQuery,
 } from "./paidEventOwner";
 import { stripeAccountForOrganization } from "./stripeAccounts";
 
@@ -345,9 +346,11 @@ export const REFUNDS_NEEDING_ATTENTION_PAGE = 64;
 // into that state, and if the final webhook never arrives the check is
 // the only way to settle it, so it must stay reachable. A pending row the
 // executor is still working on (no Stripe id) is left to the executor
-// and its guard. Capped read with an explicit "more" flag, so a mass
-// stall (a Stripe outage during a cancellation sweep) is never mistaken
-// for the full list.
+// and its guard — and never read here: the processing rows come off an
+// index range on the Stripe id, so a cancellation sweep's backlog of
+// queued refunds costs this query nothing. Capped read with an explicit
+// "more" flag, so a mass stall (a Stripe outage during a cancellation
+// sweep) is never mistaken for the full list.
 export async function refundsNeedingAttention(
   ctx: QueryCtx,
   owner: MoneyRowOwner,
@@ -358,9 +361,9 @@ export async function refundsNeedingAttention(
   const processing =
     parked.length > REFUNDS_NEEDING_ATTENTION_PAGE
       ? []
-      : await ownerRefundsQuery(ctx, owner, "pending")
-          .filter((q) => q.neq(q.field("stripeRefundId"), undefined))
-          .take(REFUNDS_NEEDING_ATTENTION_PAGE + 1 - parked.length);
+      : await ownerRefundsWithStripeIdQuery(ctx, owner, "pending").take(
+          REFUNDS_NEEDING_ATTENTION_PAGE + 1 - parked.length,
+        );
   const page = [...parked, ...processing];
   const hasMore = page.length > REFUNDS_NEEDING_ATTENTION_PAGE;
   const refunds = [];

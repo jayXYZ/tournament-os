@@ -876,7 +876,10 @@ export const handleRefundEvent = internalMutation({
 
 // What the row looks like to a status check: resolved behind the payments
 // permission on the owning organization, so no caller learns a refund's
-// state (or spends a Stripe call on it) without the right to.
+// state (or spends a Stripe call on it) without the right to. Read twice
+// per check — before the lookup to decide whether Stripe is asked at all,
+// and again before a result that would leave the row untouched, so a
+// webhook that settled the row mid-lookup is what gets reported.
 export const refundForStatusCheck = internalQuery({
   args: { refundId: v.id("paymentRefunds") },
   handler: async (ctx, args) => {
@@ -934,6 +937,21 @@ export const checkRefundStatus = action({
     if (!refund.stripeChargeId) {
       return { result: "unresolved" };
     }
+    // The three results that write nothing report the row as stored
+    // instead when a webhook settled it while the lookup was in flight:
+    // "Stripe has no record" or "the check failed" beside a refund that
+    // just went through would send the organizer to the operator over
+    // nothing. One re-read, no retry — a later webhook is the next
+    // check's to report.
+    const settledMeanwhile = async (): Promise<RefundStatusCheck | null> => {
+      const { status } = await ctx.runQuery(
+        internal.payments.refunds.refundForStatusCheck,
+        { refundId: args.refundId },
+      );
+      return status === "succeeded" || status === "failed"
+        ? { result: "settled", status }
+        : null;
+    };
     let found: Awaited<ReturnType<StripeGateway["findRefundForRow"]>>;
     try {
       found = await getStripeGateway(requireStripeSecretKey()).findRefundForRow(
@@ -941,17 +959,24 @@ export const checkRefundStatus = action({
       );
     } catch (error) {
       console.error(`Refund status check failed for ${args.refundId}`, error);
-      return { result: "check_failed", message: errorMessageOf(error) };
+      return (
+        (await settledMeanwhile()) ?? {
+          result: "check_failed",
+          message: errorMessageOf(error),
+        }
+      );
     }
     if (!found) {
-      return { result: "unresolved" };
+      return (await settledMeanwhile()) ?? { result: "unresolved" };
     }
     if (found.amountCents !== refund.amountCents) {
-      return {
-        result: "mismatch",
-        stripeRefundId: found.stripeRefundId,
-        amountCents: found.amountCents,
-      };
+      return (
+        (await settledMeanwhile()) ?? {
+          result: "mismatch",
+          stripeRefundId: found.stripeRefundId,
+          amountCents: found.amountCents,
+        }
+      );
     }
     const outcome = refundOutcomeFromStatus(found.status);
     // Reported from the row as written, not from the lookup: a webhook

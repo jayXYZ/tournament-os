@@ -71,9 +71,11 @@ The status check reports one of: `settled` (succeeded or failed),
 `processing`, `unresolved` (Stripe holds no refund stamped with the row),
 `mismatch` (a stamped refund with a different amount), or `check_failed`
 (the lookup itself failed). The last three leave the row exactly as it was.
-`settled` and `processing` describe the row as stored after the check: a
-webhook that settled the row while the check's lookup was in flight wins
-over the lookup's older snapshot.
+Every result describes the row as stored after the check: a webhook that
+settled the row while the check's lookup was in flight wins over the
+lookup's older snapshot, including when that lookup found nothing, found a
+mismatched refund, or failed — the check re-reads the row once before
+reporting any of those.
 
 What this does **not** promise: that every parked refund resolves on its
 own, or that the payments system as a whole is exactly-once. Confirmed

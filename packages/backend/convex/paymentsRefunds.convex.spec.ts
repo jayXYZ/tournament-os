@@ -1997,6 +1997,88 @@ test("a webhook failure settles the row with Stripe's reason, like a status chec
   });
 });
 
+test.each([
+  {
+    lookup: "finds nothing",
+    existingRefund: null,
+    lookupError: null,
+  },
+  {
+    lookup: "finds a refund with another amount",
+    existingRefund: {
+      stripeRefundId: "re_other_amount",
+      status: "succeeded" as const,
+      amountCents: 1000,
+      failureReason: null,
+    },
+    lookupError: null,
+  },
+  {
+    lookup: "fails",
+    existingRefund: null,
+    lookupError: new Error("socket hang up on lookup"),
+  },
+])(
+  "a status check whose lookup $lookup still reports a row a webhook settled mid-lookup",
+  async ({ existingRefund, lookupError }) => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    try {
+      const t = createConvexTest();
+      const { organizationId } = await seedOrganizer(t);
+      const tournamentId = await seedPaidTournament(t, organizationId);
+      const asPlayer = t.withIdentity(playerOne);
+      const asOwner = t.withIdentity(organizerIdentity);
+
+      const orderId = await payForEntry(t, tournamentId, "one");
+      await asPlayer.mutation(
+        api.tournaments.registrations.cancelMyRegistration,
+        { tournamentId },
+      );
+      const [refund] = await refundsFor(t, orderId);
+      await parkByHand(t, refund!._id);
+
+      // The lookup's answer would leave the row untouched and tell the
+      // organizer to contact the operator — but the success webhook lands
+      // during the lookup. The check must report the settled row, not
+      // contradict it.
+      gatewayState.existingRefund = existingRefund;
+      gatewayState.onFindRefund = async () => {
+        await t.mutation(internal.payments.refunds.handleRefundEvent, {
+          stripeEventId: "evt_mid_lookup",
+          stripeChargeId: "ch_one",
+          stripeRefundId: "re_racing",
+          refundStatus: "succeeded",
+          refundRowId: refund!._id,
+          amountCents: 2194,
+        });
+        if (lookupError) {
+          throw lookupError;
+        }
+      };
+      expect(
+        await asOwner.action(api.payments.refunds.checkRefundStatus, {
+          refundId: refund!._id,
+        }),
+      ).toEqual({ result: "settled", status: "succeeded" });
+      expect(gatewayState.lookups).toBe(1);
+      expect((await refundsFor(t, orderId))[0]).toMatchObject({
+        status: "succeeded",
+        stripeRefundId: "re_racing",
+      });
+      expect((await latestOrder(t, tournamentId)).status).toBe("refunded");
+      expect(
+        await asOwner.query(api.payments.refunds.listRefundsNeedingAttention, {
+          tournamentId,
+        }),
+      ).toEqual({ refunds: [], hasMore: false });
+    } finally {
+      consoleError.mockRestore();
+    }
+  },
+);
+
 test("a status check reports the row as stored when a webhook settles it mid-lookup", async () => {
   const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
