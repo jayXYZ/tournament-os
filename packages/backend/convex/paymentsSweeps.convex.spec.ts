@@ -243,6 +243,17 @@ async function paymentAuditEvents(
   );
 }
 
+async function countAuditEvents(
+  t: TestConvex<typeof schema>,
+  tournamentId: Id<"tournaments">,
+  registrationId: Id<"tournamentRegistrations">,
+  type: Doc<"tournamentAuditEvents">["event"]["type"],
+) {
+  return (await paymentAuditEvents(t, tournamentId, registrationId)).filter(
+    (eventType) => eventType === type,
+  ).length;
+}
+
 async function drainScheduler(t: TestConvex<typeof schema>) {
   await t.finishAllScheduledFunctions(vi.runAllTimers);
 }
@@ -443,6 +454,36 @@ test("starting an approval-mode tournament lapses an approved-but-unpaid entry a
   });
   // Player 4: applied, never decided.
   const undecidedId = await applyAsPlayer(t, tournamentId, 4);
+  // Player 5: approved, never opened Checkout (order requires_payment, no
+  // session).
+  const neverOpenedId = await applyAsPlayer(t, tournamentId, 5);
+  await asOwner.mutation(api.tournaments.registrations.approveRegistration, {
+    registrationId: neverOpenedId,
+  });
+  // Player 6: approved, opened Checkout, and let it expire before the
+  // start — the webhook already logged that expiry and reset the order to
+  // requires_payment without a session.
+  const expiredEarlierId = await applyAsPlayer(t, tournamentId, 6);
+  await asOwner.mutation(api.tournaments.registrations.approveRegistration, {
+    registrationId: expiredEarlierId,
+  });
+  const expiredEarlierOrder = await beginCheckout(t, tournamentId, 6);
+  await t.mutation(internal.payments.webhooks.handleCheckoutExpired, {
+    stripeEventId: "evt_expired_earlier",
+    orderId: expiredEarlierOrder._id,
+    sessionId: expiredEarlierOrder.stripeCheckoutSessionId!,
+  });
+  const resetOrder = await orderById(t, expiredEarlierOrder._id);
+  expect(resetOrder.status).toBe("requires_payment");
+  expect(resetOrder.stripeCheckoutSessionId).toBeUndefined();
+  expect(
+    await countAuditEvents(
+      t,
+      tournamentId,
+      expiredEarlierId,
+      "payment_expired",
+    ),
+  ).toBe(1);
 
   await asOwner.mutation(api.tournaments.rounds.startTournament, {
     tournamentId,
@@ -459,6 +500,32 @@ test("starting an approval-mode tournament lapses an approved-but-unpaid entry a
   expect(await paymentAuditEvents(t, tournamentId, approvedId)).toContain(
     "payment_expired",
   );
+
+  // Approvals with no live session lapse the same way, but without a
+  // "checkout expired" line: one never opened Checkout, and the other's
+  // expiry was already logged by the webhook.
+  for (const [registrationId, orderId] of [
+    [neverOpenedId, null],
+    [expiredEarlierId, expiredEarlierOrder._id],
+  ] as const) {
+    const row = await t.run(async (ctx) => (await ctx.db.get(registrationId))!);
+    expect(row.entryStatus).toBe("cancelled");
+    expect(row.awaitingReview).toBeUndefined();
+    if (orderId) {
+      expect((await orderById(t, orderId)).status).toBe("canceled");
+    }
+  }
+  expect(
+    await countAuditEvents(t, tournamentId, neverOpenedId, "payment_expired"),
+  ).toBe(0);
+  expect(
+    await countAuditEvents(
+      t,
+      tournamentId,
+      expiredEarlierId,
+      "payment_expired",
+    ),
+  ).toBe(1);
 
   // The undecided application has no order, so the sweep never sees it:
   // it stays in the review queue exactly as before.

@@ -212,6 +212,12 @@ const SWEEP_BATCH = 32;
 // visited, so the review queue is untouched. A payment that still lands on
 // a closed order is a late success and refunds (handleCheckoutCompleted),
 // never reseating the withdrawn row.
+//
+// The audit line is only written for an order with a live session, because
+// the clients render it as "checkout expired unpaid": a requires_payment
+// order never opened Checkout (or the webhook already logged the expiry
+// when it reset the order), so logging it there would fabricate or repeat
+// the event. The withdrawal itself still applies to both.
 export const closeOpenOrdersSweep = internalMutation({
   args: moneyRowOwnerArgs,
   handler: async (ctx, args) => {
@@ -238,12 +244,14 @@ export const closeOpenOrdersSweep = internalMutation({
         const entry = await registrationForOrder(ctx, order);
         if (entry) {
           await withdrawPendingEntry(ctx, entry, now);
-          await logEntryPaymentAudit(ctx, {
-            owner: order,
-            registration: entry.registration,
-            actorRole: "system",
-            event: { type: "payment_expired" },
-          });
+          if (order.stripeCheckoutSessionId) {
+            await logEntryPaymentAudit(ctx, {
+              owner: order,
+              registration: entry.registration,
+              actorRole: "system",
+              event: { type: "payment_expired" },
+            });
+          }
         }
       }
     }
