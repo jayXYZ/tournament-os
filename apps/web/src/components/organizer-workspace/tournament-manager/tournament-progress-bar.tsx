@@ -19,12 +19,25 @@ import { toast } from 'sonner'
 import { api } from '@paper-pairings/backend/convex/_generated/api'
 import { mutationErrorMessage } from '@paper-pairings/core'
 import { LiveStatusBand } from './live-status-band'
-import { describeNextStep } from './next-step'
-import { inProgressRound } from './pairings-board'
 import { phaseLabel } from './phase-label'
+import {
+  activeRoundProgress,
+  activeRoundStepPresentation,
+  advanceAction,
+  betweenRoundTarget,
+  phaseSlots,
+} from './progression-timeline'
 import { RoundTimerChip } from './round-timer-chip'
 import type { Id } from '@paper-pairings/backend/convex/_generated/dataModel'
 import type { PairingsBoard } from './pairings-board'
+import type {
+  ActiveRoundProgress,
+  ActiveRoundStep,
+  AdvanceStep,
+  PhaseBoard,
+  ProgressBarDensity,
+  RoundSlot,
+} from './progression-timeline'
 import {
   parseRoundSelectionSearch,
   useTournamentRoundNavigation,
@@ -41,138 +54,6 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
-
-type PhaseBoard = PairingsBoard['phases'][number]
-type Round = PhaseBoard['rounds'][number]
-type AdvanceStep = Exclude<
-  PairingsBoard['nextStep'],
-  { kind: 'tournamentCompleted' } | { kind: 'tournamentCancelled' }
->
-type ActiveRoundStep =
-  | 'pairingsReady'
-  | 'timerReady'
-  | 'playing'
-  | 'readyToComplete'
-
-type ActiveRoundProgress = {
-  roundId: Id<'tournamentRounds'>
-  step: ActiveRoundStep
-}
-
-type BetweenRoundTarget = {
-  phaseId: Id<'tournamentPhases'>
-  slotIndex: number
-}
-
-// The strip has two densities. Compact is the global layer on every
-// tournament route: the timeline, the timer chip, and the advance button in
-// one row, where the timeline is also the round selector for Pairings and
-// Standings. Expanded is the overview: the live status band (round, clock,
-// results, the advance button at full size with its hint) above the
-// timeline, and no chip, because the band already shows the time. Same
-// component and same board data, so the two can never disagree.
-export type ProgressBarDensity = 'compact' | 'expanded'
-
-// One node on the bar. Beyond the rounds that exist, fixed-length phases show
-// their remaining planned rounds and dynamic phases show a single unresolved
-// node, so the bar's full width reflects the tournament's expected shape. A
-// planned round's number is null when it can't be known yet (an earlier
-// dynamic phase hasn't resolved its round count).
-type RoundSlot =
-  | { kind: 'round'; round: Round }
-  | { kind: 'planned'; roundNumber: number | null }
-  | { kind: 'unknown' }
-
-// Slots come from the server's timeline projection (model/phases.ts
-// phaseTimelines): the engine owns the round-numbering math, this only
-// shapes it into nodes. A null plannedRoundCount is an unresolved dynamic
-// phase — by definition still upcoming or in progress — so it shows the
-// single unresolved node.
-function phaseSlots(phaseBoard: PhaseBoard): Array<RoundSlot> {
-  const { rounds, timeline } = phaseBoard
-  const slots: Array<RoundSlot> = rounds.map((round) => ({
-    kind: 'round',
-    round,
-  }))
-
-  if (timeline.plannedRoundCount !== null) {
-    for (
-      let index = rounds.length;
-      index < timeline.plannedRoundCount;
-      index++
-    ) {
-      slots.push({
-        kind: 'planned',
-        roundNumber:
-          timeline.startRoundNumber === null
-            ? null
-            : timeline.startRoundNumber + index,
-      })
-    }
-  } else {
-    slots.push({ kind: 'unknown' })
-  }
-
-  return slots
-}
-
-// The backend's next action is also the most precise description of an active
-// round's lifecycle. Keep that meaning on the node itself: the action button
-// can then move around the dashboard without separating the state from the
-// round it describes.
-function activeRoundProgress(board: PairingsBoard): ActiveRoundProgress | null {
-  const { nextStep } = board
-  if (nextStep.kind === 'publishPairings') {
-    return { roundId: nextStep.roundId, step: 'pairingsReady' }
-  }
-  if (nextStep.kind === 'completeRound') {
-    return {
-      roundId: nextStep.roundId,
-      step: nextStep.ready ? 'readyToComplete' : 'playing',
-    }
-  }
-  if (nextStep.kind !== 'startTimer') {
-    return null
-  }
-
-  const activeRound = inProgressRound(board)
-  return activeRound ? { roundId: activeRound._id, step: 'timerReady' } : null
-}
-
-// Once a completed round is waiting for the next one to be generated, the
-// next planned slot becomes the bar's current step. This works within a phase
-// and across phase boundaries, including dynamic phases whose node is
-// unresolved.
-function betweenRoundTarget(board: PairingsBoard): BetweenRoundTarget | null {
-  const betweenRounds =
-    board.tournament.lifecycle === 'in_progress' &&
-    board.nextStep.kind === 'generateNextRound'
-  if (!betweenRounds) {
-    return null
-  }
-
-  let lastRoundPhaseIndex = -1
-  for (const [index, phaseBoard] of board.phases.entries()) {
-    if (phaseBoard.rounds.length > 0) {
-      lastRoundPhaseIndex = index
-    }
-  }
-
-  for (
-    let phaseIndex = Math.max(lastRoundPhaseIndex, 0);
-    phaseIndex < board.phases.length;
-    phaseIndex++
-  ) {
-    const phaseBoard = board.phases[phaseIndex]
-    const slots = phaseSlots(phaseBoard)
-    const slotIndex = slots.findIndex((slot) => slot.kind !== 'round')
-    if (slotIndex !== -1) {
-      return { phaseId: phaseBoard.phase._id, slotIndex }
-    }
-  }
-
-  return null
-}
 
 // The timeline destination the organizer is currently viewing. Pairings and
 // standings both fall back to their latest available round when the URL has no
@@ -403,11 +284,11 @@ function AdvanceStepButton({
     api.tournaments.lifecycle.completeTournament,
   )
 
-  const step = board.nextStep
-  if (step.kind === 'tournamentCancelled') {
+  const action = advanceAction(board, density)
+  if (action.kind === 'tournamentCancelled') {
     return <Badge variant="destructive">Tournament cancelled</Badge>
   }
-  if (step.kind === 'tournamentCompleted') {
+  if (action.kind === 'tournamentCompleted') {
     return (
       <Button type="button" disabled>
         <Trophy />
@@ -416,13 +297,12 @@ function AdvanceStepButton({
     )
   }
 
+  const { step } = action
   const tournamentId = board.tournament._id
-  const description = describeNextStep(board)
 
-  // The label, success flash, and hint come from describeNextStep so the
-  // button says the same thing as the band and the overview body. Only the
+  // The label, success flash, and hint come from advanceAction. Only the
   // icon and the mutation are chosen here.
-  function advanceAction(advanceStep: AdvanceStep) {
+  function advanceCommand(advanceStep: AdvanceStep) {
     switch (advanceStep.kind) {
       case 'publishTournament':
         return {
@@ -467,16 +347,15 @@ function AdvanceStepButton({
     }
   }
 
-  const action = advanceAction(step)
+  const command = advanceCommand(step)
+  const { resetsRoundSelection } = action
 
   // The hold button confirms success on its own face; errors still toast.
   // Rethrow so the button skips its success state on failure.
   async function handleAdvance() {
     try {
-      await action.run()
-      // Starting the timer doesn't change which round is current, so keep
-      // whatever round the organizer is viewing instead of resetting it.
-      if (step.kind !== 'startTimer') {
+      await command.run()
+      if (resetsRoundSelection) {
         onAdvanced()
       }
     } catch (error) {
@@ -487,19 +366,6 @@ function AdvanceStepButton({
     }
   }
 
-  // Expanded, the face keeps its verb and the band prints the hint beneath
-  // it. Compact has no room for a second line, so a blocked button carries
-  // its short reason on the face ("9 of 15 results in") and the full hint
-  // as its title.
-  const compactBlockedLabel =
-    step.kind === 'completeRound' && board.liveRound
-      ? `${board.liveRound.resultsIn} of ${board.liveRound.tableCount} results in`
-      : (step.reason ?? description.actionLabel)
-  const label =
-    density === 'expanded' || step.ready
-      ? description.actionLabel
-      : compactBlockedLabel
-
   return (
     <div
       className={cn('shrink-0', step.ready && 'advance-step-attention')}
@@ -509,16 +375,12 @@ function AdvanceStepButton({
         variant="brand"
         disabled={!step.ready}
         onConfirm={handleAdvance}
-        successLabel={description.successLabel}
+        successLabel={action.successLabel}
         size={density === 'expanded' ? 'lg' : 'default'}
-        title={
-          density === 'compact' && !step.ready
-            ? (description.hint ?? undefined)
-            : undefined
-        }
+        title={action.title}
       >
-        {action.icon}
-        {label}
+        {command.icon}
+        {action.label}
       </HoldButton>
     </div>
   )
@@ -846,39 +708,6 @@ function RoundNode({
       </TooltipContent>
     </Tooltip>
   )
-}
-
-// The accent carries "this round is in play"; the two pre-play steps keep
-// their own hue because they are waiting on the organizer, not the players.
-// Filled accent means the round can be completed now.
-const activeRoundStepPresentation: Record<
-  ActiveRoundStep,
-  { label: string; tooltip: string; className: string }
-> = {
-  pairingsReady: {
-    label: 'pairings ready to publish',
-    tooltip: 'Pairings ready to publish',
-    className:
-      'border-round-pairings bg-round-pairings/10 text-round-pairings ring-2 ring-round-pairings/20 hover:bg-round-pairings/20',
-  },
-  timerReady: {
-    label: 'pairings published; timer not started',
-    tooltip: 'Pairings published · Timer not started',
-    className:
-      'border-round-timer bg-round-timer/10 text-round-timer ring-2 ring-round-timer/20 hover:bg-round-timer/20',
-  },
-  playing: {
-    label: 'round in progress',
-    tooltip: 'Round in progress',
-    className:
-      'border-accent-brand bg-accent-brand/10 text-accent-brand ring-2 ring-accent-brand/20 hover:bg-accent-brand/20',
-  },
-  readyToComplete: {
-    label: 'results reported; ready to complete',
-    tooltip: 'Results reported · Ready to complete',
-    className:
-      'border-accent-brand bg-accent-brand text-accent-brand-foreground ring-2 ring-accent-brand/25 hover:bg-accent-brand/90',
-  },
 }
 
 function InertNode({
