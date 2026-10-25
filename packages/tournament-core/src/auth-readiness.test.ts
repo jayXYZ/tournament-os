@@ -81,20 +81,28 @@ describe("viewerAuthGate", () => {
   const user = {};
   it.each([
     // Nothing is trustworthy until both the provider and Convex settle.
-    [{ user: null, loading: true }, "pending", "pending"],
-    [{ user, loading: true }, "ready", "pending"],
-    [{ user, loading: false }, "pending", "pending"],
-    [{ user: null, loading: false }, "pending", "pending"],
-    [{ user: null, loading: false }, "unauthenticated", "signedOut"],
-    // The provider has a user but Convex rejected the token: authed queries
-    // would skip forever, so offer sign-in rather than mount the surface.
-    [{ user, loading: false }, "unauthenticated", "signedOut"],
+    [{ user: null, loading: true }, "pending", false, "pending"],
+    [{ user, loading: true }, "ready", false, "pending"],
+    [{ user, loading: false }, "pending", false, "pending"],
+    [{ user: null, loading: false }, "pending", false, "pending"],
+    [{ user: null, loading: false }, "unauthenticated", false, "signedOut"],
+    // A provider user on a signed-out verdict: Convex may still be
+    // validating a token issued in place, so wait out the grace…
+    [{ user, loading: false }, "unauthenticated", false, "pending"],
+    // …then read it as refused: authed queries would skip forever, so offer
+    // sign-in rather than mount the surface.
+    [{ user, loading: false }, "unauthenticated", true, "signedOut"],
     // Signing out: the provider dropped the user before Convex caught up.
-    [{ user: null, loading: false }, "ready", "signedOut"],
-    [{ user, loading: false }, "ready", "ready"],
-  ] as const)("%o with Convex %s → %s", (appAuth, readiness, gate) => {
-    expect(viewerAuthGate(appAuth, readiness)).toBe(gate);
-  });
+    [{ user: null, loading: false }, "ready", false, "signedOut"],
+    [{ user, loading: false }, "ready", false, "ready"],
+  ] as const)(
+    "%o with Convex %s (overdue: %s) → %s",
+    (appAuth, readiness, validationOverdue, gate) => {
+      expect(viewerAuthGate(appAuth, readiness, { validationOverdue })).toBe(
+        gate,
+      );
+    },
+  );
 });
 
 // The hooks are thin adapters over useQuery; what matters is which args they

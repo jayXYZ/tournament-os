@@ -12,6 +12,7 @@ export {
   useReportResult,
 } from "./hooks";
 export {
+  TOKEN_VALIDATION_GRACE_MS,
   useAuthedQueryArgs,
   useConvexAuthReadiness,
   useViewerAuthGate,
