@@ -61,13 +61,21 @@ Its lifecycle is `pending` → `succeeded` | `failed` | `needs_attention`.
     charge (the order's, or the row's own for a stray-charge refund) for the
     row's exact amount: a refund that names the row but is on another charge
     or for another amount settles nothing, so a wrongly stamped refund cannot
-    settle a row. Settled rows are never regressed; a later success report
-    may still recover a `failed` row.
+    settle a row. And once a row holds a Stripe refund id, both paths accept
+    only that refund: a second refund stamped with the row (a replacement
+    issued while the original was still on Stripe's books, say) neither
+    replaces it nor settles the row, whatever either refund's status. The
+    webhook ignores such a refund and the check reports it as a `conflict`.
+    Settled rows are never regressed; a later success report for the row's
+    own refund may still recover a `failed` row.
 - **A pending row with a Stripe id waits.** Once Stripe has accepted a
   refund for the row, the executor sends nothing more for it; the webhook or
   a status check carries its status. Such a row stays on the payout card,
   with its check button, until it settles — the check is the only way to
-  finish it if the final webhook never arrives.
+  finish it if the final webhook never arrives. A thrown call whose
+  recording lands after the webhook has already bound the refund it created
+  counts for nothing: no attempt, no retry, no parking. The row stays as
+  Stripe's record put it.
 - **Every unsettled row is reachable from the card.** The payout card keeps
   two lists, the parked rows and the processing rows, and pages each on its
   own (`listRefundsNeedingAttention`, one status per page request), so a
@@ -78,13 +86,16 @@ Its lifecycle is `pending` → `succeeded` | `failed` | `needs_attention`.
 
 The status check reports one of: `settled` (succeeded or failed),
 `processing`, `unresolved` (Stripe holds no refund stamped with the row),
-`mismatch` (a stamped refund with a different amount), or `check_failed`
-(the lookup itself failed). The last three leave the row exactly as it was.
+`mismatch` (a stamped refund with a different amount), `conflict` (a stamped
+refund other than the one the row already holds), or `check_failed` (the
+lookup itself failed). The last four leave the row exactly as it was.
 Every result describes the row as stored after the check: a webhook that
 settled the row while the check's lookup was in flight wins over the
 lookup's older snapshot, including when that lookup found nothing, found a
 mismatched refund, or failed — the check re-reads the row once before
-reporting any of those.
+reporting any of those. A `conflict` is decided inside the write's own
+transaction, so a refund the webhook bound to the row during the lookup is
+the one the row keeps.
 
 What this does **not** promise: that every parked refund resolves on its
 own, or that the payments system as a whole is exactly-once. Confirmed
@@ -94,9 +105,10 @@ own, or that the payments system as a whole is exactly-once. Confirmed
 ## Runbook: an unresolved refund
 
 For a row that stays `needs_attention` after **Check refund status** reports
-`unresolved`, `mismatch`, or keeps reporting `check_failed`. Do not mark the
-row failed to unblock the payout — a parked row may already have been paid,
-and `failed` would pay the order out on top of it.
+`unresolved`, `mismatch`, or `conflict`, or keeps reporting `check_failed`;
+likewise for a processing row the check reports a `conflict` on. Do not mark
+the row failed to unblock the payout — a parked row may already have been
+paid, and `failed` would pay the order out on top of it.
 
 1. **Identify the case.** From the row (Convex dashboard, `paymentRefunds`):
    its `_id` (the reference the organizer sees), `orderId`, owning
@@ -133,7 +145,9 @@ and `failed` would pay the order out on top of it.
    updates on refunds (`stripe refunds update <re_id> -d
 "metadata[refundId]=<row id>"`, or the dashboard's metadata editor). Only
    stamp a refund that matches the row's charge, amount, currency and mode,
-   and only when it is the one refund that could be the row's. If the charge
+   and only when it is the one refund that could be the row's. A row that
+   already holds a Stripe refund id accepts no other: a second stamped
+   refund is reported as `conflict` and never settles the row. If the charge
    already carries a stamped refund that failed, or more than one candidate
    refund, do not overwrite or add a stamp: escalate for case-specific
    accounting instead. Once stamped, run **Check refund status**; the

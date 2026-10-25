@@ -80,6 +80,11 @@ function describeRefundCheck(
         kind: 'warning' as const,
         message: `Stripe holds a refund for this entry with a different amount (${formatCents(check.amountCents)}). ${contactOperator}`,
       }
+    case 'conflict':
+      return {
+        kind: 'warning' as const,
+        message: `Stripe holds a second refund for this entry besides the one on record. Nothing was changed. ${contactOperator}`,
+      }
     case 'check_failed':
       return {
         kind: 'error' as const,

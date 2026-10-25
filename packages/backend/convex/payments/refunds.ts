@@ -552,6 +552,14 @@ async function logRefundAudit(
 //
 // A parked row is never settled "failed": the refund is still owed, and
 // only Stripe's record can say whether it was already paid.
+//
+// A thrown call says nothing about a row Stripe has since spoken for. The
+// row may have settled, or a webhook may have recorded the refund the
+// request created (pending with a Stripe id) while the request's own
+// response was lost. Such a row is left exactly as Stripe's record put it:
+// no counted attempt, no retry, no parking. A retry would send nothing
+// (beginRefundExecution), and parking would call a refund in flight a
+// stall.
 export const recordRefundAttemptFailure = internalMutation({
   args: {
     refundId: v.id("paymentRefunds"),
@@ -560,7 +568,11 @@ export const recordRefundAttemptFailure = internalMutation({
   },
   handler: async (ctx, args) => {
     const refund = await ctx.db.get(args.refundId);
-    if (!refund || refund.status !== "pending") {
+    if (
+      !refund ||
+      refund.status !== "pending" ||
+      refund.stripeRefundId !== undefined
+    ) {
       return null;
     }
     const attemptCount = refund.attemptCount + 1;
@@ -644,6 +656,27 @@ export const guardRefundExecution = internalMutation({
     return null;
   },
 });
+
+// The Stripe id the row already holds when a reported refund is not it,
+// or null when the report may be written to the row: the row carries no
+// Stripe id yet (the first binding: the executor's result, or a webhook
+// or check recovering a lost one), or it carries this very id (a status
+// update). Any other id is a second refund stamped with the row, a
+// replacement an operator issued while the original was still on Stripe's
+// books, say. A row's refund, once known, is never swapped for another and
+// never settled from one: two refunds under one row are a support case,
+// and the row keeps the one it has while every path that would have
+// written the other refuses it (markRefundResult, handleRefundEvent).
+function conflictingRefundId(
+  refund: Doc<"paymentRefunds">,
+  stripeRefundId: string | undefined,
+) {
+  return refund.stripeRefundId !== undefined &&
+    stripeRefundId !== undefined &&
+    refund.stripeRefundId !== stripeRefundId
+    ? refund.stripeRefundId
+    : null;
+}
 
 // Records that Stripe holds this row's refund and is still processing it:
 // the Stripe id is the refund.updated webhook's lookup key, and a parked
@@ -741,11 +774,22 @@ async function applyRefundOutcome(
   });
 }
 
+// What a result write established: the row's status once the write has
+// landed, or the Stripe id the row holds when the reported refund was not
+// its own and nothing was written.
+type RefundResultWrite =
+  | { result: "written"; status: Doc<"paymentRefunds">["status"] }
+  | { result: "other_refund"; stripeRefundId: string };
+
 // The result write for a refund Stripe reports holding for the row — the
 // one the executor just created, or the one a status check found. Returns
 // the row's status once the write has landed: the report may be older than
 // what settled the row meanwhile (a webhook that arrived during a status
-// check's lookup), and only the stored state is the answer.
+// check's lookup), and only the stored state is the answer. A report of a
+// refund that is not the row's own (conflictingRefundId) writes nothing
+// and answers with the refund the row holds; the comparison happens here,
+// in the write's own transaction, so a webhook that binds the row's refund
+// while a status check's lookup was in flight wins over the lookup.
 export const markRefundResult = internalMutation({
   args: {
     refundId: v.id("paymentRefunds"),
@@ -762,11 +806,25 @@ export const markRefundResult = internalMutation({
     // error), kept on the row as its lastError.
     errorMessage: v.optional(v.string()),
   },
-  returns: v.union(paymentRefundStatusValidator, v.null()),
-  handler: async (ctx, args) => {
+  returns: v.union(
+    v.object({
+      result: v.literal("written"),
+      status: paymentRefundStatusValidator,
+    }),
+    v.object({ result: v.literal("other_refund"), stripeRefundId: v.string() }),
+    v.null(),
+  ),
+  handler: async (ctx, args): Promise<RefundResultWrite | null> => {
     const refund = await ctx.db.get(args.refundId);
     if (!refund) {
       return null;
+    }
+    const held = conflictingRefundId(refund, args.stripeRefundId);
+    if (held !== null) {
+      console.error(
+        `Ignoring refund ${args.stripeRefundId}: row ${refund._id} holds refund ${held}`,
+      );
+      return { result: "other_refund", stripeRefundId: held };
     }
     if (args.outcome === "pending") {
       if (args.stripeRefundId) {
@@ -778,7 +836,8 @@ export const markRefundResult = internalMutation({
         lastError: args.outcome === "failed" ? args.errorMessage : undefined,
       });
     }
-    return (await ctx.db.get(args.refundId))?.status ?? null;
+    const written = await ctx.db.get(args.refundId);
+    return written ? { result: "written", status: written.status } : null;
   },
 });
 
@@ -797,7 +856,9 @@ export const handleRefundEvent = internalMutation({
     refundStatus: v.string(),
     // The paymentRefunds row id from the refund's metadata: the fallback
     // lookup for a row whose executor crashed before recording the Stripe
-    // refund id.
+    // refund id. It binds a refund to a row once: a row that already holds
+    // a Stripe id is that refund's alone (conflictingRefundId), however
+    // many refunds carry its stamp.
     refundRowId: v.union(v.string(), v.null()),
     // The charge the refund is against and its amount, as Stripe reports
     // them. A refund that names a row (by id or metadata) but is on another
@@ -839,6 +900,13 @@ export const handleRefundEvent = internalMutation({
       refund = rowId ? await ctx.db.get(rowId) : null;
     }
     if (!refund) {
+      return null;
+    }
+    const held = conflictingRefundId(refund, args.stripeRefundId);
+    if (held !== null) {
+      console.error(
+        `Ignoring refund ${args.stripeRefundId}: row ${refund._id} holds refund ${held}`,
+      );
       return null;
     }
     const expectedChargeId =
@@ -942,6 +1010,10 @@ export type RefundStatusCheck =
   // Stripe holds a refund stamped with this row whose amount is not the
   // row's: not this row's refund, and not something to settle from.
   | { result: "mismatch"; stripeRefundId: string; amountCents: number }
+  // Stripe holds a refund stamped with this row that is not the one the
+  // row carries (rowStripeRefundId): two refunds under one row, which only
+  // an operator can account for. The row keeps its own.
+  | { result: "conflict"; stripeRefundId: string; rowStripeRefundId: string }
   | { result: "check_failed"; message: string };
 
 // The owner's one recovery verb for a refund whose outcome is unknown:
@@ -953,9 +1025,10 @@ export type RefundStatusCheck =
 // settled row is reported as it stands without a Stripe call. The check
 // never creates a refund, never reschedules the executor, and never
 // resets the row's attempt count or error: finding nothing is reported
-// as nothing, not as failure. Each check is metered per caller
-// (beginRefundStatusCheck); a caller over budget is refused before any
-// read of the row or call to Stripe.
+// as nothing, not as failure, and finding a refund other than the one the
+// row already holds is reported as a conflict, with the row untouched.
+// Each check is metered per caller (beginRefundStatusCheck); a caller
+// over budget is refused before any read of the row or call to Stripe.
 export const checkRefundStatus = action({
   args: { refundId: v.id("paymentRefunds") },
   handler: async (ctx, args): Promise<RefundStatusCheck> => {
@@ -1018,8 +1091,11 @@ export const checkRefundStatus = action({
     // Reported from the row as written, not from the lookup: a webhook
     // that settled the row while the lookup was in flight outranks the
     // older snapshot, and the stored state is what the organizer sees.
-    const status: Doc<"paymentRefunds">["status"] | null =
-      await ctx.runMutation(internal.payments.refunds.markRefundResult, {
+    // The same write refuses a refund that is not the row's own, which is
+    // how a refund the webhook bound during the lookup keeps its place.
+    const written: RefundResultWrite | null = await ctx.runMutation(
+      internal.payments.refunds.markRefundResult,
+      {
         refundId: args.refundId,
         outcome,
         stripeRefundId: found.stripeRefundId,
@@ -1027,14 +1103,22 @@ export const checkRefundStatus = action({
           outcome === "failed"
             ? (found.failureReason ?? "Stripe reports this refund failed")
             : undefined,
-      });
-    if (status === null) {
+      },
+    );
+    if (written === null) {
       throw new Error("Refund not found");
+    }
+    if (written.result === "other_refund") {
+      return {
+        result: "conflict",
+        stripeRefundId: found.stripeRefundId,
+        rowStripeRefundId: written.stripeRefundId,
+      };
     }
     // The write always carries a Stripe id, so a row that was pending or
     // parked is now pending at least; only a settled row reads otherwise.
-    return status === "succeeded" || status === "failed"
-      ? { result: "settled", status }
+    return written.status === "succeeded" || written.status === "failed"
+      ? { result: "settled", status: written.status }
       : { result: "processing" };
   },
 });
