@@ -362,9 +362,11 @@ test("a refund that exhausted its retries blocks the payout with a specific reas
         .withIdentity(organizerIdentity)
         .query(api.payments.refunds.listRefundsNeedingAttention, {
           tournamentId,
+          status: "needs_attention",
+          paginationOpts: { numItems: 8, cursor: null },
         }),
     ).toMatchObject({
-      refunds: [
+      page: [
         {
           refundId: refund!._id,
           playerName: "Player 1",
@@ -373,7 +375,7 @@ test("a refund that exhausted its retries blocks the payout with a specific reas
           lastError: "socket hang up",
         },
       ],
-      hasMore: false,
+      isDone: true,
     });
     expect(
       await t

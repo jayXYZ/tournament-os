@@ -3,7 +3,7 @@ import {
   validateEntryFeeCents,
 } from "@paper-pairings/shared/payment-fees";
 
-import type { WithoutSystemFields } from "convex/server";
+import type { PaginationOptions, WithoutSystemFields } from "convex/server";
 
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
@@ -334,46 +334,41 @@ export async function firstUnsettledRefundStatus(
   return null;
 }
 
-// How many unsettled refunds the organizer's payout card lists at once;
-// past this it reports that more exist (hasMore). Rows leave the list as
-// they settle, so the rest surface in turn.
+// The most unsettled refunds one page of the organizer's payout card
+// reads (each row costs a registration lookup besides itself); the card
+// pages past it.
 export const REFUNDS_NEEDING_ATTENTION_PAGE = 64;
 
-// The owner's refunds the payout waits on and a status check can move,
-// shaped for the organizer's payout card: parked rows (needs_attention,
-// outcome unknown) first, then rows Stripe holds a refund for that is
-// still processing (pending with a Stripe id) — a check un-parks a row
-// into that state, and if the final webhook never arrives the check is
-// the only way to settle it, so it must stay reachable. A pending row the
-// executor is still working on (no Stripe id) is left to the executor
-// and its guard — and never read here: the processing rows come off an
-// index range on the Stripe id, so a cancellation sweep's backlog of
-// queued refunds costs this query nothing. Capped read with an explicit
-// "more" flag, so a mass stall (a Stripe outage during a cancellation
-// sweep) is never mistaken for the full list.
-export async function refundsNeedingAttention(
+// One page of the owner's refunds the payout waits on and a status check
+// can move, shaped for the organizer's payout card. The card keeps two
+// lists, one per status, and pages each on its own: the parked rows
+// (needs_attention, outcome unknown), and the rows Stripe holds a refund
+// for that is still processing (pending with a Stripe id) — a check
+// un-parks a row into that state, and if the final webhook never arrives
+// the check is the only way to settle it, so it must stay reachable
+// however many parked rows sit beside it. A pending row the executor is
+// still working on (no Stripe id) is left to the executor and its guard —
+// and never read here: the processing rows come off an index range on the
+// Stripe id, so a cancellation sweep's backlog of queued refunds costs
+// this query nothing. Rows leave their list as they settle, so a page
+// re-reads shorter rather than shifting.
+export async function refundsNeedingAttentionPage(
   ctx: QueryCtx,
   owner: MoneyRowOwner,
+  status: "needs_attention" | "pending",
+  paginationOpts: PaginationOptions,
 ) {
-  const parked = await ownerRefundsQuery(ctx, owner, "needs_attention").take(
-    REFUNDS_NEEDING_ATTENTION_PAGE + 1,
-  );
-  const processing =
-    parked.length > REFUNDS_NEEDING_ATTENTION_PAGE
-      ? []
-      : await ownerRefundsWithStripeIdQuery(ctx, owner, "pending").take(
-          REFUNDS_NEEDING_ATTENTION_PAGE + 1 - parked.length,
-        );
-  const page = [...parked, ...processing];
-  const hasMore = page.length > REFUNDS_NEEDING_ATTENTION_PAGE;
+  const rows =
+    status === "needs_attention"
+      ? ownerRefundsQuery(ctx, owner, status)
+      : ownerRefundsWithStripeIdQuery(ctx, owner, status);
+  const { page, ...cursors } = await rows.paginate(paginationOpts);
   const refunds = [];
-  for (const refund of page.slice(0, REFUNDS_NEEDING_ATTENTION_PAGE)) {
+  for (const refund of page) {
     const registration = await ctx.db.get(refund.registrationId);
     refunds.push({
       refundId: refund._id,
-      // needs_attention: the outcome is unknown; pending: Stripe holds the
-      // refund and has not reported its outcome yet.
-      status: refund.status,
+      status,
       playerName: registration?.playerName ?? null,
       amountCents: refund.amountCents,
       attemptCount: refund.attemptCount,
@@ -381,7 +376,7 @@ export async function refundsNeedingAttention(
       updatedAt: refund.updatedAt,
     });
   }
-  return { refunds, hasMore };
+  return { ...cursors, page: refunds };
 }
 
 // The event's first order in one status, read through the owner's index.

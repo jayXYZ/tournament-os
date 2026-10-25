@@ -719,6 +719,71 @@ async function parkByHand(
   });
 }
 
+// The payout card's two lists as the owner sees them, first page each (the
+// card pages further; the paging test covers that), and whether both are
+// complete.
+async function refundsOnCard(
+  t: TestConvex<typeof schema>,
+  tournamentId: Id<"tournaments">,
+) {
+  const asOwner = t.withIdentity(organizerIdentity);
+  const list = async (status: "needs_attention" | "pending") =>
+    await asOwner.query(api.payments.refunds.listRefundsNeedingAttention, {
+      tournamentId,
+      status,
+      paginationOpts: { numItems: 8, cursor: null },
+    });
+  const unresolved = await list("needs_attention");
+  const processing = await list("pending");
+  return {
+    unresolved: unresolved.page,
+    processing: processing.page,
+    isDone: unresolved.isDone && processing.isDone,
+  };
+}
+
+// A second owner of the organization: the same payments permission on the
+// same refunds, under a different identity.
+const secondOwner = {
+  issuer: "https://convex.test",
+  subject: "second-owner",
+  tokenIdentifier: "https://convex.test|second-owner",
+  email: "second-owner@example.test",
+  name: "Second Owner",
+};
+
+async function seedSecondOwner(
+  t: TestConvex<typeof schema>,
+  organizationId: Id<"organizations">,
+) {
+  await t.run(async (ctx) => {
+    const now = Date.now();
+    const userId = await ctx.db.insert("users", {
+      tokenIdentifier: secondOwner.tokenIdentifier,
+      publicCode: 303,
+      email: secondOwner.email,
+      name: secondOwner.name,
+      updatedAt: now,
+    });
+    await ctx.db.insert("organizationMemberships", {
+      organizationId,
+      userId,
+      email: secondOwner.email,
+      role: "owner",
+      status: "active",
+      updatedAt: now,
+    });
+  });
+}
+
+// The rate limiter's typed rejection (rateLimits.convex.spec.ts has the
+// buckets' own suite; here only the status check's bucket matters).
+function rateLimited(name: string) {
+  return expect.objectContaining({
+    data: expect.objectContaining({ kind: "RateLimited", name }),
+  });
+}
+
 // The scheduler's rows for one function, oldest first.
 async function scheduledRows(t: TestConvex<typeof schema>, suffix: string) {
   return await t.run(async (ctx) =>
@@ -775,12 +840,8 @@ test("a refund that exhausts its retries parks, and a status check that finds no
       refund_stalled: 1,
       refund_failed: 0,
     });
-    expect(
-      await asOwner.query(api.payments.refunds.listRefundsNeedingAttention, {
-        tournamentId,
-      }),
-    ).toMatchObject({
-      refunds: [
+    expect(await refundsOnCard(t, tournamentId)).toMatchObject({
+      unresolved: [
         {
           refundId: exhausted!._id,
           amountCents: 2194,
@@ -788,7 +849,8 @@ test("a refund that exhausts its retries parks, and a status check that finds no
           lastError: "socket hang up",
         },
       ],
-      hasMore: false,
+      processing: [],
+      isDone: true,
     });
 
     // Stripe holds no refund for the row: the check says so and changes
@@ -897,18 +959,14 @@ test.each([
     expect(await refundAuditCounts(t, tournamentId)).toEqual(audits);
     // A settled row leaves the payout card; a processing one stays on it,
     // with its check, until Stripe's final report arrives.
-    expect(
-      await asOwner.query(api.payments.refunds.listRefundsNeedingAttention, {
-        tournamentId,
-      }),
-    ).toMatchObject(
-      stripeStatus === "pending"
-        ? {
-            refunds: [{ refundId: refund!._id, status: "pending" }],
-            hasMore: false,
-          }
-        : { refunds: [], hasMore: false },
-    );
+    expect(await refundsOnCard(t, tournamentId)).toMatchObject({
+      unresolved: [],
+      processing:
+        stripeStatus === "pending"
+          ? [{ refundId: refund!._id, status: "pending" }]
+          : [],
+      isDone: true,
+    });
     // Settling from Stripe's record is the whole of it: no create.
     expect(gatewayState.creates).toBe(0);
 
@@ -1339,7 +1397,6 @@ test("an execution that dies before recording anything is parked by its guard, a
     const { organizationId } = await seedOrganizer(t);
     const tournamentId = await seedPaidTournament(t, organizationId);
     const asPlayer = t.withIdentity(playerOne);
-    const asOwner = t.withIdentity(organizerIdentity);
 
     const orderId = await payForEntry(t, tournamentId, "one");
     // The execution dies before it can even build its gateway: no Stripe
@@ -1365,11 +1422,11 @@ test("an execution that dies before recording anything is parked by its guard, a
       refund_stalled: 1,
       refund_failed: 0,
     });
-    expect(
-      await asOwner.query(api.payments.refunds.listRefundsNeedingAttention, {
-        tournamentId,
-      }),
-    ).toMatchObject({ refunds: [{ refundId: refund!._id }], hasMore: false });
+    expect(await refundsOnCard(t, tournamentId)).toMatchObject({
+      unresolved: [{ refundId: refund!._id }],
+      processing: [],
+      isDone: true,
+    });
 
     // Parking is final for automation: with the fault cleared, nothing runs.
     gatewayState.secretKeyError = null;
@@ -1642,7 +1699,6 @@ test("a webhook reporting a parked refund as processing un-parks it for the webh
   const { organizationId } = await seedOrganizer(t);
   const tournamentId = await seedPaidTournament(t, organizationId);
   const asPlayer = t.withIdentity(playerOne);
-  const asOwner = t.withIdentity(organizerIdentity);
 
   const orderId = await payForEntry(t, tournamentId, "one");
   await asPlayer.mutation(api.tournaments.registrations.cancelMyRegistration, {
@@ -1671,13 +1727,10 @@ test("a webhook reporting a parked refund as processing un-parks it for the webh
     stripeRefundId: "re_processing_1",
   });
   expect(unparked!.lastError).toBeUndefined();
-  expect(
-    await asOwner.query(api.payments.refunds.listRefundsNeedingAttention, {
-      tournamentId,
-    }),
-  ).toMatchObject({
-    refunds: [{ refundId: refund!._id, status: "pending", lastError: null }],
-    hasMore: false,
+  expect(await refundsOnCard(t, tournamentId)).toMatchObject({
+    unresolved: [],
+    processing: [{ refundId: refund!._id, status: "pending", lastError: null }],
+    isDone: true,
   });
 
   await t.mutation(internal.payments.refunds.handleRefundEvent, {
@@ -1785,13 +1838,10 @@ test("a processing refund the webhook never finishes stays checkable from the pa
     status: "pending",
     stripeRefundId: "re_slow",
   });
-  expect(
-    await asOwner.query(api.payments.refunds.listRefundsNeedingAttention, {
-      tournamentId,
-    }),
-  ).toMatchObject({
-    refunds: [{ refundId: refund!._id, status: "pending" }],
-    hasMore: false,
+  expect(await refundsOnCard(t, tournamentId)).toMatchObject({
+    unresolved: [],
+    processing: [{ refundId: refund!._id, status: "pending" }],
+    isDone: true,
   });
 
   // No final webhook ever arrives; a later check settles it from the card.
@@ -1808,11 +1858,11 @@ test("a processing refund the webhook never finishes stays checkable from the pa
   ).toEqual({ result: "settled", status: "succeeded" });
   expect((await refundsFor(t, orderId))[0]!.status).toBe("succeeded");
   expect((await latestOrder(t, tournamentId)).status).toBe("refunded");
-  expect(
-    await asOwner.query(api.payments.refunds.listRefundsNeedingAttention, {
-      tournamentId,
-    }),
-  ).toEqual({ refunds: [], hasMore: false });
+  expect(await refundsOnCard(t, tournamentId)).toEqual({
+    unresolved: [],
+    processing: [],
+    isDone: true,
+  });
   expect(gatewayState.creates).toBe(0);
 
   // A pending row the executor is still working on (no Stripe id yet) is
@@ -1824,11 +1874,11 @@ test("a processing refund the webhook never finishes stays checkable from the pa
   const [queued] = await refundsFor(t, secondOrderId);
   expect(queued!.status).toBe("pending");
   expect(queued!.stripeRefundId).toBeUndefined();
-  expect(
-    await asOwner.query(api.payments.refunds.listRefundsNeedingAttention, {
-      tournamentId,
-    }),
-  ).toEqual({ refunds: [], hasMore: false });
+  expect(await refundsOnCard(t, tournamentId)).toEqual({
+    unresolved: [],
+    processing: [],
+    isDone: true,
+  });
 });
 
 test("a webhook for a refund on another charge settles nothing, even with the row's amount and stamp", async () => {
@@ -2068,11 +2118,11 @@ test.each([
         stripeRefundId: "re_racing",
       });
       expect((await latestOrder(t, tournamentId)).status).toBe("refunded");
-      expect(
-        await asOwner.query(api.payments.refunds.listRefundsNeedingAttention, {
-          tournamentId,
-        }),
-      ).toEqual({ refunds: [], hasMore: false });
+      expect(await refundsOnCard(t, tournamentId)).toEqual({
+        unresolved: [],
+        processing: [],
+        isDone: true,
+      });
     } finally {
       consoleError.mockRestore();
     }
@@ -2123,9 +2173,186 @@ test("a status check reports the row as stored when a webhook settles it mid-loo
     stripeRefundId: "re_racing",
   });
   expect((await latestOrder(t, tournamentId)).status).toBe("refunded");
-  expect(
+  expect(await refundsOnCard(t, tournamentId)).toEqual({
+    unresolved: [],
+    processing: [],
+    isDone: true,
+  });
+});
+
+test("the payout card pages through every parked refund, and a processing refund behind them is reachable at once", async () => {
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const tournamentId = await seedPaidTournament(t, organizationId);
+  const asPlayer = t.withIdentity(playerOne);
+  const asOwner = t.withIdentity(organizerIdentity);
+
+  const orderId = await payForEntry(t, tournamentId, "one");
+  await asPlayer.mutation(api.tournaments.registrations.cancelMyRegistration, {
+    tournamentId,
+  });
+  const [refund] = await refundsFor(t, orderId);
+  await parkByHand(t, refund!._id);
+
+  // A mass stall: more parked refunds than one page holds (a Stripe outage
+  // mid-sweep), then — queued after every one of them — a refund Stripe is
+  // still processing, and one the executor has not sent yet.
+  const PARKED = 70;
+  const { processingId, queuedId } = await t.run(async (ctx) => {
+    // Every clone refunds the one real order (orders are written only
+    // through model/payments.ts); the card's lists read refunds, not orders.
+    const { _id, _creationTime, ...row } = (await ctx.db.get(refund!._id))!;
+    const clone = async (patch: Partial<Doc<"paymentRefunds">>) =>
+      await ctx.db.insert("paymentRefunds", { ...row, ...patch });
+    for (let index = 1; index < PARKED; index += 1) {
+      await clone({});
+    }
+    const processingId = await clone({
+      status: "pending",
+      stripeRefundId: "re_processing_late",
+      lastError: undefined,
+    });
+    const queuedId = await clone({
+      status: "pending",
+      stripeRefundId: undefined,
+      lastError: undefined,
+      attemptCount: 0,
+    });
+    return { processingId, queuedId };
+  });
+
+  const page = async (
+    status: "needs_attention" | "pending",
+    cursor: string | null,
+    numItems = 32,
+  ) =>
     await asOwner.query(api.payments.refunds.listRefundsNeedingAttention, {
       tournamentId,
+      status,
+      paginationOpts: { numItems, cursor },
+    });
+
+  // The parked list pages to its end, reaching every parked row once and
+  // nothing else.
+  const seen = new Set<string>();
+  let cursor: string | null = null;
+  let pages = 0;
+  do {
+    const result = await page("needs_attention", cursor);
+    expect(result.page.length).toBeLessThanOrEqual(32);
+    for (const row of result.page) {
+      expect(row.status).toBe("needs_attention");
+      expect(seen.has(row.refundId)).toBe(false);
+      seen.add(row.refundId);
+    }
+    cursor = result.isDone ? null : result.continueCursor;
+    pages += 1;
+  } while (cursor !== null);
+  expect(pages).toBe(3);
+  expect(seen.size).toBe(PARKED);
+
+  // The processing refund is on the card's other list straight away, not
+  // behind the parked rows; the executor's own backlog is on neither.
+  expect(await page("pending", null)).toMatchObject({
+    page: [{ refundId: processingId, status: "pending", lastError: null }],
+    isDone: true,
+  });
+  expect(seen.has(processingId)).toBe(false);
+  expect(seen.has(queuedId)).toBe(false);
+
+  // A page request past the cap reads the cap, no more.
+  const capped = await page("needs_attention", null, 10_000);
+  expect(capped.page).toHaveLength(64);
+  expect(capped.isDone).toBe(false);
+
+  // The owner settles the processing refund without touching a parked row:
+  // it leaves its list, and the parked rows are all still there.
+  gatewayState.existingRefund = {
+    stripeRefundId: "re_processing_late",
+    status: "succeeded",
+    amountCents: 2194,
+    failureReason: null,
+  };
+  expect(
+    await asOwner.action(api.payments.refunds.checkRefundStatus, {
+      refundId: processingId,
     }),
-  ).toEqual({ refunds: [], hasMore: false });
+  ).toEqual({ result: "settled", status: "succeeded" });
+  expect((await page("pending", null)).page).toEqual([]);
+  const stillParked = await page("needs_attention", null, 64);
+  expect(stillParked.page).toHaveLength(64);
+  expect(stillParked.isDone).toBe(false);
+  expect(gatewayState.creates).toBe(0);
+});
+
+test("status checks are metered per caller: a refused check never reaches Stripe, and the settled-meanwhile re-read costs nothing", async () => {
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const tournamentId = await seedPaidTournament(t, organizationId);
+  await seedSecondOwner(t, organizationId);
+  const asPlayer = t.withIdentity(playerOne);
+  const asOwner = t.withIdentity(organizerIdentity);
+  const asSecondOwner = t.withIdentity(secondOwner);
+
+  const orderId = await payForEntry(t, tournamentId, "one");
+  await asPlayer.mutation(api.tournaments.registrations.cancelMyRegistration, {
+    tournamentId,
+  });
+  const [refund] = await refundsFor(t, orderId);
+  await parkByHand(t, refund!._id);
+  const check = async (caller: typeof asOwner) =>
+    await caller.action(api.payments.refunds.checkRefundStatus, {
+      refundId: refund!._id,
+    });
+
+  // The bucket's whole capacity (40, rateLimits.ts) goes to lookups, one
+  // each; the next check is refused before Stripe is asked, with the row
+  // exactly as it was.
+  for (let index = 0; index < 40; index += 1) {
+    expect(await check(asOwner)).toEqual({ result: "unresolved" });
+  }
+  expect(gatewayState.lookups).toBe(40);
+  await expect(check(asOwner)).rejects.toEqual(
+    rateLimited("checkRefundStatus"),
+  );
+  expect(gatewayState.lookups).toBe(40);
+  expect((await refundsFor(t, orderId))[0]).toMatchObject({
+    status: "needs_attention",
+    attemptCount: MAX_REFUND_ATTEMPTS,
+    lastError: "socket hang up",
+  });
+
+  // Buckets are per identity: another owner of the same organization is
+  // not starved by the first.
+  expect(await check(asSecondOwner)).toEqual({ result: "unresolved" });
+  expect(gatewayState.lookups).toBe(41);
+
+  // A check pays once. On the second owner's last token, a webhook settles
+  // the row while the lookup is in flight: the check reports the
+  // settlement from its re-read rather than failing a second debit.
+  for (let index = 1; index < 39; index += 1) {
+    expect(await check(asSecondOwner)).toEqual({ result: "unresolved" });
+  }
+  gatewayState.onFindRefund = async () => {
+    await t.mutation(internal.payments.refunds.handleRefundEvent, {
+      stripeEventId: "evt_mid_lookup",
+      stripeChargeId: "ch_one",
+      stripeRefundId: "re_mid_lookup",
+      refundStatus: "succeeded",
+      refundRowId: refund!._id,
+      amountCents: 2194,
+    });
+  };
+  expect(await check(asSecondOwner)).toEqual({
+    result: "settled",
+    status: "succeeded",
+  });
+  expect(gatewayState.lookups).toBe(80);
+  expect((await latestOrder(t, tournamentId)).status).toBe("refunded");
+  // The bucket is now empty: even the settled row's Stripe-free answer
+  // waits for a token.
+  await expect(check(asSecondOwner)).rejects.toEqual(
+    rateLimited("checkRefundStatus"),
+  );
+  expect(gatewayState.lookups).toBe(80);
 });

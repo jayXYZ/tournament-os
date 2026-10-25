@@ -99,8 +99,12 @@ suites are `paymentsConnect` / `entryFeeSettings` / `paymentsCheckout` /
   settled only from Stripe's record: the `refund.updated` webhook, or the
   owner's **Check refund status** (`checkRefundStatus`, which looks up the
   refund stamped with the row on the charge and applies its status through
-  the executor's own result write). Nothing creates a refund outside the
-  original execution; a refund Stripe holds no record of is a support case.
+  the executor's own result write; metered per caller, see
+  [rate-limiting.md](./rate-limiting.md)). The payout card lists parked and
+  processing refunds as two separately paged lists, so every one of them is
+  reachable without settling the rows before it. Nothing creates a refund
+  outside the original execution; a refund Stripe holds no record of is a
+  support case.
 - **Webhooks** — two signed endpoints, one per Stripe event format.
   - Snapshot events: `POST <deployment>.convex.site/stripe/events`.
     Fulfillment happens only here; success pages just watch the order

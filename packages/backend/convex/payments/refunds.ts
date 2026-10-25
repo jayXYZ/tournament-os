@@ -1,3 +1,7 @@
+import {
+  paginationOptsValidator,
+  paginationResultValidator,
+} from "convex/server";
 import { v } from "convex/values";
 
 import { refundAmountCents } from "@paper-pairings/shared/payment-fees";
@@ -11,6 +15,7 @@ import {
   internalQuery,
   query,
   type MutationCtx,
+  type QueryCtx,
 } from "../_generated/server";
 import type { AuditActorRole, PaidEntryAuditEvent } from "../model/auditLog";
 import { paymentRefundStatusValidator } from "../validators";
@@ -36,9 +41,12 @@ import {
   ordersForRegistration,
   paidEntryRefundWindowOpen,
   patchOrder,
-  refundsNeedingAttention,
+  REFUNDS_NEEDING_ATTENTION_PAGE,
+  refundsNeedingAttentionPage,
   refundsReturningForOrder,
 } from "../model/payments";
+import { clampPageSize } from "../model/pagination";
+import { enforceRateLimit } from "../rateLimits";
 import {
   getStripeGateway,
   type StripeGateway,
@@ -880,20 +888,45 @@ export const handleRefundEvent = internalMutation({
 // per check — before the lookup to decide whether Stripe is asked at all,
 // and again before a result that would leave the row untouched, so a
 // webhook that settled the row mid-lookup is what gets reported.
+async function readRefundForStatusCheck(
+  ctx: QueryCtx,
+  refundId: Id<"paymentRefunds">,
+) {
+  const refund = await ctx.db.get(refundId);
+  if (!refund) {
+    throw new Error("Refund not found");
+  }
+  await requireOwnerPaymentsPermission(ctx, parseMoneyRowOwner(refund));
+  const order = await ctx.db.get(refund.orderId);
+  return {
+    status: refund.status,
+    stripeChargeId: refund.stripeChargeId ?? order?.stripeChargeId ?? null,
+    amountCents: refund.amountCents,
+  };
+}
+
+// The check's first read, and the one that meters it: every check debits
+// the caller's checkRefundStatus bucket (rateLimits.ts) before anything is
+// asked of Stripe, so a script cannot spend the platform account's request
+// budget by checking a refund in a loop. The debit lands first, as in the
+// other Stripe-fronting begin mutations (payments/connect.ts), and rolls
+// back with the transaction when the permission check refuses the caller,
+// so a refused check costs its caller nothing and reaches Stripe never.
+export const beginRefundStatusCheck = internalMutation({
+  args: { refundId: v.id("paymentRefunds") },
+  handler: async (ctx, args) => {
+    await enforceRateLimit(ctx, "checkRefundStatus");
+    return await readRefundForStatusCheck(ctx, args.refundId);
+  },
+});
+
+// The check's second read: the re-read before a result that leaves the row
+// untouched. A plain query, so looking again at a row the caller already
+// paid to check costs no further budget.
 export const refundForStatusCheck = internalQuery({
   args: { refundId: v.id("paymentRefunds") },
   handler: async (ctx, args) => {
-    const refund = await ctx.db.get(args.refundId);
-    if (!refund) {
-      throw new Error("Refund not found");
-    }
-    await requireOwnerPaymentsPermission(ctx, parseMoneyRowOwner(refund));
-    const order = await ctx.db.get(refund.orderId);
-    return {
-      status: refund.status,
-      stripeChargeId: refund.stripeChargeId ?? order?.stripeChargeId ?? null,
-      amountCents: refund.amountCents,
-    };
+    return await readRefundForStatusCheck(ctx, args.refundId);
   },
 });
 
@@ -920,7 +953,9 @@ export type RefundStatusCheck =
 // settled row is reported as it stands without a Stripe call. The check
 // never creates a refund, never reschedules the executor, and never
 // resets the row's attempt count or error: finding nothing is reported
-// as nothing, not as failure.
+// as nothing, not as failure. Each check is metered per caller
+// (beginRefundStatusCheck); a caller over budget is refused before any
+// read of the row or call to Stripe.
 export const checkRefundStatus = action({
   args: { refundId: v.id("paymentRefunds") },
   handler: async (ctx, args): Promise<RefundStatusCheck> => {
@@ -928,9 +963,10 @@ export const checkRefundStatus = action({
       status: Doc<"paymentRefunds">["status"];
       stripeChargeId: string | null;
       amountCents: number;
-    } = await ctx.runQuery(internal.payments.refunds.refundForStatusCheck, {
-      refundId: args.refundId,
-    });
+    } = await ctx.runMutation(
+      internal.payments.refunds.beginRefundStatusCheck,
+      { refundId: args.refundId },
+    );
     if (refund.status === "succeeded" || refund.status === "failed") {
       return { result: "settled", status: refund.status };
     }
@@ -1003,14 +1039,35 @@ export const checkRefundStatus = action({
   },
 });
 
-// Refunds whose outcome is unknown or still with Stripe, for the
-// organizer's payout card (the read is model/payments.ts
-// refundsNeedingAttention): each one blocks the event's payout until
-// Stripe's record settles it — the owner's checkRefundStatus, or the
-// refund.updated webhook. Any organizer of the event can see them;
-// checking is gated separately on the payments permission.
+// One of the two lists on the organizer's payout card (the read is
+// model/payments.ts refundsNeedingAttentionPage): the refunds whose outcome
+// is unknown (needs_attention), or the ones Stripe holds a refund for that
+// is still processing (pending, with a Stripe id). Each one blocks the
+// event's payout until Stripe's record settles it — the owner's
+// checkRefundStatus, or the refund.updated webhook. The two lists page
+// separately, so every row of either kind is reachable without settling
+// the rows before it: a mass stall never hides a refund the owner could
+// finish. Any organizer of the event can see them; checking is gated
+// separately on the payments permission.
 export const listRefundsNeedingAttention = query({
-  args: moneyRowOwnerArgs,
+  args: {
+    ...moneyRowOwnerArgs,
+    status: v.union(v.literal("needs_attention"), v.literal("pending")),
+    paginationOpts: paginationOptsValidator,
+  },
+  returns: paginationResultValidator(
+    v.object({
+      refundId: v.id("paymentRefunds"),
+      // needs_attention: the outcome is unknown; pending: Stripe holds the
+      // refund and has not reported its outcome yet.
+      status: v.union(v.literal("needs_attention"), v.literal("pending")),
+      playerName: v.union(v.string(), v.null()),
+      amountCents: v.number(),
+      attemptCount: v.number(),
+      lastError: v.union(v.string(), v.null()),
+      updatedAt: v.number(),
+    }),
+  ),
   handler: async (ctx, args) => {
     const owner = parseMoneyRowOwner(args);
     if (owner.kind === "convention") {
@@ -1018,6 +1075,12 @@ export const listRefundsNeedingAttention = query({
     } else {
       await requireOrganizerAccess(ctx, owner.tournamentId);
     }
-    return await refundsNeedingAttention(ctx, owner);
+    return await refundsNeedingAttentionPage(ctx, owner, args.status, {
+      ...args.paginationOpts,
+      numItems: clampPageSize(
+        args.paginationOpts.numItems,
+        REFUNDS_NEEDING_ATTENTION_PAGE,
+      ),
+    });
   },
 });

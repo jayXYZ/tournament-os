@@ -29,11 +29,15 @@ treated as a scarcity gate because any account can mint its own organization.
 | `stripeOnboarding`                    | Stripe Connect onboarding-link minting (strict: 8 burst, 24/day)         |
 | `refreshStripeStatus`                 | manual Stripe account-status refresh                                     |
 | `createCheckout`                      | Stripe Checkout session creation                                         |
+| `checkRefundStatus`                   | the owner's refund status check (one Stripe refunds list per call)       |
 
-The three Stripe buckets are debited inside `internalMutation`s fronted by
-public **actions** (`payments/connect.ts`, `payments/checkout.ts` explain
-why), a deliberate exception to the "first line of the mutation handler"
-pattern above.
+The four Stripe buckets are debited inside `internalMutation`s fronted by
+public **actions** (`payments/connect.ts`, `payments/checkout.ts`, and
+`payments/refunds.ts` explain why), a deliberate exception to the "first
+line of the mutation handler" pattern above. The refund status check debits
+once per check, in the mutation that also authorizes it; the check's later
+re-read of the row (reporting a webhook that settled it mid-lookup) is a
+plain query and costs nothing more.
 
 Keys are the identity's `tokenIdentifier`, so one abusive account cannot
 starve anyone else, and the key exists before the `users` row does. The

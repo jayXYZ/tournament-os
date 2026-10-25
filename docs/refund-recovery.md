@@ -50,7 +50,9 @@ Its lifecycle is `pending` → `succeeded` | `failed` | `needs_attention`.
     id or by `metadata.refundId`;
   - the owner's **Check refund status** button on the payout card
     (`checkRefundStatus`), which lists the charge's refunds and takes the
-    one stamped with the row id.
+    one stamped with the row id. Checks are metered per caller
+    (`checkRefundStatus` in [rate-limiting.md](./rate-limiting.md)); a
+    caller over budget is refused before the row is read or Stripe asked.
     Either path applies `succeeded` (order marked refunded / partially
     refunded, absorbed-fee accounting unchanged), `failed` (one
     `refund_failed` audit line, Stripe's failure reason as `lastError`), or
@@ -66,6 +68,13 @@ Its lifecycle is `pending` → `succeeded` | `failed` | `needs_attention`.
   a status check carries its status. Such a row stays on the payout card,
   with its check button, until it settles — the check is the only way to
   finish it if the final webhook never arrives.
+- **Every unsettled row is reachable from the card.** The payout card keeps
+  two lists, the parked rows and the processing rows, and pages each on its
+  own (`listRefundsNeedingAttention`, one status per page request), so a
+  mass stall never hides a later row behind rows the owner cannot settle:
+  a processing refund queued after a hundred parked ones is on the first
+  page of its own list. Pending rows the executor has not sent yet are on
+  neither list; they are the executor's and its guard's.
 
 The status check reports one of: `settled` (succeeded or failed),
 `processing`, `unresolved` (Stripe holds no refund stamped with the row),

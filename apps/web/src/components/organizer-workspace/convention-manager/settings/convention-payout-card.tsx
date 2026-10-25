@@ -1,9 +1,12 @@
-import { useAction, useQuery } from 'convex/react'
+import { useAction, usePaginatedQuery, useQuery } from 'convex/react'
 
 import { api } from '@paper-pairings/backend/convex/_generated/api'
 import type { Doc } from '@paper-pairings/backend/convex/_generated/dataModel'
 import type { PaidEventPayoutCopy } from '@/components/organizer-workspace/paid-event/payout-card'
-import { PaidEventPayoutCard } from '@/components/organizer-workspace/paid-event/payout-card'
+import {
+  PaidEventPayoutCard,
+  REFUNDS_NEEDING_ATTENTION_PAGE_SIZE,
+} from '@/components/organizer-workspace/paid-event/payout-card'
 
 const copy: PaidEventPayoutCopy = {
   title: 'Badge fee payout',
@@ -31,9 +34,19 @@ export function ConventionPayoutCard({
     { conventionId: convention._id },
   )
   const isPaid = ticketTypes?.some((t) => t.priceCents > 0) ?? false
-  const refundsNeedingAttention = useQuery(
+  // The two refund lists page on their own, so a processing refund is
+  // reachable however many parked ones sit before it.
+  const unresolvedRefunds = usePaginatedQuery(
     api.payments.refunds.listRefundsNeedingAttention,
-    isPaid ? { conventionId: convention._id } : 'skip',
+    isPaid
+      ? { conventionId: convention._id, status: 'needs_attention' }
+      : 'skip',
+    { initialNumItems: REFUNDS_NEEDING_ATTENTION_PAGE_SIZE },
+  )
+  const processingRefunds = usePaginatedQuery(
+    api.payments.refunds.listRefundsNeedingAttention,
+    isPaid ? { conventionId: convention._id, status: 'pending' } : 'skip',
+    { initialNumItems: REFUNDS_NEEDING_ATTENTION_PAGE_SIZE },
   )
   const retryPayout = useAction(api.payments.payouts.retryPayout)
   const checkRefundStatus = useAction(api.payments.refunds.checkRefundStatus)
@@ -43,7 +56,8 @@ export function ConventionPayoutCard({
       isPaid={isPaid}
       completed={convention.lifecycle === 'completed'}
       payout={payout}
-      refundsNeedingAttention={refundsNeedingAttention}
+      unresolvedRefunds={unresolvedRefunds}
+      processingRefunds={processingRefunds}
       onRetry={() => retryPayout({ conventionId: convention._id })}
       onCheckRefund={(refundId) => checkRefundStatus({ refundId })}
       copy={copy}
