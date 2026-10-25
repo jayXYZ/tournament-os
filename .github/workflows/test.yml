@@ -52,6 +52,26 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm format:check
 
+  # Production build of the web app (vite build, then tsc). Nothing else in
+  # CI bundles it, so a module that only breaks the Vite/TanStack Start
+  # bundle would otherwise reach main unnoticed. The build needs no env: a
+  # missing VITE_CONVEX_URL or Clerk key only fails once the app runs (this
+  # artifact is never deployed), and Sentry source-map upload stays off
+  # without SENTRY_AUTH_TOKEN.
+  web-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # pnpm/action-setup reads the pinned version from the root
+      # package.json "packageManager" field.
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build:web
+
   # Bundles the Expo app for every platform, since the native package has no
   # test script and would otherwise go completely unchecked. Expo's own
   # dependency-version check (`expo install --check`) compares the pins to
