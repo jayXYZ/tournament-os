@@ -634,7 +634,8 @@ export const cancelTournament = mutation({
       event: { type: "tournament_cancelled" },
     });
     // A cancelled paid event makes every player whole: open checkouts close
-    // and every payment refunds (payments/refunds.ts sweeps).
+    // (withdrawing the pending entries behind them) and every payment
+    // refunds (payments/refunds.ts sweeps).
     if ((tournament.entryFeeCents ?? 0) > 0) {
       await ctx.scheduler.runAfter(
         0,
