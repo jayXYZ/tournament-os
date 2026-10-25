@@ -1698,7 +1698,7 @@ async function seedTournament(
     name: "Player Meeting Event",
     playerCount,
     phases,
-    playerNames: playerNames ?? true,
+    playerNames,
   });
 }
 

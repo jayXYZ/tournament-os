@@ -4,10 +4,12 @@
 import type { TestConvex } from "convex-test";
 import type { FunctionArgs } from "convex/server";
 
+import { requiredGameWins } from "@paper-pairings/shared/match-structure";
+
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
-import { registrationNameStamp } from "./model/registrations";
+import { nextUserPublicCode } from "./model/users";
 import type schema from "./schema";
 
 // Resolves to whatever `call` rejected with, so a refused mutation runs once
@@ -21,6 +23,22 @@ export async function rejection(call: Promise<unknown>): Promise<unknown> {
     },
     (error: unknown) => error,
   );
+}
+
+// The labeled escape hatch for fixture state the public mutations cannot
+// produce. Scenario helpers build through the same mutations real clients
+// call, so a fixture cannot drift from write policy; a raw write here must
+// name the invariant it deliberately sidesteps, and must not repair a counter
+// or stamp the scenario is meant to exercise.
+export async function rawSeed<T>(
+  t: TestConvex<typeof schema>,
+  reason: string,
+  seed: (ctx: MutationCtx) => Promise<T>,
+): Promise<T> {
+  if (!reason.trim()) {
+    throw new Error("A raw seed must say why the public seam can't build it");
+  }
+  return await t.run(seed);
 }
 
 // Registrations belong to participants (ADR 0002), so spec seeding that
@@ -100,9 +118,11 @@ export async function seedOrganizer(
   });
 }
 
-// Records a 2-0 win for player one in every published pairing of the current
-// round, then completes the round. Assumes pairings auto-publish; suites that
-// publish manually or record results differently keep their own variant.
+// Publishes the current round's pairings (a no-op once they are out), records
+// a sweep at the phase's best-of for the listed player one in every open
+// two-player match, and completes the round. Byes and results already on the
+// board (a drop concession, a report) stand. Returns the round and each
+// match's unordered registration-id pair for rematch assertions.
 export async function playOutCurrentRound(
   t: TestConvex<typeof schema>,
   tournamentId: Id<"tournaments">,
@@ -114,45 +134,66 @@ export async function playOutCurrentRound(
   if (!round) {
     throw new Error("No current round to play out");
   }
+  await organizer.mutation(api.tournaments.rounds.publishPairings, {
+    roundId: round._id,
+  });
+  const { phases } = await organizer.query(
+    api.tournaments.lifecycle.getTournamentSetup,
+    { tournamentId },
+  );
+  const phase = phases.find((item) => item._id === round.tournamentPhaseId);
+  if (!phase) {
+    throw new Error("Current round's phase not found");
+  }
+  const gameWins = requiredGameWins(phase.bestOf);
   const pairings = await organizer.query(
     api.tournaments.rounds.listRoundPairings,
     { roundId: round._id },
   );
+  const pairKeys: string[] = [];
   for (const { match, players } of pairings) {
     if (players.length !== 2) {
+      continue;
+    }
+    pairKeys.push(
+      players
+        .map((player) => player.playerId)
+        .sort()
+        .join("+"),
+    );
+    if (match.matchStatus !== "upcoming") {
       continue;
     }
     await organizer.mutation(api.tournaments.rounds.recordMatchResult, {
       matchId: match._id,
       playerOneRegistrationId: players[0].playerId,
       playerTwoRegistrationId: players[1].playerId,
-      playerOneGameWins: 2,
+      playerOneGameWins: gameWins,
       playerTwoGameWins: 0,
     });
   }
   await organizer.mutation(api.tournaments.rounds.completeRound, {
     roundId: round._id,
   });
+  return { round, pairKeys };
 }
 
 type TournamentPhaseInputs = FunctionArgs<
   typeof api.tournaments.lifecycle.createTournamentWithPhases
 >["phases"];
 
-// Creates and publishes a phased tournament with playerCount confirmed active
-// players (numbered 1..N as playerIdentity numbers), seeded directly through
-// the identity hop registerSelf performs. The knobs cover the ways suites
-// deliberately shape the field:
+// Creates and publishes a phased tournament, then admits playerCount players
+// (numbered 1..N as playerIdentity numbers) through registerSelf, so their
+// accounts, participants, registrations, name stamps, the confirmed count, and
+// the player_registered audit events all come from production writes.
+// Capacity grows to fit the field. The knobs cover the ways suites
+// deliberately shape it:
 //   - tiebreak "descending" makes equal records rank in player-number order
 //     (keeping e.g. the round-one bye on the highest player number);
 //     "ascending" reverses that.
-//   - firstPublicCode shifts the players' publicCodes when a suite must keep
-//     them clear of other manually assigned codes.
-//   - playerNames denormalizes registration.playerName (true = the identity
-//     name; an array supplies custom names, which also become the user names).
-//     Suites that omit it exercise the organizer readers' live-identity
-//     fallback; the player standings query shows no name for such rows, as
-//     it does for a production account without one.
+//   - playerNames replaces the identities' "Player N" names, in player order;
+//     each reaches the account and the registration's stamps the way a
+//     provider name does at sign-in.
 export async function seedTournamentWithPlayers(
   t: TestConvex<typeof schema>,
   options: {
@@ -160,9 +201,8 @@ export async function seedTournamentWithPlayers(
     playerCount: number;
     phases?: TournamentPhaseInputs;
     autoPublishPairings?: boolean;
-    firstPublicCode?: number;
     tiebreak?: "ascending" | "descending";
-    playerNames?: boolean | string[];
+    playerNames?: string[];
   },
 ) {
   const {
@@ -170,11 +210,15 @@ export async function seedTournamentWithPlayers(
     playerCount,
     phases = [{ phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 3 }],
     autoPublishPairings = true,
-    firstPublicCode = 1,
     tiebreak = "ascending",
     playerNames,
   } = options;
-  const { organizationId } = await seedOrganizer(t);
+  const organizerPublicCode = await rawSeed(
+    t,
+    "seedOrganizer writes the organizer's user row directly, so its code is reserved in the allocator registerSelf numbers player accounts from",
+    async (ctx) => await nextUserPublicCode(ctx),
+  );
+  const { organizationId } = await seedOrganizer(t, organizerPublicCode);
   const organizer = t.withIdentity(organizerIdentity);
   const tournamentId: Id<"tournaments"> = await organizer.mutation(
     api.tournaments.lifecycle.createTournamentWithPhases,
@@ -182,7 +226,7 @@ export async function seedTournamentWithPlayers(
       organizationId,
       name,
       startDate: Date.now(),
-      playerCapacity: 16,
+      playerCapacity: Math.max(16, playerCount),
       format: "standard",
       phases,
     },
@@ -194,52 +238,59 @@ export async function seedTournamentWithPlayers(
       autoPublishPairings,
     },
   );
-
-  const customNames = Array.isArray(playerNames) ? playerNames : undefined;
-  const registrationIds = await t.run(async (ctx) => {
-    const now = Date.now();
-    const tournament = await ctx.db.get(tournamentId);
-    if (!tournament) {
-      throw new Error("Tournament not found in test setup");
-    }
-    const ids: Id<"tournamentRegistrations">[] = [];
-    for (let playerNumber = 1; playerNumber <= playerCount; playerNumber += 1) {
-      const identity = playerIdentity(playerNumber);
-      const playerName = customNames?.[playerNumber - 1] ?? identity.name;
-      const userId = await ctx.db.insert("users", {
-        tokenIdentifier: identity.tokenIdentifier,
-        publicCode: firstPublicCode + playerNumber - 1,
-        email: identity.email,
-        name: playerName,
-        updatedAt: now,
-      });
-      const participantId = await insertLinkedParticipant(ctx, userId);
-      ids.push(
-        await ctx.db.insert("tournamentRegistrations", {
-          tournamentId,
-          participantId,
-          tournamentStartDate: tournament.startDate,
-          entryStatus: "confirmed",
-          participationStatus: "active",
-          ...(playerNames ? registrationNameStamp({ name: playerName }) : {}),
-          createdAt: now + playerNumber,
-          tiebreakRandom:
-            tiebreak === "descending" ? 100_000 - playerNumber : playerNumber,
-          updatedAt: now,
-        }),
-      );
-    }
-    await ctx.db.patch(tournamentId, {
-      confirmedRegistrationCount: playerCount,
-      updatedAt: now,
-    });
-    return ids;
-  });
   await organizer.mutation(api.tournaments.lifecycle.publishTournament, {
     tournamentId,
   });
+  const registrationIds = await registerPlayers(t, tournamentId, playerCount, {
+    tiebreak,
+    playerNames,
+  });
 
   return { tournamentId, registrationIds };
+}
+
+// Players 1..playerCount (playerIdentity numbers) each register themselves
+// for a tournament open for registration, exactly as a signed-in player
+// does: registerSelf creates the account, participant, and stamped row,
+// takes the seat, and logs player_registered. Options as for
+// seedTournamentWithPlayers; tiebreak defaults to "ascending".
+export async function registerPlayers(
+  t: TestConvex<typeof schema>,
+  tournamentId: Id<"tournaments">,
+  playerCount: number,
+  options: {
+    tiebreak?: "ascending" | "descending";
+    playerNames?: string[];
+  } = {},
+): Promise<Id<"tournamentRegistrations">[]> {
+  const { tiebreak = "ascending", playerNames } = options;
+  const registrationIds: Id<"tournamentRegistrations">[] = [];
+  for (let playerNumber = 1; playerNumber <= playerCount; playerNumber += 1) {
+    const identity = playerIdentity(playerNumber);
+    const player = t.withIdentity({
+      ...identity,
+      name: playerNames?.[playerNumber - 1] ?? identity.name,
+    });
+    registrationIds.push(
+      await player.mutation(api.tournaments.registrations.registerSelf, {
+        tournamentId,
+      }),
+    );
+  }
+  await rawSeed(
+    t,
+    "registerSelf hashes the tournament seed with each player's code into tiebreakRandom; the scenario pins it so equal records rank in player-number order",
+    async (ctx) => {
+      for (const [index, registrationId] of registrationIds.entries()) {
+        const playerNumber = index + 1;
+        await ctx.db.patch(registrationId, {
+          tiebreakRandom:
+            tiebreak === "descending" ? 100_000 - playerNumber : playerNumber,
+        });
+      }
+    },
+  );
+  return registrationIds;
 }
 
 // The player's match in the given round of the tournament.

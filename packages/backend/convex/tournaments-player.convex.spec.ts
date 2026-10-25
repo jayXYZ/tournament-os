@@ -1362,9 +1362,6 @@ async function seedTournament(
     playerCount,
     phases,
     autoPublishPairings,
-    // Stamped as production registration does: the player standings query
-    // reads only the denormalized name.
-    playerNames: true,
     // Descending so equal records rank in player-number order, keeping this
     // suite's pairing expectations stable; tiebreak realism lives in the
     // pairing and swiss suites.
