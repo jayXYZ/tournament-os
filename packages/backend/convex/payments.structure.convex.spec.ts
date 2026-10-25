@@ -68,8 +68,9 @@ const webhooksSource = readFileSync(
   new URL("./payments/webhooks.ts", import.meta.url),
   "utf8",
 );
+// registerSelf's entry gates live in its roster verb (registerEntry).
 const registrationsSource = readFileSync(
-  new URL("./tournaments/registrations.ts", import.meta.url),
+  new URL("./model/roster.ts", import.meta.url),
   "utf8",
 );
 

@@ -373,6 +373,81 @@ async function seedStartedTournament(
   return seeded;
 }
 
+describe("pairings publication", () => {
+  test("an explicit publication is audited once with its organizer and round", async () => {
+    const t = createConvexTest();
+    const { tournamentId } = await seedTournamentWithPlayers(t, {
+      name: "Publication Audit",
+      playerCount: 4,
+      autoPublishPairings: false,
+      playerNames: true,
+    });
+    const organizer = t.withIdentity(organizerIdentity);
+    const roundId = await organizer.mutation(
+      api.tournaments.rounds.startTournament,
+      { tournamentId },
+    );
+    const beforePublication = await auditEvents(t, tournamentId);
+
+    // A refused publication writes nothing and appends nothing.
+    await expect(
+      t
+        .withIdentity(playerIdentity(1))
+        .mutation(api.tournaments.rounds.publishPairings, { roundId }),
+    ).rejects.toThrow();
+    expect(await auditEvents(t, tournamentId)).toEqual(beforePublication);
+
+    await organizer.mutation(api.tournaments.rounds.publishPairings, {
+      roundId,
+    });
+    // Publishing already-public pairings is an idempotent no-op.
+    await organizer.mutation(api.tournaments.rounds.publishPairings, {
+      roundId,
+    });
+
+    const publications = (await auditEvents(t, tournamentId)).filter(
+      (row) => row.event.type === "pairings_published",
+    );
+    expect(publications).toHaveLength(1);
+    expect(publications[0]).toMatchObject({
+      actorName: organizerIdentity.name,
+      actorRole: "organizer",
+      event: { type: "pairings_published", roundId, roundNumber: 1 },
+    });
+    const round = await organizer.query(
+      api.tournaments.rounds.getCurrentRound,
+      { tournamentId },
+    );
+    expect(round?.pairingsPublishedAt).toBeDefined();
+  });
+
+  // Auto-published at pairing time, or held and then published by
+  // completeRound as part of the record: either way the enclosing round
+  // event covers it.
+  test.each([{ autoPublishPairings: true }, { autoPublishPairings: false }])(
+    "implicit publication logs no publication row (autoPublishPairings: $autoPublishPairings)",
+    async ({ autoPublishPairings }) => {
+      const t = createConvexTest();
+      const { tournamentId } = await seedTournamentWithPlayers(t, {
+        name: "Implicit Publication Audit",
+        playerCount: 4,
+        autoPublishPairings,
+        playerNames: true,
+      });
+      await t
+        .withIdentity(organizerIdentity)
+        .mutation(api.tournaments.rounds.startTournament, { tournamentId });
+      await playOutCurrentRound(t, tournamentId);
+
+      const types = (await auditEvents(t, tournamentId)).map(
+        (row) => row.event.type,
+      );
+      expect(types).toContain("round_completed");
+      expect(types).not.toContain("pairings_published");
+    },
+  );
+});
+
 describe("round timer", () => {
   test("timer controls journal before/after anchors; failures and no-ops stay silent", async () => {
     const t = createConvexTest();
@@ -535,5 +610,79 @@ describe("round timer", () => {
       { tournamentId },
     );
     expect(tournament.roundTimer).toBeUndefined();
+  });
+});
+
+describe("round_started", () => {
+  test("logs the stored number of the round it created, across a phase boundary", async () => {
+    const t = createConvexTest();
+    const { tournamentId } = await seedTournament(t, 4, [
+      { phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 1 },
+      { phaseOrder: 2, phaseRoundMode: "fixed", phaseTotalRounds: 1 },
+    ]);
+    const organizer = t.withIdentity(organizerIdentity);
+    await organizer.mutation(api.tournaments.rounds.startTournament, {
+      tournamentId,
+    });
+    await playOutCurrentRound(t, tournamentId);
+    const roundId = await organizer.mutation(
+      api.tournaments.rounds.generateNextRound,
+      { tournamentId },
+    );
+    const round = await organizer.query(
+      api.tournaments.rounds.getCurrentRound,
+      { tournamentId },
+    );
+    expect(round?._id).toBe(roundId);
+
+    const [latest] = await auditEvents(t, tournamentId);
+    expect(latest.event).toEqual({
+      type: "round_started",
+      roundId,
+      roundNumber: round?.roundNumber,
+      playerCount: 4,
+    });
+    expect(round?.roundNumber).toBe(2);
+  });
+});
+
+describe("refused writes append nothing", () => {
+  test("lifecycle, registration, and decklist refusals leave the journal untouched", async () => {
+    const t = createConvexTest();
+    const { tournamentId } = await seedTournament(t, 4);
+    const organizer = t.withIdentity(organizerIdentity);
+    const player = t.withIdentity(playerIdentity(1));
+    const before = await auditEvents(t, tournamentId);
+
+    await expect(
+      organizer.mutation(api.tournaments.lifecycle.publishTournament, {
+        tournamentId,
+      }),
+    ).rejects.toThrow();
+    await expect(
+      player.mutation(api.tournaments.registrations.registerSelf, {
+        tournamentId,
+      }),
+    ).rejects.toThrow("Already registered");
+    await expect(
+      player.mutation(api.tournaments.decklists.submitMyDecklist, {
+        tournamentId,
+        maindeck: [{ name: "Island", quantity: 60 }],
+        sideboard: [],
+      }),
+    ).rejects.toThrow("This tournament does not collect decklists");
+    expect(await auditEvents(t, tournamentId)).toEqual(before);
+
+    await organizer.mutation(api.tournaments.lifecycle.cancelTournament, {
+      tournamentId,
+    });
+    await expect(
+      organizer.mutation(api.tournaments.lifecycle.cancelTournament, {
+        tournamentId,
+      }),
+    ).rejects.toThrow("Tournament is already cancelled");
+    const after = await auditEvents(t, tournamentId);
+    expect(after.slice(1)).toEqual(before);
+    expect(after[0].event.type).toBe("tournament_cancelled");
   });
 });

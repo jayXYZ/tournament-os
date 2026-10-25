@@ -29,6 +29,7 @@ import {
   playerMeetingPending,
   previousTournamentRound,
   reopenPhaseAtRound,
+  requireCurrentPhase,
   requirePhase,
   requireResolvedPhaseTotalRounds,
   resolvePhaseTotalRounds,
@@ -63,6 +64,7 @@ import {
   PAIRINGS_REWIND_RECORDED_RESULT_REASON,
   isPairingsVisibleToPlayers,
   requireRound,
+  requireSetupEditable,
   requireTournament,
   roundHasRecordedResult,
   roundMatchesWithPlayers,
@@ -634,6 +636,27 @@ type ProgressionActor = {
   user: Doc<"users">;
 };
 
+// Publishing opens registration: the draft leaves setup with its phases in
+// place, and the audit trail starts.
+export async function publishTournament(
+  ctx: MutationCtx,
+  { tournament, user }: ProgressionActor,
+): Promise<Id<"tournaments">> {
+  requireSetupEditable(tournament);
+  await requireCurrentPhase(ctx, tournament._id);
+  await ctx.db.patch(tournament._id, {
+    lifecycle: "registration",
+    updatedAt: Date.now(),
+  });
+  await logAuditEvent(ctx, {
+    tournamentId: tournament._id,
+    actor: user,
+    actorRole: "organizer",
+    event: { type: "tournament_published" },
+  });
+  return tournament._id;
+}
+
 export async function startTournament(
   ctx: MutationCtx,
   { tournament, user }: ProgressionActor,
@@ -719,11 +742,20 @@ export async function pairFirstRoundOfTournament(
   return roundId;
 }
 
+// Explicit publication of a round's held pairings, logged once with the
+// publishing organizer. Publishing pairings that are already public is an
+// idempotent no-op and appends nothing; the auto-publication paths (pairing
+// with autoPublishPairings on, the safety net in executeCompleteRound) are
+// part of their own round events instead.
 export async function publishPairings(
   ctx: MutationCtx,
+  { tournament, user }: ProgressionActor,
   roundId: Id<"tournamentRounds">,
 ): Promise<Id<"tournamentRounds">> {
   const round = await requireRound(ctx, roundId);
+  if (round.tournamentId !== tournament._id) {
+    throw new Error("Round not found");
+  }
   const phase = await requirePhase(ctx, round.tournamentPhaseId);
   if (phase.phaseCurrentRound !== round._id) {
     throw new Error("Only the current round's pairings can be published");
@@ -746,6 +778,16 @@ export async function publishPairings(
   await ctx.db.patch(round._id, {
     pairingsPublishedAt: now,
     updatedAt: now,
+  });
+  await logAuditEvent(ctx, {
+    tournamentId: tournament._id,
+    actor: user,
+    actorRole: "organizer",
+    event: {
+      type: "pairings_published",
+      roundId: round._id,
+      roundNumber: round.roundNumber,
+    },
   });
   return round._id;
 }
@@ -868,7 +910,9 @@ async function executeGenerateNextRound(
     event: {
       type: "round_started",
       roundId,
-      roundNumber: step.round.roundNumber + 1,
+      // Read off the round just created rather than re-derived from the
+      // step, so the event can never disagree with the stored number.
+      roundNumber: (await requireRound(ctx, roundId)).roundNumber,
       playerCount,
     },
   });
@@ -1060,6 +1104,46 @@ async function executeCompleteTournament(
       { tournamentId: tournament._id },
     );
   }
+}
+
+// Cancelling ends the event from any live state. The running timer dies
+// with it (part of this event, not a timer row), and a paid event makes
+// every player whole: open checkouts close (withdrawing the pending entries
+// behind them) and every payment refunds (payments/refunds.ts sweeps).
+export async function cancelTournament(
+  ctx: MutationCtx,
+  { tournament, user }: ProgressionActor,
+): Promise<Id<"tournaments">> {
+  if (tournament.lifecycle === "completed") {
+    throw new Error("Completed tournaments cannot be cancelled");
+  }
+  if (tournament.lifecycle === "cancelled") {
+    throw new Error("Tournament is already cancelled");
+  }
+  await ctx.db.patch(tournament._id, {
+    lifecycle: "cancelled",
+    roundTimer: undefined,
+    updatedAt: Date.now(),
+  });
+  await logAuditEvent(ctx, {
+    tournamentId: tournament._id,
+    actor: user,
+    actorRole: "organizer",
+    event: { type: "tournament_cancelled" },
+  });
+  if ((tournament.entryFeeCents ?? 0) > 0) {
+    await ctx.scheduler.runAfter(
+      0,
+      internal.payments.refunds.closeOpenOrdersSweep,
+      { tournamentId: tournament._id },
+    );
+    await ctx.scheduler.runAfter(
+      0,
+      internal.payments.refunds.cancelEventPaymentsSweep,
+      { tournamentId: tournament._id },
+    );
+  }
+  return tournament._id;
 }
 
 export type AdvanceOutcome =

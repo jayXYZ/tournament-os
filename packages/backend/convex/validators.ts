@@ -614,6 +614,15 @@ export const tournamentAuditEventValidator = v.union(
     playerCount: v.number(),
   }),
   v.object({
+    // An organizer explicitly published a round's held pairings
+    // (publishPairings). Auto-publication at pairing time and the
+    // publish-on-complete safety net are part of round_started /
+    // round_completed and log no row of their own.
+    type: v.literal("pairings_published"),
+    roundId: v.id("tournamentRounds"),
+    roundNumber: v.number(),
+  }),
+  v.object({
     // The default length new round timers start with changed. Null when the
     // event had never set one (the platform default applied).
     type: v.literal("round_duration_changed"),
