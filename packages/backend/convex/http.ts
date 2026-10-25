@@ -121,13 +121,20 @@ http.route({
         });
         break;
       }
+      case "refund.created":
       case "refund.updated":
       case "refund.failed": {
         // Reconciliation backstop for the refund executor (see
         // payments/refunds.ts): recovers a result write the executor lost.
+        // All three lifecycle events are needed. A refund that succeeds on
+        // creation (most card refunds) gets refund.created and, its status
+        // never changing, no refund.updated to count on; the handler reads
+        // the refund's status, not the event's name, so the three are
+        // routed alike.
         const refund = event.data.object;
         await ctx.runMutation(internal.payments.refunds.handleRefundEvent, {
           stripeEventId: event.id,
+          eventType: event.type,
           stripeRefundId: refund.id,
           stripeChargeId:
             typeof refund.charge === "string"

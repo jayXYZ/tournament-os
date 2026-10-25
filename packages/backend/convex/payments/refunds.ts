@@ -841,17 +841,33 @@ export const markRefundResult = internalMutation({
   },
 });
 
-// Reconciliation from Stripe's refund lifecycle events: recovers a pending
-// row whose executor crashed between the Stripe call and the result write,
-// a "failed" row Stripe reports succeeded (the executor's error was wrong
-// about the money), and a parked (needs_attention) row whose refund Stripe
-// reports it holds — processing or settled — which the attempts never
-// learned of. A succeeded row stays succeeded (a post-success flip is rare
-// enough to be a support case, not an automated rewrite), and refunds
-// issued outside the app (dashboard) have no row and are ignored.
+// Reconciliation from Stripe's refund lifecycle events (refund.created,
+// refund.updated, refund.failed): recovers a pending row whose executor
+// crashed between the Stripe call and the result write, a "failed" row
+// Stripe reports succeeded (the executor's error was wrong about the
+// money), and a parked (needs_attention) row whose refund Stripe reports
+// it holds — processing or settled — which the attempts never learned of.
+// A succeeded row stays succeeded (a post-success flip is rare enough to
+// be a support case, not an automated rewrite), and refunds issued outside
+// the app (dashboard) have no row and are ignored.
+//
+// The report is the refund's status, whichever event carried it, and the
+// events may arrive in any order: a created report of a refund still
+// processing that lands after the update that settled the row writes
+// nothing (recordRefundInFlight moves only pending and parked rows), and
+// a repeated success leaves a succeeded row alone (applyRefundOutcome).
 export const handleRefundEvent = internalMutation({
   args: {
     stripeEventId: v.string(),
+    // Which lifecycle event carried the report, kept on the processed-event
+    // record. refund.created is the one event a refund that succeeds on
+    // creation reliably gets (docs/refund-recovery.md); nothing below
+    // branches on it.
+    eventType: v.union(
+      v.literal("refund.created"),
+      v.literal("refund.updated"),
+      v.literal("refund.failed"),
+    ),
     stripeRefundId: v.string(),
     refundStatus: v.string(),
     // The paymentRefunds row id from the refund's metadata: the fallback
@@ -885,7 +901,7 @@ export const handleRefundEvent = internalMutation({
     }
     await ctx.db.insert("stripeWebhookEvents", {
       stripeEventId: args.stripeEventId,
-      type: "refund.updated",
+      type: args.eventType,
       processedAt: Date.now(),
     });
 

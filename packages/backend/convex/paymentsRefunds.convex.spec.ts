@@ -448,6 +448,7 @@ test("a refund Stripe reports as pending stays pending until the webhook settles
   // The refund.updated webhook settles it by Stripe refund id.
   await t.mutation(internal.payments.refunds.handleRefundEvent, {
     stripeEventId: "evt_refund_settle",
+    eventType: "refund.updated",
     stripeChargeId: "ch_one",
     stripeRefundId: "re_test_1",
     refundStatus: "succeeded",
@@ -491,6 +492,7 @@ test("a pending refund a webhook reports canceled is recorded as failed", async 
 
   await t.mutation(internal.payments.refunds.handleRefundEvent, {
     stripeEventId: "evt_refund_cancel",
+    eventType: "refund.updated",
     stripeChargeId: "ch_one",
     stripeRefundId: "re_test_1",
     refundStatus: "canceled",
@@ -662,6 +664,7 @@ test("an ambiguous createRefund failure leaves the row pending for the webhook t
   // The refund.updated webhook carries the truth and settles the row.
   await t.mutation(internal.payments.refunds.handleRefundEvent, {
     stripeEventId: "evt_refund_recover",
+    eventType: "refund.updated",
     stripeChargeId: "ch_one",
     stripeRefundId: "re_recovered_1",
     refundStatus: "succeeded",
@@ -985,6 +988,7 @@ test.each([
     ).toEqual(check);
     await t.mutation(internal.payments.refunds.handleRefundEvent, {
       stripeEventId: "evt_duplicate",
+      eventType: "refund.updated",
       stripeChargeId: "ch_one",
       stripeRefundId: "re_found",
       refundStatus: stripeStatus,
@@ -1006,6 +1010,7 @@ test.each([
       expect(gatewayState.creates).toBe(0);
       await t.mutation(internal.payments.refunds.handleRefundEvent, {
         stripeEventId: "evt_late_success",
+        eventType: "refund.updated",
         stripeChargeId: "ch_one",
         stripeRefundId: "re_found",
         refundStatus: "succeeded",
@@ -1035,6 +1040,7 @@ test("a settled refund is never regressed by a later failure report", async () =
   // A stale or contradictory failure report after success changes nothing.
   await t.mutation(internal.payments.refunds.handleRefundEvent, {
     stripeEventId: "evt_stale_failure",
+    eventType: "refund.updated",
     stripeChargeId: "ch_one",
     stripeRefundId: "re_test_1",
     refundStatus: "failed",
@@ -1088,6 +1094,7 @@ test("a refund whose amount disagrees with the row settles nothing, from a check
   });
   await t.mutation(internal.payments.refunds.handleRefundEvent, {
     stripeEventId: "evt_other_amount",
+    eventType: "refund.updated",
     stripeChargeId: "ch_one",
     stripeRefundId: "re_other_amount",
     refundStatus: "succeeded",
@@ -1235,6 +1242,7 @@ test("a definitive rejection after an uncertain attempt parks the refund instead
     // Stripe's own report of the lost attempt's refund settles the row.
     await t.mutation(internal.payments.refunds.handleRefundEvent, {
       stripeEventId: "evt_lost_attempt",
+      eventType: "refund.updated",
       stripeChargeId: "ch_one",
       stripeRefundId: "re_lost_attempt",
       refundStatus: "succeeded",
@@ -1443,6 +1451,7 @@ test("an execution that dies before recording anything is parked by its guard, a
     // the row with the usual accounting.
     await t.mutation(internal.payments.refunds.handleRefundEvent, {
       stripeEventId: "evt_after_crash",
+      eventType: "refund.updated",
       stripeChargeId: "ch_one",
       stripeRefundId: "re_after_crash",
       refundStatus: "succeeded",
@@ -1721,6 +1730,7 @@ test("a webhook reporting a parked refund as processing un-parks it for the webh
   // still check it if that final webhook never comes.
   await t.mutation(internal.payments.refunds.handleRefundEvent, {
     stripeEventId: "evt_refund_processing",
+    eventType: "refund.updated",
     stripeChargeId: "ch_one",
     stripeRefundId: "re_processing_1",
     refundStatus: "pending",
@@ -1741,6 +1751,7 @@ test("a webhook reporting a parked refund as processing un-parks it for the webh
 
   await t.mutation(internal.payments.refunds.handleRefundEvent, {
     stripeEventId: "evt_refund_processed",
+    eventType: "refund.updated",
     stripeChargeId: "ch_one",
     stripeRefundId: "re_processing_1",
     refundStatus: "succeeded",
@@ -1770,6 +1781,7 @@ test("a webhook success recovers a refund row wrongly settled as failed", async 
   // local failure and flips the order off "paid" so the payout skips it.
   await t.mutation(internal.payments.refunds.handleRefundEvent, {
     stripeEventId: "evt_refund_override",
+    eventType: "refund.updated",
     stripeChargeId: "ch_one",
     stripeRefundId: "re_override_1",
     refundStatus: "succeeded",
@@ -1798,6 +1810,7 @@ test("refund reconciliation recovers a lost executor write by row id", async () 
   // metadata and settles it.
   await t.mutation(internal.payments.refunds.handleRefundEvent, {
     stripeEventId: "evt_refund_1",
+    eventType: "refund.updated",
     stripeChargeId: "ch_one",
     stripeRefundId: "re_lost_1",
     refundStatus: "succeeded",
@@ -1908,6 +1921,7 @@ test("a webhook for a refund on another charge settles nothing, even with the ro
     for (const stripeChargeId of ["ch_other", null]) {
       await t.mutation(internal.payments.refunds.handleRefundEvent, {
         stripeEventId: `evt_wrong_charge_${stripeChargeId}`,
+        eventType: "refund.updated",
         stripeChargeId,
         stripeRefundId: "re_wrong_charge",
         refundStatus: "succeeded",
@@ -1932,6 +1946,7 @@ test("a webhook for a refund on another charge settles nothing, even with the ro
     });
     await t.mutation(internal.payments.refunds.handleRefundEvent, {
       stripeEventId: "evt_wrong_charge_by_id",
+      eventType: "refund.updated",
       stripeChargeId: "ch_other",
       stripeRefundId: "re_right_charge",
       refundStatus: "succeeded",
@@ -1944,6 +1959,7 @@ test("a webhook for a refund on another charge settles nothing, even with the ro
     // The refund on the row's own charge settles it.
     await t.mutation(internal.payments.refunds.handleRefundEvent, {
       stripeEventId: "evt_right_charge",
+      eventType: "refund.updated",
       stripeChargeId: "ch_one",
       stripeRefundId: "re_right_charge",
       refundStatus: "succeeded",
@@ -1980,6 +1996,7 @@ test("a stray-charge refund's webhook is matched against the row's own charge, n
 
     await t.mutation(internal.payments.refunds.handleRefundEvent, {
       stripeEventId: "evt_stray_on_order_charge",
+      eventType: "refund.updated",
       stripeChargeId: "ch_one",
       stripeRefundId: "re_stray",
       refundStatus: "succeeded",
@@ -1990,6 +2007,7 @@ test("a stray-charge refund's webhook is matched against the row's own charge, n
 
     await t.mutation(internal.payments.refunds.handleRefundEvent, {
       stripeEventId: "evt_stray_on_stray_charge",
+      eventType: "refund.updated",
       stripeChargeId: "ch_stray",
       stripeRefundId: "re_stray",
       refundStatus: "succeeded",
@@ -2019,6 +2037,7 @@ test("a webhook failure settles the row with Stripe's reason, like a status chec
 
   await t.mutation(internal.payments.refunds.handleRefundEvent, {
     stripeEventId: "evt_failed_with_reason",
+    eventType: "refund.failed",
     stripeChargeId: "ch_one",
     stripeRefundId: "re_failed",
     refundStatus: "failed",
@@ -2041,6 +2060,7 @@ test("a webhook failure settles the row with Stripe's reason, like a status chec
   await parkByHand(t, refund!._id);
   await t.mutation(internal.payments.refunds.handleRefundEvent, {
     stripeEventId: "evt_failed_no_reason",
+    eventType: "refund.failed",
     stripeChargeId: "ch_one",
     stripeRefundId: "re_failed",
     refundStatus: "failed",
@@ -2103,6 +2123,7 @@ test.each([
       gatewayState.onFindRefund = async () => {
         await t.mutation(internal.payments.refunds.handleRefundEvent, {
           stripeEventId: "evt_mid_lookup",
+          eventType: "refund.updated",
           stripeChargeId: "ch_one",
           stripeRefundId: "re_racing",
           refundStatus: "succeeded",
@@ -2162,6 +2183,7 @@ test("a status check reports the row as stored when a webhook settles it mid-loo
   gatewayState.onFindRefund = async () => {
     await t.mutation(internal.payments.refunds.handleRefundEvent, {
       stripeEventId: "evt_mid_lookup",
+      eventType: "refund.updated",
       stripeChargeId: "ch_one",
       stripeRefundId: "re_racing",
       refundStatus: "succeeded",
@@ -2342,6 +2364,7 @@ test("status checks are metered per caller: a refused check never reaches Stripe
   gatewayState.onFindRefund = async () => {
     await t.mutation(internal.payments.refunds.handleRefundEvent, {
       stripeEventId: "evt_mid_lookup",
+      eventType: "refund.updated",
       stripeChargeId: "ch_one",
       stripeRefundId: "re_mid_lookup",
       refundStatus: "succeeded",
@@ -2405,6 +2428,7 @@ test.each([
       gatewayState.onCreateRefund = async () => {
         await t.mutation(internal.payments.refunds.handleRefundEvent, {
           stripeEventId: "evt_processing_before_failure",
+          eventType: "refund.updated",
           stripeChargeId: "ch_one",
           stripeRefundId: "re_in_flight",
           refundStatus: "pending",
@@ -2462,6 +2486,7 @@ test.each([
       });
       await t.mutation(internal.payments.refunds.handleRefundEvent, {
         stripeEventId: "evt_in_flight_succeeded",
+        eventType: "refund.updated",
         stripeChargeId: "ch_one",
         stripeRefundId: "re_in_flight",
         refundStatus: "succeeded",
@@ -2508,6 +2533,7 @@ test("a second refund stamped with the row never replaces, settles or recovers t
     ) =>
       await t.mutation(internal.payments.refunds.handleRefundEvent, {
         stripeEventId: `evt_${suffix}`,
+        eventType: "refund.updated",
         stripeChargeId: "ch_one",
         stripeRefundId,
         refundStatus,
@@ -2607,6 +2633,7 @@ test("a status check that finds a second refund stamped with the row reports a c
     gatewayState.onFindRefund = async () => {
       await t.mutation(internal.payments.refunds.handleRefundEvent, {
         stripeEventId: "evt_bound_mid_lookup",
+        eventType: "refund.updated",
         stripeChargeId: "ch_one",
         stripeRefundId: "re_original",
         refundStatus: "pending",

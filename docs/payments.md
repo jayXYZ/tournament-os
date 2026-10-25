@@ -96,10 +96,11 @@ suites are `paymentsConnect` / `entryFeeSettings` / `paymentsCheckout` /
   scheduled beside every execution), the create window closing — parks the
   row in `needs_attention` with its diagnostic and a `refund_stalled` audit
   line. A parked row blocks the payout and the event's deletion and is
-  settled only from Stripe's record: the `refund.updated` webhook, or the
-  owner's **Check refund status** (`checkRefundStatus`, which looks up the
-  refund stamped with the row on the charge and applies its status through
-  the executor's own result write; metered per caller, see
+  settled only from Stripe's record: the refund webhooks (`refund.created`,
+  `refund.updated`, `refund.failed`), or the owner's **Check refund status**
+  (`checkRefundStatus`, which looks up the refund stamped with the row on
+  the charge and applies its status through the executor's own result
+  write; metered per caller, see
   [rate-limiting.md](./rate-limiting.md)). The payout card lists parked and
   processing refunds as two separately paged lists, so every one of them is
   reachable without settling the rows before it. Nothing creates a refund
@@ -112,7 +113,9 @@ suites are `paymentsConnect` / `entryFeeSettings` / `paymentsCheckout` /
     the processed-event table plus status guards. Handled events:
     `checkout.session.completed`, `checkout.session.async_payment_succeeded`,
     `checkout.session.async_payment_failed`, `checkout.session.expired`,
-    `refund.updated`, `refund.failed` (executor reconciliation), and
+    `refund.created`, `refund.updated`, `refund.failed` (executor
+    reconciliation; the endpoint must subscribe to all three, because a
+    refund that succeeds on creation gets only `refund.created`), and
     `charge.dispute.created` (v1 policy: mark the order disputed and exclude
     it from the payout).
   - Thin events (v2): `POST <deployment>.convex.site/stripe/account-events`,

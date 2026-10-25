@@ -46,8 +46,16 @@ Its lifecycle is `pending` → `succeeded` | `failed` | `needs_attention`.
   (`requireEventPaymentsSettled`).
 - **Only Stripe's record settles a parked row**, through the executor's own
   result write (`markRefundResult` → `applyRefundOutcome`):
-  - the `refund.updated` / `refund.failed` webhook, matched by Stripe refund
-    id or by `metadata.refundId`;
+  - the refund webhooks (`refund.created`, `refund.updated`,
+    `refund.failed`), matched by Stripe refund id or by `metadata.refundId`.
+    The endpoint needs all three. A card refund that succeeds on creation
+    gets `refund.created` and, its status never changing, no
+    `refund.updated` to count on, so a lost executor write for such a
+    refund would otherwise stay parked until someone checked. The handler
+    reads the refund's status, whichever event carried it, and the events
+    may arrive in any order: a `refund.created` for a refund still
+    processing that lands after the update that settled the row writes
+    nothing, and a redelivered event is a no-op by event id;
   - the owner's **Check refund status** button on the payout card
     (`checkRefundStatus`), which lists the charge's refunds and takes the
     one stamped with the row id. Checks are metered per caller
@@ -140,7 +148,10 @@ paid, and `failed` would pay the order out on top of it.
    established that the original request did not create a refund and is no
    longer unresolved. Issue the replacement against the same charge for the
    row's exact `amountCents`, and stamp it with the row id at creation
-   (`metadata.refundId`).
+   (`metadata.refundId`). Stamped at creation, its `refund.created` event
+   binds and settles the row on its own, since a row in this case holds no
+   Stripe refund id; run **Check refund status** if the event has not
+   arrived.
 7. **Connecting a verified refund to the row.** Stripe allows metadata
    updates on refunds (`stripe refunds update <re_id> -d
 "metadata[refundId]=<row id>"`, or the dashboard's metadata editor). Only
@@ -163,3 +174,13 @@ paid, and `failed` would pay the order out on top of it.
 Refunds Stripe reports as `processing` need no operator action; they settle
 by webhook, and they stay on the payout card so the owner can check them at
 any time.
+
+## Webhook subscription
+
+The snapshot endpoint (`/stripe/events`, signing secret
+`STRIPE_WEBHOOK_SECRET` in [environment.md](./environment.md)) must be
+subscribed to `refund.created`, `refund.updated` and `refund.failed` along
+with the checkout and dispute events in [payments.md](./payments.md). An
+endpoint missing `refund.created` loses the immediate-success case above
+without any error: the row simply stays parked. `stripe listen` without
+`--events` forwards every event, so local development needs no list.
