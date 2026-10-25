@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 
 import type { TestConvex } from "convex-test";
-import { expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
@@ -372,3 +372,168 @@ async function seedStartedTournament(
     });
   return seeded;
 }
+
+describe("round timer", () => {
+  test("timer controls journal before/after anchors; failures and no-ops stay silent", async () => {
+    const t = createConvexTest();
+    const { tournamentId } = await seedStartedTournament(t, 4);
+    const organizer = t.withIdentity(organizerIdentity);
+    const durationMs = 45 * 60_000;
+
+    await organizer.mutation(api.tournaments.timer.setRoundDuration, {
+      tournamentId,
+      durationMs,
+    });
+    // Re-saving the same default changes nothing.
+    await organizer.mutation(api.tournaments.timer.setRoundDuration, {
+      tournamentId,
+      durationMs,
+    });
+    await organizer.mutation(api.tournaments.timer.setRoundDuration, {
+      tournamentId,
+      durationMs: 40 * 60_000,
+    });
+    await organizer.mutation(api.tournaments.timer.startTimer, {
+      tournamentId,
+    });
+    await organizer.mutation(api.tournaments.timer.pauseTimer, {
+      tournamentId,
+    });
+    await organizer.mutation(api.tournaments.timer.adjustTimer, {
+      tournamentId,
+      deltaMs: 60_000,
+    });
+    await organizer.mutation(api.tournaments.timer.resumeTimer, {
+      tournamentId,
+    });
+    await organizer.mutation(api.tournaments.timer.startTimer, {
+      tournamentId,
+    });
+    await organizer.mutation(api.tournaments.timer.clearTimer, {
+      tournamentId,
+    });
+
+    const events = await auditEvents(t, tournamentId);
+    const durationChanges = events
+      .map((row) => row.event)
+      .filter((event) => event.type === "round_duration_changed")
+      .reverse();
+    expect(durationChanges).toEqual([
+      {
+        type: "round_duration_changed",
+        previousDurationMs: null,
+        durationMs,
+      },
+      {
+        type: "round_duration_changed",
+        previousDurationMs: durationMs,
+        durationMs: 40 * 60_000,
+      },
+    ]);
+
+    const timerRows = events.filter(
+      (row) => row.event.type === "round_timer_changed",
+    );
+    expect(timerRows.every((row) => row.actorRole === "organizer")).toBe(true);
+    const timerChanges = timerRows
+      .map((row) => row.event)
+      .filter((event) => event.type === "round_timer_changed")
+      .reverse();
+    expect(timerChanges.map((event) => event.operation)).toEqual([
+      "started",
+      "paused",
+      "adjusted",
+      "resumed",
+      "started",
+      "cleared",
+    ]);
+    // The rows chain: each change starts from the timer the previous one
+    // left, from no timer to no timer.
+    expect(timerChanges[0].previousTimer).toBeNull();
+    expect(timerChanges[0].timer).toMatchObject({
+      kind: "running",
+      durationMs: 40 * 60_000,
+    });
+    for (let index = 1; index < timerChanges.length; index += 1) {
+      expect(timerChanges[index].previousTimer).toEqual(
+        timerChanges[index - 1].timer,
+      );
+    }
+    expect(timerChanges[1].timer?.kind).toBe("paused");
+    const [paused, adjusted] = [timerChanges[1].timer, timerChanges[2].timer];
+    if (paused?.kind !== "paused" || adjusted?.kind !== "paused") {
+      throw new Error("Expected the adjustment to land on a paused timer");
+    }
+    expect(adjusted.remainingMs - paused.remainingMs).toBe(60_000);
+    expect(timerChanges.at(-1)?.timer).toBeNull();
+    const { tournament } = await organizer.query(
+      api.tournaments.lifecycle.getTournamentSetup,
+      { tournamentId },
+    );
+    expect(tournament.roundTimer).toBeUndefined();
+
+    // Clearing an absent timer and every refused control append nothing.
+    await organizer.mutation(api.tournaments.timer.clearTimer, {
+      tournamentId,
+    });
+    await expect(
+      organizer.mutation(api.tournaments.timer.pauseTimer, { tournamentId }),
+    ).rejects.toThrow("Timer is not running");
+    await expect(
+      organizer.mutation(api.tournaments.timer.adjustTimer, {
+        tournamentId,
+        deltaMs: 60_000,
+      }),
+    ).rejects.toThrow("No timer to adjust");
+    await expect(
+      organizer.mutation(api.tournaments.timer.setRoundDuration, {
+        tournamentId,
+        durationMs: 1,
+      }),
+    ).rejects.toThrow("Invalid round duration");
+    await expect(
+      t
+        .withIdentity(playerIdentity(1))
+        .mutation(api.tournaments.timer.startTimer, { tournamentId }),
+    ).rejects.toThrow();
+    expect(await auditEvents(t, tournamentId)).toEqual(events);
+  });
+
+  test("lifecycle timer cleanup is part of the lifecycle event, not a timer row", async () => {
+    const t = createConvexTest();
+    const { tournamentId } = await seedStartedTournament(t, 4);
+    const organizer = t.withIdentity(organizerIdentity);
+    const timerRowCount = async () =>
+      (await auditEvents(t, tournamentId)).filter(
+        (row) => row.event.type === "round_timer_changed",
+      ).length;
+
+    // Completing the round clears its timer under round_completed.
+    await organizer.mutation(api.tournaments.timer.startTimer, {
+      tournamentId,
+    });
+    expect(await timerRowCount()).toBe(1);
+    await playOutCurrentRound(t, tournamentId);
+    expect(await timerRowCount()).toBe(1);
+
+    // Cancelling clears a live timer under tournament_cancelled.
+    await organizer.mutation(api.tournaments.rounds.generateNextRound, {
+      tournamentId,
+    });
+    await organizer.mutation(api.tournaments.timer.startTimer, {
+      tournamentId,
+    });
+    const beforeCancel = await auditEvents(t, tournamentId);
+    await organizer.mutation(api.tournaments.lifecycle.cancelTournament, {
+      tournamentId,
+    });
+    const afterCancel = await auditEvents(t, tournamentId);
+    expect(afterCancel.slice(1)).toEqual(beforeCancel);
+    expect(afterCancel[0].event.type).toBe("tournament_cancelled");
+    const { tournament } = await organizer.query(
+      api.tournaments.lifecycle.getTournamentSetup,
+      { tournamentId },
+    );
+    expect(tournament.roundTimer).toBeUndefined();
+  });
+});
