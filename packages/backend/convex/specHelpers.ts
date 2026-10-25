@@ -83,17 +83,20 @@ export function playerIdentity(playerNumber: number) {
 }
 
 // Seeds the organizer user, with an owned active organization, that every
-// suite starts from. Suites that also seed players by hand pass a publicCode
-// above their players' range so the manually assigned codes never collide.
+// suite starts from. By default the organizer's code comes from the allocator
+// upsertUser numbers accounts from (1 in a fresh test), so accounts later
+// created through upsertMe or registerSelf never share it. Suites that also
+// seed players by hand pass a publicCode above their players' range so the
+// manually assigned codes never collide.
 export async function seedOrganizer(
   t: TestConvex<typeof schema>,
-  publicCode = 1,
+  publicCode?: number,
 ) {
   return await t.run(async (ctx) => {
     const now = Date.now();
     const userId = await ctx.db.insert("users", {
       tokenIdentifier: organizerIdentity.tokenIdentifier,
-      publicCode,
+      publicCode: publicCode ?? (await nextUserPublicCode(ctx, now)),
       email: organizerIdentity.email,
       name: organizerIdentity.name,
       updatedAt: now,
@@ -213,12 +216,7 @@ export async function seedTournamentWithPlayers(
     tiebreak = "ascending",
     playerNames,
   } = options;
-  const organizerPublicCode = await rawSeed(
-    t,
-    "seedOrganizer writes the organizer's user row directly, so its code is reserved in the allocator registerSelf numbers player accounts from",
-    async (ctx) => await nextUserPublicCode(ctx),
-  );
-  const { organizationId } = await seedOrganizer(t, organizerPublicCode);
+  const { organizationId } = await seedOrganizer(t);
   const organizer = t.withIdentity(organizerIdentity);
   const tournamentId: Id<"tournaments"> = await organizer.mutation(
     api.tournaments.lifecycle.createTournamentWithPhases,
