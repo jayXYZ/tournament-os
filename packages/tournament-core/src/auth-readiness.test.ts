@@ -11,8 +11,19 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("convex/react", () => mocks);
 
-import { useAuthedQueryArgs, useConvexAuthReadiness } from "./auth-readiness";
-import { useMyDecklist, useMyRegistration, useMyTournaments } from "./hooks";
+import {
+  useAuthedQueryArgs,
+  useConvexAuthReadiness,
+  viewerAuthGate,
+} from "./auth-readiness";
+import {
+  useMyBadge,
+  useMyBadgeRefundFlag,
+  useMyDecklist,
+  useMyRefundFlag,
+  useMyRegistration,
+  useMyTournaments,
+} from "./hooks";
 
 // What useConvexAuth reports in each token-lag state. Clerk-loading and
 // Clerk-signed-in-with-Convex-still-validating are indistinguishable to
@@ -26,6 +37,7 @@ const authStates = {
 } as const;
 
 const tournamentId = "t1" as Id<"tournaments">;
+const conventionId = "c1" as Id<"conventions">;
 
 beforeEach(() => {
   mocks.useConvexAuth.mockReset();
@@ -62,6 +74,26 @@ describe("useAuthedQueryArgs", () => {
   it("still skips when the caller's own preconditions are unmet", () => {
     mocks.useConvexAuth.mockReturnValue(authStates.bothReady);
     expect(useAuthedQueryArgs(null)).toBe("skip");
+  });
+});
+
+describe("viewerAuthGate", () => {
+  const user = {};
+  it.each([
+    // Nothing is trustworthy until both the provider and Convex settle.
+    [{ user: null, loading: true }, "pending", "pending"],
+    [{ user, loading: true }, "ready", "pending"],
+    [{ user, loading: false }, "pending", "pending"],
+    [{ user: null, loading: false }, "pending", "pending"],
+    [{ user: null, loading: false }, "unauthenticated", "signedOut"],
+    // The provider has a user but Convex rejected the token: authed queries
+    // would skip forever, so offer sign-in rather than mount the surface.
+    [{ user, loading: false }, "unauthenticated", "signedOut"],
+    // Signing out: the provider dropped the user before Convex caught up.
+    [{ user: null, loading: false }, "ready", "signedOut"],
+    [{ user, loading: false }, "ready", "ready"],
+  ] as const)("%o with Convex %s → %s", (appAuth, readiness, gate) => {
+    expect(viewerAuthGate(appAuth, readiness)).toBe(gate);
   });
 });
 
@@ -122,5 +154,49 @@ describe("identity query hooks", () => {
       name: "tournaments/decklists:getMyDecklist",
       args: { tournamentId },
     });
+  });
+
+  it.each([
+    [
+      "useMyBadge",
+      () => useMyBadge(conventionId),
+      "conventions/registrations:getMyBadge",
+      { conventionId },
+    ],
+    [
+      "useMyRefundFlag",
+      () => useMyRefundFlag(tournamentId),
+      "payments/queries:getMyRefundFlag",
+      { tournamentId },
+    ],
+    [
+      "useMyBadgeRefundFlag",
+      () => useMyBadgeRefundFlag(conventionId),
+      "payments/queries:getMyBadgeRefundFlag",
+      { conventionId },
+    ],
+  ] as const)(
+    "%s waits for auth, then subscribes",
+    (_name, hook, name, args) => {
+      mocks.useConvexAuth.mockReturnValue(
+        authStates.clerkSignedInConvexPending,
+      );
+      expect(hook()).toBeUndefined();
+      expect(lastQueryCall()).toEqual({ name, args: "skip" });
+
+      mocks.useConvexAuth.mockReturnValue(authStates.bothReady);
+      hook();
+      expect(lastQueryCall()).toEqual({ name, args });
+    },
+  );
+
+  it.each([
+    ["useMyBadge", () => useMyBadge(null)],
+    ["useMyRefundFlag", () => useMyRefundFlag(null)],
+    ["useMyBadgeRefundFlag", () => useMyBadgeRefundFlag(null)],
+  ] as const)("%s skips without an id even when ready", (_name, hook) => {
+    mocks.useConvexAuth.mockReturnValue(authStates.bothReady);
+    hook();
+    expect(lastQueryCall().args).toBe("skip");
   });
 });

@@ -1,15 +1,27 @@
 export {
   useDropSelf,
   useLatestStandings,
+  useMyBadge,
+  useMyBadgeRefundFlag,
   useMyCurrentMatch,
   useMyDecklist,
   useMyMatchHistory,
+  useMyRefundFlag,
   useMyRegistration,
   useMyTournaments,
   useReportResult,
 } from "./hooks";
-export { useAuthedQueryArgs, useConvexAuthReadiness } from "./auth-readiness";
-export type { ConvexAuthReadiness } from "./auth-readiness";
+export {
+  useAuthedQueryArgs,
+  useConvexAuthReadiness,
+  useViewerAuthGate,
+  viewerAuthGate,
+} from "./auth-readiness";
+export type {
+  AppAuthSnapshot,
+  ConvexAuthReadiness,
+  ViewerAuthGate,
+} from "./auth-readiness";
 export {
   displayPlayerName,
   formatGameScoreline,
@@ -21,7 +33,6 @@ export {
 export { mutationErrorMessage } from "./mutation-error";
 export { usePlayerTournamentAccess } from "./player-access";
 export type {
-  AppAuthSnapshot,
   PlayerRegistration,
   PlayerTournamentAccess,
   PlayerTournamentEvent,

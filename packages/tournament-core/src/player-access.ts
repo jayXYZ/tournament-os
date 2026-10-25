@@ -4,6 +4,7 @@ import type { FunctionReturnType } from "convex/server";
 import { api } from "@paper-pairings/backend/convex/_generated/api";
 
 import { useConvexAuthReadiness } from "./auth-readiness";
+import type { AppAuthSnapshot } from "./auth-readiness";
 import { useMyRegistration } from "./hooks";
 
 export type PlayerTournamentEvent = NonNullable<
@@ -12,14 +13,6 @@ export type PlayerTournamentEvent = NonNullable<
 export type PlayerRegistration = NonNullable<
   FunctionReturnType<typeof api.tournaments.registrations.getMyRegistration>
 >;
-
-// The identity signal each app supplies from its own auth provider — Clerk
-// web on /play and /decklist, Clerk Expo on the native tournament screen.
-// Only nullness is consulted; `loading` is the provider still resolving.
-export type AppAuthSnapshot = {
-  user: object | null;
-  loading: boolean;
-};
 
 export type PlayerTournamentAccess =
   // Something is still unresolved. `event` is null while the event lookup

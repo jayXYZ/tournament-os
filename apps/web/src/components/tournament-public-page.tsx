@@ -1,6 +1,11 @@
 import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
-import { mutationErrorMessage, useMyRegistration } from '@paper-pairings/core'
+import {
+  mutationErrorMessage,
+  useMyRefundFlag,
+  useMyRegistration,
+  useViewerAuthGate,
+} from '@paper-pairings/core'
 import { useAction, useMutation, useQuery } from 'convex/react'
 import { Building2, CalendarDays, LogIn, Swords, Users } from 'lucide-react'
 import { toast } from 'sonner'
@@ -19,8 +24,7 @@ import {
   formatTournamentDateLong,
 } from '@/components/tournaments'
 import { useBusyAction } from '@/hooks/use-busy-action'
-import { useClientClock } from '@/hooks/use-client-clock'
-import { useStableQuery } from '@/hooks/use-stable-query'
+import { useMyEntryOrder } from '@/hooks/use-my-order'
 import { useAppAuth } from '@/lib/use-app-auth'
 
 import { Badge } from '@/components/ui/badge'
@@ -273,8 +277,10 @@ function RegistrationPanel({
   badgeGate: BadgeGate
 }) {
   const { user, loading, refreshAuth } = useAppAuth()
+  const viewer = useViewerAuthGate({ user, loading })
   // Held at `undefined` until Convex auth settles (see useMyRegistration), so
   // an already-registered player never sees a flash of the register button.
+  // The order and refund flag wait the same way.
   const registration = useMyRegistration(tournament._id)
   const registerSelf = useMutation(api.tournaments.registrations.registerSelf)
   const cancelRegistration = useMutation(
@@ -288,17 +294,8 @@ function RegistrationPanel({
     api.payments.queries.getFeePreview,
     isPaid ? { entryFeeCents: tournament.entryFeeCents! } : 'skip',
   )
-  // The cancel outcome reads as a promise, so its clock never runs behind
-  // the server's (see useClientClock's `round`).
-  const now = useClientClock({ round: 'up' })
-  const myOrder = useStableQuery(
-    api.payments.queries.getMyEntryOrder,
-    isPaid && user ? { tournamentId: tournament._id, now } : 'skip',
-  )
-  const refundFlag = useQuery(
-    api.payments.queries.getMyRefundFlag,
-    isPaid && user ? { tournamentId: tournament._id } : 'skip',
-  )
+  const myOrder = useMyEntryOrder(isPaid ? tournament._id : null)
+  const refundFlag = useMyRefundFlag(isPaid ? tournament._id : null)
   const { busy, run } = useBusyAction()
   // Checkout leaves the page for Stripe, so its pending flag deliberately
   // stays set through the redirect (useBusyAction's run would clear it).
@@ -413,11 +410,11 @@ function RegistrationPanel({
     </>
   )
 
-  if (loading) {
+  if (viewer === 'pending') {
     return checkingButton
   }
 
-  if (!user) {
+  if (viewer === 'signedOut') {
     if (tournament.lifecycle !== 'registration') {
       return closedNote
     }

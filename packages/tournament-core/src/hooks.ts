@@ -63,6 +63,31 @@ export function useMyDecklist(tournamentId: Id<"tournaments"> | null) {
   );
 }
 
+// Like useMyRegistration, a `null` badge means the server found no badge row.
+export function useMyBadge(conventionId: Id<"conventions"> | null) {
+  return useQuery(
+    api.conventions.registrations.getMyBadge,
+    useAuthedQueryArgs(conventionId ? { conventionId } : null),
+  );
+}
+
+// An unauthenticated read answers `repeatDropFeesKept: false`, which would
+// hide the repeat-refund warning from a player it applies to, so these wait
+// for auth like the rest.
+export function useMyRefundFlag(tournamentId: Id<"tournaments"> | null) {
+  return useQuery(
+    api.payments.queries.getMyRefundFlag,
+    useTournamentQueryArgs(tournamentId),
+  );
+}
+
+export function useMyBadgeRefundFlag(conventionId: Id<"conventions"> | null) {
+  return useQuery(
+    api.payments.queries.getMyBadgeRefundFlag,
+    useAuthedQueryArgs(conventionId ? { conventionId } : null),
+  );
+}
+
 export function useReportResult() {
   return useMutation(api.tournaments.player.reportMyMatchResult);
 }

@@ -1,5 +1,10 @@
 import { useState } from 'react'
-import { mutationErrorMessage } from '@paper-pairings/core'
+import {
+  mutationErrorMessage,
+  useMyBadge,
+  useMyBadgeRefundFlag,
+  useViewerAuthGate,
+} from '@paper-pairings/core'
 import {
   useAction,
   useMutation,
@@ -28,6 +33,7 @@ import {
 } from '@/components/tournaments'
 import { useBusyAction } from '@/hooks/use-busy-action'
 import { useClientClock } from '@/hooks/use-client-clock'
+import { useMyBadgeOrder } from '@/hooks/use-my-order'
 import { useStableQuery } from '@/hooks/use-stable-query'
 import { useAppAuth } from '@/lib/use-app-auth'
 import { Badge } from '@/components/ui/badge'
@@ -204,27 +210,19 @@ function BadgePanel({
   badgesLeft: number
 }) {
   const { user, loading, refreshAuth } = useAppAuth()
+  const viewer = useViewerAuthGate({ user, loading })
   const now = useClientClock()
-  // The cancel outcome reads as a promise, so its clock never runs behind
-  // the server's (see useClientClock's `round`).
-  const orderNow = useClientClock({ round: 'up' })
-  const badge = useQuery(
-    api.conventions.registrations.getMyBadge,
-    user ? { conventionId: convention._id } : 'skip',
-  )
+  // The badge, order, and refund flag stay `undefined` until Convex has
+  // validated the viewer's token, so a registered player never sees a flash
+  // of the register buttons.
+  const badge = useMyBadge(convention._id)
   const ticketTypes = useStableQuery(
     api.conventions.ticketTypes.listPublicTicketTypes,
     { conventionId: convention._id, now },
   )
   const cancelBadge = useMutation(api.conventions.registrations.cancelMyBadge)
-  const myOrder = useStableQuery(
-    api.payments.queries.getMyBadgeOrder,
-    user ? { conventionId: convention._id, now: orderNow } : 'skip',
-  )
-  const refundFlag = useQuery(
-    api.payments.queries.getMyBadgeRefundFlag,
-    user ? { conventionId: convention._id } : 'skip',
-  )
+  const myOrder = useMyBadgeOrder(convention._id)
+  const refundFlag = useMyBadgeRefundFlag(convention._id)
   const createBadgeCheckout = useAction(
     api.payments.checkout.createBadgeCheckout,
   )
@@ -279,11 +277,11 @@ function BadgePanel({
       null)
     : null
 
-  if (loading) {
+  if (viewer === 'pending') {
     return checkingButton
   }
 
-  if (!user) {
+  if (viewer === 'signedOut') {
     if (!registrationOpen) {
       return closedNote
     }

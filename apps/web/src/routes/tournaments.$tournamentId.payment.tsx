@@ -9,12 +9,12 @@ import type { PaymentReturnCopy } from '@/components/shared/payment-return'
 import {
   PaymentOutcomeCard,
   PaymentPendingCard,
+  PaymentReturnAuthGate,
   PaymentReturnOutcome,
   paymentReturnSearch,
 } from '@/components/shared/payment-return'
 import { SiteShell, SiteShellBackLink } from '@/components/shared/site-shell'
-import { useClientClock } from '@/hooks/use-client-clock'
-import { useStableQuery } from '@/hooks/use-stable-query'
+import { useMyEntryOrder } from '@/hooks/use-my-order'
 
 // Stripe Checkout return page for tournament entry fees. The status dispatch
 // and outcome UI live in components/shared/payment-return.tsx; this route
@@ -56,7 +56,9 @@ function RouteComponent() {
         </SiteShellBackLink>
       }
     >
-      <PaymentOutcome publicCode={publicCode} />
+      <PaymentReturnAuthGate>
+        <PaymentOutcome publicCode={publicCode} />
+      </PaymentReturnAuthGate>
     </SiteShell>
   )
 }
@@ -96,13 +98,7 @@ function OrderOutcome({
   tournamentId: Id<'tournaments'>
   backLink: ReactNode
 }) {
-  // The cancel outcome reads as a promise, so its clock never runs behind
-  // the server's (see useClientClock's `round`).
-  const now = useClientClock({ round: 'up' })
-  const order = useStableQuery(api.payments.queries.getMyEntryOrder, {
-    tournamentId,
-    now,
-  })
+  const order = useMyEntryOrder(tournamentId)
   const registration = useMyRegistration(tournamentId)
 
   return (

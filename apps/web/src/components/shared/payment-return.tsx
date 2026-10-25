@@ -1,6 +1,8 @@
-import { BadgeCheck, Clock, ReceiptText } from 'lucide-react'
+import { useViewerAuthGate } from '@paper-pairings/core'
+import { BadgeCheck, Clock, LogIn, ReceiptText } from 'lucide-react'
 import type { ReactNode } from 'react'
 import type { Doc } from '@paper-pairings/backend/convex/_generated/dataModel'
+import { useAppAuth } from '@/lib/use-app-auth'
 import { Button } from '@/components/ui/button'
 import {
   Empty,
@@ -79,6 +81,46 @@ export function PaymentPendingCard({
       </EmptyHeader>
     </Empty>
   )
+}
+
+export function PaymentSignInCard({ onSignIn }: { onSignIn: () => void }) {
+  return (
+    <Empty className="min-h-80 border bg-card">
+      <EmptyHeader>
+        <EmptyMedia variant="icon">
+          <LogIn aria-hidden="true" />
+        </EmptyMedia>
+        <EmptyTitle>Sign in to view your payment</EmptyTitle>
+        <EmptyDescription>
+          Use the account you paid with to see your order.
+        </EmptyDescription>
+      </EmptyHeader>
+      <Button type="button" onClick={onSignIn}>
+        Sign in
+      </Button>
+    </Empty>
+  )
+}
+
+// The order and entry are looked up by the signed-in viewer, so the page
+// mounts them only once Convex has validated that viewer (see
+// viewerAuthGate). A signed-out visitor, or one whose token Convex rejected,
+// gets the sign-in card instead of a spinner that would never resolve.
+export function PaymentReturnAuthGate({ children }: { children: ReactNode }) {
+  const { user, loading, refreshAuth } = useAppAuth()
+  const viewer = useViewerAuthGate({ user, loading })
+
+  if (viewer === 'pending') {
+    return <PaymentPendingCard title="Checking your account" />
+  }
+  if (viewer === 'signedOut') {
+    return (
+      <PaymentSignInCard
+        onSignIn={() => void refreshAuth({ ensureSignedIn: true })}
+      />
+    )
+  }
+  return children
 }
 
 export function PaymentOutcomeCard({
