@@ -253,17 +253,25 @@ export async function seedTournamentWithPlayers(
 // for a tournament open for registration, exactly as a signed-in player
 // does: registerSelf creates the account, participant, and stamped row,
 // takes the seat, and logs player_registered. Options as for
-// seedTournamentWithPlayers; tiebreak defaults to "ascending".
+// seedTournamentWithPlayers; tiebreak defaults to "ascending", and a
+// function supplies each player's value from their number instead (called
+// in player order, so a seeded generator stays reproducible).
 export async function registerPlayers(
   t: TestConvex<typeof schema>,
   tournamentId: Id<"tournaments">,
   playerCount: number,
   options: {
-    tiebreak?: "ascending" | "descending";
+    tiebreak?: "ascending" | "descending" | ((playerNumber: number) => number);
     playerNames?: string[];
   } = {},
 ): Promise<Id<"tournamentRegistrations">[]> {
   const { tiebreak = "ascending", playerNames } = options;
+  const tiebreakFor =
+    typeof tiebreak === "function"
+      ? tiebreak
+      : tiebreak === "descending"
+        ? (playerNumber: number) => 100_000 - playerNumber
+        : (playerNumber: number) => playerNumber;
   const registrationIds: Id<"tournamentRegistrations">[] = [];
   for (let playerNumber = 1; playerNumber <= playerCount; playerNumber += 1) {
     const identity = playerIdentity(playerNumber);
@@ -279,13 +287,11 @@ export async function registerPlayers(
   }
   await rawSeed(
     t,
-    "registerSelf hashes the tournament seed with each player's code into tiebreakRandom; the scenario pins it so equal records rank in player-number order",
+    "registerSelf hashes the tournament seed with each player's code into tiebreakRandom; the scenario pins it so equal records rank in a chosen order",
     async (ctx) => {
       for (const [index, registrationId] of registrationIds.entries()) {
-        const playerNumber = index + 1;
         await ctx.db.patch(registrationId, {
-          tiebreakRandom:
-            tiebreak === "descending" ? 100_000 - playerNumber : playerNumber,
+          tiebreakRandom: tiebreakFor(index + 1),
         });
       }
     },

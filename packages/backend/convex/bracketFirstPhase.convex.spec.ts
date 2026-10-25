@@ -11,8 +11,8 @@ import { expect, test } from "vitest";
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import {
-  insertLinkedParticipant,
   organizerIdentity,
+  registerPlayers,
   seedOrganizer,
 } from "./specHelpers";
 import { createConvexTest } from "./specHelpers.runtime";
@@ -63,6 +63,7 @@ test("a bracket-only tournament runs from seeded draw to completion", async () =
   await authed.mutation(api.tournaments.lifecycle.publishTournament, {
     tournamentId,
   });
+  await registerPlayers(t, tournamentId, 6);
   await authed.mutation(api.tournaments.rounds.startTournament, {
     tournamentId,
   });
@@ -153,6 +154,7 @@ test("rewinding a bracket-only round 1 reopens registration and re-pairs the sam
   await authed.mutation(api.tournaments.lifecycle.publishTournament, {
     tournamentId,
   });
+  await registerPlayers(t, tournamentId, 6);
   await authed.mutation(api.tournaments.rounds.startTournament, {
     tournamentId,
   });
@@ -186,6 +188,7 @@ test("a two-player bracket-only tournament plays a single Finals round", async (
   await authed.mutation(api.tournaments.lifecycle.publishTournament, {
     tournamentId,
   });
+  await registerPlayers(t, tournamentId, 2);
   await authed.mutation(api.tournaments.rounds.startTournament, {
     tournamentId,
   });
@@ -220,6 +223,8 @@ test("a two-player bracket-only tournament plays a single Finals round", async (
 // phase) with auto-published pairings and `playerCount` seeded players whose
 // tiebreakRandom is their player number — so the pre-play seed order is the
 // player numbers descending.
+// A bracket-only tournament still in setup, sized for playerCount; its tests
+// publish it and seat the field with registerPlayers.
 async function createBracketOnlyTournament(
   t: ReturnType<typeof createConvexTest>,
   playerCount: number,
@@ -246,37 +251,6 @@ async function createBracketOnlyTournament(
   await authed.mutation(api.tournaments.lifecycle.updatePairingsAutoPublish, {
     tournamentId,
     autoPublishPairings: true,
-  });
-  await t.run(async (ctx) => {
-    const now = Date.now();
-    const tournament = await ctx.db.get(tournamentId);
-    if (!tournament) {
-      throw new Error("Tournament not found in test setup");
-    }
-    for (let playerNumber = 1; playerNumber <= playerCount; playerNumber += 1) {
-      const userId = await ctx.db.insert("users", {
-        tokenIdentifier: `player:${playerNumber}`,
-        publicCode: playerNumber,
-        email: `player${playerNumber}@example.test`,
-        name: `Player ${playerNumber}`,
-        updatedAt: now,
-      });
-      const participant0Id = await insertLinkedParticipant(ctx, userId);
-      await ctx.db.insert("tournamentRegistrations", {
-        tournamentId,
-        participantId: participant0Id,
-        tournamentStartDate: tournament.startDate,
-        entryStatus: "confirmed",
-        participationStatus: "active",
-        createdAt: now + playerNumber,
-        tiebreakRandom: playerNumber,
-        updatedAt: now,
-      });
-    }
-    await ctx.db.patch(tournamentId, {
-      confirmedRegistrationCount:
-        tournament.confirmedRegistrationCount + playerCount,
-    });
   });
   return { authed, tournamentId };
 }
