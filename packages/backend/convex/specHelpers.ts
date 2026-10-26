@@ -121,11 +121,14 @@ export async function seedOrganizer(
   });
 }
 
-// Publishes the current round's pairings (a no-op once they are out), records
-// a sweep at the phase's best-of for the listed player one in every open
-// two-player match, and completes the round. Byes and results already on the
-// board (a drop concession, a report) stand. Returns the round and each
-// match's unordered registration-id pair for rematch assertions.
+// Records a sweep at the phase's best-of for the listed player one in every
+// open two-player match of the current round, then completes the round. Byes
+// and results already on the board (a drop concession, a report) stand. The
+// organizer records against unpublished pairings, and completeRound publishes
+// a held round as part of the record, so no explicit publication happens
+// here: suites that audit the publication seam see only what the lifecycle
+// writes. Returns the round and each match's unordered registration-id pair
+// for rematch assertions.
 export async function playOutCurrentRound(
   t: TestConvex<typeof schema>,
   tournamentId: Id<"tournaments">,
@@ -137,9 +140,6 @@ export async function playOutCurrentRound(
   if (!round) {
     throw new Error("No current round to play out");
   }
-  await organizer.mutation(api.tournaments.rounds.publishPairings, {
-    roundId: round._id,
-  });
   const { phases } = await organizer.query(
     api.tournaments.lifecycle.getTournamentSetup,
     { tournamentId },

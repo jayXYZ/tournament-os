@@ -18,10 +18,12 @@ cannot drift from write policy:
   from production writes, so audit-journal expectations include the seeded
   registrations. Seat a field after publication: registrations exist only
   once an event is open.
-- `playOutCurrentRound` is the only definition. It publishes the round's
-  pairings (a no-op once they are out), sweeps every open two-player match at
-  the phase's best-of, leaves byes and results already on the board, completes
-  the round, and returns `{ round, pairKeys }` for rematch assertions.
+- `playOutCurrentRound` is the only definition. It sweeps every open
+  two-player match at the phase's best-of, leaves byes and results already on
+  the board, completes the round, and returns `{ round, pairKeys }` for
+  rematch assertions. It never publishes pairings itself: the organizer
+  records against held pairings and `completeRound` publishes them as part of
+  the record, so the publication audit seam sees only lifecycle writes.
 
 ## `rawSeed` is the labeled escape hatch
 

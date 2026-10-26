@@ -383,7 +383,6 @@ describe("pairings publication", () => {
       name: "Publication Audit",
       playerCount: 4,
       autoPublishPairings: false,
-      playerNames: true,
     });
     const organizer = t.withIdentity(organizerIdentity);
     const roundId = await organizer.mutation(
@@ -435,7 +434,6 @@ describe("pairings publication", () => {
         name: "Implicit Publication Audit",
         playerCount: 4,
         autoPublishPairings,
-        playerNames: true,
       });
       await t
         .withIdentity(organizerIdentity)
