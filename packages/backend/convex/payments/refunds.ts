@@ -21,6 +21,10 @@ import type { AuditActorRole, PaidEntryAuditEvent } from "../model/auditLog";
 import { paymentRefundStatusValidator } from "../validators";
 import { logEntryPaymentAudit } from "../model/auditLog";
 import {
+  registrationForOrder,
+  withdrawPendingEntry,
+} from "../model/paidEvents";
+import {
   moneyRowOwnerArgs,
   moneyRowOwnerColumns,
   ownerOrdersQuery,
@@ -220,8 +224,28 @@ const SWEEP_BATCH = 32;
 
 // Closes every open (unpaid) order for an event — scheduled when it starts
 // (unpaid approvals lapse; they never seat) and as the first stage of the
-// cancellation sweep. Terminates because closed orders leave the queried
-// status ranges.
+// cancellation and completion sweeps. Terminates because closed orders
+// leave the queried status ranges.
+//
+// The entry awaiting each closed order lapses with it. A pending row without
+// the review flag is pending only for its payment (schema.ts
+// tournamentRegistrations.awaitingReview), and the event has left
+// registration, so nothing can ever seat it: left alone it would read as
+// "pending" forever — not review work, not payable, never cleared. The
+// sweep therefore withdraws it the way the webhook's session expiry does
+// (payments/webhooks.ts closeUnpaidSession), with the same audit line. That
+// expiry keeps a post-approval row payable because the approval still
+// stands on an open event; here the order closes for good, so an approved
+// row lapses too. An undecided application has no order and is never
+// visited, so the review queue is untouched. A payment that still lands on
+// a closed order is a late success and refunds (handleCheckoutCompleted),
+// never reseating the withdrawn row.
+//
+// The audit line is only written for an order with a live session, because
+// the clients render it as "checkout expired unpaid": a requires_payment
+// order never opened Checkout (or the webhook already logged the expiry
+// when it reset the order), so logging it there would fabricate or repeat
+// the event. The withdrawal itself still applies to both.
 export const closeOpenOrdersSweep = internalMutation({
   args: moneyRowOwnerArgs,
   handler: async (ctx, args) => {
@@ -233,9 +257,10 @@ export const closeOpenOrdersSweep = internalMutation({
       );
       sawFullPage ||= orders.length === SWEEP_BATCH;
       for (const order of orders) {
+        const now = Date.now();
         await patchOrder(ctx, order, {
           status: "canceled",
-          updatedAt: Date.now(),
+          updatedAt: now,
         });
         if (order.stripeCheckoutSessionId) {
           await ctx.scheduler.runAfter(
@@ -243,6 +268,18 @@ export const closeOpenOrdersSweep = internalMutation({
             internal.payments.checkout.expireAbandonedSession,
             { sessionId: order.stripeCheckoutSessionId },
           );
+        }
+        const entry = await registrationForOrder(ctx, order);
+        if (entry) {
+          await withdrawPendingEntry(ctx, entry, now);
+          if (order.stripeCheckoutSessionId) {
+            await logEntryPaymentAudit(ctx, {
+              owner: order,
+              registration: entry.registration,
+              actorRole: "system",
+              event: { type: "payment_expired" },
+            });
+          }
         }
       }
     }

@@ -72,6 +72,7 @@ type RegistrationStateUpdate =
 
 type RegistrationStateArgs = RegistrationStateUpdate & {
   playerName?: string;
+  organizerLabel?: string;
   tournamentStartDate?: number;
   updatedAt?: number;
 };

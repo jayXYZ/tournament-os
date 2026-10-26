@@ -85,6 +85,7 @@ function playerIdentity(n: number) {
 async function seedPaidTournament(
   t: TestConvex<typeof schema>,
   organizationId: Id<"organizations">,
+  overrides?: { requiresApproval?: boolean },
 ) {
   const asOwner = t.withIdentity(organizerIdentity);
   await t.run(async (ctx) => {
@@ -121,6 +122,7 @@ async function seedPaidTournament(
   await asOwner.mutation(api.tournaments.lifecycle.updateTournamentSetup, {
     tournamentId,
     entryFeeCents: 2000,
+    registrationRequiresApproval: overrides?.requiresApproval ?? false,
   });
   await asOwner.mutation(api.tournaments.lifecycle.publishTournament, {
     tournamentId,
@@ -194,6 +196,65 @@ async function orderById(
   return await t.run(async (ctx) => (await ctx.db.get(orderId))!);
 }
 
+// The entry row an order pays for — what the sweep must settle alongside
+// the order itself.
+async function registrationForOrder(
+  t: TestConvex<typeof schema>,
+  orderId: Id<"paymentOrders">,
+): Promise<Doc<"tournamentRegistrations">> {
+  return await t.run(async (ctx) => {
+    const order = (await ctx.db.get(orderId))!;
+    return (await ctx.db.get(
+      order.registrationId as Id<"tournamentRegistrations">,
+    ))!;
+  });
+}
+
+// Approval mode's free application (registerSelf files the pending row with
+// awaitingReview set; no order exists until the organizer approves).
+async function applyAsPlayer(
+  t: TestConvex<typeof schema>,
+  tournamentId: Id<"tournaments">,
+  n: number,
+) {
+  await ensurePlayer(t, n);
+  return await t
+    .withIdentity(playerIdentity(n))
+    .mutation(api.tournaments.registrations.registerSelf, { tournamentId });
+}
+
+async function paymentAuditEvents(
+  t: TestConvex<typeof schema>,
+  tournamentId: Id<"tournaments">,
+  registrationId: Id<"tournamentRegistrations">,
+) {
+  return await t.run(async (ctx) =>
+    (
+      await ctx.db
+        .query("tournamentAuditEvents")
+        .withIndex("by_tournamentId", (q) => q.eq("tournamentId", tournamentId))
+        .take(128)
+    )
+      .map((row) => row.event)
+      .filter(
+        (event) =>
+          "player" in event && event.player.registrationId === registrationId,
+      )
+      .map((event) => event.type),
+  );
+}
+
+async function countAuditEvents(
+  t: TestConvex<typeof schema>,
+  tournamentId: Id<"tournaments">,
+  registrationId: Id<"tournamentRegistrations">,
+  type: Doc<"tournamentAuditEvents">["event"]["type"],
+) {
+  return (await paymentAuditEvents(t, tournamentId, registrationId)).filter(
+    (eventType) => eventType === type,
+  ).length;
+}
+
 async function drainScheduler(t: TestConvex<typeof schema>) {
   await t.finishAllScheduledFunctions(vi.runAllTimers);
 }
@@ -229,9 +290,14 @@ test("cancelling a paid tournament refunds everyone, including a repeat-dropper'
     .mutation(api.tournaments.lifecycle.cancelTournament, { tournamentId });
   await drainScheduler(t);
 
-  // The open checkout closed and its session expired.
+  // The open checkout closed and its session expired, and the direct row it
+  // was paying for is withdrawn rather than left pending on a cancelled
+  // event (it never had a review step for anyone to clear it).
   expect((await orderById(t, openOrder._id)).status).toBe("canceled");
   expect(gatewayState.expired).toContain(openOrder.stripeCheckoutSessionId);
+  expect((await registrationForOrder(t, openOrder._id)).entryStatus).toBe(
+    "cancelled",
+  );
   // The paid order refunded in full.
   expect((await orderById(t, paidOrderId)).status).toBe("refunded");
   // The repeat-dropper got the withheld fees (2194 − 2000) back too.
@@ -341,6 +407,137 @@ test("starting a paid tournament lapses open checkouts without touching paid sea
   expect(gatewayState.expired).toContain(openOrder.stripeCheckoutSessionId);
   expect((await orderById(t, paidOne)).status).toBe("paid");
   expect((await orderById(t, paidTwo)).status).toBe("paid");
+
+  // The direct row behind the lapsed checkout is withdrawn (a pending row
+  // without a live order is a stranded state: not review work, not payable,
+  // and "pending" forever on a started event), the same way the webhook's
+  // session expiry withdraws it — with the matching audit line. Paid seats
+  // are untouched.
+  const lapsed = await registrationForOrder(t, openOrder._id);
+  expect(lapsed.entryStatus).toBe("cancelled");
+  expect(lapsed.paymentStatus).toBe("canceled");
+  expect(await paymentAuditEvents(t, tournamentId, lapsed._id)).toContain(
+    "payment_expired",
+  );
+  expect((await registrationForOrder(t, paidOne)).entryStatus).toBe(
+    "confirmed",
+  );
+  expect((await registrationForOrder(t, paidTwo)).entryStatus).toBe(
+    "confirmed",
+  );
+});
+
+test("starting an approval-mode tournament lapses an approved-but-unpaid entry and leaves undecided applications in the queue", async () => {
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const tournamentId = await seedPaidTournament(t, organizationId, {
+    requiresApproval: true,
+  });
+  const asOwner = t.withIdentity(organizerIdentity);
+
+  // Players 1 and 2: applied, approved, paid — the seated field.
+  for (const n of [1, 2]) {
+    const registrationId = await applyAsPlayer(t, tournamentId, n);
+    await asOwner.mutation(api.tournaments.registrations.approveRegistration, {
+      registrationId,
+    });
+    await payAsPlayer(t, tournamentId, n);
+  }
+  // Player 3: approved, checkout open, never pays.
+  const approvedId = await applyAsPlayer(t, tournamentId, 3);
+  await asOwner.mutation(api.tournaments.registrations.approveRegistration, {
+    registrationId: approvedId,
+  });
+  const openOrder = await beginCheckout(t, tournamentId, 3);
+  expect(openOrder).toMatchObject({
+    purpose: "post_approval",
+    registrationId: approvedId,
+  });
+  // Player 4: applied, never decided.
+  const undecidedId = await applyAsPlayer(t, tournamentId, 4);
+  // Player 5: approved, never opened Checkout (order requires_payment, no
+  // session).
+  const neverOpenedId = await applyAsPlayer(t, tournamentId, 5);
+  await asOwner.mutation(api.tournaments.registrations.approveRegistration, {
+    registrationId: neverOpenedId,
+  });
+  // Player 6: approved, opened Checkout, and let it expire before the
+  // start — the webhook already logged that expiry and reset the order to
+  // requires_payment without a session.
+  const expiredEarlierId = await applyAsPlayer(t, tournamentId, 6);
+  await asOwner.mutation(api.tournaments.registrations.approveRegistration, {
+    registrationId: expiredEarlierId,
+  });
+  const expiredEarlierOrder = await beginCheckout(t, tournamentId, 6);
+  await t.mutation(internal.payments.webhooks.handleCheckoutExpired, {
+    stripeEventId: "evt_expired_earlier",
+    orderId: expiredEarlierOrder._id,
+    sessionId: expiredEarlierOrder.stripeCheckoutSessionId!,
+  });
+  const resetOrder = await orderById(t, expiredEarlierOrder._id);
+  expect(resetOrder.status).toBe("requires_payment");
+  expect(resetOrder.stripeCheckoutSessionId).toBeUndefined();
+  expect(
+    await countAuditEvents(
+      t,
+      tournamentId,
+      expiredEarlierId,
+      "payment_expired",
+    ),
+  ).toBe(1);
+
+  await asOwner.mutation(api.tournaments.rounds.startTournament, {
+    tournamentId,
+  });
+  await drainScheduler(t);
+
+  // The approval lapsed: its order closed for good (unlike a session
+  // expiry, which keeps the approval payable), so the row is withdrawn
+  // rather than left "pending" with nothing to pay.
+  expect((await orderById(t, openOrder._id)).status).toBe("canceled");
+  const lapsed = await t.run(async (ctx) => (await ctx.db.get(approvedId))!);
+  expect(lapsed.entryStatus).toBe("cancelled");
+  expect(lapsed.awaitingReview).toBeUndefined();
+  expect(await paymentAuditEvents(t, tournamentId, approvedId)).toContain(
+    "payment_expired",
+  );
+
+  // Approvals with no live session lapse the same way, but without a
+  // "checkout expired" line: one never opened Checkout, and the other's
+  // expiry was already logged by the webhook.
+  for (const [registrationId, orderId] of [
+    [neverOpenedId, null],
+    [expiredEarlierId, expiredEarlierOrder._id],
+  ] as const) {
+    const row = await t.run(async (ctx) => (await ctx.db.get(registrationId))!);
+    expect(row.entryStatus).toBe("cancelled");
+    expect(row.awaitingReview).toBeUndefined();
+    if (orderId) {
+      expect((await orderById(t, orderId)).status).toBe("canceled");
+    }
+  }
+  expect(
+    await countAuditEvents(t, tournamentId, neverOpenedId, "payment_expired"),
+  ).toBe(0);
+  expect(
+    await countAuditEvents(
+      t,
+      tournamentId,
+      expiredEarlierId,
+      "payment_expired",
+    ),
+  ).toBe(1);
+
+  // The undecided application has no order, so the sweep never sees it:
+  // it stays in the review queue exactly as before.
+  const undecided = await t.run(
+    async (ctx) => (await ctx.db.get(undecidedId))!,
+  );
+  expect(undecided).toMatchObject({
+    entryStatus: "pending",
+    awaitingReview: true,
+  });
+  expect(undecided.paymentStatus).toBeUndefined();
 });
 
 test("hard deletion refuses while payments are unsettled and proceeds after the cancel sweep", async () => {

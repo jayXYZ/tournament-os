@@ -6,7 +6,8 @@ import { requireConventionOrganizerAccess } from "../model/conventions";
 import { ORGANIZER_LIST_PAGE_SIZE, clampPageSize } from "../model/pagination";
 
 // The convention's audit trail, newest first. Organizer-only, mirroring
-// tournaments/auditLog.ts.
+// tournaments/auditLog.ts: rows come back as stored, player references
+// already labelled at append time.
 export const listAuditEvents = query({
   args: {
     conventionId: v.id("conventions"),

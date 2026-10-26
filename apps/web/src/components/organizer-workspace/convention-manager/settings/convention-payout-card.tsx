@@ -7,6 +7,8 @@ import {
   PaidEventPayoutCard,
   REFUNDS_NEEDING_ATTENTION_PAGE_SIZE,
 } from '@/components/organizer-workspace/paid-event/payout-card'
+import { useClientClock } from '@/hooks/use-client-clock'
+import { useStableQuery } from '@/hooks/use-stable-query'
 
 const copy: PaidEventPayoutCopy = {
   title: 'Badge fee payout',
@@ -29,9 +31,10 @@ export function ConventionPayoutCard({
       : 'skip',
   )
   // Paid-ness lives on the ticket types now (ADR 0004).
-  const ticketTypes = useQuery(
+  const now = useClientClock()
+  const ticketTypes = useStableQuery(
     api.conventions.ticketTypes.listTicketTypesForOrganizer,
-    { conventionId: convention._id },
+    { conventionId: convention._id, now },
   )
   const isPaid = ticketTypes?.some((t) => t.priceCents > 0) ?? false
   // The two refund lists page on their own, so a processing refund is

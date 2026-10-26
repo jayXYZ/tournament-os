@@ -7,6 +7,7 @@ import type { FunctionArgs } from "convex/server";
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
+import { registrationNameStamp } from "./model/registrations";
 import type schema from "./schema";
 
 // Registrations belong to participants (ADR 0002), so spec seeding that
@@ -136,7 +137,9 @@ type TournamentPhaseInputs = FunctionArgs<
 //     them clear of other manually assigned codes.
 //   - playerNames denormalizes registration.playerName (true = the identity
 //     name; an array supplies custom names, which also become the user names).
-//     Suites that omit it exercise the readers' live-user-lookup fallback.
+//     Suites that omit it exercise the organizer readers' live-identity
+//     fallback; the player standings query shows no name for such rows, as
+//     it does for a production account without one.
 export async function seedTournamentWithPlayers(
   t: TestConvex<typeof schema>,
   options: {
@@ -205,7 +208,7 @@ export async function seedTournamentWithPlayers(
           tournamentStartDate: tournament.startDate,
           entryStatus: "confirmed",
           participationStatus: "active",
-          ...(playerNames ? { playerName } : {}),
+          ...(playerNames ? registrationNameStamp({ name: playerName }) : {}),
           createdAt: now + playerNumber,
           tiebreakRandom:
             tiebreak === "descending" ? 100_000 - playerNumber : playerNumber,

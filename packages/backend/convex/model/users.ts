@@ -3,7 +3,11 @@ import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { requireIdentity } from "../auth";
 import { claimGuestParticipants } from "./participants";
 import { nextPublicCode } from "./publicCodes";
-import { normalizeEmail } from "../validators";
+import {
+  registrationNameStamp,
+  syncRegistrationNameStamps,
+} from "./registrations";
+import { normalizeEmail, presentText } from "../validators";
 
 export const USER_PUBLIC_CODE_COUNTER_KEY = "userPublicCode";
 // Player codes are purely cosmetic and namespaced by their own route/table, so
@@ -40,9 +44,17 @@ export async function userByTokenIdentifier(
 
 export async function upsertUser(
   ctx: MutationCtx,
-  fields: UserIdentityFields,
+  identity: UserIdentityFields,
 ): Promise<Id<"users">> {
   const now = Date.now();
+  // Blank provider strings are stored as absent (presentText), so every
+  // reader's name-then-email fallback — and the re-stamp comparison below —
+  // sees an account with a "" name as nameless.
+  const fields = {
+    ...identity,
+    name: presentText(identity.name),
+    email: presentText(identity.email),
+  };
   const existing = await userByTokenIdentifier(ctx, fields.tokenIdentifier);
   const patch = {
     email: fields.email,
@@ -62,6 +74,24 @@ export async function upsertUser(
         historyVisibility: "public",
         ...patch,
       });
+  // This patch is the only writer of users.name and users.email, so it is
+  // where the name stamps denormalized onto the account's registrations,
+  // badges, and standings rows are kept true (see registrationNameStamp):
+  // a provider that starts supplying a name, or drops one, reaches every
+  // roster and the player standings on the next sign-in. Compared before
+  // the patch so an unchanged sign-in — the common case — writes nothing
+  // beyond the user row.
+  if (
+    existing &&
+    (existing.name !== fields.name || existing.email !== fields.email)
+  ) {
+    await syncRegistrationNameStamps(
+      ctx,
+      userId,
+      registrationNameStamp(fields),
+      now,
+    );
+  }
 
   await acceptPendingInvitations(ctx, {
     userId,

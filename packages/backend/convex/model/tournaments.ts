@@ -55,6 +55,21 @@ export async function requireRound(
   return round;
 }
 
+// The round a caller names alongside a tournament, verified to belong to
+// it — a foreign round id must never be acted on under this tournament's
+// authorization.
+export async function requireRoundForTournament(
+  ctx: QueryCtx,
+  tournament: Doc<"tournaments">,
+  roundId: Id<"tournamentRounds">,
+) {
+  const round = await requireRound(ctx, roundId);
+  if (round.tournamentId !== tournament._id) {
+    throw new Error("Round does not belong to this tournament");
+  }
+  return round;
+}
+
 export function isPairingsVisibleToPlayers(
   round: Pick<Doc<"tournamentRounds">, "pairingsPublishedAt">,
 ) {

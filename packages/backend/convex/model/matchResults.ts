@@ -4,6 +4,7 @@ import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import type { AuditActorRole } from "./auditLog";
 import {
+  auditMatchPlayerRef,
   auditPlayerRef,
   auditResultLine,
   existingResultLines,
@@ -121,10 +122,6 @@ export async function applyMatchResult(
     playerOneGameWins: args.playerOneGameWins,
     playerTwoGameWins: args.playerTwoGameWins,
   });
-  // Captured before the patches below overwrite the rows: a non-null value
-  // means an organizer edited an existing result, which the log must preserve.
-  const previousResult =
-    policy.kind === "organizer" ? existingResultLines(match, players) : null;
   const now = Date.now();
 
   const outcomeOf = (points: number) =>
@@ -137,7 +134,7 @@ export async function applyMatchResult(
     policy.kind === "concession"
       ? ("concession" as const)
       : ("played" as const);
-  await recordCurrentResult(ctx, {
+  const result = {
     match,
     kind,
     seats: [
@@ -164,15 +161,38 @@ export async function applyMatchResult(
         },
       },
     ],
-    ...(policy.kind === "simulation"
-      ? {}
-      : {
-          actor: {
-            actorUserId: policy.actor._id,
-            actorRole:
-              policy.kind === "concession" ? policy.actorRole : policy.kind,
-          },
-        }),
+    now,
+  };
+  if (policy.kind === "simulation") {
+    // Nobody's action (MatchResultPolicy): no actor on the revision and no
+    // audit event, so no player label is resolved either.
+    await recordCurrentResult(ctx, result);
+    return "applied";
+  }
+
+  // The log's reference for each row, resolved once and shared by every
+  // line the row appears in — the result an organizer replaced and the one
+  // recorded — since a nameless row reads its registration to be labelled
+  // (auditMatchPlayerRef).
+  const [playerOneRef, playerTwoRef] = await Promise.all([
+    auditMatchPlayerRef(ctx, playerOne),
+    auditMatchPlayerRef(ctx, playerTwo),
+  ]);
+  // Captured before the patches below overwrite the rows: a non-null value
+  // means an organizer edited an existing result, which the log must preserve.
+  const previousResult =
+    policy.kind === "organizer"
+      ? existingResultLines(match, [
+          { row: playerOne, player: playerOneRef },
+          { row: playerTwo, player: playerTwoRef },
+        ])
+      : null;
+  await recordCurrentResult(ctx, {
+    ...result,
+    actor: {
+      actorUserId: policy.actor._id,
+      actorRole: policy.kind === "concession" ? policy.actorRole : policy.kind,
+    },
     ...(policy.kind === "organizer" && policy.note !== undefined
       ? { note: policy.note }
       : {}),
@@ -180,25 +200,21 @@ export async function applyMatchResult(
     // clears it, superseding any report awaiting confirmation.
     reportedByRegistrationId:
       policy.kind === "player" ? policy.reporterRegistrationId : undefined,
-    now,
   });
 
-  if (policy.kind === "simulation") {
-    return "applied";
-  }
   const eventBase = {
     matchId: match._id,
     roundNumber: args.round.roundNumber,
     tableNumber: match.tableNumber ?? null,
     result: [
       auditResultLine(
-        playerOne,
+        playerOneRef,
         args.playerOneGameWins,
         args.playerTwoGameWins,
         args.gameDraws,
       ),
       auditResultLine(
-        playerTwo,
+        playerTwoRef,
         args.playerTwoGameWins,
         args.playerOneGameWins,
         args.gameDraws,

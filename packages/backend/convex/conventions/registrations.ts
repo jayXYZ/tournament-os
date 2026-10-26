@@ -16,8 +16,8 @@ import {
   requireConventionOrganizerAccess,
 } from "../model/conventions";
 import { ORGANIZER_LIST_PAGE_SIZE, clampPageSize } from "../model/pagination";
-import { participantPublicIdentity } from "../model/participants";
 import { latestOrderForRegistration } from "../model/payments";
+import { registrationOrganizerLabel } from "../model/registrations";
 import {
   isPaidTicketType,
   requireTicketTypeForConvention,
@@ -51,17 +51,11 @@ async function badgeRows(
     badges,
     DATABASE_IO_BATCH_SIZE,
     async (badge) => {
-      let playerName = badge.playerName;
-      if (playerName === undefined) {
-        const participant = await ctx.db.get(badge.participantId);
-        playerName = participant
-          ? ((await participantPublicIdentity(ctx, participant)).name ??
-            undefined)
-          : undefined;
-      }
       return {
         registration: badge,
-        playerName,
+        // Organizer-only roster: a badge whose account has no name is
+        // labelled by its email, straight off the row's stamp.
+        playerName: registrationOrganizerLabel(badge),
         ticketTypeName: typeNames.get(badge.ticketTypeId) ?? null,
         // A free badge simply has no orders; no per-event paid flag needed.
         paymentStatus:
@@ -164,16 +158,17 @@ export const listBadgePage = query({
   },
 });
 
-// Organizer roster search over the denormalized badge-holder name.
+// Organizer roster search over the denormalized badge-holder label (the
+// name, or the email of an account without one).
 export const searchBadges = query({
   args: { conventionId: v.id("conventions"), search: v.string() },
   handler: async (ctx, args) => {
     await requireConventionOrganizerAccess(ctx, args.conventionId);
     const matches = await ctx.db
       .query("conventionRegistrations")
-      .withSearchIndex("search_playerName", (q) =>
+      .withSearchIndex("search_organizerLabel", (q) =>
         q
-          .search("playerName", args.search)
+          .search("organizerLabel", args.search)
           .eq("conventionId", args.conventionId),
       )
       .take(ORGANIZER_LIST_PAGE_SIZE);

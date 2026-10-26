@@ -9,6 +9,7 @@ import { mutation, query } from "../_generated/server";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
 import { meetingSeats, requirePhase } from "../model/phases";
 import { startPlayerMeeting as startPlayerMeetingTransition } from "../model/progression";
+import { registrationOrganizerLabel } from "../model/registrations";
 import { requireOrganizerAccess } from "../model/tournaments";
 
 export const startPlayerMeeting = mutation({
@@ -37,6 +38,15 @@ export const listPlayerMeetingSeats = query({
           const registration = await ctx.db.get(seat.registrationId);
           return {
             ...seat,
+            // The seat's stamped name is the player-safe one (name only); on
+            // this organizer-only list a nameless account falls back to the
+            // email label on the registration already read above.
+            playerName:
+              seat.playerName ??
+              (registration
+                ? registrationOrganizerLabel(registration)
+                : undefined) ??
+              null,
             // A deleted registration is a different situation from a
             // malformed-but-present row (effectiveRegistrationStatus's own
             // fallback) — label it distinctly so the two never collapse into

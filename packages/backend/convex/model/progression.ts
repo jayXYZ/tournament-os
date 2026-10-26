@@ -45,6 +45,7 @@ import {
 import {
   activeRegistrations,
   comparePlayersAlphabetically,
+  registrationOrganizerLabel,
   resolveRegistrationDisplayName,
 } from "./registrations";
 import {
@@ -656,8 +657,9 @@ export async function startTournament(
     },
   });
   // Starting a paid event lapses its open checkouts: an approved-but-unpaid
-  // application can no longer seat, so its order closes and its session
-  // expires (payments/refunds.ts).
+  // application (or a direct checkout still in progress) can no longer
+  // seat, so its order closes, its session expires, and its pending entry
+  // withdraws (payments/refunds.ts).
   if ((tournament.entryFeeCents ?? 0) > 0) {
     await ctx.scheduler.runAfter(
       0,
@@ -1298,16 +1300,24 @@ export async function startPlayerMeeting(
   const players = await mapAsyncInBatches(
     registrations,
     DATABASE_IO_BATCH_SIZE,
-    async (registration) => ({
-      registrationId: registration._id,
-      playerName:
+    async (registration) => {
+      const playerName =
         (await resolveRegistrationDisplayName(
           ctx,
           registration.playerName,
           registration._id,
-        )) ?? null,
-      createdAt: registration.createdAt,
-    }),
+        )) ?? null;
+      return {
+        registrationId: registration._id,
+        // The seat stores the player-safe name (other players read it); the
+        // ordering key is the organizer label the seating sheet prints
+        // (comparePlayersAlphabetically), falling back to the resolved name
+        // for a row with no stamp at all.
+        playerName,
+        seatingLabel: registrationOrganizerLabel(registration) ?? playerName,
+        createdAt: registration.createdAt,
+      };
+    },
   );
   players.sort(comparePlayersAlphabetically);
 

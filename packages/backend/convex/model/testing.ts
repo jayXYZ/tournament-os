@@ -12,6 +12,7 @@ import { createSeededRandom, tiebreakRandom } from "./random";
 import {
   MAX_TOURNAMENT_PLAYERS,
   adjustConfirmedRegistrationCount,
+  registrationNameStamp,
 } from "./registrations";
 import {
   matchPlayers,
@@ -153,7 +154,8 @@ export async function seedTestPlayers(
       tournamentStartDate: tournament.startDate,
       entryStatus: "confirmed",
       participationStatus: "active",
-      playerName,
+      // A guest's organizer label is its display name, like any named row.
+      ...registrationNameStamp({ name: playerName }),
       createdAt: now + playerNumber,
       // Keyed on the player number — a test player's stable identity — so
       // the same seed reproduces identical pairings across test-tournament
@@ -178,6 +180,9 @@ export async function generateTestResults(
   round: Doc<"tournamentRounds">,
 ) {
   requireTestTournament(tournament);
+  if (round.tournamentId !== tournament._id) {
+    throw new Error("Round does not belong to this tournament");
+  }
   // Only tournaments created through createTestTournament have a config row;
   // events merely flagged as test events fall back to a deterministic seed.
   const config = await getTestConfig(ctx, tournament._id);

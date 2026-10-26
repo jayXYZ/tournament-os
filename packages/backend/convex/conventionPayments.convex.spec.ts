@@ -121,7 +121,7 @@ async function seedPaidConvention(
   // Price the seeded default pass (ADR 0004: fees live on ticket types).
   const ticketTypes = await organizer.query(
     api.conventions.ticketTypes.listTicketTypesForOrganizer,
-    { conventionId },
+    { conventionId, now: Date.now() },
   );
   const ticketTypeId = ticketTypes[0]!._id;
   await organizer.mutation(api.conventions.ticketTypes.updateTicketType, {
@@ -366,6 +366,7 @@ test("the badge refund default anchors to the convention start: the panel promis
   expect(
     (await player.query(api.payments.queries.getMyBadgeOrder, {
       conventionId,
+      now: Date.now(),
     }))!.cancelOutcome,
   ).toBe("full_refund");
 
@@ -374,6 +375,7 @@ test("the badge refund default anchors to the convention start: the panel promis
   expect(
     (await player.query(api.payments.queries.getMyBadgeOrder, {
       conventionId,
+      now: Date.now(),
     }))!.cancelOutcome,
   ).toBe("no_refund");
   await player.mutation(api.conventions.registrations.cancelMyBadge, {
@@ -393,11 +395,31 @@ test("cancelling the convention makes every badge holder whole", async () => {
   );
   await buyBadge(t, conventionId, ticketTypeId, 1, "a");
   await buyBadge(t, conventionId, ticketTypeId, 2, "b");
+  // Player 3 opens a checkout but never pays.
+  await insertPlayerUser(t, 3);
+  await t
+    .withIdentity(playerIdentity(3))
+    .action(api.payments.checkout.createBadgeCheckout, {
+      conventionId,
+      ticketTypeId,
+    });
+  const openOrder = await latestBadgeOrder(t, conventionId, 3);
 
   await t
     .withIdentity(organizerIdentity)
     .mutation(api.conventions.lifecycle.cancelConvention, { conventionId });
   await drainScheduler(t);
+
+  // The open checkout closed and the pending badge behind it is withdrawn
+  // rather than stranded "pending" on a cancelled convention; the paid
+  // badges keep their seats until their refunds settle.
+  expect((await t.run(async (ctx) => ctx.db.get(openOrder._id)))?.status).toBe(
+    "canceled",
+  );
+  expect(
+    (await t.run(async (ctx) => ctx.db.get(openOrder.registrationId)))
+      ?.entryStatus,
+  ).toBe("cancelled");
 
   expect(gatewayState.refunds).toHaveLength(2);
   const refunds = await t.run(async (ctx) =>
@@ -614,6 +636,32 @@ test("completing straight from registration lapses open checkouts before the pay
   const closed = await t.run(async (ctx) => ctx.db.get(openOrder._id));
   expect(closed?.status).toBe("canceled");
   expect(gatewayState.expired).toContain(openOrder.stripeCheckoutSessionId);
+  // The pending badge behind it lapses with the order (the webhook's expiry
+  // would have withdrawn it the same way), with the audit line to match;
+  // the paid badge is untouched.
+  const lapsedBadge = await t
+    .withIdentity(playerIdentity(2))
+    .query(api.conventions.registrations.getMyBadge, { conventionId });
+  expect(lapsedBadge?.entryStatus).toBe("cancelled");
+  const paidBadge = await t
+    .withIdentity(playerIdentity(1))
+    .query(api.conventions.registrations.getMyBadge, { conventionId });
+  expect(paidBadge?.entryStatus).toBe("confirmed");
+  const auditTypes = await t.run(async (ctx) =>
+    (
+      await ctx.db
+        .query("conventionAuditEvents")
+        .withIndex("by_conventionId", (q) => q.eq("conventionId", conventionId))
+        .take(64)
+    )
+      .map((row) => row.event)
+      .filter(
+        (event) =>
+          "player" in event && event.player.registrationId === lapsedBadge?._id,
+      )
+      .map((event) => event.type),
+  );
+  expect(auditTypes).toContain("payment_expired");
 
   // The payout covers only the paid badge, and nothing is left to block
   // deletion once it lands.

@@ -17,6 +17,19 @@ export {
   slugifyOrganizationName,
 } from "@paper-pairings/shared/organizer-utils";
 
+// A provider-supplied profile string as the app stores it: trimmed, and
+// absent when blank. An identity provider can hand over "" for a claim the
+// user never filled in (Clerk's full_name on an account without one), and a
+// stored "" would pass every `?? fallback` and `!== undefined` check that
+// decides whether an account has a name — labelling the player with an empty
+// string instead of the email (organizer surfaces) or "Unknown player"
+// (player surfaces). Applied where identity fields enter the database:
+// upsertUser and registrationNameStamp.
+export function presentText(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
 export const userProfileVisibilityValidator = v.union(
   v.literal("public"),
   v.literal("private"),
@@ -402,7 +415,11 @@ export const payoutTransferStatusValidator = v.union(
 
 // A player referenced by an audit event. The name is denormalized at write
 // time so the log stays readable without per-row joins, even if the roster
-// changes later.
+// changes later. It is the ORGANIZER label (model/auditLog.ts
+// auditPlayerLabel, from the registration's organizerLabel stamp): an
+// account without a name is labelled by its email, which is safe here only
+// because both audit logs are organizer-only. Null when the row carries no
+// label at all.
 const auditPlayerRefValidator = v.object({
   registrationId: v.id("tournamentRegistrations"),
   playerName: v.union(v.string(), v.null()),
