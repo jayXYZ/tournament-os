@@ -129,6 +129,17 @@ const limits = {
     period: HOUR,
     capacity: 20,
   },
+  // One Stripe refunds list per call (payments/refunds.ts checkRefundStatus),
+  // read under our key against the platform account's shared request
+  // budget. Sized for an owner working through a payout card of stalled
+  // refunds after an outage — dozens of rows, one check each — not for a
+  // script listing refunds on our behalf.
+  checkRefundStatus: {
+    kind: "token bucket",
+    rate: 120,
+    period: HOUR,
+    capacity: 40,
+  },
   // One single-use Express Dashboard login link per call; same shape as the
   // status refresh — cheap, but minted under our key.
   stripeDashboardLink: {

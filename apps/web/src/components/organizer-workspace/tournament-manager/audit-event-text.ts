@@ -95,8 +95,10 @@ export function describeAuditEvent(row: AuditEventRow): string {
       return `Approved ${displayPlayerName(event.player.playerName)}'s application and requested the ${formatCents(event.totalCents)} entry payment`
     case 'refund_issued':
       return `Refunded ${formatCents(event.amountCents)} to ${displayPlayerName(event.player.playerName)} (${describeRefundReason(event.reason)}${event.kind === 'entry_only' ? ', entry cost only' : ''})`
+    case 'refund_stalled':
+      return `Refund of ${formatCents(event.amountCents)} to ${displayPlayerName(event.player.playerName)} could not be confirmed — check its status from the payout settings`
     case 'refund_failed':
-      return `Refund of ${formatCents(event.amountCents)} to ${displayPlayerName(event.player.playerName)} failed — needs attention`
+      return `Refund of ${formatCents(event.amountCents)} to ${displayPlayerName(event.player.playerName)} failed — Stripe returned nothing`
     case 'payout_sent':
       return `Paid out ${formatCents(event.netCents)} in entry fees to the organization`
     case 'payout_failed':

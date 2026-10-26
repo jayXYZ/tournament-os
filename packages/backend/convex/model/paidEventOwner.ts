@@ -137,6 +137,35 @@ export function ownerRefundsQuery(
         });
 }
 
+// The owner's refunds in one status that carry a Stripe refund id — the
+// ones Stripe holds a refund for. Expressed as an index range (undefined
+// sorts before every string, so "greater than undefined" is "has an id")
+// rather than a .filter(), which would read every row in the status to
+// find them.
+export function ownerRefundsWithStripeIdQuery(
+  ctx: QueryCtx,
+  owner: MoneyRowOwner,
+  status: Doc<"paymentRefunds">["status"],
+) {
+  return owner.kind === "tournament"
+    ? ctx.db
+        .query("paymentRefunds")
+        .withIndex("by_tournamentId_and_status_and_stripeRefundId", (q) =>
+          q
+            .eq("tournamentId", owner.tournamentId)
+            .eq("status", status)
+            .gt("stripeRefundId", undefined),
+        )
+    : ctx.db
+        .query("paymentRefunds")
+        .withIndex("by_conventionId_and_status_and_stripeRefundId", (q) =>
+          q
+            .eq("conventionId", owner.conventionId)
+            .eq("status", status)
+            .gt("stripeRefundId", undefined),
+        );
+}
+
 export function ownerRefundsForParticipantQuery(
   ctx: QueryCtx,
   owner: MoneyRowOwner,
