@@ -74,6 +74,54 @@ export async function createGuestParticipant(
   });
 }
 
+// Whether a participant is a Guest — no linked account. The payment paths
+// ask this before minting an order: a guest has no account to pay from
+// (createEntryOrder refuses one outright), so the organizer verbs seat a
+// guest on a paid event directly instead of requesting a payment nobody
+// could make.
+export async function isGuestParticipant(
+  ctx: QueryCtx,
+  participantId: Id<"participants">,
+): Promise<boolean> {
+  const participant = await ctx.db.get(participantId);
+  return participant === null || participant.userId === undefined;
+}
+
+// How many guests an email lookup examines when an enrollment reuses one.
+// Guests are deduplicated by this very lookup, so the match is normally a
+// single row; the bound only guards against hand-seeded duplicates.
+const GUESTS_PER_EMAIL_BOUND = 8;
+
+// The Guest already carrying a contact email, for an organizer enrollment
+// to reuse (model/roster.ts enrollPlayer): a regular enrolled across several
+// events stays one Participant with one history and one Claim. The
+// organizer-provided name is written onto the reused Guest — the latest
+// name the organizer typed is the freshest, and the participant's identity
+// should agree with the stamp the new registration is about to carry. Null
+// when no Guest holds the email; a user-linked participant never matches,
+// because it carries no contactEmail (the account's email is on the user).
+export async function reuseGuestParticipantForEmail(
+  ctx: MutationCtx,
+  args: { displayName: string; email: string },
+): Promise<Doc<"participants"> | null> {
+  const email = normalizeEmail(args.email);
+  const matches = await ctx.db
+    .query("participants")
+    .withIndex("by_contactEmail", (q) => q.eq("contactEmail", email))
+    .take(GUESTS_PER_EMAIL_BOUND);
+  const guest = matches.find((match) => match.userId === undefined);
+  if (!guest) {
+    return null;
+  }
+  if (guest.displayName !== args.displayName) {
+    await ctx.db.patch(guest._id, {
+      displayName: args.displayName,
+      updatedAt: Date.now(),
+    });
+  }
+  return await requireParticipant(ctx, guest._id);
+}
+
 // The name and avatar a participant shows other players and the public.
 // User-linked participants read through to the account (name only — never
 // the email, which player-facing surfaces must not leak); guests show the

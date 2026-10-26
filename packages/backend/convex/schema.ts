@@ -55,13 +55,18 @@ export default defineSchema({
     // keep their profile card visible while hiding their history. Optional with
     // the same missing-means-"public" reading as profileVisibility.
     historyVisibility: v.optional(userProfileVisibilityValidator),
+    // The provider's verified email, stored normalized (model/users.ts
+    // upsertUser applies normalizeEmail) so it is an exact key: organizer
+    // enrollment by email resolves an existing account through by_email
+    // with the same normalized form invitations and guest claims match on.
     email: v.optional(v.string()),
     name: v.optional(v.string()),
     avatarUrl: v.optional(v.string()),
     updatedAt: v.number(),
   })
     .index("by_tokenIdentifier", ["tokenIdentifier"])
-    .index("by_publicCode", ["publicCode"]),
+    .index("by_publicCode", ["publicCode"])
+    .index("by_email", ["email"]),
 
   organizations: defineTable({
     name: v.string(),

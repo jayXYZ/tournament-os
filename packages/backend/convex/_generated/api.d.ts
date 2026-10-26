@@ -48,6 +48,7 @@ import type * as model_standings from "../model/standings.js";
 import type * as model_stripeAccounts from "../model/stripeAccounts.js";
 import type * as model_testing from "../model/testing.js";
 import type * as model_ticketTypes from "../model/ticketTypes.js";
+import type * as model_timer from "../model/timer.js";
 import type * as model_tournaments from "../model/tournaments.js";
 import type * as model_users from "../model/users.js";
 import type * as organizations from "../organizations.js";
@@ -122,6 +123,7 @@ declare const fullApi: ApiFromModules<{
   "model/stripeAccounts": typeof model_stripeAccounts;
   "model/testing": typeof model_testing;
   "model/ticketTypes": typeof model_ticketTypes;
+  "model/timer": typeof model_timer;
   "model/tournaments": typeof model_tournaments;
   "model/users": typeof model_users;
   organizations: typeof organizations;

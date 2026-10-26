@@ -377,7 +377,21 @@ claimed by one.
         item is the automatic/ordered promotion when a seat frees, and
         should also revisit registerSelf's full-event behavior, which today
         refuses applications at capacity instead of auto-waitlisting them)
-- [ ] Enroll players as guests or by email without requiring an account
+- [x] Enroll players as guests or by email without requiring an account
+      (2026-10-26, CONTEXT.md "Enrollment"): the Registrations tab's "Enroll
+      player" dialog takes a name and an optional email; the roster verb
+      `enrollPlayer` (model/roster.ts) resolves the identity — an existing
+      account's participant (users now carry a `by_email` index over the
+      normalized email), the Guest already holding that contact email
+      (reused, so one regular is one Participant across events), or a new
+      Guest the Claim merges at first sign-in — and seats it confirmed
+      whatever the approval mode, capacity- and lifecycle-gated, with a
+      `player_enrolled` audit event. A cancelled row for the identity is
+      re-entered; pending/waitlisted/rejected rows are refused toward the
+      review verbs. Guests cannot be billed, so enrollment on a paid event
+      takes no order, and approve/restore seat a guest through their free
+      arm. Metered by the `enrollPlayer` bucket (one guest row per call).
+      Covered by `guestEnrollment.convex.spec.ts`
 - [ ] Persist organizer favorite players across tournaments
   - [ ] Decide whether favorites are scoped to an organizer or the organization
   - [ ] Filter pairings, registrations, and standings by favorites

@@ -140,8 +140,21 @@ _Avoid_: player identity, competitor record
 **Guest**:
 A Participant with no linked user account, enrolled with a display name and
 optional contact email. Guests hold registrations like any Participant but
-have no profile page and take no self-serve actions. (The organizer guest
-enrollment surface is planned; today Guests come from test-player seeding.)
+have no profile page, take no self-serve actions, and cannot be billed — a
+Guest's seat on a paid event is always an organizer's, settled outside the
+app. Guests come from organizer Enrollment and from test-player seeding.
+
+**Enrollment**:
+An organizer seating a player directly, by name or by email, without the
+player registering themself. An email routes the registration to the
+account that holds it, else to the Guest already carrying it (so a regular
+stays one Participant across events), else to a new Guest keyed for the
+Claim. Enrollment is the admission decision: it takes a confirmed seat
+whatever the event's approval mode and takes no entry-fee order, bypassing
+the invite and badge gates like every organizer verb; capacity and the
+registration lifecycle still apply.
+_Avoid_: guest registration (a Guest is who, Enrollment is how; an account
+holder can be enrolled too), manual add
 
 **Claim**:
 The automatic merge, at sign-in, of every Guest whose contact email matches

@@ -29,6 +29,10 @@ export function describeAuditEvent(row: AuditEventRow): string {
       return `${displayPlayerName(event.player.playerName)} registered for the event${compedSuffix(event)}`
     case 'registration_requested':
       return `${displayPlayerName(event.player.playerName)} requested to register for the event`
+    case 'player_enrolled':
+      return event.asGuest
+        ? `Enrolled ${displayPlayerName(event.player.playerName)} as a guest`
+        : `Enrolled ${displayPlayerName(event.player.playerName)}`
     case 'decklist_submitted':
       return `${displayPlayerName(event.player.playerName)} ${event.isUpdate ? 'updated' : 'submitted'} their decklist (${event.maindeckCardCount} main / ${event.sideboardCardCount} sideboard)`
     case 'registration_cancelled':

@@ -8,6 +8,7 @@ import {
   Settings2,
   UserCheck,
   UserMinus,
+  UserPlus,
   UserX,
 } from 'lucide-react'
 
@@ -19,6 +20,7 @@ import {
 } from '@paper-pairings/shared/registration-status'
 import { toast } from 'sonner'
 import type { ColumnDef } from '@tanstack/react-table'
+import type { FormEvent } from 'react'
 import type {
   Doc,
   Id,
@@ -48,12 +50,28 @@ import { Button } from '@/components/ui/button'
 import { DataTable, DataTableColumnHeader } from '@/components/ui/data-table'
 import { DataTableToolbar } from '@/components/ui/data-table-toolbar'
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog'
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import {
+  Field,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+} from '@/components/ui/field'
+import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
 import { useBusyAction } from '@/hooks/use-busy-action'
 import { cn } from '@/lib/utils'
@@ -336,7 +354,12 @@ export function RegistrationsView({
           searchPending={searching && searchResults === undefined}
           listPending={listPending}
           showPaymentColumn={(setup?.tournament.entryFeeCents ?? 0) > 0}
-          actions={<RegistrationSettingsMenu tournament={setup?.tournament} />}
+          actions={
+            <>
+              <EnrollPlayerDialog tournament={setup?.tournament} />
+              <RegistrationSettingsMenu tournament={setup?.tournament} />
+            </>
+          }
         />
         {!searching ? (
           <LoadMoreButton
@@ -349,6 +372,135 @@ export function RegistrationsView({
         ) : null}
       </div>
     </section>
+  )
+}
+
+// Longest name the enrollment accepts; mirrors MAX_ENROLLMENT_NAME_LENGTH in
+// the backend's model/roster.ts, which is what actually refuses a longer one.
+const ENROLLMENT_NAME_MAX_LENGTH = 80
+
+// The organizer's direct enrollment (enrollPlayer): a name, and optionally
+// the email that routes the registration to the account holding it — or, for
+// a player without one, keys the guest's claim at their first sign-in. The
+// trigger is offered exactly when the server would accept an enrollment: it
+// takes a seat, so only while registration is open and a seat is free.
+function EnrollPlayerDialog({
+  tournament,
+}: {
+  tournament: Doc<'tournaments'> | undefined
+}) {
+  const enrollPlayer = useMutation(api.tournaments.registrations.enrollPlayer)
+  const [open, setOpen] = useState(false)
+  const { busy, run } = useBusyAction()
+  const [displayName, setDisplayName] = useState('')
+  const [email, setEmail] = useState('')
+
+  const canEnroll =
+    tournament !== undefined &&
+    tournament.lifecycle === 'registration' &&
+    tournament.confirmedRegistrationCount < tournament.playerCapacity
+
+  function resetForm() {
+    setDisplayName('')
+    setEmail('')
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!tournament) {
+      return
+    }
+    await run(async () => {
+      const trimmedEmail = email.trim()
+      await enrollPlayer({
+        tournamentId: tournament._id,
+        displayName,
+        email: trimmedEmail === '' ? undefined : trimmedEmail,
+      })
+      const name = displayName.trim()
+      toast.success(
+        trimmedEmail === ''
+          ? `${name} has been enrolled as a guest.`
+          : `${name} has been enrolled.`,
+      )
+      resetForm()
+      setOpen(false)
+    }, 'Could not enroll player.')
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!busy) {
+          setOpen(next)
+        }
+      }}
+    >
+      <DialogTrigger asChild>
+        <Button type="button" variant="outline" disabled={!canEnroll}>
+          <UserPlus data-icon="inline-start" />
+          Enroll player
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <DialogHeader>
+            <DialogTitle>Enroll a player</DialogTitle>
+            <DialogDescription>
+              Seat a player directly, whether or not they have an account. They
+              take a confirmed seat right away.
+            </DialogDescription>
+          </DialogHeader>
+
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="enroll-player-name">Name</FieldLabel>
+              <Input
+                id="enroll-player-name"
+                value={displayName}
+                onChange={(event) => setDisplayName(event.target.value)}
+                placeholder="Jordan Lee"
+                maxLength={ENROLLMENT_NAME_MAX_LENGTH}
+                autoComplete="off"
+                disabled={busy}
+                required
+              />
+              <FieldDescription>
+                Shown on pairings and standings. If the email below belongs to
+                an account, that account&apos;s own name is used instead.
+              </FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="enroll-player-email">
+                Email (optional)
+              </FieldLabel>
+              <Input
+                id="enroll-player-email"
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="jordan@example.com"
+                autoComplete="off"
+                disabled={busy}
+              />
+              <FieldDescription>
+                With an email, the registration goes to the account that holds
+                it, or moves to the player&apos;s account the first time they
+                sign in with it. Without one, the player is enrolled as a guest.
+              </FieldDescription>
+            </Field>
+          </FieldGroup>
+
+          <DialogFooter>
+            <Button type="submit" disabled={busy}>
+              {busy ? <Spinner data-icon="inline-start" /> : null}
+              Enroll player
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }
 

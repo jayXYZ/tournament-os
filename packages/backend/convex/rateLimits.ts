@@ -111,6 +111,17 @@ const limits = {
     period: HOUR,
     capacity: 20,
   },
+  // Organizer enrollment mints a guest participant row per call (plus the
+  // registration and its audit row), so unlike the rest of roster
+  // management it is row growth and gets a budget — sized for an organizer
+  // keying in a walk-up field by hand at the door, which is one player
+  // every few seconds in a burst, not a script.
+  enrollPlayer: {
+    kind: "token bucket",
+    rate: 600,
+    period: HOUR,
+    capacity: 120,
+  },
   // Each call can mint a Stripe connected account (first time) and always
   // mints a single-use onboarding link. Sized for an owner fumbling through
   // onboarding a few times (expired links re-enter here), not for scripts

@@ -30,6 +30,21 @@ export type UserIdentityFields = {
   avatarUrl?: string;
 };
 
+// The account holding a verified email, by its normalized form (the stored
+// spelling — see upsertUser). The identity provider allows one account per
+// verified email, so this is a point lookup; first() rather than unique()
+// so a duplicate seeded by hand degrades to the older account instead of
+// an invariant failure.
+export async function userByEmail(
+  ctx: QueryCtx,
+  email: string,
+): Promise<Doc<"users"> | null> {
+  return await ctx.db
+    .query("users")
+    .withIndex("by_email", (q) => q.eq("email", normalizeEmail(email)))
+    .first();
+}
+
 export async function userByTokenIdentifier(
   ctx: QueryCtx,
   tokenIdentifier: string,
@@ -50,10 +65,14 @@ export async function upsertUser(
   // Blank provider strings are stored as absent (presentText), so every
   // reader's name-then-email fallback — and the re-stamp comparison below —
   // sees an account with a "" name as nameless.
+  // The email is stored normalized (trimmed, lowercased): it is the key
+  // invitations, guest claims, and organizer enrollment by email all match
+  // on, and by_email lookups need the one canonical spelling.
+  const email = presentText(identity.email);
   const fields = {
     ...identity,
     name: presentText(identity.name),
-    email: presentText(identity.email),
+    email: email === undefined ? undefined : normalizeEmail(email),
   };
   const existing = await userByTokenIdentifier(ctx, fields.tokenIdentifier);
   const patch = {

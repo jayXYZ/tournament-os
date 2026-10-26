@@ -30,6 +30,7 @@ import {
   approveEntry,
   cancelEntry,
   dropPlayer,
+  enrollPlayer as enrollPlayerEntry,
   registerEntry,
   reinstatePlayer,
   rejectEntry,
@@ -100,6 +101,33 @@ export const registerSelf = mutation({
       tournament,
       user,
       inviteCode: args.inviteCode,
+    });
+  },
+});
+
+// The organizer's direct enrollment of a player by name or email, without
+// an account (CONTEXT.md "Enrollment"): a thin adapter — the rate limit
+// (enrollment mints guest rows, see rateLimits.ts) and organizer access —
+// over the roster verb (model/roster.ts enrollPlayer), which owns the input
+// rules, the identity resolution, the entry gates, the write, the seat
+// counter, and the audit event.
+export const enrollPlayer = mutation({
+  args: {
+    tournamentId: v.id("tournaments"),
+    displayName: v.string(),
+    email: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<Id<"tournamentRegistrations">> => {
+    await enforceRateLimit(ctx, "enrollPlayer");
+    const { tournament, user } = await requireOrganizerAccess(
+      ctx,
+      args.tournamentId,
+    );
+    return await enrollPlayerEntry(ctx, {
+      tournament,
+      actor: user,
+      displayName: args.displayName,
+      email: args.email,
     });
   },
 });

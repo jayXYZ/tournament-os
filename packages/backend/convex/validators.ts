@@ -542,6 +542,18 @@ export const tournamentAuditEventValidator = v.union(
     player: auditPlayerRefValidator,
   }),
   v.object({
+    // An organizer seated the player directly (enrollPlayer in
+    // model/roster.ts): no application, no approval, and on a paid event no
+    // order — the organizer's enrollment is the admission decision, and any
+    // fee was settled outside the app.
+    type: v.literal("player_enrolled"),
+    player: auditPlayerRefValidator,
+    // True when the entry belongs to a Guest (no account yet — the Claim at
+    // sign-in will merge it); false when the email matched an existing
+    // account and the registration went straight to it.
+    asGuest: v.boolean(),
+  }),
+  v.object({
     type: v.literal("decklist_submitted"),
     player: auditPlayerRefValidator,
     // Card totals only, not the list itself: enough for a dispute timeline

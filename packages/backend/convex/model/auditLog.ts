@@ -4,6 +4,7 @@ import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { parseMoneyRowEntry, parseMoneyRowOwner } from "./paidEventOwner";
 import {
+  type RegistrationNameStamp,
   registrationNameStamp,
   registrationOrganizerLabel,
 } from "./registrations";
@@ -127,6 +128,16 @@ export function auditPlayerRefForUser(
   user: Doc<"users">,
 ) {
   return auditPlayerRefOf(registrationId, registrationNameStamp(user));
+}
+
+// The same, for a row the caller just wrote from a stamp it already holds
+// (enrollPlayer, which stamps a guest from the organizer-provided name) —
+// so the ref agrees with the row by construction, without reading it back.
+export function auditPlayerRefForStamp(
+  registrationId: Id<"tournamentRegistrations">,
+  stamp: RegistrationNameStamp,
+) {
+  return auditPlayerRefOf(registrationId, stamp);
 }
 
 // The player reference for a match-player row, whose stamped playerName dates
