@@ -27,6 +27,8 @@ export function useAppAuth() {
         signUpForceRedirectUrl: returnTo,
       })
     },
-    signOut: () => clerk.signOut(),
+    // Clerk navigates to its after-sign-out URL (the home page) unless told
+    // where to go; pass `redirectUrl` to stay on the current page.
+    signOut: (options?: { redirectUrl?: string }) => clerk.signOut(options),
   }
 }

@@ -22,6 +22,12 @@ export type PlayerTournamentAccess =
   | { state: "loading"; event: PlayerTournamentEvent | null }
   | { state: "notFound" }
   | { state: "signedOut"; event: PlayerTournamentEvent }
+  // The viewer has a provider session Convex could not verify (see
+  // ViewerAuthGate): offer a handshake restart and sign-out. `event` is null
+  // when the lookup answered null as well — without a verified identity the
+  // server cannot show a private event, so the code is not yet known to be
+  // wrong.
+  | { state: "unverified"; event: PlayerTournamentEvent | null }
   | { state: "notRegistered"; event: PlayerTournamentEvent }
   | {
       state: "ready";
@@ -51,19 +57,22 @@ export function usePlayerTournamentAccess(
   if (event === undefined || (event === null && gate === "pending")) {
     return { state: "loading", event: null };
   }
-  // Once the gate settles a null is final, even when it settled signedOut on
-  // a refused token: the server answers null for a private event it sees no
-  // identity on, exactly as it does for a provider-less visitor, so it cannot
-  // be told apart from a code that does not exist — and the signedOut shell
-  // needs the event it would offer sign-in for.
+  // An unverified viewer settles nothing: the server answers null for a
+  // private event it sees no identity on, exactly as for a code that does
+  // not exist, and the shell's restart may still turn that null into the
+  // event. So the null rides along rather than becoming notFound.
+  if (gate === "unverified") {
+    return { state: "unverified", event };
+  }
+  // Once the gate settles signed out or ready a null is final: a signed-out
+  // visitor is answered null for a private event too, and the signedOut
+  // shell needs the event it would offer sign-in for.
   if (event === null) {
     return { state: "notFound" };
   }
   if (gate === "pending") {
     return { state: "loading", event };
   }
-  // Nobody signed in, or a provider user whose token Convex refused: the
-  // registration query would stay on 'skip' for good, so offer sign-in.
   if (gate === "signedOut") {
     return { state: "signedOut", event };
   }

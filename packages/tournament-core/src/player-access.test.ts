@@ -171,10 +171,10 @@ describe("usePlayerTournamentAccess", () => {
     );
   });
 
-  it("notFound for a null event once the grace reads the provider's token as refused", () => {
+  it("unverified with a null event once the grace runs out on a provider user — not notFound", () => {
     // The server answers null for a private event it sees no identity on,
-    // just as for a provider-less visitor, so a refused token cannot tell a
-    // private event from a missing one — and signedOut needs an event.
+    // just as for a wrong code, and the shell's handshake restart may still
+    // resolve it, so the null rides along instead of settling as notFound.
     expect(
       run({
         provider: "signedIn",
@@ -182,7 +182,7 @@ describe("usePlayerTournamentAccess", () => {
         graceElapsed: true,
         event: null,
       }),
-    ).toEqual({ state: "notFound" });
+    ).toEqual({ state: "unverified", event: null });
   });
 
   it("signedOut for a resolved event without a signed-in viewer", () => {
@@ -191,9 +191,10 @@ describe("usePlayerTournamentAccess", () => {
     ).toEqual({ state: "signedOut", event });
   });
 
-  it("signedOut for a resolved event once the grace reads the provider's token as refused", () => {
+  it("unverified for a resolved event once the grace runs out on a provider user", () => {
     // Every authed query would stay on 'skip' — without this the ladder sat
-    // in loading forever; sign-in is the way out.
+    // in loading forever. It is not signedOut: the provider session is live,
+    // so the shell offers a handshake restart and sign-out, not sign-in.
     expect(
       run({
         provider: "signedIn",
@@ -202,7 +203,7 @@ describe("usePlayerTournamentAccess", () => {
         event,
         registration: confirmed,
       }),
-    ).toEqual({ state: "signedOut", event });
+    ).toEqual({ state: "unverified", event });
   });
 
   it("signedOut while signing out — the provider dropped the user before Convex caught up", () => {

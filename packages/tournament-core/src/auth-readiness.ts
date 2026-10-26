@@ -45,21 +45,28 @@ export type ViewerAuthGate =
   // The provider is still loading, or Convex is still validating its token:
   // render a "Checking…" state, never sign-in or a data-derived empty state.
   | "pending"
-  // Offer sign-in. Either nobody is signed in, or the provider has a user
-  // whose token Convex refused (rejected, mis-configured JWT template, …) —
-  // every authed query would stay on 'skip' forever, so mounting the
-  // signed-in surface would leave it loading for good.
+  // Nobody is signed in with the provider: offer sign-in.
   | "signedOut"
+  // The provider has a user, but Convex could not verify them: the server
+  // refused the token (wrong issuer or audience, Clerk and Convex pointed at
+  // different environments, auth config not deployed, …) or no token could
+  // be fetched at all. Every authed query would stay on 'skip' for good, so
+  // mounting the signed-in surface would leave it loading forever. Sign-in
+  // is not the way out — the provider session is live, so Clerk would only
+  // bounce a single-session instance back, and a repeat sign-in cannot
+  // change what the server refuses. Offer a restart of the Convex handshake
+  // (useRestartConvexAuth) and, separately, sign-out.
+  | "unverified"
   // Convex has validated the viewer: mount the surface that reads authed
   // queries.
   | "ready";
 
 // How long a provider user may sit on a Convex `unauthenticated` verdict
-// before the gate reads it as a refused token. convex-react keeps its
-// signed-out verdict (not "loading") while it validates a token the provider
-// issued without a page load — a session activated in place, like Clerk's
-// sign-in callback before it navigates back — so that pair is briefly
-// normal. Past the grace it is the refusal, and sign-in is the way out.
+// before the gate reads it as unverified. convex-react keeps its signed-out
+// verdict (not "loading") while it validates a token the provider issued
+// without a page load — a session activated in place, like Clerk's sign-in
+// callback before it navigates back — so that pair is briefly normal. Past
+// the grace it is a handshake that ended without a verified identity.
 export const TOKEN_VALIDATION_GRACE_MS = 5_000;
 
 // The render gate for a surface that needs a signed-in viewer. A provider
@@ -75,11 +82,15 @@ export function viewerAuthGate(
   if (appAuth.loading || readiness === "pending") return "pending";
   if (appAuth.user === null) return "signedOut";
   if (readiness === "unauthenticated") {
-    return validationOverdue ? "signedOut" : "pending";
+    return validationOverdue ? "unverified" : "pending";
   }
   return "ready";
 }
 
+// The grace timer restarts whenever the wait does: a restarted handshake
+// (useRestartConvexAuth) or a sign-out puts readiness back to `pending` /
+// drops the user, which clears the overdue flag, so a later `unauthenticated`
+// verdict gets its own full grace before reading as unverified again.
 export function useViewerAuthGate(appAuth: AppAuthSnapshot): ViewerAuthGate {
   const readiness = useConvexAuthReadiness();
   const awaitingValidation =

@@ -36,6 +36,10 @@ import { useClientClock } from '@/hooks/use-client-clock'
 import { useMyBadgeOrder } from '@/hooks/use-my-order'
 import { useStableQuery } from '@/hooks/use-stable-query'
 import { useAppAuth } from '@/lib/use-app-auth'
+import {
+  UNVERIFIED_VIEWER_DESCRIPTION,
+  UnverifiedViewerActions,
+} from '@/components/shared/viewer-unverified'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -279,6 +283,20 @@ function BadgePanel({
 
   if (viewer === 'pending') {
     return checkingButton
+  }
+
+  // Clerk has a user Convex could not verify (see ViewerAuthGate). Shown
+  // whatever the lifecycle: the viewer may well be registered, and only a
+  // verified identity can show them that.
+  if (viewer === 'unverified') {
+    return (
+      <div className="flex flex-col gap-3">
+        <p className="text-sm text-muted-foreground">
+          {UNVERIFIED_VIEWER_DESCRIPTION}
+        </p>
+        <UnverifiedViewerActions />
+      </div>
+    )
   }
 
   if (viewer === 'signedOut') {

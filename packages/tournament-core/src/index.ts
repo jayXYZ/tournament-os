@@ -24,6 +24,11 @@ export type {
   ViewerAuthGate,
 } from "./auth-readiness";
 export {
+  ConvexClerkAuthProvider,
+  useRestartConvexAuth,
+} from "./convex-clerk-auth";
+export type { ClerkUseAuth } from "./convex-clerk-auth";
+export {
   displayPlayerName,
   formatGameScoreline,
   formatPercent,

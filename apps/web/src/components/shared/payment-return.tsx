@@ -1,9 +1,20 @@
 import { useViewerAuthGate } from '@paper-pairings/core'
-import { BadgeCheck, Clock, LogIn, ReceiptText } from 'lucide-react'
+import {
+  BadgeCheck,
+  Clock,
+  LogIn,
+  ReceiptText,
+  ShieldAlert,
+} from 'lucide-react'
 import type { ReactNode } from 'react'
 import type { Doc } from '@paper-pairings/backend/convex/_generated/dataModel'
 import { useAppAuth } from '@/lib/use-app-auth'
 import { Button } from '@/components/ui/button'
+import {
+  UNVERIFIED_VIEWER_DESCRIPTION,
+  UNVERIFIED_VIEWER_TITLE,
+  UnverifiedViewerActions,
+} from '@/components/shared/viewer-unverified'
 import {
   Empty,
   EmptyDescription,
@@ -102,10 +113,28 @@ export function PaymentSignInCard({ onSignIn }: { onSignIn: () => void }) {
   )
 }
 
+// Clerk has a user Convex could not verify (see ViewerAuthGate): the
+// recovery is a handshake restart or sign-out, never another sign-in.
+export function PaymentUnverifiedCard() {
+  return (
+    <Empty className="min-h-80 border bg-card">
+      <EmptyHeader>
+        <EmptyMedia variant="icon">
+          <ShieldAlert aria-hidden="true" />
+        </EmptyMedia>
+        <EmptyTitle>{UNVERIFIED_VIEWER_TITLE}</EmptyTitle>
+        <EmptyDescription>{UNVERIFIED_VIEWER_DESCRIPTION}</EmptyDescription>
+      </EmptyHeader>
+      <UnverifiedViewerActions className="justify-center" />
+    </Empty>
+  )
+}
+
 // The order and entry are looked up by the signed-in viewer, so the page
 // mounts them only once Convex has validated that viewer (see
-// viewerAuthGate). A signed-out visitor, or one whose token Convex rejected,
-// gets the sign-in card instead of a spinner that would never resolve.
+// viewerAuthGate). A signed-out visitor gets the sign-in card, and a Clerk
+// user Convex could not verify gets the recovery card, instead of a spinner
+// that would never resolve.
 export function PaymentReturnAuthGate({ children }: { children: ReactNode }) {
   const { user, loading, refreshAuth } = useAppAuth()
   const viewer = useViewerAuthGate({ user, loading })
@@ -119,6 +148,9 @@ export function PaymentReturnAuthGate({ children }: { children: ReactNode }) {
         onSignIn={() => void refreshAuth({ ensureSignedIn: true })}
       />
     )
+  }
+  if (viewer === 'unverified') {
+    return <PaymentUnverifiedCard />
   }
   return children
 }

@@ -89,9 +89,10 @@ describe("viewerAuthGate", () => {
     // A provider user on a signed-out verdict: Convex may still be
     // validating a token issued in place, so wait out the grace…
     [{ user, loading: false }, "unauthenticated", false, "pending"],
-    // …then read it as refused: authed queries would skip forever, so offer
-    // sign-in rather than mount the surface.
-    [{ user, loading: false }, "unauthenticated", true, "signedOut"],
+    // …then read it as unverified, never as signed out: authed queries would
+    // skip forever, and the live provider session means sign-in is not the
+    // way out — a handshake restart or sign-out is.
+    [{ user, loading: false }, "unauthenticated", true, "unverified"],
     // Signing out: the provider dropped the user before Convex caught up.
     [{ user: null, loading: false }, "ready", false, "signedOut"],
     [{ user, loading: false }, "ready", false, "ready"],
