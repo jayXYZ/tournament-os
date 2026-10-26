@@ -10,7 +10,7 @@ references were accurate at that point.
 
 | #   | Doc                                                  | One-liner                                                        | Effort |
 | --- | ---------------------------------------------------- | ---------------------------------------------------------------- | ------ |
-| 07  | [timeline-module](07-timeline-module.md)             | Pure timeline math out of the 809-line progress bar              | Small  |
+| 07  | [timeline-module](07-timeline-module.md)             | Done: timeline math in `progression-timeline.ts`, unit-tested    | Done   |
 | 09  | [fixture-consolidation](09-fixture-consolidation.md) | Done: now documents the backend spec fixture conventions         | Done   |
 | 10  | [audit-event-coupling](10-audit-event-coupling.md)   | Done: [audit policy](../audit-policy.md); events live in writes. | Done   |
 
