@@ -67,6 +67,8 @@ function describeEvent(row: ConventionAuditRow): string {
       return `${player}'s badge checkout expired`
     case 'refund_issued':
       return `${formatCents(event.amountCents)} refunded to ${player}`
+    case 'refund_stalled':
+      return `A ${formatCents(event.amountCents)} refund to ${player} could not be confirmed and needs attention`
     case 'refund_failed':
       return `A ${formatCents(event.amountCents)} refund to ${player} failed`
     case 'payout_sent':

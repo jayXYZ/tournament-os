@@ -215,6 +215,13 @@ export default defineSchema({
     stripeChargeId: v.optional(v.string()),
     stripeRefundId: v.optional(v.string()),
     status: paymentRefundStatusValidator,
+    // Execution bookkeeping (payments/refunds.ts): how many Stripe calls
+    // have been recorded as thrown, and the latest diagnostic — the Stripe
+    // error, or why the row parked. Lives on the row rather than in
+    // scheduler args so a parked refund is inspectable by the organizer
+    // and the platform operator (docs/refund-recovery.md).
+    attemptCount: v.number(),
+    lastError: v.optional(v.string()),
     // Absent for system-initiated refunds (webhook races, sweeps).
     initiatedByUserId: v.optional(v.id("users")),
     updatedAt: v.number(),
@@ -225,11 +232,25 @@ export default defineSchema({
       "participantId",
     ])
     .index("by_tournamentId_and_status", ["tournamentId", "status"])
+    // Owner + status + Stripe id, so "pending rows Stripe holds a refund
+    // for" (refundsNeedingAttention) is an index range rather than a
+    // filter over every pending row: undefined sorts first, so the rows
+    // with a Stripe id are the tail of the range.
+    .index("by_tournamentId_and_status_and_stripeRefundId", [
+      "tournamentId",
+      "status",
+      "stripeRefundId",
+    ])
     .index("by_conventionId_and_participantId", [
       "conventionId",
       "participantId",
     ])
     .index("by_conventionId_and_status", ["conventionId", "status"])
+    .index("by_conventionId_and_status_and_stripeRefundId", [
+      "conventionId",
+      "status",
+      "stripeRefundId",
+    ])
     .index("by_stripeRefundId", ["stripeRefundId"]),
 
   // One row per completed paid event — a tournament's entry fees or a

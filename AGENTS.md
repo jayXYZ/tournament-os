@@ -22,9 +22,9 @@ npm/npx/yarn/bun are denied in this repo; always use pnpm.
   by entry name; it is the source of truth for pairing/scoring/standings
   vocabulary.
 - `TODO.md` — the audited roadmap: what is done, open, and blocked.
-- `docs/` — environment contract, payments architecture, rate limiting,
-  user-facing errors, error monitoring, ADRs (`docs/adr/`), and the refactor
-  backlog (`docs/refactors/`).
+- `docs/` — environment contract, payments architecture, the refund
+  recovery runbook, rate limiting, user-facing errors, error monitoring,
+  ADRs (`docs/adr/`), and the refactor backlog (`docs/refactors/`).
 - Verification gate: `pnpm check` (format + typecheck + lint + test — what CI
   runs). Backend tests alone: `pnpm --filter @paper-pairings/backend test`.
 - Conventions: backend domain logic lives in `packages/backend/convex/model/`

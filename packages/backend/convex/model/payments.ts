@@ -3,7 +3,7 @@ import {
   validateEntryFeeCents,
 } from "@paper-pairings/shared/payment-fees";
 
-import type { WithoutSystemFields } from "convex/server";
+import type { PaginationOptions, WithoutSystemFields } from "convex/server";
 
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
@@ -17,6 +17,7 @@ import {
   ownerPayoutsQuery,
   ownerRefundsForParticipantQuery,
   ownerRefundsQuery,
+  ownerRefundsWithStripeIdQuery,
 } from "./paidEventOwner";
 import { stripeAccountForOrganization } from "./stripeAccounts";
 
@@ -319,6 +320,70 @@ export async function paidEntryCancelOutcome(
     : "full_refund";
 }
 
+// The refund statuses that are "not settled yet": the money's whereabouts
+// are undecided, so nothing that assumes a final answer (a payout, a hard
+// delete) may proceed. A row whose outcome is unknown (needs_attention)
+// outranks a plain pending one so the caller's message can be actionable —
+// a pending row only needs time, a parked one needs a status check. Both the
+// payout sweep and the delete guard read this one probe, so the two can
+// never disagree on what "unsettled" means.
+export async function firstUnsettledRefundStatus(
+  ctx: QueryCtx,
+  owner: MoneyRowOwner,
+): Promise<"needs_attention" | "pending" | null> {
+  for (const status of ["needs_attention", "pending"] as const) {
+    if (await ownerRefundsQuery(ctx, owner, status).first()) {
+      return status;
+    }
+  }
+  return null;
+}
+
+// The most unsettled refunds one page of the organizer's payout card
+// reads (each row costs a registration lookup besides itself); the card
+// pages past it.
+export const REFUNDS_NEEDING_ATTENTION_PAGE = 64;
+
+// One page of the owner's refunds the payout waits on and a status check
+// can move, shaped for the organizer's payout card. The card keeps two
+// lists, one per status, and pages each on its own: the parked rows
+// (needs_attention, outcome unknown), and the rows Stripe holds a refund
+// for that is still processing (pending with a Stripe id) — a check
+// un-parks a row into that state, and if the final webhook never arrives
+// the check is the only way to settle it, so it must stay reachable
+// however many parked rows sit beside it. A pending row the executor is
+// still working on (no Stripe id) is left to the executor and its guard —
+// and never read here: the processing rows come off an index range on the
+// Stripe id, so a cancellation sweep's backlog of queued refunds costs
+// this query nothing. Rows leave their list as they settle, so a page
+// re-reads shorter rather than shifting.
+export async function refundsNeedingAttentionPage(
+  ctx: QueryCtx,
+  owner: MoneyRowOwner,
+  status: "needs_attention" | "pending",
+  paginationOpts: PaginationOptions,
+) {
+  const rows =
+    status === "needs_attention"
+      ? ownerRefundsQuery(ctx, owner, status)
+      : ownerRefundsWithStripeIdQuery(ctx, owner, status);
+  const { page, ...cursors } = await rows.paginate(paginationOpts);
+  const refunds = [];
+  for (const refund of page) {
+    const registration = await ctx.db.get(refund.registrationId);
+    refunds.push({
+      refundId: refund._id,
+      status,
+      playerName: registration?.playerName ?? null,
+      amountCents: refund.amountCents,
+      attemptCount: refund.attemptCount,
+      lastError: refund.lastError ?? null,
+      updatedAt: refund.updatedAt,
+    });
+  }
+  return { ...cursors, page: refunds };
+}
+
 // The event's first order in one status, read through the owner's index.
 async function firstOrderWithStatus(
   ctx: QueryCtx,
@@ -336,7 +401,9 @@ async function firstOrderWithStatus(
 // deleted. Open or disputed orders and unsettled refunds always block; paid
 // orders block unless the payout completed (the money reached the
 // organization). Resolution: cancel the event (refunds everyone) or
-// complete it (pays out), then delete.
+// complete it (pays out), then delete — except a refund whose outcome is
+// unknown, which neither action settles: it names the status check
+// instead.
 export async function requireEventPaymentsSettled(
   ctx: QueryCtx,
   ref: PaidEventRef,
@@ -351,8 +418,19 @@ export async function requireEventPaymentsSettled(
     }
   }
   const owner = paidEventMoneyRowOwner(ref);
-  const pendingRefund = await ownerRefundsQuery(ctx, owner, "pending").first();
-  if (pendingRefund) {
+  // A needs_attention refund is unsettled too: deleting the event would
+  // destroy the only record of money that may already have left Stripe.
+  // Nothing settles it on its own (the event may already be cancelled),
+  // so the message points at the status check on the settings page.
+  const unsettledRefund = await firstUnsettledRefundStatus(ctx, owner);
+  if (unsettledRefund === "needs_attention") {
+    throw userError(
+      `This ${ref.kind} has a refund that needs attention — check its ` +
+        "status from the payout section of the settings page (or resolve " +
+        "it with the platform operator) before deleting",
+    );
+  }
+  if (unsettledRefund === "pending") {
     throw userError(blockedMessage);
   }
   const paidOrder = await firstOrderWithStatus(ctx, ref, "paid");
