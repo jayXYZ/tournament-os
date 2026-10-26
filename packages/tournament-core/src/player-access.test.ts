@@ -5,11 +5,12 @@ import type {
   PlayerRegistration,
   PlayerTournamentEvent,
 } from "./player-access.ts";
+import { viewerAuthGate } from "./auth-readiness.ts";
 import type { ConvexAuthReadiness } from "./auth-readiness.ts";
 
 const mocks = vi.hoisted(() => ({
   useQuery: vi.fn(),
-  useConvexAuthReadiness: vi.fn(),
+  useViewerAuthGate: vi.fn(),
   useMyRegistration: vi.fn(),
 }));
 
@@ -17,8 +18,13 @@ vi.mock("convex/react", () => ({
   useQuery: mocks.useQuery,
 }));
 
-vi.mock("./auth-readiness", () => ({
-  useConvexAuthReadiness: mocks.useConvexAuthReadiness,
+// The hook is called here as a plain function — this package has no React
+// renderer to run useViewerAuthGate's grace timer — so only the timer is
+// stood in for: the real viewerAuthGate decides, fed the scenario's Convex
+// readiness and whether TOKEN_VALIDATION_GRACE_MS has run out.
+vi.mock("./auth-readiness", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./auth-readiness.ts")>()),
+  useViewerAuthGate: mocks.useViewerAuthGate,
 }));
 
 vi.mock("./hooks", () => ({
@@ -40,17 +46,24 @@ const cancelled = {
 } as unknown as PlayerRegistration;
 
 // One row per input: the app auth provider's state, Convex auth readiness,
-// what the event lookup resolves to, and what the server would answer for
-// getMyRegistration if the query were allowed to run. useMyRegistration is
-// emulated to its contract as pinned by this package's own tests: the
-// registration answer is withheld (undefined) until Convex auth is ready.
+// whether a provider user has outwaited the token-validation grace on an
+// `unauthenticated` verdict, what the event lookup resolves to, and what the
+// server would answer for getMyRegistration if the query were allowed to
+// run. useMyRegistration is emulated to its contract as pinned by this
+// package's own tests: the registration answer is withheld (undefined) until
+// Convex auth is ready.
 function run(scenario: {
   provider: "loading" | "signedOut" | "signedIn";
   convex: ConvexAuthReadiness;
+  graceElapsed?: boolean;
   event: PlayerTournamentEvent | null | undefined;
   registration?: PlayerRegistration | null | undefined;
 }) {
-  mocks.useConvexAuthReadiness.mockReturnValue(scenario.convex);
+  mocks.useViewerAuthGate.mockImplementation((appAuth) =>
+    viewerAuthGate(appAuth, scenario.convex, {
+      validationOverdue: scenario.graceElapsed ?? false,
+    }),
+  );
   mocks.useMyRegistration.mockImplementation((tournamentId) =>
     scenario.convex === "ready" && tournamentId
       ? scenario.registration
@@ -64,7 +77,7 @@ function run(scenario: {
 }
 
 beforeEach(() => {
-  mocks.useConvexAuthReadiness.mockReset();
+  mocks.useViewerAuthGate.mockReset();
   mocks.useMyRegistration.mockReset();
   mocks.useQuery.mockReset();
 });
@@ -108,6 +121,31 @@ describe("usePlayerTournamentAccess", () => {
     ).toEqual({ state: "loading", event });
   });
 
+  it("loading with the event while the auth provider is still resolving — a resolved event does not wait on auth", () => {
+    expect(run({ provider: "loading", convex: "pending", event })).toEqual({
+      state: "loading",
+      event,
+    });
+  });
+
+  it("loading while Convex validates a token issued by an in-place sign-in", () => {
+    // convex-react reports this window as signed out, not loading.
+    expect(
+      run({
+        provider: "signedIn",
+        convex: "unauthenticated",
+        event,
+        registration: confirmed,
+      }),
+    ).toEqual({ state: "loading", event });
+  });
+
+  it("loading for a null event while Convex validates an in-place sign-in — it may be a private one", () => {
+    expect(
+      run({ provider: "signedIn", convex: "unauthenticated", event: null }),
+    ).toEqual({ state: "loading", event: null });
+  });
+
   it("loading while the registration query is in flight after auth is ready", () => {
     expect(
       run({
@@ -133,10 +171,45 @@ describe("usePlayerTournamentAccess", () => {
     );
   });
 
+  it("notFound for a null event once the grace reads the provider's token as refused", () => {
+    // The server answers null for a private event it sees no identity on,
+    // just as for a provider-less visitor, so a refused token cannot tell a
+    // private event from a missing one — and signedOut needs an event.
+    expect(
+      run({
+        provider: "signedIn",
+        convex: "unauthenticated",
+        graceElapsed: true,
+        event: null,
+      }),
+    ).toEqual({ state: "notFound" });
+  });
+
   it("signedOut for a resolved event without a signed-in viewer", () => {
     expect(
       run({ provider: "signedOut", convex: "unauthenticated", event }),
     ).toEqual({ state: "signedOut", event });
+  });
+
+  it("signedOut for a resolved event once the grace reads the provider's token as refused", () => {
+    // Every authed query would stay on 'skip' — without this the ladder sat
+    // in loading forever; sign-in is the way out.
+    expect(
+      run({
+        provider: "signedIn",
+        convex: "unauthenticated",
+        graceElapsed: true,
+        event,
+        registration: confirmed,
+      }),
+    ).toEqual({ state: "signedOut", event });
+  });
+
+  it("signedOut while signing out — the provider dropped the user before Convex caught up", () => {
+    expect(run({ provider: "signedOut", convex: "ready", event })).toEqual({
+      state: "signedOut",
+      event,
+    });
   });
 
   it("notRegistered when the server finds no registration row", () => {
