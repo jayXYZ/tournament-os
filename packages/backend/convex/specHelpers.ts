@@ -10,6 +10,19 @@ import type { MutationCtx } from "./_generated/server";
 import { registrationNameStamp } from "./model/registrations";
 import type schema from "./schema";
 
+// Resolves to whatever `call` rejected with, so a refused mutation runs once
+// and the same rejection can be checked for both its class (UserError or a
+// plain Error — see model/errors.ts) and its payload. Fails the test if the
+// call resolves instead.
+export async function rejection(call: Promise<unknown>): Promise<unknown> {
+  return await call.then(
+    () => {
+      throw new Error("Expected the call to reject");
+    },
+    (error: unknown) => error,
+  );
+}
+
 // Registrations belong to participants (ADR 0002), so spec seeding that
 // inserts registrations directly must create the identity hop registerSelf
 // performs: a participant row linked to the player's user account.

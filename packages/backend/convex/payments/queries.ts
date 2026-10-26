@@ -8,7 +8,6 @@ import {
 import { query, type QueryCtx } from "../_generated/server";
 import { currentUserOrNull } from "../model/access";
 import { badgeForUser } from "../model/conventions";
-import { userError } from "../model/errors";
 import type { AnyEntryRegistration, PaidEventRef } from "../model/payments";
 import {
   hasPriorPlayerCancelFullRefund,
@@ -21,12 +20,15 @@ import { feeConfigFromEnv } from "../stripe/config";
 // What a player would pay for a given entry fee, from the same shared math
 // and env config the order writer uses, so no client ever re-implements the
 // breakdown. Pure arithmetic over public fee policy — no auth required.
+// Callers gate the subscription on validateEntryFeeCents themselves (see the
+// web app's useFeePreview), so a rejected fee here is a contract breach, not
+// a refusal to show: it stays a plain Error.
 export const getFeePreview = query({
   args: { entryFeeCents: v.number() },
   handler: async (_ctx, args) => {
     const message = validateEntryFeeCents(args.entryFeeCents);
     if (message) {
-      throw userError(message);
+      throw new Error(message);
     }
     return computeOrderBreakdown(args.entryFeeCents, feeConfigFromEnv());
   },

@@ -83,6 +83,7 @@ const MUST_START_WITH_FIRST_PHASE =
   "Tournament must start with its first phase";
 const PLAYER_MEETING_REQUIRED = "Player meeting must be started first";
 const AT_LEAST_TWO_PLAYERS = "At least two active players are required";
+const PHASE_NOT_CONFIGURED = "Tournament phase is not configured";
 const CURRENT_ROUND_NOT_FOUND = "Current round not found";
 const ROUND_NOT_COMPLETED = "Current round must be completed first";
 const ROUND_NOT_IN_PROGRESS = "Current round is not in progress";
@@ -444,7 +445,7 @@ function startTournamentVerdict(
     return disallowed(MUST_BE_PUBLISHED_FIRST);
   }
   if (!phase) {
-    return disallowed("Tournament phase is not configured");
+    return disallowed(PHASE_NOT_CONFIGURED);
   }
   // Defensive: pre-start the current phase is the first upcoming one, so a
   // later phase here means the phase records are inconsistent. Any phase
@@ -622,11 +623,27 @@ function rewindAvailability(facts: ProgressionFacts): RewindAvailability {
   };
 }
 
+// Verdict reasons that describe broken state — an in-progress tournament
+// with no phase or current round — rather than a move the organizer cannot
+// make yet. The board still shows them, but as thrown errors they stay plain
+// so production keeps them generic; every other reason is written for the
+// organizer and travels as a user refusal.
+const INTERNAL_VERDICT_REASONS: ReadonlySet<string> = new Set([
+  PHASE_NOT_CONFIGURED,
+  CURRENT_ROUND_NOT_FOUND,
+]);
+
+function progressionRefusal(reason: string) {
+  return INTERNAL_VERDICT_REASONS.has(reason)
+    ? new Error(reason)
+    : userError(reason);
+}
+
 function requireAllowed<TPayload>(
   verdict: ProgressionVerdict<TPayload>,
 ): asserts verdict is { allowed: true; reason: null } & TPayload {
   if (!verdict.allowed) {
-    throw userError(verdict.reason);
+    throw progressionRefusal(verdict.reason);
   }
 }
 
@@ -1147,14 +1164,16 @@ export async function rewindLatestRound(
     // The board folds "no current round" into the active-round reason; the
     // mutation keeps the more precise message.
     if (tournament.lifecycle === "in_progress" && !facts.round) {
-      throw new Error(CURRENT_ROUND_NOT_FOUND);
+      throw progressionRefusal(CURRENT_ROUND_NOT_FOUND);
     }
-    throw userError(actions.rewind.reason ?? REWIND_REQUIRES_ACTIVE_ROUND);
+    throw progressionRefusal(
+      actions.rewind.reason ?? REWIND_REQUIRES_ACTIVE_ROUND,
+    );
   }
   const phase = facts.phase;
   const round = facts.round;
   if (!phase || !round) {
-    throw new Error(CURRENT_ROUND_NOT_FOUND);
+    throw progressionRefusal(CURRENT_ROUND_NOT_FOUND);
   }
   const matchesWithPlayers = facts.matchesWithPlayers ?? [];
   const previousRound = facts.previousRound;

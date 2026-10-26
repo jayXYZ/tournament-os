@@ -72,10 +72,13 @@ legitimate play. Tune them in `rateLimits.ts`; nothing else needs to change.
 survives production error redaction, so clients can branch on it. Both
 clients do so through one helper: `mutationErrorMessage(error, fallback)`
 in `@paper-pairings/core` turns a rate-limited rejection into a retry-later
-message sized from `retryAfter` ("try again in about 2 minutes") and
-returns the error's own message otherwise. Every web mutation-error toast
-routes through it (via `useBusyAction` or directly); native mutation flows
-adopt it as they land. The helper reimplements the
+message sized from `retryAfter` ("try again in about 2 minutes"), shows a
+string `ConvexError` payload as written (the backend's `userError` refusals,
+see `docs/user-facing-errors.md`), and otherwise answers with the caller's
+`fallback` for anything the server threw, keeping an error's own message
+only when the client itself threw it. Every web mutation-error toast routes
+through it (via `useBusyAction` or directly); native mutation flows adopt
+it as they land. The helper reimplements the
 `isRateLimitError` check against the same payload shape rather than
 importing `@convex-dev/rate-limiter`, so its `instanceof ConvexError` test
 resolves through each app's own `convex` instance instead of a second copy

@@ -653,7 +653,7 @@ export async function detachTournamentFromConvention(
   },
 ) {
   if (args.tournament.conventionId !== args.convention._id) {
-    throw new Error("Tournament is not part of this convention");
+    throw userError("Tournament is not part of this convention");
   }
   if (
     args.tournament.lifecycle !== "setup" &&

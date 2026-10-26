@@ -268,7 +268,7 @@ export const createOnboardingLink = action({
         // Unreachable: the begin mutation refuses a first-time connect
         // without an email or a supported country. Kept so the gateway
         // contract stays non-optional.
-        throw userError("Stripe onboarding is missing required details");
+        throw new Error("Stripe onboarding is missing required details");
       }
       const created = await gateway.createRecipientAccount({
         organizationId: args.organizationId,

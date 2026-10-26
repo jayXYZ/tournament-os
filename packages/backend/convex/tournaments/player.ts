@@ -170,6 +170,22 @@ async function requireMatchParticipant(
 ) {
   const user = await ensureCurrentUser(ctx);
   const match = await requireMatch(ctx, matchId);
+  // Participation is settled first, and as a plain Error: anyone else holding
+  // a match id — unregistered or seated elsewhere — gets production's generic
+  // failure, never the round or lifecycle state the refusals below describe.
+  const registration = await registrationForUser(
+    ctx,
+    match.tournamentId,
+    user._id,
+  );
+  const players = await matchPlayers(ctx, matchId);
+  const myRow = registration
+    ? players.find((player) => player.playerId === registration._id)
+    : undefined;
+  if (!myRow) {
+    throw new Error("You are not part of this match");
+  }
+
   const tournament = await requireTournament(ctx, match.tournamentId);
   if (tournament.lifecycle !== "in_progress") {
     throw userError("Tournament is not in progress");
@@ -178,22 +194,8 @@ async function requireMatchParticipant(
   if (!isPairingsVisibleToPlayers(round)) {
     throw userError("Pairings have not been published");
   }
-  const registration = await registrationForUser(
-    ctx,
-    match.tournamentId,
-    user._id,
-  );
-  if (!registration) {
-    throw userError("Not registered for this tournament");
-  }
-
-  const players = await matchPlayers(ctx, matchId);
   if (players.length !== 2) {
     throw userError("Only two-player matches can be reported by players");
-  }
-  const myRow = players.find((player) => player.playerId === registration._id);
-  if (!myRow) {
-    throw new Error("You are not part of this match");
   }
   const opponentRow = players.find((player) => player._id !== myRow._id);
   if (!opponentRow) {
