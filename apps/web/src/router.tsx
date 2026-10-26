@@ -5,6 +5,7 @@ import { ConvexProvider, ConvexReactClient } from 'convex/react'
 import { ConvexQueryClient } from '@convex-dev/react-query'
 import { QueryClient } from '@tanstack/react-query'
 import * as Sentry from '@sentry/tanstackstart-react'
+import { userErrorMessage } from '@paper-pairings/core'
 import { routeTree } from './routeTree.gen'
 import type { ErrorComponentProps } from '@tanstack/react-router'
 
@@ -13,6 +14,14 @@ function DefaultErrorComponent({ error }: ErrorComponentProps) {
     Sentry.captureException(error)
   }, [error])
 
+  // A refusal a query threw for the viewer (the backend's userError, e.g.
+  // "Not registered for this tournament" once a registration is cancelled
+  // under an open player view) survives production redaction as ConvexError
+  // data; it is shown as written instead of the generic line.
+  const refusal = userErrorMessage(error)
+  if (refusal !== null) {
+    return <p>{refusal}</p>
+  }
   return (import.meta as any).env.DEV ? (
     <pre>{error.stack}</pre>
   ) : (

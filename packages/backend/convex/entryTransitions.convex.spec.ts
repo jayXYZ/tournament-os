@@ -17,6 +17,7 @@ import { expect, test } from "vitest";
 import { api } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { TournamentAuditEvent } from "./model/auditLog";
+import { UserError } from "./model/errors";
 import { registrationNameStamp } from "./model/registrations";
 import schema from "./schema";
 import type { RegistrationFilter } from "./validators";
@@ -24,6 +25,7 @@ import {
   insertLinkedParticipant,
   organizerIdentity,
   playerIdentity,
+  rejection,
   seedOrganizer,
 } from "./specHelpers";
 import { createConvexTest } from "./specHelpers.runtime";
@@ -73,11 +75,15 @@ test("approving an application takes a seat, so capacity applies", async () => {
   await registerPlayer(t, tournamentId, 2);
   const applicationId = await seedApplication(t, tournamentId, 3, "pending");
 
-  await expect(
+  // A refusal written for the organizer travels as ConvexError data: prod
+  // deployments redact a plain Error's message to "Server Error".
+  const refusal = await rejection(
     organizer.mutation(api.tournaments.registrations.approveRegistration, {
       registrationId: applicationId,
     }),
-  ).rejects.toThrow("Tournament is at capacity");
+  );
+  expect(refusal).toBeInstanceOf(UserError);
+  expect(refusal).toMatchObject({ data: "Tournament is at capacity" });
   // The refused approval left the application untouched.
   expect(await getRegistration(t, applicationId)).toMatchObject({
     entryStatus: "pending",

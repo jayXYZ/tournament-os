@@ -4,6 +4,7 @@ import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { tournamentLifecycles } from "../validators";
 import { requireActiveMembership, requireCurrentUser } from "./access";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "./batching";
+import { userError } from "./errors";
 import {
   MAX_MATCHES_PER_PLAYER,
   type TournamentPhaseInput,
@@ -97,7 +98,7 @@ export async function requireRegisteredPlayer(
   const user = await requireCurrentUser(ctx);
   const registration = await registrationForUser(ctx, tournamentId, user._id);
   if (!registration || registration.entryStatus !== "confirmed") {
-    throw new Error("Not registered for this tournament");
+    throw userError("Not registered for this tournament");
   }
   return { tournament, user, registration };
 }
@@ -312,7 +313,7 @@ export async function nextTournamentPublicCode(
 
 export function requireSetupEditable(tournament: Doc<"tournaments">) {
   if (tournament.lifecycle !== "setup") {
-    throw new Error("Tournament setup is locked after publication");
+    throw userError("Tournament setup is locked after publication");
   }
 }
 
@@ -321,7 +322,7 @@ export function requirePreStartEditable(tournament: Doc<"tournaments">) {
     tournament.lifecycle !== "setup" &&
     tournament.lifecycle !== "registration"
   ) {
-    throw new Error("Tournament setup is locked after play begins");
+    throw userError("Tournament setup is locked after play begins");
   }
 }
 
@@ -351,7 +352,7 @@ export const MAX_DETAILS_MARKDOWN_LENGTH = 20_000;
 // empty so callers clear the field instead of storing an empty string.
 export function validDetailsMarkdown(value: string) {
   if (value.length > MAX_DETAILS_MARKDOWN_LENGTH) {
-    throw new Error(
+    throw userError(
       `Event details must be at most ${MAX_DETAILS_MARKDOWN_LENGTH} characters`,
     );
   }
@@ -362,7 +363,7 @@ export function validDetailsMarkdown(value: string) {
 export function cleanName(value: string, label: string) {
   const trimmed = value.trim();
   if (trimmed.length < 2) {
-    throw new Error(`${label} must be at least 2 characters`);
+    throw userError(`${label} must be at least 2 characters`);
   }
   return trimmed;
 }
@@ -375,7 +376,7 @@ export function cleanName(value: string, label: string) {
 // document or the fan-out that copies it there.
 export function validStartDate(value: number) {
   if (!Number.isFinite(value)) {
-    throw new Error("Tournament start date must be a valid date");
+    throw userError("Tournament start date must be a valid date");
   }
   return value;
 }
@@ -391,7 +392,7 @@ export function validCapacity(value: number) {
     capacity < 2 ||
     capacity > MAX_TOURNAMENT_PLAYERS
   ) {
-    throw new Error(
+    throw userError(
       `Player capacity must be between 2 and ${MAX_TOURNAMENT_PLAYERS}`,
     );
   }

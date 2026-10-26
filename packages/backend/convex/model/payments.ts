@@ -8,6 +8,7 @@ import type { PaginationOptions, WithoutSystemFields } from "convex/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { feeConfigFromEnv } from "../stripe/config";
+import { userError } from "./errors";
 import type { MoneyRowOwner } from "./paidEventOwner";
 import {
   moneyRowOwnerColumns,
@@ -73,7 +74,7 @@ export function isPaidEvent(event: { entryFeeCents?: number }) {
 export function requireValidEntryFee(entryFeeCents: number) {
   const message = validateEntryFeeCents(entryFeeCents);
   if (message) {
-    throw new Error(message);
+    throw userError(message);
   }
   return entryFeeCents;
 }
@@ -87,7 +88,7 @@ export async function requirePayoutsReadyOrganization(
 ) {
   const account = await stripeAccountForOrganization(ctx, organizationId);
   if (!account?.payoutsReady) {
-    throw new Error(
+    throw userError(
       "Connect the organization's Stripe account before setting an entry fee",
     );
   }
@@ -413,7 +414,7 @@ export async function requireEventPaymentsSettled(
     "deleting";
   for (const status of [...OPEN_ORDER_STATUSES, "disputed"] as const) {
     if (await firstOrderWithStatus(ctx, ref, status)) {
-      throw new Error(blockedMessage);
+      throw userError(blockedMessage);
     }
   }
   const owner = paidEventMoneyRowOwner(ref);
@@ -423,20 +424,20 @@ export async function requireEventPaymentsSettled(
   // so the message points at the status check on the settings page.
   const unsettledRefund = await firstUnsettledRefundStatus(ctx, owner);
   if (unsettledRefund === "needs_attention") {
-    throw new Error(
+    throw userError(
       `This ${ref.kind} has a refund that needs attention — check its ` +
         "status from the payout section of the settings page (or resolve " +
         "it with the platform operator) before deleting",
     );
   }
   if (unsettledRefund === "pending") {
-    throw new Error(blockedMessage);
+    throw userError(blockedMessage);
   }
   const paidOrder = await firstOrderWithStatus(ctx, ref, "paid");
   if (paidOrder) {
     const payout = await ownerPayoutsQuery(ctx, owner).unique();
     if (payout?.status !== "completed") {
-      throw new Error(blockedMessage);
+      throw userError(blockedMessage);
     }
   }
 }
@@ -458,7 +459,7 @@ export async function requireEntryFeeEditable(
     )
     .first();
   if (order) {
-    throw new Error(
+    throw userError(
       "Entry fee settings are locked once a payment exists for this event",
     );
   }
@@ -514,7 +515,7 @@ export async function createEntryOrder(
     throw new Error("Order owner and registration disagree");
   }
   if (entryFeeCents <= 0) {
-    throw new Error("This event has no entry fee");
+    throw userError("This event has no entry fee");
   }
   const participant = await ctx.db.get(args.registration.participantId);
   if (!participant?.userId) {

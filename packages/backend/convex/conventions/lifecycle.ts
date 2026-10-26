@@ -21,6 +21,7 @@ import {
   validDateRange,
 } from "../model/conventions";
 import { deleteConventionOperationalDataBatch } from "../model/deletion";
+import { userError } from "../model/errors";
 import { requireEventPaymentsSettled } from "../model/payments";
 import { parsePublicCode } from "../model/publicCodes";
 import {
@@ -209,7 +210,7 @@ export const updateConventionSetup = mutation({
         try {
           validTicketTypeInputs({ ...convention, ...range }, ticketType);
         } catch (error) {
-          throw new Error(
+          throw userError(
             `These dates conflict with the "${ticketType.name}" ticket (${
               error instanceof Error ? error.message : "invalid window"
             }) — edit that ticket type first`,
@@ -222,7 +223,7 @@ export const updateConventionSetup = mutation({
     if (args.playerCapacity !== undefined) {
       const playerCapacity = validConventionCapacity(args.playerCapacity);
       if (playerCapacity < convention.confirmedRegistrationCount) {
-        throw new Error(
+        throw userError(
           "Badge capacity cannot be lower than the confirmed badge count",
         );
       }
@@ -246,10 +247,10 @@ export const updateConventionSetup = mutation({
     if (effectiveRefundDeadline !== undefined) {
       const effectiveStartDate = patch.startDate ?? convention.startDate;
       if (!Number.isFinite(effectiveRefundDeadline)) {
-        throw new Error("Enter a valid refund deadline");
+        throw userError("Enter a valid refund deadline");
       }
       if (effectiveRefundDeadline > effectiveStartDate) {
-        throw new Error(
+        throw userError(
           "Refund deadline must be at or before the convention start date",
         );
       }
@@ -273,7 +274,7 @@ export const updateConventionDetails = mutation({
       args.conventionId,
     );
     if (convention.lifecycle === "cancelled") {
-      throw new Error("Convention has been cancelled");
+      throw userError("Convention has been cancelled");
     }
     await ctx.db.patch(args.conventionId, {
       detailsMarkdown: validDetailsMarkdown(args.detailsMarkdown),
@@ -333,7 +334,7 @@ export const completeConvention = mutation({
       args.conventionId,
     );
     if (convention.lifecycle !== "registration") {
-      throw new Error("Convention cannot be completed in its current state");
+      throw userError("Convention cannot be completed in its current state");
     }
     await ctx.db.patch(args.conventionId, {
       lifecycle: "completed",
@@ -378,10 +379,10 @@ export const cancelConvention = mutation({
       args.conventionId,
     );
     if (convention.lifecycle === "completed") {
-      throw new Error("Completed conventions cannot be cancelled");
+      throw userError("Completed conventions cannot be cancelled");
     }
     if (convention.lifecycle === "cancelled") {
-      throw new Error("Convention is already cancelled");
+      throw userError("Convention is already cancelled");
     }
     await ctx.db.patch(args.conventionId, {
       lifecycle: "cancelled",

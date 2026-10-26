@@ -18,7 +18,7 @@ export {
   matchResultKindLabel,
   standingStatusLabel,
 } from "./format";
-export { mutationErrorMessage } from "./mutation-error";
+export { mutationErrorMessage, userErrorMessage } from "./mutation-error";
 export { usePlayerTournamentAccess } from "./player-access";
 export type {
   AppAuthSnapshot,

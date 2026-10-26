@@ -23,6 +23,7 @@ import type * as model_conventions from "../model/conventions.js";
 import type * as model_cutoffs from "../model/cutoffs.js";
 import type * as model_decklists from "../model/decklists.js";
 import type * as model_deletion from "../model/deletion.js";
+import type * as model_errors from "../model/errors.js";
 import type * as model_invites from "../model/invites.js";
 import type * as model_manualPairing from "../model/manualPairing.js";
 import type * as model_matchResults from "../model/matchResults.js";
@@ -96,6 +97,7 @@ declare const fullApi: ApiFromModules<{
   "model/cutoffs": typeof model_cutoffs;
   "model/decklists": typeof model_decklists;
   "model/deletion": typeof model_deletion;
+  "model/errors": typeof model_errors;
   "model/invites": typeof model_invites;
   "model/manualPairing": typeof model_manualPairing;
   "model/matchResults": typeof model_matchResults;

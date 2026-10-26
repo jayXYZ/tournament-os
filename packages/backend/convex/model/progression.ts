@@ -2,6 +2,7 @@ import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { logAuditEvent } from "./auditLog";
+import { userError } from "./errors";
 import { deleteResultRevisionsForMatch } from "./matchResults";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "./batching";
 import {
@@ -82,6 +83,7 @@ const MUST_START_WITH_FIRST_PHASE =
   "Tournament must start with its first phase";
 const PLAYER_MEETING_REQUIRED = "Player meeting must be started first";
 const AT_LEAST_TWO_PLAYERS = "At least two active players are required";
+const PHASE_NOT_CONFIGURED = "Tournament phase is not configured";
 const CURRENT_ROUND_NOT_FOUND = "Current round not found";
 const ROUND_NOT_COMPLETED = "Current round must be completed first";
 const ROUND_NOT_IN_PROGRESS = "Current round is not in progress";
@@ -443,7 +445,7 @@ function startTournamentVerdict(
     return disallowed(MUST_BE_PUBLISHED_FIRST);
   }
   if (!phase) {
-    return disallowed("Tournament phase is not configured");
+    return disallowed(PHASE_NOT_CONFIGURED);
   }
   // Defensive: pre-start the current phase is the first upcoming one, so a
   // later phase here means the phase records are inconsistent. Any phase
@@ -621,11 +623,27 @@ function rewindAvailability(facts: ProgressionFacts): RewindAvailability {
   };
 }
 
+// Verdict reasons that describe broken state — an in-progress tournament
+// with no phase or current round — rather than a move the organizer cannot
+// make yet. The board still shows them, but as thrown errors they stay plain
+// so production keeps them generic; every other reason is written for the
+// organizer and travels as a user refusal.
+const INTERNAL_VERDICT_REASONS: ReadonlySet<string> = new Set([
+  PHASE_NOT_CONFIGURED,
+  CURRENT_ROUND_NOT_FOUND,
+]);
+
+function progressionRefusal(reason: string) {
+  return INTERNAL_VERDICT_REASONS.has(reason)
+    ? new Error(reason)
+    : userError(reason);
+}
+
 function requireAllowed<TPayload>(
   verdict: ProgressionVerdict<TPayload>,
 ): asserts verdict is { allowed: true; reason: null } & TPayload {
   if (!verdict.allowed) {
-    throw new Error(verdict.reason);
+    throw progressionRefusal(verdict.reason);
   }
 }
 
@@ -726,7 +744,7 @@ export async function publishPairings(
   const round = await requireRound(ctx, roundId);
   const phase = await requirePhase(ctx, round.tournamentPhaseId);
   if (phase.phaseCurrentRound !== round._id) {
-    throw new Error("Only the current round's pairings can be published");
+    throw userError("Only the current round's pairings can be published");
   }
   if (round.pairingsPublishedAt !== undefined) {
     return round._id;
@@ -740,7 +758,7 @@ export async function publishPairings(
     round._id,
   );
   if (unpaired.length > 0) {
-    throw new Error(ALL_PLAYERS_MUST_BE_PAIRED);
+    throw userError(ALL_PLAYERS_MUST_BE_PAIRED);
   }
   const now = Date.now();
   await ctx.db.patch(round._id, {
@@ -758,7 +776,7 @@ export async function completeRound(
   const round = await requireRound(ctx, roundId);
   const { facts, actions } = await analyzeProgression(ctx, tournament);
   if (facts.round?._id !== round._id) {
-    throw new Error(
+    throw userError(
       tournament.lifecycle !== "in_progress"
         ? TOURNAMENT_NOT_IN_PROGRESS
         : ONLY_CURRENT_ROUND_COMPLETABLE,
@@ -1122,7 +1140,7 @@ export async function advance(
         completedRoundId: completedRound._id,
       };
     }
-    throw new Error(next.actions.generateNextRound.reason);
+    throw userError(next.actions.generateNextRound.reason);
   }
   const nextRoundId = await executeGenerateNextRound(
     ctx,
@@ -1146,14 +1164,16 @@ export async function rewindLatestRound(
     // The board folds "no current round" into the active-round reason; the
     // mutation keeps the more precise message.
     if (tournament.lifecycle === "in_progress" && !facts.round) {
-      throw new Error(CURRENT_ROUND_NOT_FOUND);
+      throw progressionRefusal(CURRENT_ROUND_NOT_FOUND);
     }
-    throw new Error(actions.rewind.reason ?? REWIND_REQUIRES_ACTIVE_ROUND);
+    throw progressionRefusal(
+      actions.rewind.reason ?? REWIND_REQUIRES_ACTIVE_ROUND,
+    );
   }
   const phase = facts.phase;
   const round = facts.round;
   if (!phase || !round) {
-    throw new Error(CURRENT_ROUND_NOT_FOUND);
+    throw progressionRefusal(CURRENT_ROUND_NOT_FOUND);
   }
   const matchesWithPlayers = facts.matchesWithPlayers ?? [];
   const previousRound = facts.previousRound;
@@ -1239,29 +1259,29 @@ export async function startPlayerMeeting(
     tournament.lifecycle === "completed" ||
     tournament.lifecycle === "cancelled"
   ) {
-    throw new Error("Tournament is no longer running");
+    throw userError("Tournament is no longer running");
   }
   if (phase.phaseType !== SWISS_FORMAT) {
-    throw new Error("Phase is not a Swiss phase");
+    throw userError("Phase is not a Swiss phase");
   }
   if (phase.phaseStatus !== "upcoming") {
-    throw new Error("Phase has already started");
+    throw userError("Phase has already started");
   }
   if (phase.playerMeeting !== true) {
-    throw new Error("Player meeting is not enabled for this phase");
+    throw userError("Player meeting is not enabled for this phase");
   }
   if (phase.playerMeetingStatus !== undefined) {
-    throw new Error("Player meeting has already started");
+    throw userError("Player meeting has already started");
   }
   let registrations: Doc<"tournamentRegistrations">[];
   if (phase.phaseOrder === 1) {
     if (tournament.lifecycle !== "registration") {
-      throw new Error("Tournament must be published before the meeting starts");
+      throw userError("Tournament must be published before the meeting starts");
     }
     registrations = await activeRegistrations(ctx, tournament._id);
   } else {
     if (tournament.lifecycle !== "in_progress") {
-      throw new Error(TOURNAMENT_NOT_IN_PROGRESS);
+      throw userError(TOURNAMENT_NOT_IN_PROGRESS);
     }
     const previousPhase = await swissPhaseByOrder(
       ctx,
@@ -1269,7 +1289,7 @@ export async function startPlayerMeeting(
       phase.phaseOrder - 1,
     );
     if (previousPhase?.phaseStatus !== "completed") {
-      throw new Error("Previous phase must be completed first");
+      throw userError("Previous phase must be completed first");
     }
     // The cut is enforced on registrations only when round 1 is paired, but
     // the meeting freezes its entry field from the previous phase's final
@@ -1285,7 +1305,7 @@ export async function startPlayerMeeting(
         previousPhase.phaseCutoff,
       );
       if (registrations.length < 2) {
-        throw new Error(
+        throw userError(
           "The phase cutoff leaves fewer than two qualifying players",
         );
       }
@@ -1294,7 +1314,7 @@ export async function startPlayerMeeting(
     }
   }
   if (registrations.length < 2) {
-    throw new Error(AT_LEAST_TWO_PLAYERS);
+    throw userError(AT_LEAST_TWO_PLAYERS);
   }
 
   const players = await mapAsyncInBatches(

@@ -17,6 +17,7 @@ import { logAuditEvent } from "../model/auditLog";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
 import { badgeChildEventAdmission, badgeForUser } from "../model/conventions";
 import { deleteTournamentOperationalDataBatch } from "../model/deletion";
+import { userError } from "../model/errors";
 import { inviteCodeGrantsAccess } from "../model/invites";
 import {
   phasesInOrder,
@@ -377,7 +378,7 @@ export const updateTournamentSetup = mutation({
     if (args.playerCapacity !== undefined) {
       const playerCapacity = validCapacity(args.playerCapacity);
       if (playerCapacity < tournament.confirmedRegistrationCount) {
-        throw new Error(
+        throw userError(
           "Player capacity cannot be lower than the confirmed registration count",
         );
       }
@@ -419,7 +420,7 @@ export const updateTournamentSetup = mutation({
         patch.refundDeadline = undefined;
       } else {
         if (tournament.isTestEvent) {
-          throw new Error("Test events cannot charge an entry fee");
+          throw userError("Test events cannot charge an entry fee");
         }
         requireValidEntryFee(args.entryFeeCents);
         await requirePayoutsReadyOrganization(ctx, tournament.organizationId);
@@ -433,7 +434,7 @@ export const updateTournamentSetup = mutation({
         const effectiveFeeCents =
           args.entryFeeCents ?? tournament.entryFeeCents ?? 0;
         if (effectiveFeeCents === 0) {
-          throw new Error("Set an entry fee before setting a refund deadline");
+          throw userError("Set an entry fee before setting a refund deadline");
         }
         patch.refundDeadline = args.refundDeadline;
       }
@@ -447,10 +448,10 @@ export const updateTournamentSetup = mutation({
     if (effectiveRefundDeadline !== undefined) {
       const effectiveStartDate = patch.startDate ?? tournament.startDate;
       if (!Number.isFinite(effectiveRefundDeadline)) {
-        throw new Error("Enter a valid refund deadline");
+        throw userError("Enter a valid refund deadline");
       }
       if (effectiveRefundDeadline > effectiveStartDate) {
-        throw new Error(
+        throw userError(
           "Refund deadline must be at or before the tournament start date",
         );
       }
@@ -503,7 +504,7 @@ export const updatePairingsAutoPublish = mutation({
       tournament.lifecycle === "completed" ||
       tournament.lifecycle === "cancelled"
     ) {
-      throw new Error("Tournament is no longer editable");
+      throw userError("Tournament is no longer editable");
     }
     await ctx.db.patch(tournament._id, {
       autoPublishPairings: args.autoPublishPairings,
@@ -525,7 +526,7 @@ export const updateTournamentDetails = mutation({
   handler: async (ctx, args) => {
     const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
     if (tournament.lifecycle === "cancelled") {
-      throw new Error("Tournament has been cancelled");
+      throw userError("Tournament has been cancelled");
     }
     await ctx.db.patch(args.tournamentId, {
       detailsMarkdown: validDetailsMarkdown(args.detailsMarkdown),
@@ -616,10 +617,10 @@ export const cancelTournament = mutation({
       args.tournamentId,
     );
     if (tournament.lifecycle === "completed") {
-      throw new Error("Completed tournaments cannot be cancelled");
+      throw userError("Completed tournaments cannot be cancelled");
     }
     if (tournament.lifecycle === "cancelled") {
-      throw new Error("Tournament is already cancelled");
+      throw userError("Tournament is already cancelled");
     }
     await ctx.db.patch(args.tournamentId, {
       lifecycle: "cancelled",

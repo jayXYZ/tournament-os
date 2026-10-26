@@ -13,6 +13,7 @@ import {
   decklistSubmissionOpen,
   normalizeBoard,
 } from "../model/decklists";
+import { userError } from "../model/errors";
 import {
   registrationForUser,
   requireRegistration,
@@ -48,32 +49,32 @@ export const submitMyDecklist = mutation({
       user._id,
     );
     if (!registration) {
-      throw new Error("You are not registered for this tournament");
+      throw userError("You are not registered for this tournament");
     }
     // Checked separately from the open/closed gate below so an event that
     // never collects decklists doesn't report itself as merely "closed".
     if (!tournament.decklistRequired) {
-      throw new Error("This tournament does not collect decklists");
+      throw userError("This tournament does not collect decklists");
     }
     if (!decklistSubmissionOpen(tournament, registration)) {
-      throw new Error("Decklist submission is closed for this tournament");
+      throw userError("Decklist submission is closed for this tournament");
     }
 
     const maindeck = normalizeBoard("Maindeck", args.maindeck);
     if (maindeck.length === 0) {
-      throw new Error("Maindeck cannot be empty");
+      throw userError("Maindeck cannot be empty");
     }
     const sideboard = normalizeBoard("Sideboard", args.sideboard);
     // An all-whitespace deck name reads as "left blank", not as a name.
     const deckName = args.deckName?.trim() || undefined;
     if (deckName !== undefined && deckName.length > MAX_DECK_NAME_LENGTH) {
-      throw new Error("Deck name is too long");
+      throw userError("Deck name is too long");
     }
     if (
       args.rawText !== undefined &&
       args.rawText.length > MAX_RAW_TEXT_LENGTH
     ) {
-      throw new Error("Decklist text is too long");
+      throw userError("Decklist text is too long");
     }
 
     const existing = await decklistForRegistration(ctx, registration._id);

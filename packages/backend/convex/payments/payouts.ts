@@ -11,6 +11,7 @@ import {
 } from "../_generated/server";
 import { logEventPayoutAudit } from "../model/auditLog";
 import { requireConventionOrganizerAccess } from "../model/conventions";
+import { userError } from "../model/errors";
 import type { MoneyRowOwner } from "../model/paidEventOwner";
 import {
   moneyRowOwnerArgs,
@@ -573,7 +574,7 @@ export const beginPayoutRetry = internalMutation({
       !payout ||
       (payout.status !== "blocked" && payout.status !== "failed")
     ) {
-      throw new Error("This payout is not awaiting a retry");
+      throw userError("This payout is not awaiting a retry");
     }
 
     const anyRow = await ctx.db
