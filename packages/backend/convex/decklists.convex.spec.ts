@@ -7,17 +7,16 @@ import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import schema from "./schema";
 import {
-  insertLinkedParticipant,
   organizerIdentity,
   playerIdentity,
+  registerPlayers,
   seedOrganizer,
 } from "./specHelpers";
 import { createConvexTest } from "./specHelpers.runtime";
 
 // A published tournament open for registration, with playerCount confirmed
-// active players seeded directly (the pattern the player suite uses; the
-// organizer's publicCode sits above the players' range so the manually
-// assigned codes never collide).
+// active players registered through registerSelf (the organizer's publicCode
+// sits above the codes the allocator hands those players).
 async function seedOpenTournament(
   t: TestConvex<typeof schema>,
   playerCount: number,
@@ -41,42 +40,7 @@ async function seedOpenTournament(
     tournamentId,
   });
 
-  const registrationIds = await t.run(async (ctx) => {
-    const now = Date.now();
-    const tournament = await ctx.db.get(tournamentId);
-    if (!tournament) {
-      throw new Error("Tournament not found in test setup");
-    }
-    const ids: Id<"tournamentRegistrations">[] = [];
-    for (let playerNumber = 1; playerNumber <= playerCount; playerNumber += 1) {
-      const identity = playerIdentity(playerNumber);
-      const userId = await ctx.db.insert("users", {
-        tokenIdentifier: identity.tokenIdentifier,
-        publicCode: playerNumber,
-        email: identity.email,
-        name: identity.name,
-        updatedAt: now,
-      });
-      const participant0Id = await insertLinkedParticipant(ctx, userId);
-      ids.push(
-        await ctx.db.insert("tournamentRegistrations", {
-          tournamentId,
-          participantId: participant0Id,
-          tournamentStartDate: tournament.startDate,
-          entryStatus: "confirmed",
-          participationStatus: "active",
-          playerName: identity.name,
-          createdAt: now + playerNumber,
-          tiebreakRandom: playerNumber,
-          updatedAt: now + playerNumber,
-        }),
-      );
-    }
-    await ctx.db.patch(tournamentId, {
-      confirmedRegistrationCount: playerCount,
-    });
-    return ids;
-  });
+  const registrationIds = await registerPlayers(t, tournamentId, playerCount);
 
   return { tournamentId, registrationIds };
 }

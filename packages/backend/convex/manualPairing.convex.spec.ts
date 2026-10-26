@@ -25,7 +25,6 @@ async function seedUnpublishedRoundOne(
     name: "Manual Pairing Event",
     playerCount: options?.playerCount ?? 4,
     autoPublishPairings: false,
-    playerNames: true,
     phases: [{ phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 2 }],
   });
   const organizer = t.withIdentity(organizerIdentity);

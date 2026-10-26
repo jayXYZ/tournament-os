@@ -22,8 +22,8 @@ import { planSingleEliminationPairings } from "./model/singleElimination";
 import { compareStandingRows } from "./model/standings";
 import { simulatedMatchResult } from "./model/testing";
 import {
-  insertLinkedParticipant,
   organizerIdentity,
+  registerPlayers,
   seedOrganizer,
 } from "./specHelpers";
 import {
@@ -341,45 +341,6 @@ function deriveFullScenario(
   };
 }
 
-async function seedGenerativeField(
-  t: Test,
-  tournamentId: Id<"tournaments">,
-  count: number,
-  rng: () => number,
-) {
-  await t.run(async (ctx) => {
-    const now = Date.now();
-    const tournament = await ctx.db.get(tournamentId);
-    if (!tournament) {
-      throw new Error("Tournament not found in test setup");
-    }
-    for (let playerNumber = 1; playerNumber <= count; playerNumber += 1) {
-      const userId = await ctx.db.insert("users", {
-        tokenIdentifier: `player:${playerNumber}`,
-        publicCode: playerNumber,
-        email: `player${playerNumber}@example.test`,
-        name: `Player ${playerNumber}`,
-        updatedAt: now,
-      });
-      const participant0Id = await insertLinkedParticipant(ctx, userId);
-      await ctx.db.insert("tournamentRegistrations", {
-        tournamentId,
-        participantId: participant0Id,
-        tournamentStartDate: tournament.startDate,
-        entryStatus: "confirmed",
-        participationStatus: "active",
-        playerName: `Player ${playerNumber}`,
-        createdAt: now + playerNumber,
-        tiebreakRandom: Math.floor(rng() * 2 ** 32),
-        updatedAt: now,
-      });
-    }
-    await ctx.db.patch(tournamentId, {
-      confirmedRegistrationCount: tournament.confirmedRegistrationCount + count,
-    });
-  });
-}
-
 async function activeFieldRegistrations(
   t: Test,
   tournamentId: Id<"tournaments">,
@@ -662,9 +623,13 @@ async function createFullScenarioTournament(
       ],
     },
   );
-  await seedGenerativeField(t, tournamentId, scenario.fieldSize, rng);
   await authed.mutation(api.tournaments.lifecycle.publishTournament, {
     tournamentId,
+  });
+  // Each player's tiebreak comes off the scenario's generator, in player
+  // order, so the field reproduces from the seed.
+  await registerPlayers(t, tournamentId, scenario.fieldSize, {
+    tiebreak: () => Math.floor(rng() * 2 ** 32),
   });
   await authed.mutation(api.tournaments.rounds.startTournament, {
     tournamentId,

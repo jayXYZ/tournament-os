@@ -16,6 +16,7 @@ import {
   organizerIdentity,
   playOutCurrentRound,
   playerIdentity,
+  registerPlayers,
   seedOrganizer,
 } from "./specHelpers";
 import { createConvexTest } from "./specHelpers.runtime";
@@ -1345,42 +1346,6 @@ async function seedUsers(t: TestConvex<typeof schema>, playerCount: number) {
   });
 }
 
-async function registerUsers(
-  t: TestConvex<typeof schema>,
-  tournamentId: Id<"tournaments">,
-  userIds: Id<"users">[],
-) {
-  return await t.run(async (ctx) => {
-    const now = Date.now();
-    const tournament = await ctx.db.get(tournamentId);
-    if (!tournament) {
-      throw new Error("Tournament not found in test setup");
-    }
-    const ids: Id<"tournamentRegistrations">[] = [];
-    for (const [index, userId] of userIds.entries()) {
-      const participant12Id = await insertLinkedParticipant(ctx, userId);
-      ids.push(
-        await ctx.db.insert("tournamentRegistrations", {
-          tournamentId,
-          participantId: participant12Id,
-          tournamentStartDate: tournament.startDate,
-          entryStatus: "confirmed",
-          participationStatus: "active",
-          createdAt: now + index + 1,
-          tiebreakRandom: 100_000 - index,
-          updatedAt: now,
-        }),
-      );
-    }
-    await ctx.db.patch(tournamentId, {
-      confirmedRegistrationCount:
-        tournament.confirmedRegistrationCount + userIds.length,
-      updatedAt: now,
-    });
-    return ids;
-  });
-}
-
 async function createStartedTournament(
   t: TestConvex<typeof schema>,
   organizationId: Id<"organizations">,
@@ -1406,10 +1371,20 @@ async function createStartedTournament(
       autoPublishPairings: true,
     },
   );
-  const registrationIds = await registerUsers(t, tournamentId, userIds);
   await organizer.mutation(api.tournaments.lifecycle.publishTournament, {
     tournamentId,
   });
+  // seedUsers created these accounts for players 1..N in order, so each
+  // registers itself under its own identity; descending tiebreaks keep equal
+  // records in player-number order.
+  const registrationIds = await registerPlayers(
+    t,
+    tournamentId,
+    userIds.length,
+    {
+      tiebreak: "descending",
+    },
+  );
   await organizer.mutation(api.tournaments.rounds.startTournament, {
     tournamentId,
   });

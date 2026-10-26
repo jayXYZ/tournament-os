@@ -36,7 +36,6 @@ test("standings never show another player's email in place of a missing name", a
     name: "Nameless Standings Event",
     playerCount: 3,
     phases: [{ phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 1 }],
-    playerNames: true,
   });
   const organizer = t.withIdentity(organizerIdentity);
   // Registers through the real sign-in + registration path, so the name
@@ -89,7 +88,6 @@ test("a player meeting never shows a seatmate's email in place of a missing name
     name: "Nameless Meeting Event",
     playerCount: 1,
     phases: [{ phaseOrder: 1, phaseRoundMode: "dynamic", playerMeeting: true }],
-    playerNames: true,
   });
   const organizer = t.withIdentity(organizerIdentity);
   await t
@@ -126,7 +124,6 @@ test("the organizer audit log labels a nameless player by email", async () => {
   const { tournamentId } = await seedTournamentWithPlayers(t, {
     name: "Nameless Audit Event",
     playerCount: 2,
-    playerNames: true,
   });
   const organizer = t.withIdentity(organizerIdentity);
   const namelessRegistrationId = await t
@@ -175,7 +172,6 @@ test("the organizer roster search finds a nameless account by its email", async 
   const { tournamentId } = await seedTournamentWithPlayers(t, {
     name: "Nameless Search Event",
     playerCount: 2,
-    playerNames: true,
   });
   const organizer = t.withIdentity(organizerIdentity);
   const namelessRegistrationId = await t
@@ -277,7 +273,6 @@ test("organizer pairing edits and results label a nameless player by email", asy
     playerCount: 3,
     autoPublishPairings: false,
     phases: [{ phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 1 }],
-    playerNames: true,
   });
   const organizer = t.withIdentity(organizerIdentity);
   const nameless = t.withIdentity(namelessIdentity);
@@ -380,6 +375,7 @@ test("organizer pairing edits and results label a nameless player by email", asy
     `match_result_reported:Player ${opponentNumber}`,
     `pairing_created:Player ${opponentNumber}`,
     `pairing_broken:Player ${opponentNumber}`,
+    `player_registered:Player ${opponentNumber}`,
   ]);
 
   // The opponent's own match card never carries the email.
@@ -399,7 +395,6 @@ test("a nameless player's mid-round drop is logged as a concession labelled by e
     name: "Nameless Concession Event",
     playerCount: 3,
     phases: [{ phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 1 }],
-    playerNames: true,
   });
   const organizer = t.withIdentity(organizerIdentity);
   const nameless = t.withIdentity(namelessIdentity);
@@ -437,7 +432,10 @@ test("a nameless player's mid-round drop is logged as a concession labelled by e
   );
   expect(
     await auditLabelsFor(t, tournamentId, registrationIds[opponent - 1]),
-  ).toEqual([`match_conceded:Player ${opponent}`]);
+  ).toEqual([
+    `match_conceded:Player ${opponent}`,
+    `player_registered:Player ${opponent}`,
+  ]);
 
   // The opponent sees the walkover without the conceder's email.
   const view = await t
@@ -456,7 +454,6 @@ test("a name gained after registering reaches the standings and roster on the ne
     name: "Renamed Standings Event",
     playerCount: 3,
     phases: [{ phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 2 }],
-    playerNames: true,
   });
   const organizer = t.withIdentity(organizerIdentity);
   const namelessRegistrationId = await t
@@ -549,7 +546,6 @@ test("a blank provider name counts as no name", async () => {
     name: "Blank Name Event",
     playerCount: 2,
     phases: [{ phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 1 }],
-    playerNames: true,
   });
   const organizer = t.withIdentity(organizerIdentity);
   // The provider supplies the name claim, but empty — what an account that
@@ -622,7 +618,6 @@ test("the organizer seating list is alphabetical by the label it prints", async 
     name: "Nameless Seating Event",
     playerCount: 2,
     phases: [{ phaseOrder: 1, phaseRoundMode: "dynamic", playerMeeting: true }],
-    playerNames: true,
   });
   const organizer = t.withIdentity(organizerIdentity);
   // An email that sorts after every named player: seating by the sheet's
