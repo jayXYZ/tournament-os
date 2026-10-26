@@ -375,10 +375,18 @@ export const paymentRefundReasonValidator = v.union(
   v.literal("seat_unavailable"),
 );
 
+// A refund row's lifecycle: pending (queued, or the Stripe call is in
+// flight / retrying, or Stripe holds the refund and is still processing
+// it), succeeded, failed (Stripe definitively refused — the money never
+// moved), or needs_attention (the executor could not establish the
+// outcome, so whether Stripe created the refund is unknown: automation
+// stops, the row stays visible to the organizer, and only Stripe's record
+// — the owner's status check or the refund.updated webhook — settles it).
 export const paymentRefundStatusValidator = v.union(
   v.literal("pending"),
   v.literal("succeeded"),
   v.literal("failed"),
+  v.literal("needs_attention"),
 );
 
 // The event payout's lifecycle (one payout per completed paid tournament or
@@ -458,6 +466,30 @@ export const matchResultLineValidator = v.object({
   gameLosses: v.number(),
   gameDraws: v.number(),
 });
+
+// The tournament's single live round timer. Server-side writes happen only on
+// organizer actions; clients derive the ticking countdown (and overtime, which
+// is never stored) from these anchors locally. Mirrored structurally by
+// RoundTimerState in @paper-pairings/shared/timer-utils.
+export const tournamentRoundTimerValidator = v.union(
+  v.object({
+    kind: v.literal("running"),
+    roundId: v.id("tournamentRounds"),
+    // Epoch ms when remaining time hits zero; clients tick against this.
+    endsAt: v.number(),
+    // Configured length including adjustments, for "12:34 of 50:00" displays.
+    durationMs: v.number(),
+    startedAt: v.number(),
+  }),
+  v.object({
+    kind: v.literal("paused"),
+    roundId: v.id("tournamentRounds"),
+    // Frozen remainder; negative when paused while already in overtime.
+    remainingMs: v.number(),
+    durationMs: v.number(),
+    startedAt: v.number(),
+  }),
+);
 
 // What happened, as a discriminated union so the log view renders each kind
 // with full type safety. Events carry enough denormalized context (names,
@@ -590,6 +622,38 @@ export const tournamentAuditEventValidator = v.union(
     playerCount: v.number(),
   }),
   v.object({
+    // An organizer explicitly published a round's held pairings
+    // (publishPairings). Auto-publication at pairing time and the
+    // publish-on-complete safety net are part of round_started /
+    // round_completed and log no row of their own.
+    type: v.literal("pairings_published"),
+    roundId: v.id("tournamentRounds"),
+    roundNumber: v.number(),
+  }),
+  v.object({
+    // The default length new round timers start with changed. Null when the
+    // event had never set one (the platform default applied).
+    type: v.literal("round_duration_changed"),
+    previousDurationMs: v.union(v.number(), v.null()),
+    durationMs: v.number(),
+  }),
+  v.object({
+    // An organizer timer control (model/timer.ts), with the stored timer
+    // anchors before and after — null where no timer existed. Lifecycle
+    // cleanup of the timer (round completion, rewind, cancellation) belongs
+    // to the enclosing lifecycle event and never logs this.
+    type: v.literal("round_timer_changed"),
+    operation: v.union(
+      v.literal("started"),
+      v.literal("paused"),
+      v.literal("resumed"),
+      v.literal("adjusted"),
+      v.literal("cleared"),
+    ),
+    previousTimer: v.union(tournamentRoundTimerValidator, v.null()),
+    timer: v.union(tournamentRoundTimerValidator, v.null()),
+  }),
+  v.object({
     // An organizer broke a pairing before the round's pairings were
     // published, freeing its players for manual re-pairing
     // (model/manualPairing.ts).
@@ -659,6 +723,16 @@ export const tournamentAuditEventValidator = v.union(
     amountCents: v.number(),
   }),
   v.object({
+    // The refund executor could not establish the Stripe outcome
+    // (payments/refunds.ts): the money may or may not have moved, and the
+    // refund waits on the payout page for a status check against Stripe's
+    // record or the webhook's report.
+    type: v.literal("refund_stalled"),
+    player: auditPlayerRefValidator,
+    amountCents: v.number(),
+  }),
+  v.object({
+    // Stripe definitively returned nothing for this refund.
     type: v.literal("refund_failed"),
     player: auditPlayerRefValidator,
     amountCents: v.number(),
@@ -745,6 +819,11 @@ export const conventionAuditEventValidator = v.union(
     amountCents: v.number(),
   }),
   v.object({
+    type: v.literal("refund_stalled"),
+    player: conventionAuditPlayerRefValidator,
+    amountCents: v.number(),
+  }),
+  v.object({
     type: v.literal("refund_failed"),
     player: conventionAuditPlayerRefValidator,
     amountCents: v.number(),
@@ -759,29 +838,5 @@ export const conventionAuditEventValidator = v.union(
   v.object({
     type: v.literal("order_disputed"),
     player: conventionAuditPlayerRefValidator,
-  }),
-);
-
-// The tournament's single live round timer. Server-side writes happen only on
-// organizer actions; clients derive the ticking countdown (and overtime, which
-// is never stored) from these anchors locally. Mirrored structurally by
-// RoundTimerState in @paper-pairings/shared/timer-utils.
-export const tournamentRoundTimerValidator = v.union(
-  v.object({
-    kind: v.literal("running"),
-    roundId: v.id("tournamentRounds"),
-    // Epoch ms when remaining time hits zero; clients tick against this.
-    endsAt: v.number(),
-    // Configured length including adjustments, for "12:34 of 50:00" displays.
-    durationMs: v.number(),
-    startedAt: v.number(),
-  }),
-  v.object({
-    kind: v.literal("paused"),
-    roundId: v.id("tournamentRounds"),
-    // Frozen remainder; negative when paused while already in overtime.
-    remainingMs: v.number(),
-    durationMs: v.number(),
-    startedAt: v.number(),
   }),
 );

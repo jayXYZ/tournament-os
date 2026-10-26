@@ -46,11 +46,39 @@ function describeRetryDelay(retryAfterMs: number) {
   return hours === 1 ? "about an hour" : `about ${hours} hours`;
 }
 
+// The refusal the backend's model/errors.ts userError threw, if `error` is
+// one: a bare string written for the person using the app. Production Convex
+// deployments redact a plain Error's message to "Server Error" and forward
+// only ConvexError data, so the text is read from `data` rather than
+// `message`. An empty payload is no message at all and yields null so the
+// caller's fallback applies.
+export function userErrorMessage(error: unknown): string | null {
+  if (error instanceof ConvexError && typeof error.data === "string") {
+    return error.data.length > 0 ? error.data : null;
+  }
+  return null;
+}
+
+// Every failure the Convex client rebuilds from a server response carries a
+// message of this shape ("[CONVEX M(path)] [Request ID: …] Server Error" in
+// production; the server stack in dev). It is transport text, never written
+// for a user — any refusal meant for one arrives as ConvexError data instead,
+// so a plain Error with this prefix is the backend saying "not for you".
+// Errors thrown on the client itself — form validation ahead of the call —
+// have no such prefix and keep their own message.
+const CONVEX_SERVER_FAILURE_PREFIX = "[CONVEX ";
+
+function isServerFailure(error: Error) {
+  return error.message.startsWith(CONVEX_SERVER_FAILURE_PREFIX);
+}
+
 // Message for a rejected mutation, shared by the web and native clients so a
 // throttled request never surfaces as a raw ConvexError. Rate-limited
 // rejections become a retry-later notice sized from the server's retryAfter;
-// anything else keeps the error's own message, with `fallback` covering
-// non-Error throws.
+// a user-facing refusal shows its own text; any other server failure, and
+// any ConvexError with a structured payload, is `fallback` — the message
+// there is redacted or internal either way. Only an Error thrown on the
+// client keeps its own message.
 export function mutationErrorMessage(error: unknown, fallback: string) {
   const rateLimit = rateLimitData(error);
   if (rateLimit) {
@@ -58,5 +86,15 @@ export function mutationErrorMessage(error: unknown, fallback: string) {
       rateLimit.retryAfter,
     )}.`;
   }
-  return error instanceof Error ? error.message : fallback;
+  const userMessage = userErrorMessage(error);
+  if (userMessage !== null) {
+    return userMessage;
+  }
+  if (error instanceof ConvexError) {
+    return fallback;
+  }
+  if (error instanceof Error && !isServerFailure(error)) {
+    return error.message;
+  }
+  return fallback;
 }

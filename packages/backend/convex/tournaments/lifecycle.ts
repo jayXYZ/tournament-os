@@ -13,16 +13,12 @@ import {
   getActiveMembership,
   requireActiveMembership,
 } from "../model/access";
-import { logAuditEvent } from "../model/auditLog";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
 import { badgeChildEventAdmission, badgeForUser } from "../model/conventions";
 import { deleteTournamentOperationalDataBatch } from "../model/deletion";
+import { userError } from "../model/errors";
 import { inviteCodeGrantsAccess } from "../model/invites";
-import {
-  phasesInOrder,
-  requireCurrentPhase,
-  writePhases,
-} from "../model/phases";
+import { phasesInOrder, writePhases } from "../model/phases";
 import {
   requireEntryFeeEditable,
   requireEventPaymentsSettled,
@@ -34,7 +30,11 @@ import {
   registrationForUser,
   syncRegistrationStartDatesBatch,
 } from "../model/registrations";
-import { completeTournament as completeTournamentTransition } from "../model/progression";
+import {
+  cancelTournament as cancelTournamentTransition,
+  completeTournament as completeTournamentTransition,
+  publishTournament as publishTournamentTransition,
+} from "../model/progression";
 import { enforceRateLimit } from "../rateLimits";
 import {
   cleanName,
@@ -43,7 +43,6 @@ import {
   listTournamentsForOrganization,
   requireOrganizerAccess,
   requirePreStartEditable,
-  requireSetupEditable,
   validCapacity,
   validDetailsMarkdown,
   validStartDate,
@@ -377,7 +376,7 @@ export const updateTournamentSetup = mutation({
     if (args.playerCapacity !== undefined) {
       const playerCapacity = validCapacity(args.playerCapacity);
       if (playerCapacity < tournament.confirmedRegistrationCount) {
-        throw new Error(
+        throw userError(
           "Player capacity cannot be lower than the confirmed registration count",
         );
       }
@@ -419,7 +418,7 @@ export const updateTournamentSetup = mutation({
         patch.refundDeadline = undefined;
       } else {
         if (tournament.isTestEvent) {
-          throw new Error("Test events cannot charge an entry fee");
+          throw userError("Test events cannot charge an entry fee");
         }
         requireValidEntryFee(args.entryFeeCents);
         await requirePayoutsReadyOrganization(ctx, tournament.organizationId);
@@ -433,7 +432,7 @@ export const updateTournamentSetup = mutation({
         const effectiveFeeCents =
           args.entryFeeCents ?? tournament.entryFeeCents ?? 0;
         if (effectiveFeeCents === 0) {
-          throw new Error("Set an entry fee before setting a refund deadline");
+          throw userError("Set an entry fee before setting a refund deadline");
         }
         patch.refundDeadline = args.refundDeadline;
       }
@@ -447,10 +446,10 @@ export const updateTournamentSetup = mutation({
     if (effectiveRefundDeadline !== undefined) {
       const effectiveStartDate = patch.startDate ?? tournament.startDate;
       if (!Number.isFinite(effectiveRefundDeadline)) {
-        throw new Error("Enter a valid refund deadline");
+        throw userError("Enter a valid refund deadline");
       }
       if (effectiveRefundDeadline > effectiveStartDate) {
-        throw new Error(
+        throw userError(
           "Refund deadline must be at or before the tournament start date",
         );
       }
@@ -503,7 +502,7 @@ export const updatePairingsAutoPublish = mutation({
       tournament.lifecycle === "completed" ||
       tournament.lifecycle === "cancelled"
     ) {
-      throw new Error("Tournament is no longer editable");
+      throw userError("Tournament is no longer editable");
     }
     await ctx.db.patch(tournament._id, {
       autoPublishPairings: args.autoPublishPairings,
@@ -525,7 +524,7 @@ export const updateTournamentDetails = mutation({
   handler: async (ctx, args) => {
     const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
     if (tournament.lifecycle === "cancelled") {
-      throw new Error("Tournament has been cancelled");
+      throw userError("Tournament has been cancelled");
     }
     await ctx.db.patch(args.tournamentId, {
       detailsMarkdown: validDetailsMarkdown(args.detailsMarkdown),
@@ -570,24 +569,8 @@ export const updateTournamentPhases = mutation({
 export const publishTournament = mutation({
   args: { tournamentId: v.id("tournaments") },
   handler: async (ctx, args) => {
-    const { tournament, user } = await requireOrganizerAccess(
-      ctx,
-      args.tournamentId,
-    );
-    requireSetupEditable(tournament);
-    await requireCurrentPhase(ctx, args.tournamentId);
-
-    await ctx.db.patch(args.tournamentId, {
-      lifecycle: "registration",
-      updatedAt: Date.now(),
-    });
-    await logAuditEvent(ctx, {
-      tournamentId: args.tournamentId,
-      actor: user,
-      actorRole: "organizer",
-      event: { type: "tournament_published" },
-    });
-    return args.tournamentId;
+    const access = await requireOrganizerAccess(ctx, args.tournamentId);
+    return await publishTournamentTransition(ctx, access);
   },
 });
 
@@ -611,44 +594,8 @@ export const updateTournamentVisibility = mutation({
 export const cancelTournament = mutation({
   args: { tournamentId: v.id("tournaments") },
   handler: async (ctx, args) => {
-    const { tournament, user } = await requireOrganizerAccess(
-      ctx,
-      args.tournamentId,
-    );
-    if (tournament.lifecycle === "completed") {
-      throw new Error("Completed tournaments cannot be cancelled");
-    }
-    if (tournament.lifecycle === "cancelled") {
-      throw new Error("Tournament is already cancelled");
-    }
-    await ctx.db.patch(args.tournamentId, {
-      lifecycle: "cancelled",
-      // A cancelled event has no live round, so any running timer dies with it.
-      roundTimer: undefined,
-      updatedAt: Date.now(),
-    });
-    await logAuditEvent(ctx, {
-      tournamentId: args.tournamentId,
-      actor: user,
-      actorRole: "organizer",
-      event: { type: "tournament_cancelled" },
-    });
-    // A cancelled paid event makes every player whole: open checkouts close
-    // (withdrawing the pending entries behind them) and every payment
-    // refunds (payments/refunds.ts sweeps).
-    if ((tournament.entryFeeCents ?? 0) > 0) {
-      await ctx.scheduler.runAfter(
-        0,
-        internal.payments.refunds.closeOpenOrdersSweep,
-        { tournamentId: args.tournamentId },
-      );
-      await ctx.scheduler.runAfter(
-        0,
-        internal.payments.refunds.cancelEventPaymentsSweep,
-        { tournamentId: args.tournamentId },
-      );
-    }
-    return args.tournamentId;
+    const access = await requireOrganizerAccess(ctx, args.tournamentId);
+    return await cancelTournamentTransition(ctx, access);
   },
 });
 
@@ -658,6 +605,8 @@ export const cancelTournament = mutation({
 // The tournament is immediately cancelled and hidden so it disappears from all
 // public surfaces while large events drain in scheduled batches; the tournament
 // row itself is deleted last so live subscriptions resolve gracefully.
+// Deliberately unlogged: the audit trail is purged with the event, and no
+// deletion record survives it (docs/audit-policy.md).
 export const deleteTournament = mutation({
   args: { tournamentId: v.id("tournaments") },
   handler: async (ctx, args) => {

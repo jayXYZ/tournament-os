@@ -458,8 +458,6 @@ async function seedTournament(
   return await seedTournamentWithPlayers(t, {
     name: "Timer Test Event",
     playerCount,
-    // Clear of the organizer's publicCode 1.
-    firstPublicCode: 2,
   });
 }
 

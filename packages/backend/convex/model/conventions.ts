@@ -8,6 +8,7 @@ import {
 } from "./access";
 import type { AuditActorRole } from "./auditLog";
 import { conventionAuditPlayerRef, logConventionAuditEvent } from "./auditLog";
+import { userError } from "./errors";
 import { ensureParticipantForUser, participantForUser } from "./participants";
 import { nextPublicCode } from "./publicCodes";
 import {
@@ -123,7 +124,7 @@ export async function canViewConvention(
 
 export function requireConventionSetupEditable(convention: Doc<"conventions">) {
   if (convention.lifecycle !== "setup") {
-    throw new Error("Convention setup is locked after publication");
+    throw userError("Convention setup is locked after publication");
   }
 }
 
@@ -136,7 +137,7 @@ export function requireConventionEditable(convention: Doc<"conventions">) {
     convention.lifecycle !== "setup" &&
     convention.lifecycle !== "registration"
   ) {
-    throw new Error("Convention settings are locked once it is over");
+    throw userError("Convention settings are locked once it is over");
   }
 }
 
@@ -147,7 +148,7 @@ export function validConventionCapacity(value: number) {
     capacity < 1 ||
     capacity > MAX_CONVENTION_ATTENDEES
   ) {
-    throw new Error(
+    throw userError(
       `Badge capacity must be between 1 and ${MAX_CONVENTION_ATTENDEES}`,
     );
   }
@@ -161,7 +162,7 @@ export function validDateRange(startDate: number, endDate: number) {
   const start = validStartDate(startDate);
   const end = validStartDate(endDate);
   if (end < start) {
-    throw new Error("Convention end date must not be before its start date");
+    throw userError("Convention end date must not be before its start date");
   }
   return { startDate: start, endDate: end };
 }
@@ -205,7 +206,7 @@ export async function createConvention(
 
 export function requireBadgeCapacityAvailable(convention: Doc<"conventions">) {
   if (!hasCapacityAvailable(convention)) {
-    throw new Error("Convention badges are sold out");
+    throw userError("Convention badges are sold out");
   }
 }
 
@@ -313,7 +314,7 @@ export async function upsertBadgeRow(
   if (existing) {
     const blockedBecause = badgeBlocksRegistration(existing.entryStatus);
     if (blockedBecause !== null) {
-      throw new Error(blockedBecause);
+      throw userError(blockedBecause);
     }
     await setBadgeEntryStatus(ctx, existing._id, {
       ticketTypeId: args.ticketType._id,
@@ -347,7 +348,7 @@ export async function registerBadge(
   },
 ) {
   if (isPaidTicketType(args.ticketType)) {
-    throw new Error("This ticket has a fee — pay through checkout");
+    throw userError("This ticket has a fee — pay through checkout");
   }
   requireTicketTypeOnSale(args.convention, args.ticketType);
   requireBadgeCapacityAvailable(args.convention);
@@ -432,13 +433,13 @@ export async function cancelBadge(
   },
 ) {
   if (!isConventionRegistrationOpen(args.convention)) {
-    throw new Error("Convention registration is not open");
+    throw userError("Convention registration is not open");
   }
   if (
     args.badge.entryStatus !== "confirmed" &&
     args.badge.entryStatus !== "pending"
   ) {
-    throw new Error("No active convention registration found");
+    throw userError("No active convention registration found");
   }
   await exitBadge(ctx, {
     ...args,
@@ -462,13 +463,13 @@ export async function removeBadge(
     args.convention.lifecycle === "completed" ||
     args.convention.lifecycle === "cancelled"
   ) {
-    throw new Error("Convention is already over");
+    throw userError("Convention is already over");
   }
   if (
     args.badge.entryStatus !== "confirmed" &&
     args.badge.entryStatus !== "pending"
   ) {
-    throw new Error("No active convention registration found");
+    throw userError("No active convention registration found");
   }
   await exitBadge(ctx, {
     ...args,
@@ -537,12 +538,12 @@ export async function resolveChildEventAdmission(
     : null;
   if (convention.badgeRequiredForChildEvents) {
     if (!confirmedBadge) {
-      throw new Error(
+      throw userError(
         `This event requires a ${convention.name} badge — register for the convention first`,
       );
     }
     if (ticketType && !ticketTypeAdmitsChildEventDate(tournament, ticketType)) {
-      throw new Error(
+      throw userError(
         `Your ${ticketType.name} does not cover this event's date — upgrade your ${convention.name} badge first`,
       );
     }
@@ -613,19 +614,19 @@ export async function attachTournamentToConvention(
     args.convention.lifecycle === "completed" ||
     args.convention.lifecycle === "cancelled"
   ) {
-    throw new Error("Convention is already over");
+    throw userError("Convention is already over");
   }
   if (args.tournament.conventionId === args.convention._id) {
     return;
   }
   if (args.tournament.conventionId !== undefined) {
-    throw new Error("Tournament is already part of another convention");
+    throw userError("Tournament is already part of another convention");
   }
   if (
     args.tournament.lifecycle !== "setup" &&
     args.tournament.lifecycle !== "registration"
   ) {
-    throw new Error("Only events that have not started can join a convention");
+    throw userError("Only events that have not started can join a convention");
   }
   await ctx.db.patch(args.tournament._id, {
     conventionId: args.convention._id,
@@ -652,13 +653,13 @@ export async function detachTournamentFromConvention(
   },
 ) {
   if (args.tournament.conventionId !== args.convention._id) {
-    throw new Error("Tournament is not part of this convention");
+    throw userError("Tournament is not part of this convention");
   }
   if (
     args.tournament.lifecycle !== "setup" &&
     args.tournament.lifecycle !== "registration"
   ) {
-    throw new Error("Events that have started keep their convention history");
+    throw userError("Events that have started keep their convention history");
   }
   await ctx.db.patch(args.tournament._id, {
     conventionId: undefined,

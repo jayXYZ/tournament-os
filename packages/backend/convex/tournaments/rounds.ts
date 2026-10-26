@@ -4,6 +4,7 @@ import type { Id } from "../_generated/dataModel";
 import { mutation, query } from "../_generated/server";
 import type { MutationCtx } from "../_generated/server";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
+import { userError } from "../model/errors";
 import {
   assignByeManually,
   breakPairing as breakPairingTransition,
@@ -63,8 +64,8 @@ export const publishPairings = mutation({
   args: { roundId: v.id("tournamentRounds") },
   handler: async (ctx, args) => {
     const round = await requireRound(ctx, args.roundId);
-    await requireOrganizerAccess(ctx, round.tournamentId);
-    return await publishPairingsTransition(ctx, args.roundId);
+    const access = await requireOrganizerAccess(ctx, round.tournamentId);
+    return await publishPairingsTransition(ctx, access, args.roundId);
   },
 });
 
@@ -168,7 +169,7 @@ async function requireAdjudicableMatch(
   );
   const round = await requireRound(ctx, match.tournamentRoundId);
   if (round.roundStatus !== "in_progress") {
-    throw new Error(
+    throw userError(
       "Match results can only be recorded during an active round",
     );
   }
@@ -226,7 +227,7 @@ function cleanNote(note: string | undefined) {
     return undefined;
   }
   if (trimmed.length > 500) {
-    throw new Error("Result note must be at most 500 characters");
+    throw userError("Result note must be at most 500 characters");
   }
   return trimmed;
 }

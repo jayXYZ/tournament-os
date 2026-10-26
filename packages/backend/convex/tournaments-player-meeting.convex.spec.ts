@@ -1492,33 +1492,9 @@ test("players see their meeting seat, late registrants see none, and pairing is 
   expect(current.meeting.seatmateName).toBe("Bob");
 
   // A player registering mid-meeting has no seat but still sees the meeting.
-  const late = await t.run(async (ctx) => {
-    const now = Date.now();
-    const tournament = await ctx.db.get(tournamentId);
-    if (!tournament) {
-      throw new Error("Tournament not found in test setup");
-    }
-    const identity = playerIdentity(99);
-    const userId = await ctx.db.insert("users", {
-      tokenIdentifier: identity.tokenIdentifier,
-      publicCode: 99,
-      email: identity.email,
-      name: "Zed",
-      updatedAt: now,
-    });
-    const participant0Id = await insertLinkedParticipant(ctx, userId);
-    return await ctx.db.insert("tournamentRegistrations", {
-      tournamentId,
-      participantId: participant0Id,
-      tournamentStartDate: tournament.startDate,
-      entryStatus: "confirmed",
-      participationStatus: "active",
-      playerName: "Zed",
-      createdAt: now,
-      tiebreakRandom: 1,
-      updatedAt: now,
-    });
-  });
+  const late = await t
+    .withIdentity({ ...playerIdentity(99), name: "Zed" })
+    .mutation(api.tournaments.registrations.registerSelf, { tournamentId });
   const lateCurrent = await t
     .withIdentity(playerIdentity(99))
     .query(api.tournaments.player.getMyCurrentMatch, { tournamentId });
@@ -1698,7 +1674,7 @@ async function seedTournament(
     name: "Player Meeting Event",
     playerCount,
     phases,
-    playerNames: playerNames ?? true,
+    playerNames,
   });
 }
 

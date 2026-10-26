@@ -1,79 +1,51 @@
-# Refactor 09 — One canonical fixture module for backend specs
+# Backend spec fixtures — conventions
 
-## Context for the agent
+Refactor 09 is done; this page records the conventions it left behind. The
+handoff prompt it replaces is in git history.
 
-You are working in `paper-pairings`; the backend is Convex in
-`packages/backend` with a vitest + convex-test suite (~309 tests, glob
-`convex/**/*.convex.spec.ts`). **Read
-`packages/backend/convex/_generated/ai/guidelines.md` first.**
-Pre-production. Run with `pnpm --filter @paper-pairings/backend test`.
+## Scenarios go through the public seam
 
-This is a test-only refactor: production code must not change (with one
-possible exception noted below).
+`packages/backend/convex/specHelpers.ts` is the one shared fixture module, and
+its scenarios build state with the mutations real clients call, so a fixture
+cannot drift from write policy:
 
-## Problem
+- `seedTournamentWithPlayers` creates the tournament, publishes it through the
+  lifecycle mutation, and seats the field with `registerPlayers`. Capacity
+  grows to fit the field.
+- `registerPlayers` has players `1..N` (`playerIdentity` numbers) each call
+  `registerSelf` under their own identity. Accounts, participants, name
+  stamps, the confirmed count, and `player_registered` audit events all come
+  from production writes, so audit-journal expectations include the seeded
+  registrations. Seat a field after publication: registrations exist only
+  once an event is open.
+- `playOutCurrentRound` is the only definition. It sweeps every open
+  two-player match at the phase's best-of, leaves byes and results already on
+  the board, completes the round, and returns `{ round, pairKeys }` for
+  rematch assertions. It never publishes pairings itself: the organizer
+  records against held pairings and `completeRound` publishes them as part of
+  the record, so the publication audit seam sees only lifecycle writes.
 
-Spec setup is spread across four overlapping helper modules plus per-spec
-local duplicates, and some seeding bypasses the public mutations entirely —
-inserting rows the real registration path would reject — so tests can drift
-from real write policy without failing. Notably, the _canonical_ fixture is
-itself now a policy-bypassing seeder (see below).
+## `rawSeed` is the labeled escape hatch
 
-## Verified current state (checked 2026-08-29)
+`rawSeed(t, reason, seed)` runs a raw write and refuses a blank reason. Use it
+only for state the public seam cannot produce, and say which invariant the
+write sidesteps. Never use it to repair a counter or stamp the scenario is
+meant to exercise. The shared scenarios keep one: `registerPlayers` pins
+`tiebreakRandom` after registration (ascending, descending, or a per-player
+function such as a seeded generator), because `registerSelf` hashes the
+tournament seed with the player's code.
 
-- Helper modules: `packages/backend/convex/specHelpers.ts` (323 lines, now
-  with scenario-named helpers — `seedTournamentWithPlayers` :140,
-  `matchForPlayer` :230, `currentRound` :306),
-  `specHelpers.runtime.ts` (98 lines, split out for bundling reasons),
-  `model/testing.ts`, and `tournaments/testing.ts` (production code powering
-  test tournaments; do not confuse it with spec helpers). 24 of 29 spec files
-  import `specHelpers.ts`; the 5 that don't are pure-unit/structure specs.
-- `playOutCurrentRound` is down to **two** definitions: the exported
-  canonical one in `specHelpers.ts:92`, plus one surviving local copy in
-  `tournaments.convex.spec.ts:5713` (the timer-spec copy is gone).
-- **The flagship fixture bypasses registration policy**:
-  `specHelpers.ts:183-221` (`seedTournamentWithPlayers`) raw-inserts
-  `tournamentRegistrations` inside `t.run` and hand-patches
-  `confirmedRegistrationCount` (:216-219), bypassing `registerSelf`
-  (capacity, private-event rules, denormalized count maintenance). This is
-  exactly the drift this doc warns about, centralized.
-- `tournaments.convex.spec.ts` (5,873 lines) contains ~53 raw `t.run` seeds;
-  `seedActiveRegistrations` (local, :5838) still raw-inserts registrations
-  and is used ~20+ times.
-- No `rawSeed` escape hatch or labeling convention exists yet.
+`seedOrganizer` still writes the organizer, organization, and membership rows
+directly. By default it takes the organizer's code from the production
+allocator, so accounts that `upsertMe` or `registerSelf` create later never
+share it.
 
-## Task
+## What is still raw, and why
 
-1. **Keep consolidating on `specHelpers.ts`** as the one fixture module: its
-   interface is **scenario names**, not row assembly — e.g.
-   `activeSwissRound(t, {players})`, `completedRound(t, …)`,
-   `tournamentReadyForCut(t, …)`, `fullDecklistEvent(t, …)`. (Adoption is
-   already broad; this step is mostly about the remaining local seeders.)
-2. **Reimplement the scenarios through public mutations** (the same seam real
-   clients use: `registerSelf`, lifecycle mutations, round mutations, the
-   test-tournament mutations where appropriate), starting with
-   `seedTournamentWithPlayers` itself, so fixtures cannot drift from write
-   policy.
-3. **Delete the last duplicate `playOutCurrentRound`**
-   (`tournaments.convex.spec.ts:5713`); all specs import the canonical one.
-4. **Provide a labeled escape hatch** (e.g. `rawSeed(t, …)` with a comment
-   convention) for states genuinely unreachable through the public seam, and
-   convert existing raw `t.run` seeds to scenarios where a public path
-   exists. Where `seedActiveRegistrations` was hiding a state that
-   `registerSelf` would reject, decide per case: either the test wanted an
-   impossible state (fix the test) or the public seam lacks a needed path
-   (keep the labeled raw seed and note it).
-5. Work incrementally — the main spec is 5,873 lines. Convert file by file,
-   keeping the suite green after each file. Do not rewrite assertions, only
-   setup.
-
-## Acceptance criteria
-
-- One `playOutCurrentRound`; zero local redefinitions.
-- New/converted fixtures go through public mutations; remaining raw seeds are
-  explicitly labeled with why the public seam can't produce that state.
-- Full backend suite passes with the same test count (or document any test
-  that turned out to be asserting an unreachable state).
-- No production-code changes (if a scenario genuinely needs a new internal
-  testing mutation, propose it in the PR description rather than silently
-  adding one).
+Inline `t.run` seeds remain in per-spec engine and reader tests that build
+isolated row-level states with no public path, or only a very long one: guest
+registrations (no public guest writer yet), review-flow applications in
+`entryTransitions`, thousand-row payment and roster budgets, cross-tournament
+registration history in `users-profile`, private live events, and a seat in a
+setup-stage event. When you touch one of these, convert it to a scenario if a
+public path exists. Otherwise wrap it in `rawSeed` with its reason.

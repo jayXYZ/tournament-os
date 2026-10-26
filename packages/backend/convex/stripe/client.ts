@@ -30,6 +30,25 @@ export type TransfersCapabilityStatus =
 
 export type StripeWebhookEvent = Stripe.Event;
 
+// A refund's lifecycle status as the gateway reports it. stripe-node types
+// the field as string | null; anything unrecognized reads as "pending" —
+// the safe reading, since the refund.updated webhook settles pending rows.
+export type StripeRefundStatus =
+  | "pending"
+  | "requires_action"
+  | "succeeded"
+  | "failed"
+  | "canceled";
+
+function refundStatusFromStripe(status: string | null): StripeRefundStatus {
+  return status === "succeeded" ||
+    status === "failed" ||
+    status === "canceled" ||
+    status === "requires_action"
+    ? status
+    : "pending";
+}
+
 // A verified v2 thin event notification, reduced to what the account-status
 // route acts on: the event type and the connected account it concerns.
 export type StripeAccountEventNotification = {
@@ -89,8 +108,24 @@ export interface StripeGateway {
     // request is not success (bank refunds sit pending for days and can
     // still fail), so callers must settle rows from this, not from the call
     // returning.
-    status: "pending" | "requires_action" | "succeeded" | "failed" | "canceled";
+    status: StripeRefundStatus;
   }>;
+  // The refund stamped with this row on the charge — one an earlier
+  // createRefund call left, or a replacement an operator stamped by hand
+  // (docs/refund-recovery.md) — found by the row id in its metadata. Null
+  // when Stripe holds no such refund, including when the charge itself is
+  // unknown to Stripe, which it reports as an invalid request rather than
+  // an empty list. Lets a status check settle from Stripe's record instead
+  // of guessing whether a lost attempt landed. amountCents is the refund's
+  // own amount, for the caller to check against the row's; failureReason
+  // is Stripe's reason on a failed refund (an expired card, say), null
+  // otherwise.
+  findRefundForRow(args: { chargeId: string; refundRowId: string }): Promise<{
+    stripeRefundId: string;
+    status: StripeRefundStatus;
+    amountCents: number;
+    failureReason: string | null;
+  } | null>;
   createTransfer(args: {
     destinationAccountId: string;
     amountCents: number;
@@ -263,17 +298,41 @@ export function getStripeGateway(secretKey: string): StripeGateway {
         },
         { idempotencyKey: args.idempotencyKey },
       );
-      // stripe-node types status as string | null; anything unrecognized is
-      // treated as "pending" — the safe reading, since the refund.updated
-      // webhook settles pending rows.
-      const status =
-        refund.status === "succeeded" ||
-        refund.status === "failed" ||
-        refund.status === "canceled" ||
-        refund.status === "requires_action"
-          ? refund.status
-          : ("pending" as const);
-      return { stripeRefundId: refund.id, status };
+      return {
+        stripeRefundId: refund.id,
+        status: refundStatusFromStripe(refund.status),
+      };
+    },
+
+    async findRefundForRow(args) {
+      try {
+        // Auto-paginates; a charge rarely carries more than a page of
+        // refunds, and the loop stops at the first match.
+        for await (const refund of stripe.refunds.list({
+          charge: args.chargeId,
+          limit: 100,
+        })) {
+          if (refund.metadata?.refundId === args.refundRowId) {
+            return {
+              stripeRefundId: refund.id,
+              status: refundStatusFromStripe(refund.status),
+              amountCents: refund.amount,
+              failureReason: refund.failure_reason ?? null,
+            };
+          }
+        }
+        return null;
+      } catch (error) {
+        // A charge Stripe has never heard of has no refunds.
+        if (
+          error instanceof Stripe.errors.StripeInvalidRequestError &&
+          error.code === "resource_missing" &&
+          error.param === "charge"
+        ) {
+          return null;
+        }
+        throw error;
+      }
     },
 
     async createTransfer(args) {
