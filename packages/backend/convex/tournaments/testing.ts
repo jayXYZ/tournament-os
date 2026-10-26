@@ -5,6 +5,7 @@ import type { Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { internalMutation, mutation } from "../_generated/server";
 import { deleteTournamentOperationalDataBatch } from "../model/deletion";
+import { userError } from "../model/errors";
 import {
   SWISS_FORMAT,
   type TournamentPhaseInput,
@@ -102,7 +103,7 @@ export const createTestTournament = mutation({
       args.playerCapacity ?? dummyPlayerCount,
     );
     if (dummyPlayerCount > playerCapacity) {
-      throw new Error("Dummy player count cannot exceed capacity");
+      throw userError("Dummy player count cannot exceed capacity");
     }
 
     const now = Date.now();

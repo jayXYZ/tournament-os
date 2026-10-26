@@ -8,6 +8,7 @@ import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import { action, internalMutation, query } from "../_generated/server";
 import { requireActiveMembership } from "../model/access";
+import { userError } from "../model/errors";
 import {
   applyStripeAccountStatus,
   requirePaymentsPermission,
@@ -92,7 +93,7 @@ export const beginStripeOnboarding = internalMutation({
 
     // Stripe refuses a recipient-configured account without a contact email.
     if (!user.email) {
-      throw new Error(
+      throw userError(
         "Add an email address to your account before connecting Stripe",
       );
     }
@@ -101,13 +102,13 @@ export const beginStripeOnboarding = internalMutation({
     // Stripe call — instead of minting an account that can never finish
     // onboarding. The UI collects it as an explicit acknowledgement.
     if (!args.country) {
-      throw new Error(
+      throw userError(
         "Confirm the organization's country before connecting Stripe",
       );
     }
     const country = args.country.toLowerCase();
     if (!isSupportedStripeCountry(country)) {
-      throw new Error(UNSUPPORTED_STRIPE_COUNTRY_MESSAGE);
+      throw userError(UNSUPPORTED_STRIPE_COUNTRY_MESSAGE);
     }
     return {
       existingStripeAccountId: null,
@@ -309,7 +310,7 @@ export const createDashboardLink = action({
       { organizationId: args.organizationId },
     );
     if (!begin.stripeAccountId) {
-      throw new Error("Connect a Stripe account first");
+      throw userError("Connect a Stripe account first");
     }
     return await gateway.createDashboardLoginLink({
       stripeAccountId: begin.stripeAccountId,
@@ -339,7 +340,7 @@ export const refreshAccountStatus = action({
       { organizationId: args.organizationId },
     );
     if (!begin.stripeAccountId) {
-      throw new Error("Connect a Stripe account first");
+      throw userError("Connect a Stripe account first");
     }
 
     // Stamped before the read so a sync whose read began later always wins

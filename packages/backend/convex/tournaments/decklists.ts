@@ -4,6 +4,7 @@ import type { Id } from "../_generated/dataModel";
 import { mutation, query } from "../_generated/server";
 import { currentUserOrNull } from "../model/access";
 import { getDecklist, submitDecklist } from "../model/decklists";
+import { userError } from "../model/errors";
 import {
   registrationForUser,
   requireRegistration,
@@ -39,7 +40,7 @@ export const submitMyDecklist = mutation({
       user._id,
     );
     if (!registration) {
-      throw new Error("You are not registered for this tournament");
+      throw userError("You are not registered for this tournament");
     }
     return await submitDecklist(ctx, { tournament, registration, user }, args);
   },

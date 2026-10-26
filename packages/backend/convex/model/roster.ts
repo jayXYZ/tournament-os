@@ -14,6 +14,7 @@ import {
   participantBadgeCompsChildEvent,
   resolveChildEventAdmission,
 } from "./conventions";
+import { userError } from "./errors";
 import { inviteCodeGrantsAccess } from "./invites";
 import { concedeUnfinishedMatchOnDrop } from "./matchResults";
 import { ensureParticipantForUser } from "./participants";
@@ -84,19 +85,19 @@ export async function dropPlayer(
   { tournament, registration, actor, actorRole }: RosterTransitionArgs,
 ) {
   if (tournament.lifecycle !== "in_progress") {
-    throw new Error("Tournament is not in progress");
+    throw userError("Tournament is not in progress");
   }
   if (actorRole === "player") {
     if (
       registration.entryStatus !== "confirmed" ||
       registration.participationStatus !== "active"
     ) {
-      throw new Error("Active registration not found");
+      throw userError("Active registration not found");
     }
   } else if (
     registrationDropEffect(tournament.lifecycle, registration) !== "drop"
   ) {
-    throw new Error("Registration cannot be dropped in its current state");
+    throw userError("Registration cannot be dropped in its current state");
   }
   await setRegistrationState(ctx, registration._id, {
     entryStatus: "confirmed",
@@ -138,7 +139,7 @@ export async function reinstatePlayer(
     registrationReinstateEffect(tournament.lifecycle, registration) !==
     "reinstate"
   ) {
-    throw new Error("Registration cannot be reinstated in its current state");
+    throw userError("Registration cannot be reinstated in its current state");
   }
   const now = Date.now();
   const eliminatedByRoundId =
@@ -188,14 +189,14 @@ export async function cancelEntry(
   { tournament, registration, actor, actorRole }: RosterTransitionArgs,
 ) {
   if (tournament.lifecycle !== "registration") {
-    throw new Error("Tournament is not open for registration");
+    throw userError("Tournament is not open for registration");
   }
   const cancelEffect = registrationCancelEffect(
     tournament.lifecycle,
     registration,
   );
   if (cancelEffect === null) {
-    throw new Error("Active registration not found");
+    throw userError("Active registration not found");
   }
   const now = Date.now();
   await setRegistrationState(ctx, registration._id, {
@@ -240,7 +241,7 @@ export async function restoreEntry(
     registrationReinstateEffect(tournament.lifecycle, registration) !==
     "restore"
   ) {
-    throw new Error("Registration cannot be reinstated in its current state");
+    throw userError("Registration cannot be reinstated in its current state");
   }
   requireCapacityAvailable(tournament);
   const now = Date.now();
@@ -325,7 +326,7 @@ export async function approveEntry(
     registration,
   );
   if (approveEffect === null) {
-    throw new Error("Registration cannot be approved in its current state");
+    throw userError("Registration cannot be approved in its current state");
   }
   requireCapacityAvailable(tournament);
   const now = Date.now();
@@ -421,7 +422,7 @@ export async function rejectEntry(
   // narrow type the audit event admits.
   const { entryStatus: previousEntryStatus } = registration;
   if (rejectEffect === null || previousEntryStatus === "rejected") {
-    throw new Error("Registration cannot be rejected in its current state");
+    throw userError("Registration cannot be rejected in its current state");
   }
   const now = Date.now();
   await setRegistrationState(ctx, registration._id, {
@@ -467,7 +468,7 @@ export async function waitlistEntry(
     registrationWaitlistEffect(tournament.lifecycle, registration) !==
     "waitlist"
   ) {
-    throw new Error("Registration cannot be waitlisted in its current state");
+    throw userError("Registration cannot be waitlisted in its current state");
   }
   await setRegistrationState(ctx, registration._id, {
     entryStatus: "waitlisted",
@@ -557,7 +558,7 @@ export async function registerEntry(
       existing === null &&
       !(await inviteCodeGrantsAccess(ctx, tournament, inviteCode)))
   ) {
-    throw new Error("Tournament is not open for registration");
+    throw userError("Tournament is not open for registration");
   }
   // A badge-gated child event admits self-registration only with a
   // confirmed convention badge (model/conventions.ts). Organizer verbs
@@ -583,7 +584,7 @@ export async function registerEntry(
     !tournament.registrationRequiresApproval &&
     !compedByBadge
   ) {
-    throw new Error(
+    throw userError(
       "This event charges an entry fee — register through the payment checkout",
     );
   }
@@ -593,7 +594,7 @@ export async function registerEntry(
       existing.entryStatus,
     );
     if (blockedBecause !== null) {
-      throw new Error(blockedBecause);
+      throw userError(blockedBecause);
     }
   }
 

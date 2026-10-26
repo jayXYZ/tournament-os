@@ -9,6 +9,7 @@ import {
   type QueryCtx,
 } from "../_generated/server";
 import { currentUserOrNull } from "../model/access";
+import { userError } from "../model/errors";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
 import { registrationsConcededByDrop } from "../model/matchResults";
 import { ORGANIZER_LIST_PAGE_SIZE, requirePageSize } from "../model/pagination";
@@ -115,7 +116,7 @@ export const cancelMyRegistration = mutation({
       user._id,
     );
     if (!registration) {
-      throw new Error("Active registration not found");
+      throw userError("Active registration not found");
     }
     await cancelEntry(ctx, {
       tournament,
@@ -306,14 +307,14 @@ export const dropRegistration = mutation({
       tournament.lifecycle !== "registration" &&
       tournament.lifecycle !== "in_progress"
     ) {
-      throw new Error("Tournament is no longer accepting roster changes");
+      throw userError("Tournament is no longer accepting roster changes");
     }
     const dropEffect = registrationDropEffect(
       tournament.lifecycle,
       registration,
     );
     if (dropEffect === null) {
-      throw new Error("Registration cannot be dropped in its current state");
+      throw userError("Registration cannot be dropped in its current state");
     }
     // Before play the roster's drop action releases the seat; in play it
     // drops the player (see registrationDropEffect) — one button, two verbs.
@@ -381,7 +382,7 @@ export const reinstateRegistration = mutation({
       registration,
     );
     if (reinstateEffect === null) {
-      throw new Error("Registration cannot be reinstated in its current state");
+      throw userError("Registration cannot be reinstated in its current state");
     }
     if (reinstateEffect === "restore") {
       await restoreEntry(ctx, {

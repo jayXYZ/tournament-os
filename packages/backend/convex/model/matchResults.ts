@@ -10,6 +10,7 @@ import {
   existingResultLines,
   logAuditEvent,
 } from "./auditLog";
+import { userError } from "./errors";
 import { currentPhaseOrNull, requireValidMatchResult } from "./phases";
 import { BYE_MATCH_POINTS, matchPointsForResult } from "./standings";
 import {
@@ -102,7 +103,7 @@ export async function applyMatchResult(
     (policy.kind === "player" || policy.kind === "concession") &&
     match.matchStatus !== "upcoming"
   ) {
-    throw new Error("Match already has a result");
+    throw userError("Match already has a result");
   }
   if (policy.kind === "simulation" && match.matchStatus === "completed") {
     return "skipped";

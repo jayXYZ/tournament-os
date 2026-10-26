@@ -8,6 +8,7 @@ import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { auditPlayerRef, logAuditEvent } from "./auditLog";
 import type { decklistCardEntryValidator } from "../validators";
+import { userError } from "./errors";
 
 export type DecklistCardEntry = Infer<typeof decklistCardEntryValidator>;
 
@@ -33,20 +34,20 @@ export function normalizeBoard(
   entries: DecklistCardEntry[],
 ): DecklistCardEntry[] {
   if (entries.length > MAX_BOARD_ENTRIES) {
-    throw new Error(`${label} has more than ${MAX_BOARD_ENTRIES} entries`);
+    throw userError(`${label} has more than ${MAX_BOARD_ENTRIES} entries`);
   }
   const byNameKey = new Map<string, DecklistCardEntry>();
   let totalCards = 0;
   for (const entry of entries) {
     const name = entry.name.trim();
     if (name.length === 0) {
-      throw new Error(`${label} contains an entry with an empty card name`);
+      throw userError(`${label} contains an entry with an empty card name`);
     }
     if (name.length > MAX_CARD_NAME_LENGTH) {
-      throw new Error(`${label} contains a card name that is too long`);
+      throw userError(`${label} contains a card name that is too long`);
     }
     if (!Number.isInteger(entry.quantity) || entry.quantity < 1) {
-      throw new Error(
+      throw userError(
         `${label}: card quantities must be positive whole numbers`,
       );
     }
@@ -60,7 +61,7 @@ export function normalizeBoard(
     }
   }
   if (totalCards > MAX_BOARD_CARDS) {
-    throw new Error(`${label} has more than ${MAX_BOARD_CARDS} cards`);
+    throw userError(`${label} has more than ${MAX_BOARD_CARDS} cards`);
   }
   return [...byNameKey.values()];
 }
@@ -147,24 +148,24 @@ export async function submitDecklist(
   // Checked separately from the open/closed gate below so an event that
   // never collects decklists doesn't report itself as merely "closed".
   if (!tournament.decklistRequired) {
-    throw new Error("This tournament does not collect decklists");
+    throw userError("This tournament does not collect decklists");
   }
   if (!decklistSubmissionOpen(tournament, registration)) {
-    throw new Error("Decklist submission is closed for this tournament");
+    throw userError("Decklist submission is closed for this tournament");
   }
 
   const maindeck = normalizeBoard("Maindeck", args.maindeck);
   if (maindeck.length === 0) {
-    throw new Error("Maindeck cannot be empty");
+    throw userError("Maindeck cannot be empty");
   }
   const sideboard = normalizeBoard("Sideboard", args.sideboard);
   // An all-whitespace deck name reads as "left blank", not as a name.
   const deckName = args.deckName?.trim() || undefined;
   if (deckName !== undefined && deckName.length > MAX_DECK_NAME_LENGTH) {
-    throw new Error("Deck name is too long");
+    throw userError("Deck name is too long");
   }
   if (args.rawText !== undefined && args.rawText.length > MAX_RAW_TEXT_LENGTH) {
-    throw new Error("Decklist text is too long");
+    throw userError("Decklist text is too long");
   }
 
   const existing = await decklistForRegistration(ctx, registration._id);

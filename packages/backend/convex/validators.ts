@@ -375,10 +375,18 @@ export const paymentRefundReasonValidator = v.union(
   v.literal("seat_unavailable"),
 );
 
+// A refund row's lifecycle: pending (queued, or the Stripe call is in
+// flight / retrying, or Stripe holds the refund and is still processing
+// it), succeeded, failed (Stripe definitively refused — the money never
+// moved), or needs_attention (the executor could not establish the
+// outcome, so whether Stripe created the refund is unknown: automation
+// stops, the row stays visible to the organizer, and only Stripe's record
+// — the owner's status check or the refund.updated webhook — settles it).
 export const paymentRefundStatusValidator = v.union(
   v.literal("pending"),
   v.literal("succeeded"),
   v.literal("failed"),
+  v.literal("needs_attention"),
 );
 
 // The event payout's lifecycle (one payout per completed paid tournament or
@@ -715,6 +723,16 @@ export const tournamentAuditEventValidator = v.union(
     amountCents: v.number(),
   }),
   v.object({
+    // The refund executor could not establish the Stripe outcome
+    // (payments/refunds.ts): the money may or may not have moved, and the
+    // refund waits on the payout page for a status check against Stripe's
+    // record or the webhook's report.
+    type: v.literal("refund_stalled"),
+    player: auditPlayerRefValidator,
+    amountCents: v.number(),
+  }),
+  v.object({
+    // Stripe definitively returned nothing for this refund.
     type: v.literal("refund_failed"),
     player: auditPlayerRefValidator,
     amountCents: v.number(),
@@ -798,6 +816,11 @@ export const conventionAuditEventValidator = v.union(
     player: conventionAuditPlayerRefValidator,
     kind: paymentRefundKindValidator,
     reason: paymentRefundReasonValidator,
+    amountCents: v.number(),
+  }),
+  v.object({
+    type: v.literal("refund_stalled"),
+    player: conventionAuditPlayerRefValidator,
     amountCents: v.number(),
   }),
   v.object({

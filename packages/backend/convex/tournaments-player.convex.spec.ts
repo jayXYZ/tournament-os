@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 
 import type { TestConvex } from "convex-test";
+import { ConvexError } from "convex/values";
 import { expect, test } from "vitest";
 
 import { api } from "./_generated/api";
@@ -20,6 +21,7 @@ import {
   outsiderNumber,
   playOutCurrentRound,
   playerIdentity,
+  rejection,
   seedTournamentWithPlayers,
 } from "./specHelpers";
 import { createConvexTest } from "./specHelpers.runtime";
@@ -79,26 +81,27 @@ test("reportMyMatchResult rejects outsiders, byes, re-reports, and bad scores", 
   );
   const outsider = await outsiderNumber(t, match._id, registrationIds);
 
-  // A player registered but seated at another table cannot report this match.
-  await expect(
-    t
-      .withIdentity(playerIdentity(outsider))
-      .mutation(api.tournaments.player.reportMyMatchResult, {
-        matchId: match._id,
-        myGameWins: 2,
-        opponentGameWins: 0,
-      }),
-  ).rejects.toThrow("You are not part of this match");
-
-  await expect(
-    t
-      .withIdentity(playerIdentity(99))
-      .mutation(api.tournaments.player.reportMyMatchResult, {
-        matchId: match._id,
-        myGameWins: 2,
-        opponentGameWins: 0,
-      }),
-  ).rejects.toThrow("Not registered for this tournament");
+  // A player registered but seated at another table cannot report this
+  // match, and neither can someone outside the tournament. Both are
+  // authorization refusals, settled before any lifecycle or pairing state is
+  // read, and stay plain Errors so production redacts them instead of
+  // forwarding them as ConvexError data.
+  for (const identity of [playerIdentity(outsider), playerIdentity(99)]) {
+    const refusal = await rejection(
+      t
+        .withIdentity(identity)
+        .mutation(api.tournaments.player.reportMyMatchResult, {
+          matchId: match._id,
+          myGameWins: 2,
+          opponentGameWins: 0,
+        }),
+    );
+    expect(refusal).toBeInstanceOf(Error);
+    expect(refusal).not.toBeInstanceOf(ConvexError);
+    expect(refusal).toMatchObject({
+      message: "You are not part of this match",
+    });
+  }
 
   await expect(
     t

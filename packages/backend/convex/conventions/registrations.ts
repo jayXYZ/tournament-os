@@ -15,6 +15,7 @@ import {
   requireConvention,
   requireConventionOrganizerAccess,
 } from "../model/conventions";
+import { userError } from "../model/errors";
 import { ORGANIZER_LIST_PAGE_SIZE, clampPageSize } from "../model/pagination";
 import { latestOrderForRegistration } from "../model/payments";
 import { registrationOrganizerLabel } from "../model/registrations";
@@ -87,13 +88,13 @@ export const registerSelfForConvention = mutation({
       !isConventionRegistrationOpen(convention) ||
       (convention.visibility === "private" && existing === null)
     ) {
-      throw new Error("Convention registration is not open");
+      throw userError("Convention registration is not open");
     }
     // A paid ticket goes through the checkout action
     // (payments/checkout.ts createBadgeCheckout); the seat is only ever
     // taken by the payment webhook.
     if (isPaidTicketType(ticketType)) {
-      throw new Error(
+      throw userError(
         "This ticket has a fee — register through the payment checkout",
       );
     }
@@ -110,7 +111,7 @@ export const cancelMyBadge = mutation({
     const convention = await requireConvention(ctx, args.conventionId);
     const badge = await badgeForUser(ctx, args.conventionId, user._id);
     if (!badge) {
-      throw new Error("No active convention registration found");
+      throw userError("No active convention registration found");
     }
     await cancelBadge(ctx, { convention, badge, actor: user });
     return badge._id;
