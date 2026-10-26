@@ -164,3 +164,87 @@ test('each refund list pages on its own, and a processing refund is checkable be
     vi.unstubAllGlobals()
   }
 })
+
+test('a list whose loaded refunds all settled stays up and loads its next page itself', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  workspace.role = 'owner'
+  const container = document.createElement('div')
+  document.body.append(container)
+  const root = createRoot(container)
+  const loadMoreUnresolved = vi.fn()
+  const loadMoreProcessing = vi.fn()
+  const onCheckRefund = vi.fn()
+
+  function render(
+    unresolvedRefunds: RefundsNeedingAttention,
+    processingRefunds: RefundsNeedingAttention,
+  ) {
+    return act(() =>
+      root.render(
+        <PaidEventPayoutCard
+          isPaid
+          completed={false}
+          payout={undefined}
+          unresolvedRefunds={unresolvedRefunds}
+          processingRefunds={processingRefunds}
+          onRetry={() => Promise.resolve()}
+          onCheckRefund={onCheckRefund}
+          copy={copy}
+        />,
+      ),
+    )
+  }
+
+  try {
+    // Every loaded parked refund settled, but Stripe still holds more
+    // behind them: the list keeps its load-more button and asks for the
+    // next page on its own, so the rest are reachable without a remount.
+    await render(
+      list([], 'CanLoadMore', loadMoreUnresolved),
+      list([], 'Exhausted', loadMoreProcessing),
+    )
+    expect(buttons(container, 'Check refund status')).toHaveLength(0)
+    expect(buttons(container, 'Load more unresolved refunds')).toHaveLength(1)
+    expect(loadMoreUnresolved).toHaveBeenCalledTimes(1)
+    expect(loadMoreUnresolved).toHaveBeenCalledWith(
+      REFUNDS_NEEDING_ATTENTION_PAGE_SIZE,
+    )
+    expect(loadMoreProcessing).not.toHaveBeenCalled()
+
+    // While that page loads the button shows it, disabled, and the list
+    // does not ask again.
+    await render(
+      list([], 'LoadingMore', loadMoreUnresolved),
+      list([], 'Exhausted', loadMoreProcessing),
+    )
+    const [loading] = buttons(container, 'Loading more unresolved refunds…')
+    expect(loading).toBeDefined()
+    expect(loading.disabled).toBe(true)
+    expect(loadMoreUnresolved).toHaveBeenCalledTimes(1)
+
+    // The page arrives: its rows show, and the list is exhausted.
+    await render(
+      list([refund(21, 'needs_attention')], 'Exhausted', loadMoreUnresolved),
+      list([], 'Exhausted', loadMoreProcessing),
+    )
+    expect(buttons(container, 'Check refund status')).toHaveLength(1)
+    expect(buttons(container, 'Load more unresolved refunds')).toHaveLength(0)
+    expect(loadMoreUnresolved).toHaveBeenCalledTimes(1)
+
+    // Nothing stalled and nothing left to load: no refund section at all.
+    await render(
+      list([], 'Exhausted', loadMoreUnresolved),
+      list([], 'Exhausted', loadMoreProcessing),
+    )
+    expect(buttons(container, 'Check refund status')).toHaveLength(0)
+    expect(container.querySelectorAll('ul')).toHaveLength(0)
+    expect(container.textContent).not.toContain('Load more')
+    expect(container.textContent).not.toContain(
+      "Only the organization owner can check a refund's status.",
+    )
+  } finally {
+    await act(() => root.unmount())
+    container.remove()
+    vi.unstubAllGlobals()
+  }
+})

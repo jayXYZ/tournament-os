@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 
 import { mutationErrorMessage } from '@paper-pairings/core'
@@ -93,91 +93,120 @@ function describeRefundCheck(
   }
 }
 
+// Whether a list still has anything to show: rows loaded, or pages left to
+// load. An empty list that can load more has had every loaded row settle
+// (or move to the other list) out from under it — Convex shrinks a page as
+// rows leave it rather than refilling it from later rows — and the refunds
+// behind it still block the payout, so it must stay reachable.
+function refundListIsLive(list: RefundsNeedingAttention) {
+  return (
+    list.results.length > 0 ||
+    list.status === 'CanLoadMore' ||
+    list.status === 'LoadingMore'
+  )
+}
+
 // One of the card's refund lists: the rows loaded so far, each with its
-// check, and the button that loads the next page. Renders nothing while
-// the list is empty, so a card with nothing stalled shows no refund rows
-// at all.
+// check, and the button that loads the next page. Renders nothing once the
+// list is empty with no pages left, so a card with nothing stalled shows
+// no refund rows at all. An empty list with pages left loads the next one
+// itself, so settling the last loaded refund brings the rest into view
+// without a click; the button stays up meanwhile.
 function RefundList({
   list,
   loadMoreLabel,
+  loadingLabel,
   canCheck,
   checkingRefund,
   onCheck,
 }: {
   list: RefundsNeedingAttention
   loadMoreLabel: string
+  loadingLabel: string
   canCheck: boolean
   checkingRefund: RefundNeedingAttention['refundId'] | null
   onCheck: (refundId: RefundNeedingAttention['refundId']) => void
 }) {
-  if (list.results.length === 0) {
+  const drained = list.results.length === 0 && list.status === 'CanLoadMore'
+  const { loadMore } = list
+  useEffect(() => {
+    if (drained) {
+      loadMore(REFUNDS_NEEDING_ATTENTION_PAGE_SIZE)
+    }
+  }, [drained, loadMore])
+
+  if (!refundListIsLive(list)) {
     return null
   }
   return (
     <div className="flex flex-col gap-2">
-      <ul className="flex flex-col gap-2">
-        {list.results.map((refund) => (
-          <li
-            key={refund.refundId}
-            className={cn(
-              'flex flex-wrap items-center justify-between gap-2 rounded-md border p-3',
-              refund.status === 'needs_attention' && 'border-destructive/40',
-            )}
-          >
-            <div className="flex flex-col gap-1 text-sm">
-              {refund.status === 'needs_attention' ? (
-                <>
-                  <span>
-                    We couldn't confirm the outcome of the{' '}
-                    {formatCents(refund.amountCents)} refund to{' '}
-                    {refund.playerName ?? 'a player'}. The payout remains
-                    paused.
-                  </span>
-                  {refund.lastError ? (
-                    <span className="text-muted-foreground">
-                      {refund.lastError}
-                    </span>
-                  ) : null}
-                  <span className="text-muted-foreground">
-                    Check its status, or contact the platform operator with
-                    reference {refund.refundId} ({refund.attemptCount} recorded{' '}
-                    {refund.attemptCount === 1 ? 'attempt' : 'attempts'}).
-                  </span>
-                </>
-              ) : (
-                <>
-                  <span>
-                    Stripe is still processing the{' '}
-                    {formatCents(refund.amountCents)} refund to{' '}
-                    {refund.playerName ?? 'a player'}. The payout stays paused
-                    until it settles.
-                  </span>
-                  <span className="text-muted-foreground">
-                    It settles on its own once Stripe reports it; check its
-                    status to confirm sooner (reference {refund.refundId}).
-                  </span>
-                </>
+      {list.results.length > 0 ? (
+        <ul className="flex flex-col gap-2">
+          {list.results.map((refund) => (
+            <li
+              key={refund.refundId}
+              className={cn(
+                'flex flex-wrap items-center justify-between gap-2 rounded-md border p-3',
+                refund.status === 'needs_attention' && 'border-destructive/40',
               )}
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={!canCheck || checkingRefund !== null}
-              onClick={() => onCheck(refund.refundId)}
             >
-              {checkingRefund === refund.refundId ? (
-                <Spinner data-icon="inline-start" />
-              ) : null}
-              Check refund status
-            </Button>
-          </li>
-        ))}
-      </ul>
+              <div className="flex flex-col gap-1 text-sm">
+                {refund.status === 'needs_attention' ? (
+                  <>
+                    <span>
+                      We couldn't confirm the outcome of the{' '}
+                      {formatCents(refund.amountCents)} refund to{' '}
+                      {refund.playerName ?? 'a player'}. The payout remains
+                      paused.
+                    </span>
+                    {refund.lastError ? (
+                      <span className="text-muted-foreground">
+                        {refund.lastError}
+                      </span>
+                    ) : null}
+                    <span className="text-muted-foreground">
+                      Check its status, or contact the platform operator with
+                      reference {refund.refundId} ({refund.attemptCount}{' '}
+                      recorded{' '}
+                      {refund.attemptCount === 1 ? 'attempt' : 'attempts'}).
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span>
+                      Stripe is still processing the{' '}
+                      {formatCents(refund.amountCents)} refund to{' '}
+                      {refund.playerName ?? 'a player'}. The payout stays paused
+                      until it settles.
+                    </span>
+                    <span className="text-muted-foreground">
+                      It settles on its own once Stripe reports it; check its
+                      status to confirm sooner (reference {refund.refundId}).
+                    </span>
+                  </>
+                )}
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={!canCheck || checkingRefund !== null}
+                onClick={() => onCheck(refund.refundId)}
+              >
+                {checkingRefund === refund.refundId ? (
+                  <Spinner data-icon="inline-start" />
+                ) : null}
+                Check refund status
+              </Button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
       <LoadMoreButton
         status={list.status}
-        onLoadMore={() => list.loadMore(REFUNDS_NEEDING_ATTENTION_PAGE_SIZE)}
+        onLoadMore={() => loadMore(REFUNDS_NEEDING_ATTENTION_PAGE_SIZE)}
         label={loadMoreLabel}
+        loadingLabel={loadingLabel}
       />
     </div>
   )
@@ -188,8 +217,9 @@ function RefundList({
 // (payments/payouts.ts); blocked or failed payouts retry from here. Refunds
 // whose outcome could not be confirmed, and refunds Stripe is still
 // processing, block the payout and are listed above it — two lists, each
-// paged on its own, so every such refund is reachable without settling the
-// ones before it — each with a status check against Stripe's record. The
+// paged on its own and kept up while it has pages left, so every such
+// refund is reachable without settling the ones before it — each with a
+// status check against Stripe's record. The
 // check settles what Stripe knows about and never issues a refund itself.
 // The wrappers supply the query results and the two verbs.
 export function PaidEventPayoutCard({
@@ -261,8 +291,10 @@ export function PaidEventPayoutCard({
     }
   }
 
+  // Pages still to load count: a list whose loaded rows all settled would
+  // otherwise vanish with its load-more button and strand the rest.
   const hasRefunds =
-    unresolvedRefunds.results.length > 0 || processingRefunds.results.length > 0
+    refundListIsLive(unresolvedRefunds) || refundListIsLive(processingRefunds)
 
   return (
     <section className="flex flex-col gap-4">
@@ -272,6 +304,7 @@ export function PaidEventPayoutCard({
           <RefundList
             list={unresolvedRefunds}
             loadMoreLabel="Load more unresolved refunds"
+            loadingLabel="Loading more unresolved refunds…"
             canCheck={canRetry}
             checkingRefund={checkingRefund}
             onCheck={(refundId) => void handleCheckRefund(refundId)}
@@ -279,6 +312,7 @@ export function PaidEventPayoutCard({
           <RefundList
             list={processingRefunds}
             loadMoreLabel="Load more processing refunds"
+            loadingLabel="Loading more processing refunds…"
             canCheck={canRetry}
             checkingRefund={checkingRefund}
             onCheck={(refundId) => void handleCheckRefund(refundId)}
