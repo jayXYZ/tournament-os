@@ -2,18 +2,19 @@ import { Link, createFileRoute } from '@tanstack/react-router'
 import { useQuery } from 'convex/react'
 import { SearchX } from 'lucide-react'
 import { api } from '@paper-pairings/backend/convex/_generated/api'
+import { useMyBadge } from '@paper-pairings/core'
 import type { ReactNode } from 'react'
 import type { Id } from '@paper-pairings/backend/convex/_generated/dataModel'
 import type { PaymentReturnCopy } from '@/components/shared/payment-return'
 import {
   PaymentOutcomeCard,
   PaymentPendingCard,
+  PaymentReturnAuthGate,
   PaymentReturnOutcome,
   paymentReturnSearch,
 } from '@/components/shared/payment-return'
 import { SiteShell, SiteShellBackLink } from '@/components/shared/site-shell'
-import { useClientClock } from '@/hooks/use-client-clock'
-import { useStableQuery } from '@/hooks/use-stable-query'
+import { useMyBadgeOrder } from '@/hooks/use-my-order'
 
 // Stripe Checkout return page for badge purchases. The status dispatch and
 // outcome UI live in components/shared/payment-return.tsx; this route
@@ -55,7 +56,9 @@ function RouteComponent() {
         </SiteShellBackLink>
       }
     >
-      <PaymentOutcome publicCode={publicCode} />
+      <PaymentReturnAuthGate>
+        <PaymentOutcome publicCode={publicCode} />
+      </PaymentReturnAuthGate>
     </SiteShell>
   )
 }
@@ -95,16 +98,8 @@ function OrderOutcome({
   conventionId: Id<'conventions'>
   backLink: ReactNode
 }) {
-  // The cancel outcome reads as a promise, so its clock never runs behind
-  // the server's (see useClientClock's `round`).
-  const now = useClientClock({ round: 'up' })
-  const order = useStableQuery(api.payments.queries.getMyBadgeOrder, {
-    conventionId,
-    now,
-  })
-  const badge = useQuery(api.conventions.registrations.getMyBadge, {
-    conventionId,
-  })
+  const order = useMyBadgeOrder(conventionId)
+  const badge = useMyBadge(conventionId)
 
   return (
     <PaymentReturnOutcome

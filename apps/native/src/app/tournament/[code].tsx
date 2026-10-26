@@ -1,4 +1,3 @@
-import { useUser } from "@clerk/expo";
 import {
   describeCurrentMatch,
   useMyCurrentMatch,
@@ -23,7 +22,9 @@ import { Badge } from "@/components/badge";
 import { ReportResultScoreboard } from "@/components/report-result-scoreboard";
 import { SignInButton } from "@/components/sign-in-button";
 import { Toast, useToast } from "@/components/toast";
+import { UnverifiedViewerActions } from "@/components/unverified-viewer-actions";
 import { palette } from "@/lib/palette";
+import { useAppAuth } from "@/lib/use-app-auth";
 
 // The match page: the viewer's current match — the report scoreboard while
 // it is live, the result card once it lands. The Figma "Player / App bar"
@@ -36,11 +37,7 @@ export default function TournamentScreen() {
   // The shared access ladder needs the app's own auth signal; Convex
   // readiness alone cannot distinguish "signed out" from "token still
   // propagating" (see @paper-pairings/core player-access.ts).
-  const { user, isLoaded } = useUser();
-  const access = usePlayerTournamentAccess(code ?? "", {
-    user: user ?? null,
-    loading: !isLoaded,
-  });
+  const access = usePlayerTournamentAccess(code ?? "", useAppAuth());
 
   // Update the header title once the event resolves. Done via setOptions
   // (not a <Stack.Screen> rendered inside the route) — rendering a navigator
@@ -48,7 +45,7 @@ export default function TournamentScreen() {
   // broken back navigation, and white seams during transitions.
   const navigation = useNavigation();
   const tournamentName =
-    access.state === "loading" || access.state === "notFound"
+    access.state === "notFound" || access.event === null
       ? undefined
       : access.event.tournament.name;
   useEffect(() => {
@@ -87,6 +84,26 @@ export default function TournamentScreen() {
             Sign in to see your pairings and standings for this tournament.
           </Text>
           <SignInButton style={styles.signInButton} />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Clerk has a user Convex could not verify (see ViewerAuthGate): offer a
+  // handshake restart and sign-out, not the sign-in sheet.
+  if (access.state === "unverified") {
+    return (
+      <SafeAreaView style={styles.container} edges={["bottom"]}>
+        <View style={styles.signedOut}>
+          <Text style={styles.signedOutTitle}>
+            {"We couldn't verify your account"}
+          </Text>
+          <Text style={styles.muted}>
+            {
+              "You're signed in, but the server couldn't confirm your session. Try again, or sign out and sign back in."
+            }
+          </Text>
+          <UnverifiedViewerActions style={styles.signInButton} />
         </View>
       </SafeAreaView>
     );

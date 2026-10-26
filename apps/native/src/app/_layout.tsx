@@ -1,7 +1,7 @@
 import { ClerkProvider, useAuth } from "@clerk/expo";
 import { tokenCache } from "@clerk/expo/token-cache";
+import { ConvexClerkAuthProvider } from "@paper-pairings/core";
 import * as Sentry from "@sentry/react-native";
-import { ConvexProviderWithClerk } from "convex/react-clerk";
 import { DarkTheme, Stack, ThemeProvider } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as SystemUI from "expo-system-ui";
@@ -71,7 +71,7 @@ function RootLayout() {
 
   return (
     <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
-      <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
+      <ConvexClerkAuthProvider client={convex} useAuth={useAuth}>
         <ThemeProvider value={navigationTheme}>
           <StatusBar style="light" />
           <Stack
@@ -94,7 +94,7 @@ function RootLayout() {
             />
           </Stack>
         </ThemeProvider>
-      </ConvexProviderWithClerk>
+      </ConvexClerkAuthProvider>
     </ClerkProvider>
   );
 }

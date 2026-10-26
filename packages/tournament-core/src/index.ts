@@ -1,15 +1,33 @@
 export {
   useDropSelf,
   useLatestStandings,
+  useMyBadge,
+  useMyBadgeRefundFlag,
   useMyCurrentMatch,
   useMyDecklist,
   useMyMatchHistory,
+  useMyRefundFlag,
   useMyRegistration,
   useMyTournaments,
   useReportResult,
 } from "./hooks";
-export { useAuthedQueryArgs, useConvexAuthReadiness } from "./auth-readiness";
-export type { ConvexAuthReadiness } from "./auth-readiness";
+export {
+  TOKEN_VALIDATION_GRACE_MS,
+  useAuthedQueryArgs,
+  useConvexAuthReadiness,
+  useViewerAuthGate,
+  viewerAuthGate,
+} from "./auth-readiness";
+export type {
+  AppAuthSnapshot,
+  ConvexAuthReadiness,
+  ViewerAuthGate,
+} from "./auth-readiness";
+export {
+  ConvexClerkAuthProvider,
+  useRestartConvexAuth,
+} from "./convex-clerk-auth";
+export type { ClerkUseAuth } from "./convex-clerk-auth";
 export {
   displayPlayerName,
   formatGameScoreline,
@@ -21,7 +39,6 @@ export {
 export { mutationErrorMessage, userErrorMessage } from "./mutation-error";
 export { usePlayerTournamentAccess } from "./player-access";
 export type {
-  AppAuthSnapshot,
   PlayerRegistration,
   PlayerTournamentAccess,
   PlayerTournamentEvent,

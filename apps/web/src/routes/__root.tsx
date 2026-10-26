@@ -11,7 +11,7 @@ import { TanStackRouterDevtools } from '@tanstack/react-router-devtools'
 import { createServerFn } from '@tanstack/react-start'
 import * as React from 'react'
 import { auth } from '@clerk/tanstack-react-start/server'
-import { ConvexProviderWithClerk } from 'convex/react-clerk'
+import { ConvexClerkAuthProvider } from '@paper-pairings/core'
 import type { ConvexQueryClient } from '@convex-dev/react-query'
 import type { ConvexReactClient } from 'convex/react'
 import type { QueryClient } from '@tanstack/react-query'
@@ -123,11 +123,11 @@ function RootComponent() {
     // The shadcn theme reads this app's CSS tokens, so Clerk's widgets follow
     // the light/dark toggle along with everything else.
     <ClerkProvider appearance={{ theme: shadcn }}>
-      <ConvexProviderWithClerk client={context.convexClient} useAuth={useAuth}>
+      <ConvexClerkAuthProvider client={context.convexClient} useAuth={useAuth}>
         <RootDocument>
           <Outlet />
         </RootDocument>
-      </ConvexProviderWithClerk>
+      </ConvexClerkAuthProvider>
     </ClerkProvider>
   )
 }

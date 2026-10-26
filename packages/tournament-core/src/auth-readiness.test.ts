@@ -11,8 +11,19 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("convex/react", () => mocks);
 
-import { useAuthedQueryArgs, useConvexAuthReadiness } from "./auth-readiness";
-import { useMyDecklist, useMyRegistration, useMyTournaments } from "./hooks";
+import {
+  useAuthedQueryArgs,
+  useConvexAuthReadiness,
+  viewerAuthGate,
+} from "./auth-readiness";
+import {
+  useMyBadge,
+  useMyBadgeRefundFlag,
+  useMyDecklist,
+  useMyRefundFlag,
+  useMyRegistration,
+  useMyTournaments,
+} from "./hooks";
 
 // What useConvexAuth reports in each token-lag state. Clerk-loading and
 // Clerk-signed-in-with-Convex-still-validating are indistinguishable to
@@ -26,6 +37,7 @@ const authStates = {
 } as const;
 
 const tournamentId = "t1" as Id<"tournaments">;
+const conventionId = "c1" as Id<"conventions">;
 
 beforeEach(() => {
   mocks.useConvexAuth.mockReset();
@@ -63,6 +75,35 @@ describe("useAuthedQueryArgs", () => {
     mocks.useConvexAuth.mockReturnValue(authStates.bothReady);
     expect(useAuthedQueryArgs(null)).toBe("skip");
   });
+});
+
+describe("viewerAuthGate", () => {
+  const user = {};
+  it.each([
+    // Nothing is trustworthy until both the provider and Convex settle.
+    [{ user: null, loading: true }, "pending", false, "pending"],
+    [{ user, loading: true }, "ready", false, "pending"],
+    [{ user, loading: false }, "pending", false, "pending"],
+    [{ user: null, loading: false }, "pending", false, "pending"],
+    [{ user: null, loading: false }, "unauthenticated", false, "signedOut"],
+    // A provider user on a signed-out verdict: Convex may still be
+    // validating a token issued in place, so wait out the grace…
+    [{ user, loading: false }, "unauthenticated", false, "pending"],
+    // …then read it as unverified, never as signed out: authed queries would
+    // skip forever, and the live provider session means sign-in is not the
+    // way out — a handshake restart or sign-out is.
+    [{ user, loading: false }, "unauthenticated", true, "unverified"],
+    // Signing out: the provider dropped the user before Convex caught up.
+    [{ user: null, loading: false }, "ready", false, "signedOut"],
+    [{ user, loading: false }, "ready", false, "ready"],
+  ] as const)(
+    "%o with Convex %s (overdue: %s) → %s",
+    (appAuth, readiness, validationOverdue, gate) => {
+      expect(viewerAuthGate(appAuth, readiness, { validationOverdue })).toBe(
+        gate,
+      );
+    },
+  );
 });
 
 // The hooks are thin adapters over useQuery; what matters is which args they
@@ -122,5 +163,49 @@ describe("identity query hooks", () => {
       name: "tournaments/decklists:getMyDecklist",
       args: { tournamentId },
     });
+  });
+
+  it.each([
+    [
+      "useMyBadge",
+      () => useMyBadge(conventionId),
+      "conventions/registrations:getMyBadge",
+      { conventionId },
+    ],
+    [
+      "useMyRefundFlag",
+      () => useMyRefundFlag(tournamentId),
+      "payments/queries:getMyRefundFlag",
+      { tournamentId },
+    ],
+    [
+      "useMyBadgeRefundFlag",
+      () => useMyBadgeRefundFlag(conventionId),
+      "payments/queries:getMyBadgeRefundFlag",
+      { conventionId },
+    ],
+  ] as const)(
+    "%s waits for auth, then subscribes",
+    (_name, hook, name, args) => {
+      mocks.useConvexAuth.mockReturnValue(
+        authStates.clerkSignedInConvexPending,
+      );
+      expect(hook()).toBeUndefined();
+      expect(lastQueryCall()).toEqual({ name, args: "skip" });
+
+      mocks.useConvexAuth.mockReturnValue(authStates.bothReady);
+      hook();
+      expect(lastQueryCall()).toEqual({ name, args });
+    },
+  );
+
+  it.each([
+    ["useMyBadge", () => useMyBadge(null)],
+    ["useMyRefundFlag", () => useMyRefundFlag(null)],
+    ["useMyBadgeRefundFlag", () => useMyBadgeRefundFlag(null)],
+  ] as const)("%s skips without an id even when ready", (_name, hook) => {
+    mocks.useConvexAuth.mockReturnValue(authStates.bothReady);
+    hook();
+    expect(lastQueryCall().args).toBe("skip");
   });
 });

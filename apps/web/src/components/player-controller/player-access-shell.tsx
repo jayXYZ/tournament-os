@@ -1,9 +1,14 @@
 import { Link } from '@tanstack/react-router'
-import { LogIn, SearchX, UserRound } from 'lucide-react'
+import { LogIn, SearchX, ShieldAlert, UserRound } from 'lucide-react'
 import type { ReactNode } from 'react'
 import type { Swords } from 'lucide-react'
 import type { PlayerTournamentAccess } from './use-player-tournament-access'
 import { useAppAuth } from '@/lib/use-app-auth'
+import {
+  UNVERIFIED_VIEWER_DESCRIPTION,
+  UNVERIFIED_VIEWER_TITLE,
+  UnverifiedViewerActions,
+} from '@/components/shared/viewer-unverified'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -57,7 +62,7 @@ export function PlayerPageEmpty({
   )
 }
 
-// The four non-ready access states, rendered once for every player page.
+// The five non-ready access states, rendered once for every player page.
 // Each page wraps this in its own chrome (SiteShell / DecklistFrame) and
 // supplies only the copy that differs: the sign-in pitch and the
 // not-registered consequence.
@@ -112,6 +117,18 @@ export function PlayerAccessShell({
           <LogIn data-icon="inline-start" />
           Sign in
         </Button>
+      </PlayerPageEmpty>
+    )
+  }
+
+  if (access.state === 'unverified') {
+    return (
+      <PlayerPageEmpty
+        icon={ShieldAlert}
+        title={UNVERIFIED_VIEWER_TITLE}
+        description={UNVERIFIED_VIEWER_DESCRIPTION}
+      >
+        <UnverifiedViewerActions className="justify-center" />
       </PlayerPageEmpty>
     )
   }
