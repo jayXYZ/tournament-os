@@ -1,5 +1,5 @@
 import { UserButton } from "@clerk/expo/native";
-import { useConvexAuthReadiness, useMyTournaments } from "@paper-pairings/core";
+import { useMyTournaments, useViewerAuthGate } from "@paper-pairings/core";
 import { useRouter } from "expo-router";
 import {
   ActivityIndicator,
@@ -14,10 +14,15 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Badge } from "@/components/badge";
 import { BrandMark } from "@/components/brand-mark";
 import { SignInButton } from "@/components/sign-in-button";
+import { UnverifiedViewerActions } from "@/components/unverified-viewer-actions";
 import { palette } from "@/lib/palette";
+import { useAppAuth } from "@/lib/use-app-auth";
 
 export default function HomeScreen() {
-  const auth = useConvexAuthReadiness();
+  // The shared viewer auth gate (see @paper-pairings/core auth-readiness.ts):
+  // the list below reads authed queries, so it mounts only once Convex has
+  // verified the viewer, and every other state gets its own screen.
+  const viewer = useViewerAuthGate(useAppAuth());
   const router = useRouter();
 
   // Player's active tournaments. `undefined` while loading (Convex convention);
@@ -25,7 +30,7 @@ export default function HomeScreen() {
   // never render a false "No active tournaments".
   const tournaments = useMyTournaments();
 
-  if (auth === "pending") {
+  if (viewer === "pending") {
     return (
       <View style={styles.centered}>
         <ActivityIndicator color={palette.mutedForeground} />
@@ -33,9 +38,9 @@ export default function HomeScreen() {
     );
   }
 
-  // Signed out, or a Clerk session with pending tasks, which Convex treats
-  // the same way (see SignInButton).
-  if (auth !== "ready") {
+  // Signed out, or a Clerk session with pending tasks, which Clerk reports
+  // as signed out and AuthView completes (see SignInButton).
+  if (viewer === "signedOut") {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.signedOut}>
@@ -45,6 +50,28 @@ export default function HomeScreen() {
             Sign in to follow your matches and standings live.
           </Text>
           <SignInButton />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Clerk has a user Convex could not verify (see ViewerAuthGate): restart
+  // the handshake or sign out, never the sign-in sheet.
+  if (viewer === "unverified") {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.signedOut}>
+          <BrandMark size={72} />
+          <Text style={styles.brand}>Paper Pairings</Text>
+          <Text style={styles.unverifiedTitle}>
+            {"We couldn't verify your account"}
+          </Text>
+          <Text style={styles.tagline}>
+            {
+              "You're signed in, but the server couldn't confirm your session. Try again, or sign out and sign back in."
+            }
+          </Text>
+          <UnverifiedViewerActions />
         </View>
       </SafeAreaView>
     );
@@ -135,6 +162,11 @@ const styles = StyleSheet.create({
     color: palette.mutedForeground,
     fontSize: 16,
     marginBottom: 12,
+  },
+  unverifiedTitle: {
+    color: palette.foreground,
+    fontSize: 22,
+    fontWeight: "700",
   },
   pressed: { opacity: 0.8 },
   header: {

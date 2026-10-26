@@ -6,10 +6,10 @@ import type { StyleProp, ViewStyle } from "react-native";
 import { palette } from "@/lib/palette";
 
 // The primary sign-in call to action plus the Clerk sheet it opens. Every
-// signed-out branch renders this: Convex also treats Clerk sessions with
-// pending tasks (e.g. MFA) as signed out, and AuthView completes those tasks
-// too, so the button is the path back to a working session rather than a
-// dead end.
+// signed-out branch renders this: Clerk's useAuth also reports sessions with
+// pending tasks (e.g. MFA) as signed out, so Convex never authenticates them,
+// and AuthView completes those tasks too — the button is the path back to a
+// working session rather than a dead end.
 export function SignInButton({ style }: { style?: StyleProp<ViewStyle> }) {
   const [open, setOpen] = useState(false);
   return (

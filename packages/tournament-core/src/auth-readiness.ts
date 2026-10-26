@@ -34,8 +34,12 @@ export function useAuthedQueryArgs<Args>(args: Args | null): Args | "skip" {
 }
 
 // The identity signal each app supplies from its own auth provider — Clerk
-// on web, Clerk Expo on native. Only nullness is consulted; `loading` is the
-// provider still resolving.
+// on web, Clerk Expo on native. `user` is the provider's active signed-in
+// user (Clerk's useAuth `isSignedIn`, not merely useUser's user): a session
+// with pending tasks still has a user but is not signed in, and Convex never
+// authenticates it, so it must read as signed out — the sign-in path
+// completes the tasks, the unverified recovery cannot. Only nullness is
+// consulted; `loading` is the provider still resolving.
 export type AppAuthSnapshot = {
   user: object | null;
   loading: boolean;

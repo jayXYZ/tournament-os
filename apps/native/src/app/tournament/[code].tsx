@@ -1,4 +1,3 @@
-import { useUser } from "@clerk/expo";
 import {
   describeCurrentMatch,
   useMyCurrentMatch,
@@ -25,6 +24,7 @@ import { SignInButton } from "@/components/sign-in-button";
 import { Toast, useToast } from "@/components/toast";
 import { UnverifiedViewerActions } from "@/components/unverified-viewer-actions";
 import { palette } from "@/lib/palette";
+import { useAppAuth } from "@/lib/use-app-auth";
 
 // The match page: the viewer's current match — the report scoreboard while
 // it is live, the result card once it lands. The Figma "Player / App bar"
@@ -37,11 +37,7 @@ export default function TournamentScreen() {
   // The shared access ladder needs the app's own auth signal; Convex
   // readiness alone cannot distinguish "signed out" from "token still
   // propagating" (see @paper-pairings/core player-access.ts).
-  const { user, isLoaded } = useUser();
-  const access = usePlayerTournamentAccess(code ?? "", {
-    user: user ?? null,
-    loading: !isLoaded,
-  });
+  const access = usePlayerTournamentAccess(code ?? "", useAppAuth());
 
   // Update the header title once the event resolves. Done via setOptions
   // (not a <Stack.Screen> rendered inside the route) — rendering a navigator

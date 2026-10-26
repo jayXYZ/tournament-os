@@ -40,8 +40,12 @@ const clerkUser = {
 }
 const getToken = vi.fn().mockResolvedValue('jwt')
 
-function clerk(state: 'loading' | 'signedOut' | 'signedIn') {
+// `pendingTasks` is a session with tasks still to do (MFA, organization
+// selection): Clerk's useAuth reports it signed out while useUser still has
+// the user, and Convex never authenticates it.
+function clerk(state: 'loading' | 'signedOut' | 'signedIn' | 'pendingTasks') {
   const isLoaded = state !== 'loading'
+  const hasUser = state === 'signedIn' || state === 'pendingTasks'
   mocks.useAuth.mockReturnValue({
     isLoaded,
     isSignedIn: isLoaded ? state === 'signedIn' : undefined,
@@ -52,7 +56,7 @@ function clerk(state: 'loading' | 'signedOut' | 'signedIn') {
   })
   mocks.useUser.mockReturnValue({
     isLoaded,
-    user: state === 'signedIn' ? clerkUser : isLoaded ? null : undefined,
+    user: hasUser ? clerkUser : isLoaded ? null : undefined,
   })
 }
 
@@ -186,6 +190,17 @@ test('keeps checking through an in-place sign-in until the server confirms it', 
   expect(client.setAuth).toHaveBeenCalledTimes(1)
   expect(advance(TOKEN_VALIDATION_GRACE_MS - 1)).toContain(CHECKING)
   expect(verdict(true)).toBe('order outcome')
+})
+
+// The sign-in path completes a session's pending tasks; the unverified
+// recovery's handshake restart cannot, so such a session must never reach it.
+test('a session with pending tasks reads as signed out, never as unverified', () => {
+  clerk('pendingTasks')
+  expect(render()).toContain(SIGN_IN)
+  expect(client.setAuth).not.toHaveBeenCalled()
+  const shown = advance(TOKEN_VALIDATION_GRACE_MS + 1)
+  expect(shown).toContain(SIGN_IN)
+  expect(shown).not.toContain(UNVERIFIED)
 })
 
 test('mounts the outcome once Convex has validated the viewer', () => {
