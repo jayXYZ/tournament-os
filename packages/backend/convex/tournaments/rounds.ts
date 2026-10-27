@@ -31,6 +31,7 @@ import {
 import {
   MAX_TOURNAMENT_PLAYERS,
   nonActiveParticipationStatuses,
+  registrationOrganizerLabel,
   resolveOrganizerDisplayName,
 } from "../model/registrations";
 import {
@@ -322,6 +323,17 @@ export const getPairingsBoard = query({
     // Derived from the same boards progression analyzes, so the timeline the
     // clients render can never disagree with nextStep.
     const timelines = phaseTimelines(phaseBoards);
+    // The entrants holding the start (CONTEXT.md "Awaiting Player Details"),
+    // from the roster progression already loaded, so the board can list
+    // them beside its refusal with the resolution each one needs. Organizer-
+    // only query: the label is the enrollment email for an unnamed entry.
+    // Empty whenever the roster is not loaded (in play, finished).
+    const playersAwaitingDetails = (facts.playersAwaitingDetails ?? []).map(
+      (registration) => ({
+        registrationId: registration._id,
+        label: registrationOrganizerLabel(registration) ?? null,
+      }),
+    );
     return {
       tournament,
       phases: phaseBoards.map((phaseBoard, index) => ({
@@ -332,6 +344,7 @@ export const getPairingsBoard = query({
       rewind: actions.rewind,
       liveRound: liveRoundSummary(facts),
       field,
+      playersAwaitingDetails,
     };
   },
 });

@@ -8,7 +8,6 @@ import {
   Settings2,
   UserCheck,
   UserMinus,
-  UserPlus,
   UserX,
 } from 'lucide-react'
 
@@ -19,8 +18,13 @@ import {
   effectiveRegistrationStatus,
 } from '@paper-pairings/shared/registration-status'
 import { toast } from 'sonner'
+import {
+  AddGuestDialog,
+  ContinueAsGuestDialog,
+  ContinueAsGuestIcon,
+  EnrollPlayerDialog,
+} from './enrollment-dialogs'
 import type { ColumnDef } from '@tanstack/react-table'
-import type { FormEvent } from 'react'
 import type {
   Doc,
   Id,
@@ -46,18 +50,10 @@ import {
   StatusDot,
   statusDotToneClassName,
 } from '@/components/shared/status-dot'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { DataTable, DataTableColumnHeader } from '@/components/ui/data-table'
 import { DataTableToolbar } from '@/components/ui/data-table-toolbar'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -65,20 +61,22 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import {
-  Field,
-  FieldDescription,
-  FieldGroup,
-  FieldLabel,
-} from '@/components/ui/field'
-import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
 import { useBusyAction } from '@/hooks/use-busy-action'
 import { cn } from '@/lib/utils'
 
 type RegistrationRow = {
   registration: Doc<'tournamentRegistrations'>
+  // The organizer label: the player's name, or the entry's email while it
+  // has none (an entry enrolled by email, or a nameless account).
   playerName: string | undefined
+  // Whether the entry still awaits a usable name (CONTEXT.md "Awaiting
+  // Player Details") — server-computed from the same rule that holds the
+  // start, so the marker and the board's refusal always agree.
+  awaitingPlayerDetails: boolean
+  // Whether "Continue as guest" would name this row right now (null when
+  // unavailable), from the same projection the verb enforces.
+  nameEffect: 'name' | null
   // Server-computed effect of dropRegistration on this row, null when the
   // action is unavailable; the client never re-derives the lifecycle rules.
   dropEffect: 'cancel' | 'drop' | null
@@ -357,6 +355,7 @@ export function RegistrationsView({
           actions={
             <>
               <EnrollPlayerDialog tournament={setup?.tournament} />
+              <AddGuestDialog tournament={setup?.tournament} />
               <RegistrationSettingsMenu tournament={setup?.tournament} />
             </>
           }
@@ -372,135 +371,6 @@ export function RegistrationsView({
         ) : null}
       </div>
     </section>
-  )
-}
-
-// Longest name the enrollment accepts; mirrors MAX_ENROLLMENT_NAME_LENGTH in
-// the backend's model/roster.ts, which is what actually refuses a longer one.
-const ENROLLMENT_NAME_MAX_LENGTH = 80
-
-// The organizer's direct enrollment (enrollPlayer): a name, and optionally
-// the email that routes the registration to the account holding it — or, for
-// a player without one, keys the guest's claim at their first sign-in. The
-// trigger is offered exactly when the server would accept an enrollment: it
-// takes a seat, so only while registration is open and a seat is free.
-function EnrollPlayerDialog({
-  tournament,
-}: {
-  tournament: Doc<'tournaments'> | undefined
-}) {
-  const enrollPlayer = useMutation(api.tournaments.registrations.enrollPlayer)
-  const [open, setOpen] = useState(false)
-  const { busy, run } = useBusyAction()
-  const [displayName, setDisplayName] = useState('')
-  const [email, setEmail] = useState('')
-
-  const canEnroll =
-    tournament !== undefined &&
-    tournament.lifecycle === 'registration' &&
-    tournament.confirmedRegistrationCount < tournament.playerCapacity
-
-  function resetForm() {
-    setDisplayName('')
-    setEmail('')
-  }
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (!tournament) {
-      return
-    }
-    await run(async () => {
-      const trimmedEmail = email.trim()
-      await enrollPlayer({
-        tournamentId: tournament._id,
-        displayName,
-        email: trimmedEmail === '' ? undefined : trimmedEmail,
-      })
-      const name = displayName.trim()
-      toast.success(
-        trimmedEmail === ''
-          ? `${name} has been enrolled as a guest.`
-          : `${name} has been enrolled.`,
-      )
-      resetForm()
-      setOpen(false)
-    }, 'Could not enroll player.')
-  }
-
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        if (!busy) {
-          setOpen(next)
-        }
-      }}
-    >
-      <DialogTrigger asChild>
-        <Button type="button" variant="outline" disabled={!canEnroll}>
-          <UserPlus data-icon="inline-start" />
-          Enroll player
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <DialogHeader>
-            <DialogTitle>Enroll a player</DialogTitle>
-            <DialogDescription>
-              Seat a player directly, whether or not they have an account. They
-              take a confirmed seat right away.
-            </DialogDescription>
-          </DialogHeader>
-
-          <FieldGroup>
-            <Field>
-              <FieldLabel htmlFor="enroll-player-name">Name</FieldLabel>
-              <Input
-                id="enroll-player-name"
-                value={displayName}
-                onChange={(event) => setDisplayName(event.target.value)}
-                placeholder="Jordan Lee"
-                maxLength={ENROLLMENT_NAME_MAX_LENGTH}
-                autoComplete="off"
-                disabled={busy}
-                required
-              />
-              <FieldDescription>
-                Shown on pairings and standings. If the email below belongs to
-                an account, that account&apos;s own name is used instead.
-              </FieldDescription>
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="enroll-player-email">
-                Email (optional)
-              </FieldLabel>
-              <Input
-                id="enroll-player-email"
-                type="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                placeholder="jordan@example.com"
-                autoComplete="off"
-                disabled={busy}
-              />
-              <FieldDescription>
-                With an email, the registration goes to the account that holds
-                it, or moves to the player&apos;s account the first time they
-                sign in with it. Without one, the player is enrolled as a guest.
-              </FieldDescription>
-            </Field>
-          </FieldGroup>
-
-          <DialogFooter>
-            <Button type="submit" disabled={busy}>
-              {busy ? <Spinner data-icon="inline-start" /> : null}
-              Enroll player
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
   )
 }
 
@@ -610,9 +480,17 @@ function getRegistrationColumns({
       // put as names change length across pages.
       meta: { className: 'w-full' },
       cell: ({ row }) => (
-        <p className="font-medium text-foreground">
-          {displayPlayerName(row.original.playerName)}
-        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="font-medium text-foreground">
+            {displayPlayerName(row.original.playerName)}
+          </p>
+          {/* An entry with no usable name yet: labelled above by its email
+              (organizer-only), and holding the start until it is named,
+              resolved by the player, or removed. */}
+          {row.original.awaitingPlayerDetails ? (
+            <Badge variant="outline">Awaiting player details</Badge>
+          ) : null}
+        </div>
       ),
     },
     {
@@ -830,6 +708,7 @@ function ManagePlayerMenu({
 
   const [confirmingDrop, setConfirmingDrop] = useState(false)
   const [confirmingReject, setConfirmingReject] = useState(false)
+  const [naming, setNaming] = useState(false)
 
   // Whether the row can be dropped — and whether that cancels the entry
   // (freeing the seat) or records a competitive drop — is server-computed on
@@ -873,6 +752,17 @@ function ManagePlayerMenu({
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuGroup>
+            {/* Naming appears only while the server offers it: an entry
+                still awaiting player details, in an event still running. */}
+            {row.nameEffect !== null ? (
+              <DropdownMenuItem
+                disabled={disabled || busy}
+                onSelect={() => setNaming(true)}
+              >
+                <ContinueAsGuestIcon />
+                Continue as guest
+              </DropdownMenuItem>
+            ) : null}
             {/* Review actions appear only when the server offers them, so
                 the everyday confirmed-roster menu stays a drop menu. */}
             {row.approveEffect !== null ? (
@@ -932,6 +822,15 @@ function ManagePlayerMenu({
           </DropdownMenuGroup>
         </DropdownMenuContent>
       </DropdownMenu>
+
+      {row.nameEffect !== null ? (
+        <ContinueAsGuestDialog
+          open={naming}
+          onOpenChange={setNaming}
+          registrationId={row.registration._id}
+          currentLabel={name}
+        />
+      ) : null}
 
       <ConfirmActionDialog
         open={confirmingDrop}

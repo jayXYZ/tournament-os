@@ -542,16 +542,28 @@ export const tournamentAuditEventValidator = v.union(
     player: auditPlayerRefValidator,
   }),
   v.object({
-    // An organizer seated the player directly (enrollPlayer in
-    // model/roster.ts): no application, no approval, and on a paid event no
-    // order — the organizer's enrollment is the admission decision, and any
-    // fee was settled outside the app.
+    // An organizer seated the player directly (enrollPlayerByEmail /
+    // addGuest in model/roster.ts): no application, no approval, and on a
+    // paid event no order — the organizer's enrollment is the admission
+    // decision, and any fee was settled outside the app.
     type: v.literal("player_enrolled"),
+    // Labelled from the row's stamp: the typed name for a guest added by
+    // name; for an email enrollment the organizer label, which is the email
+    // until the entry has a name (organizer-only log).
     player: auditPlayerRefValidator,
-    // True when the entry belongs to a Guest (no account yet — the Claim at
-    // sign-in will merge it); false when the email matched an existing
-    // account and the registration went straight to it.
-    asGuest: v.boolean(),
+    // Which organizer action seated the entry: "email" (Enroll player — the
+    // entry awaits player details until the player signs in or the
+    // organizer names them) or "name" (Add guest).
+    by: v.union(v.literal("email"), v.literal("name")),
+  }),
+  v.object({
+    // An organizer gave an entry awaiting player details its name for this
+    // event ("Continue as guest", model/roster.ts continueAsGuest). The
+    // player ref carries the new name; previousLabel is what the row was
+    // labelled by before (the enrollment email, or null).
+    type: v.literal("player_named"),
+    player: auditPlayerRefValidator,
+    previousLabel: v.union(v.string(), v.null()),
   }),
   v.object({
     type: v.literal("decklist_submitted"),

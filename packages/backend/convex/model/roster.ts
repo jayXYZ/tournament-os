@@ -21,8 +21,10 @@ import { concedeUnfinishedMatchOnDrop } from "./matchResults";
 import {
   createGuestParticipant,
   ensureParticipantForUser,
+  guestParticipantForEmail,
   isGuestParticipant,
-  reuseGuestParticipantForEmail,
+  participantForUser,
+  requireParticipant,
 } from "./participants";
 import { setRegistrationState } from "./participation";
 import {
@@ -31,10 +33,14 @@ import {
   registrationHoldsPaidOrder,
 } from "./payments";
 import {
+  type RegistrationNameStamp,
   adjustConfirmedRegistrationCount,
   registrationApproveEffect,
   registrationCancelEffect,
   registrationDropEffect,
+  registrationHasUsableName,
+  registrationNameEffect,
+  registrationOrganizerLabel,
   registrationReinstateEffect,
   registrationRejectEffect,
   registrationForParticipant,
@@ -42,6 +48,7 @@ import {
   registrationNameStamp,
   registrationWaitlistEffect,
   requireCapacityAvailable,
+  restampRegistrationRow,
 } from "./registrations";
 import { tiebreakRandom } from "./random";
 import { userByEmail } from "./users";
@@ -60,10 +67,12 @@ import { normalizeEmail, presentText } from "../validators";
 // and bars players, waitlist holds a pending application). Pending rows are
 // filed by registerEntry when the tournament requires registration approval;
 // every transition out of every state lives here and is spec-covered. The
-// second way into a confirmed seat is the organizer's own enrollPlayer,
-// which seats a player by name or email without an account (CONTEXT.md
-// "Enrollment"). The remaining participation state, "disqualified",
-// deliberately has no writer until the judge-operations DQ action.
+// second way into a confirmed seat is the organizer's own enrollment —
+// enrollPlayerByEmail and addGuest, which seat a player without the player
+// registering (CONTEXT.md "Enrollment") — with continueAsGuest naming an
+// enrolled entry that still awaits player details. The remaining
+// participation state, "disqualified", deliberately has no writer until the
+// judge-operations DQ action.
 //
 // Each verb owns its eligibility per actor, the registration write (through
 // setRegistrationState, which keeps the standings copy in step — see
@@ -236,6 +245,19 @@ export async function cancelEntry(
   });
 }
 
+// Whether re-admitting an entry skips the entry-fee order: an organizer
+// enrolled it (the exemption persists on the row through Claims), or its
+// holder is a guest with no account to pay from.
+async function entrySettlesFeeOutsideApp(
+  ctx: MutationCtx,
+  registration: Doc<"tournamentRegistrations">,
+): Promise<boolean> {
+  return (
+    registration.entryFeeExempt === true ||
+    (await isGuestParticipant(ctx, registration.participantId))
+  );
+}
+
 // Restores a cancelled entry to a confirmed, active seat. Capacity applies:
 // the cancellation released the seat, so retaking it competes with every
 // registration since. On a paid event a seat moves only with its money: an
@@ -270,14 +292,16 @@ export async function restoreEntry(
       tournament,
       registration.participantId,
     ));
-  // A guest has no account to pay from (createEntryOrder refuses one), so
-  // a guest's entry reseats through the free arm like a comped one: the
-  // organizer who enrolled them settles any fee outside the app.
+  // An enrolled entry (entryFeeExempt) reseats through the free arm like a
+  // comped one: the organizer who enrolled it settles any fee outside the
+  // app, and that holds after the Claim hands the entry to an account. A
+  // guest has no account to pay from (createEntryOrder refuses one), so any
+  // guest's entry — a test player's included — takes the free arm too.
   const payable =
     isPaidEvent(tournament) &&
     !holdsPaidOrder &&
     !compedByBadge &&
-    !(await isGuestParticipant(ctx, registration.participantId));
+    !(await entrySettlesFeeOutsideApp(ctx, registration));
   if (payable) {
     await setRegistrationState(ctx, registration._id, {
       entryStatus: "pending",
@@ -363,14 +387,13 @@ export async function approveEntry(
       tournament,
       registration.participantId,
     ));
-  // A guest has no account to pay from (createEntryOrder refuses one), so
-  // an organizer re-admitting a guest's rejected entry seats it through the
-  // free arm like a comped one — the fee, if any, is theirs to settle at
-  // the door.
+  // An enrolled entry, or any guest's, seats through the free arm like a
+  // comped one — the fee, if any, is the organizer's to settle at the door
+  // (entrySettlesFeeOutsideApp).
   const payable =
     isPaidEvent(tournament) &&
     !compedByBadge &&
-    !(await isGuestParticipant(ctx, registration.participantId));
+    !(await entrySettlesFeeOutsideApp(ctx, registration));
   if (payable) {
     // The decision is made, so the row leaves the review queue even though
     // its entry status stays "pending" for the payment — the same write
@@ -664,6 +687,9 @@ export async function registerEntry(
     await setRegistrationState(ctx, existing._id, {
       ...admission,
       ...nameStamp,
+      // A player's own re-entry is under the event's ordinary terms, so an
+      // earlier enrollment's fee exemption does not carry over.
+      entryFeeExempt: undefined,
       tournamentStartDate: tournament.startDate,
       updatedAt: now,
     });
@@ -689,9 +715,25 @@ export async function registerEntry(
   return registrationId;
 }
 
-// Longest organizer-provided display name: the stamp is copied onto every
-// standings row, match player, and seat the guest appears in.
+// Longest organizer-typed player name: the stamp is copied onto every
+// standings row, match player, and seat the entry appears in.
 export const MAX_ENROLLMENT_NAME_LENGTH = 80;
+
+// The name an organizer types for an entry ("Add guest", "Continue as
+// guest"): trimmed, present, and within the stamp's length — it is the
+// player-safe stamp every player-facing row will carry.
+function requireEnrollmentName(raw: string): string {
+  const displayName = presentText(raw);
+  if (displayName === undefined) {
+    throw userError("Enter the player's name");
+  }
+  if (displayName.length > MAX_ENROLLMENT_NAME_LENGTH) {
+    throw userError(
+      `Player name must be ${MAX_ENROLLMENT_NAME_LENGTH} characters or fewer`,
+    );
+  }
+  return displayName;
+}
 
 // What finding an existing row for the enrolled identity means for an
 // organizer enrollment, per entry status: the refusal, written for the
@@ -700,7 +742,10 @@ export const MAX_ENROLLMENT_NAME_LENGTH = 80;
 // retaken, exactly as registerEntry re-enters a cancelled row. The review
 // states are refused rather than silently confirmed so every review
 // decision still goes through its own verb and audit event: approveEntry
-// is the one way a pending, waitlisted, or rejected row becomes a seat.
+// is the one way a pending, waitlisted, or rejected row becomes a seat. The
+// refusals never name the player: an email enrollment that collides with a
+// row already on the roster says only that, so the enrollment form is not
+// a way to learn whose email an entry is.
 function existingEntryBlocksEnrollment(
   entryStatus: Doc<"tournamentRegistrations">["entryStatus"],
 ): string | null {
@@ -722,106 +767,18 @@ function existingEntryBlocksEnrollment(
   }
 }
 
-// The identity an organizer enrollment seats (CONTEXT.md "Enrollment"). By
-// email, in order: an existing account with that verified email takes the
-// registration directly — its holder sees the event the moment they open
-// the app, and no Guest is minted that the Claim would have to merge later
-// (or could never merge, had the holder also registered themself); failing
-// that, the Guest already carrying that contact email is reused
-// (reuseGuestParticipantForEmail), so a regular enrolled across several
-// events stays one Participant with one history and one Claim; failing
-// that, a new Guest with the email as its claim key. Without an email there
-// is nothing to deduplicate on, so the enrollment always creates a fresh
-// Guest.
-async function resolveEnrollmentIdentity(
+// The row an enrollment lands on: the identity's cancelled row in this
+// tournament, to be re-entered with its seat retaken, or null for a fresh
+// insert. Every other entry status refuses (existingEntryBlocksEnrollment).
+async function enrollmentRowFor(
   ctx: MutationCtx,
-  args: { displayName: string; email: string | undefined },
-): Promise<
-  | { kind: "account"; participant: Doc<"participants">; user: Doc<"users"> }
-  | { kind: "guest"; participant: Doc<"participants"> }
-> {
-  if (args.email !== undefined) {
-    const user = await userByEmail(ctx, args.email);
-    if (user) {
-      const participant = await ensureParticipantForUser(ctx, user._id);
-      return { kind: "account", participant, user };
-    }
-    const guest = await reuseGuestParticipantForEmail(ctx, {
-      displayName: args.displayName,
-      email: args.email,
-    });
-    if (guest) {
-      return { kind: "guest", participant: guest };
-    }
-  }
-  const participantId = await createGuestParticipant(ctx, {
-    displayName: args.displayName,
-    contactEmail: args.email,
-  });
-  const participant = await ctx.db.get(participantId);
-  if (!participant) {
-    throw new Error("Participant not found");
-  }
-  return { kind: "guest", participant };
-}
-
-// An organizer seats a player directly, without an account (CONTEXT.md
-// "Enrollment"): by name alone as a Guest, or by email resolved to the
-// account, the Guest, or a new Guest that holds it (resolveEnrollmentIdentity
-// above). The enrollment is the admission decision, so it takes a confirmed
-// seat whatever the event's approval mode, and on a paid event it takes no
-// order: a guest has no account to pay from, and an organizer enrolling an
-// account holder is vouching for an entry fee settled outside the app. Like
-// the other organizer verbs it bypasses the invite and badge gates by never
-// routing through registerEntry. Capacity and the registration lifecycle
-// still apply, and an existing row for the identity is handled per entry
-// status (existingEntryBlocksEnrollment): a cancelled row is re-entered
-// with its seat retaken; every other state refuses and names the verb that
-// admits the player instead. Owns the input rules too — the name is the
-// stamp every player-facing row will carry, and the email is the claim
-// key — so the endpoint stays a thin adapter.
-export async function enrollPlayer(
-  ctx: MutationCtx,
-  {
-    tournament,
-    actor,
-    displayName: rawDisplayName,
-    email: rawEmail,
-  }: {
-    tournament: Doc<"tournaments">;
-    actor: Doc<"users">;
-    displayName: string;
-    email?: string;
-  },
-): Promise<Id<"tournamentRegistrations">> {
-  const displayName = presentText(rawDisplayName);
-  if (displayName === undefined) {
-    throw userError("Enter the player's name");
-  }
-  if (displayName.length > MAX_ENROLLMENT_NAME_LENGTH) {
-    throw userError(
-      `Player name must be ${MAX_ENROLLMENT_NAME_LENGTH} characters or fewer`,
-    );
-  }
-  const presentEmail = presentText(rawEmail);
-  const email =
-    presentEmail === undefined ? undefined : normalizeEmail(presentEmail);
-  if (email !== undefined && !email.includes("@")) {
-    throw userError("Enter a valid email address");
-  }
-  if (tournament.lifecycle !== "registration") {
-    throw userError("Tournament is not open for registration");
-  }
-  requireCapacityAvailable(tournament);
-
-  const identity = await resolveEnrollmentIdentity(ctx, {
-    displayName,
-    email,
-  });
+  tournament: Doc<"tournaments">,
+  participantId: Id<"participants">,
+): Promise<Doc<"tournamentRegistrations"> | null> {
   const existing = await registrationForParticipant(
     ctx,
     tournament._id,
-    identity.participant._id,
+    participantId,
   );
   if (existing) {
     const blockedBecause = existingEntryBlocksEnrollment(existing.entryStatus);
@@ -829,44 +786,71 @@ export async function enrollPlayer(
       throw userError(blockedBecause);
     }
   }
+  return existing;
+}
 
+// The gates every organizer enrollment keeps (CONTEXT.md "Enrollment"):
+// registration must be open, and the seat it takes must exist. Checked
+// before any identity is resolved or minted.
+function requireEnrollmentOpen(tournament: Doc<"tournaments">) {
+  if (tournament.lifecycle !== "registration") {
+    throw userError("Tournament is not open for registration");
+  }
+  requireCapacityAvailable(tournament);
+}
+
+// The shared seat-taking tail of both enrollments: the admission write, the
+// seat counter, and the audit event. The enrollment is the admission
+// decision, so the row is confirmed and active whatever the event's approval
+// mode, and the fee exemption rides on the row (schema entryFeeExempt) so a
+// later reinstatement or re-approval keeps the enrollment's payment
+// treatment whoever then holds the entry. A fresh row carries the stamps
+// and flags given; a re-entered cancelled row keeps the stamps it has — an
+// account's current ones, or the name an organizer already gave it here.
+async function seatEnrolledEntry(
+  ctx: MutationCtx,
+  args: {
+    tournament: Doc<"tournaments">;
+    actor: Doc<"users">;
+    participant: Doc<"participants">;
+    existing: Doc<"tournamentRegistrations"> | null;
+    nameStamp: RegistrationNameStamp;
+    organizerNamed: true | undefined;
+    // Keyed on the identity's stable handle — an account's publicCode, as
+    // registerEntry keys it, or the guest's participant id — so the
+    // tiebreaker is reproducible across reseeds (model/random.ts).
+    tiebreakKey: string;
+    by: "email" | "name";
+  },
+): Promise<Id<"tournamentRegistrations">> {
+  const { tournament, actor, participant, existing, nameStamp } = args;
   const now = Date.now();
-  // An account holder is stamped from their account, as registerEntry
-  // stamps them — the sign-in re-stamp would overwrite anything else. A
-  // guest's organizer label is its display name, like any named row.
-  const nameStamp =
-    identity.kind === "account"
-      ? registrationNameStamp(identity.user)
-      : registrationNameStamp({ name: displayName });
   const admission = {
     entryStatus: "confirmed" as const,
     participationStatus: "active" as const,
+    entryFeeExempt: true as const,
   };
-  const registrationId =
-    existing?._id ??
-    (await ctx.db.insert("tournamentRegistrations", {
-      tournamentId: tournament._id,
-      participantId: identity.participant._id,
-      tournamentStartDate: tournament.startDate,
-      ...admission,
-      ...nameStamp,
-      createdAt: now,
-      // Keyed on the identity's stable handle — the account's publicCode,
-      // as registerEntry keys it, or the guest's participant id — so the
-      // tiebreaker is reproducible across reseeds (model/random.ts).
-      tiebreakRandom: tiebreakRandom(
-        tournament.seed ?? tournament.publicCode,
-        identity.kind === "account"
-          ? String(identity.user.publicCode)
-          : String(identity.participant._id),
-      ),
-      updatedAt: now,
-    }));
+  let registrationId: Id<"tournamentRegistrations">;
   if (existing) {
+    registrationId = existing._id;
     await setRegistrationState(ctx, existing._id, {
       ...admission,
-      ...nameStamp,
       tournamentStartDate: tournament.startDate,
+      updatedAt: now,
+    });
+  } else {
+    registrationId = await ctx.db.insert("tournamentRegistrations", {
+      tournamentId: tournament._id,
+      participantId: participant._id,
+      tournamentStartDate: tournament.startDate,
+      ...admission,
+      ...nameStamp,
+      organizerNamed: args.organizerNamed,
+      createdAt: now,
+      tiebreakRandom: tiebreakRandom(
+        tournament.seed ?? tournament.publicCode,
+        args.tiebreakKey,
+      ),
       updatedAt: now,
     });
   }
@@ -877,9 +861,183 @@ export async function enrollPlayer(
     actorRole: "organizer",
     event: {
       type: "player_enrolled",
-      player: auditPlayerRefForStamp(registrationId, nameStamp),
-      asGuest: identity.kind === "guest",
+      player: existing
+        ? auditPlayerRef(existing)
+        : auditPlayerRefForStamp(registrationId, nameStamp),
+      by: args.by,
     },
   });
   return registrationId;
+}
+
+// "Enroll player": an organizer seats a player by email alone (CONTEXT.md
+// "Enrollment"). The entry is confirmed and takes its seat at once, but it
+// has no name yet — it awaits player details (CONTEXT.md "Awaiting Player
+// Details") until the player signs in with a usable name or the organizer
+// names them (continueAsGuest) — and play cannot start while it has none.
+//
+// The entry is seated on the Guest keyed by the email — the one already
+// carrying it (guestParticipantForEmail), so a regular enrolled across
+// several events stays one Participant with one history and one Claim, or
+// a new one — whether or not an account holds the email. An account holder
+// is deliberately not linked here: linking at enrollment would tell the
+// organizer, through the entry's name and avatar, that the address has an
+// account, so every email enrollment starts in the same state and the Claim
+// links the account the next time its holder uses the app. The one place
+// the account is consulted is registration uniqueness: if the account
+// already holds a row in this event, that row is what the enrollment acts
+// on (re-entering a cancelled one, refusing every other status), exactly as
+// the Guest's own row would be — two entries for one person in one event is
+// what neither this verb nor the Claim will create. An address two cached
+// accounts still share has no certain owner (userByEmail), so only the
+// Guest's row is checked and the Claim sorts out the holder at sign-in.
+//
+// Like the other organizer verbs it bypasses the invite and badge gates by
+// never routing through registerEntry; capacity and the registration
+// lifecycle still apply.
+export async function enrollPlayerByEmail(
+  ctx: MutationCtx,
+  {
+    tournament,
+    actor,
+    email: rawEmail,
+  }: {
+    tournament: Doc<"tournaments">;
+    actor: Doc<"users">;
+    email: string;
+  },
+): Promise<Id<"tournamentRegistrations">> {
+  const presentEmail = presentText(rawEmail);
+  if (presentEmail === undefined) {
+    throw userError("Enter the player's email address");
+  }
+  const email = normalizeEmail(presentEmail);
+  if (!email.includes("@")) {
+    throw userError("Enter a valid email address");
+  }
+  requireEnrollmentOpen(tournament);
+
+  const user = await userByEmail(ctx, email);
+  if (user) {
+    const accountParticipant = await participantForUser(ctx, user._id);
+    const accountRow = accountParticipant
+      ? await enrollmentRowFor(ctx, tournament, accountParticipant._id)
+      : null;
+    if (accountParticipant && accountRow) {
+      return await seatEnrolledEntry(ctx, {
+        tournament,
+        actor,
+        participant: accountParticipant,
+        existing: accountRow,
+        nameStamp: registrationNameStamp(user),
+        organizerNamed: undefined,
+        tiebreakKey: String(user.publicCode),
+        by: "email",
+      });
+    }
+  }
+
+  const participant =
+    (await guestParticipantForEmail(ctx, email)) ??
+    (await requireParticipant(
+      ctx,
+      await createGuestParticipant(ctx, { contactEmail: email }),
+    ));
+  const existing = await enrollmentRowFor(ctx, tournament, participant._id);
+  return await seatEnrolledEntry(ctx, {
+    tournament,
+    actor,
+    participant,
+    existing,
+    // No name yet: the organizer label is the email, the player-safe stamp
+    // absent, so organizer surfaces can identify the entry and nothing
+    // player-facing ever shows the address.
+    nameStamp: registrationNameStamp({ email }),
+    organizerNamed: undefined,
+    tiebreakKey: String(participant._id),
+    by: "email",
+  });
+}
+
+// "Add guest": an organizer seats a player by name alone (CONTEXT.md
+// "Enrollment"). A fresh Guest every time — without an email there is
+// nothing to deduplicate on and nothing to claim — confirmed, seated, and
+// ready to play: the typed name is the entry's name for this event
+// (organizerNamed) and the guest's display name.
+export async function addGuest(
+  ctx: MutationCtx,
+  {
+    tournament,
+    actor,
+    displayName: rawDisplayName,
+  }: {
+    tournament: Doc<"tournaments">;
+    actor: Doc<"users">;
+    displayName: string;
+  },
+): Promise<Id<"tournamentRegistrations">> {
+  const displayName = requireEnrollmentName(rawDisplayName);
+  requireEnrollmentOpen(tournament);
+  const participant = await requireParticipant(
+    ctx,
+    await createGuestParticipant(ctx, { displayName }),
+  );
+  return await seatEnrolledEntry(ctx, {
+    tournament,
+    actor,
+    participant,
+    existing: null,
+    nameStamp: registrationNameStamp({ name: displayName }),
+    organizerNamed: true,
+    tiebreakKey: String(participant._id),
+    by: "name",
+  });
+}
+
+// "Continue as guest": an organizer names an entry still awaiting player
+// details, for this event (CONTEXT.md "Awaiting Player Details"). The name
+// goes on the registration — the same row, seat, history, and fee
+// treatment — as the event's label for the entrant (organizerNamed), so
+// the sign-in re-stamp and the Claim leave it alone and no other event's
+// entry for the same person is renamed. The participant is untouched: a
+// guest keeps its contact email for a later Claim, an account stays linked.
+// Only an entry without a usable name can be named here (registrationName-
+// Effect): this is not a general rename.
+export async function continueAsGuest(
+  ctx: MutationCtx,
+  {
+    tournament,
+    registration,
+    actor,
+    displayName: rawDisplayName,
+  }: {
+    tournament: Doc<"tournaments">;
+    registration: Doc<"tournamentRegistrations">;
+    actor: Doc<"users">;
+    displayName: string;
+  },
+): Promise<void> {
+  const displayName = requireEnrollmentName(rawDisplayName);
+  if (registrationNameEffect(tournament.lifecycle, registration) !== "name") {
+    throw userError(
+      registrationHasUsableName(registration)
+        ? "This player already has a name"
+        : "Tournament is no longer accepting roster changes",
+    );
+  }
+  const now = Date.now();
+  const nameStamp = registrationNameStamp({ name: displayName });
+  await restampRegistrationRow(ctx, registration, nameStamp, now, {
+    organizerNamed: true,
+  });
+  await logAuditEvent(ctx, {
+    tournamentId: tournament._id,
+    actor,
+    actorRole: "organizer",
+    event: {
+      type: "player_named",
+      player: auditPlayerRefForStamp(registration._id, nameStamp),
+      previousLabel: registrationOrganizerLabel(registration) ?? null,
+    },
+  });
 }

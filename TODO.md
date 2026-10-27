@@ -378,20 +378,32 @@ claimed by one.
         should also revisit registerSelf's full-event behavior, which today
         refuses applications at capacity instead of auto-waitlisting them)
 - [x] Enroll players as guests or by email without requiring an account
-      (2026-10-26, CONTEXT.md "Enrollment"): the Registrations tab's "Enroll
-      player" dialog takes a name and an optional email; the roster verb
-      `enrollPlayer` (model/roster.ts) resolves the identity — an existing
-      account's participant (users now carry a `by_email` index over the
-      normalized email), the Guest already holding that contact email
-      (reused, so one regular is one Participant across events), or a new
-      Guest the Claim merges at first sign-in — and seats it confirmed
-      whatever the approval mode, capacity- and lifecycle-gated, with a
-      `player_enrolled` audit event. A cancelled row for the identity is
+      (2026-10-27, CONTEXT.md "Enrollment", "Awaiting Player Details", ADR
+      0002 amendment): the Registrations tab offers two actions — "Enroll
+      player" (email only) and "Add guest" (name only) — both seating a
+      confirmed, capacity-counted entry exempt from in-app entry payment
+      (`entryFeeExempt` persists through Claims and organizer
+      reinstatements). An email enrollment always seats the Guest keyed by
+      the address, never linking an existing account, so every email
+      enrollment starts in one organizer-visible state, "Awaiting player
+      details"; the Claim (which runs on every authenticated mutation, so
+      opening the app suffices) links the account and stamps the account's
+      name onto the entry. "Continue as guest" names an unresolved entry for
+      one event (`organizerNamed`, honored by the re-stamp and the Claim),
+      keeping its seat, history, fee treatment, and contact email. Starting
+      the event and seating a player meeting refuse while any active entrant
+      has no name; the organizer board lists them with the resolutions. A
+      cancelled row for the identity (the account's or the Guest's) is
       re-entered; pending/waitlisted/rejected rows are refused toward the
-      review verbs. Guests cannot be billed, so enrollment on a paid event
-      takes no order, and approve/restore seat a guest through their free
-      arm. Metered by the `enrollPlayer` bucket (one guest row per call).
-      Covered by `guestEnrollment.convex.spec.ts`
+      review verbs. Metered by the `enrollPlayer` bucket. Covered by
+      `guestEnrollment.convex.spec.ts`, the names gate in
+      `tournaments-player-identity.convex.spec.ts`, and the web dialogs in
+      `enrollment-dialogs.test.tsx`
+- [ ] Personal tournament invitations — an emailed invite a player accepts,
+      or a pay-later enrollment — are deliberately deferred and are not part
+      of the enrollment feature above; organizers share the tournament's
+      Invite Link themselves. Revisit only with the transactional-email
+      layer in section 7
 - [ ] Persist organizer favorite players across tournaments
   - [ ] Decide whether favorites are scoped to an organizer or the organization
   - [ ] Filter pairings, registrations, and standings by favorites
@@ -533,7 +545,8 @@ push, analytics, and monitoring should be independent consumers.
 - [ ] Add in-app player-controller notifications for event/round transitions and outstanding player actions
 - [ ] Add transactional email
   - [ ] Staff invite emails
-  - [ ] Tournament invitation emails
+  - [ ] Tournament invitation emails (deferred with personal tournament
+        invitations, section 3; the shareable Invite Link stands in)
   - [ ] Registration confirmation and status-change emails
   - [ ] Cancellation and refund emails
 - [ ] Add native push notification infrastructure

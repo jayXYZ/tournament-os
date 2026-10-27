@@ -138,29 +138,72 @@ an account is a Guest.
 _Avoid_: player identity, competitor record
 
 **Guest**:
-A Participant with no linked user account, enrolled with a display name and
-optional contact email. Guests hold registrations like any Participant but
-have no profile page, take no self-serve actions, and cannot be billed — a
+A Participant with no linked user account. A Guest added by name carries
+that display name and nothing else; a Guest enrolled by email carries the
+contact email that keys the Claim, and the names organizers give it live on
+its registrations, one per event. Guests hold registrations like any
+Participant but have no profile page, take no self-serve actions (staff or
+an authenticated opponent report their matches), and cannot be billed — a
 Guest's seat on a paid event is always an organizer's, settled outside the
-app. Guests come from organizer Enrollment and from test-player seeding.
+app. A Guest may stay a Guest forever: claiming is optional. Guests come
+from organizer Enrollment and from test-player seeding. The backend term
+covers every unclaimed Participant, including an email-addressed one; the
+organizer UI's "Add guest" is the name-only Enrollment, and "Continue as
+guest" names an email-enrolled entry for one event.
 
 **Enrollment**:
-An organizer seating a player directly, by name or by email, without the
-player registering themself. An email routes the registration to the
-account that holds it, else to the Guest already carrying it (so a regular
-stays one Participant across events), else to a new Guest keyed for the
-Claim. Enrollment is the admission decision: it takes a confirmed seat
-whatever the event's approval mode and takes no entry-fee order, bypassing
-the invite and badge gates like every organizer verb; capacity and the
-registration lifecycle still apply.
-_Avoid_: guest registration (a Guest is who, Enrollment is how; an account
-holder can be enrolled too), manual add
+An organizer seating a player directly, without the player registering
+themself, in one of two forms: "Enroll player", by email alone, and "Add
+guest", by name alone. Enrollment is the admission decision: it takes a
+confirmed seat whatever the event's approval mode and takes no entry-fee
+order, bypassing the invite and badge gates like every organizer verb;
+capacity and the registration lifecycle still apply. Admission, a usable
+name, and account association are three separate matters: a guest added by
+name is admitted and ready to play; an entry enrolled by email is admitted
+but Awaiting Player Details until it has a name, and is never linked to an
+account at enrollment — the Claim links it later. An email always routes to
+the Guest carrying it (so a regular stays one Participant across events),
+else to a new Guest keyed for the Claim, whether or not an account holds the
+address; the account is consulted only to keep one registration per person
+per event. Enrollment never creates a login account. The fee exemption
+belongs to the entry: reinstating or re-approving it never bills it, even
+after a Claim, until the player re-enters on their own. The name an
+organizer types labels that event's entry only; it never renames a reused
+Guest in other events.
+_Avoid_: guest registration (a Guest is who, Enrollment is how), manual
+add, invite (an Enrollment seats; the shareable Invite Link is how a player
+seats themself)
+
+**Awaiting Player Details**:
+The state of an admitted entry that has no usable name yet — one enrolled
+by email that nobody has named, or one held by an account with no name.
+Every email Enrollment starts here, identically whether or not the address
+has an account, so enrolling is never a way to learn that it does. It
+resolves when the player next uses the app signed in with that email and a
+name (the Claim stamps the entry), when a nameless account gains a name, or
+when an organizer names the entry for this event with "Continue as guest" —
+the same registration, seat, history, and fee treatment, the contact email
+kept for a later Claim, and no other event's entry renamed. It never
+resolves merely because an account exists or another event has a name for
+the person. Organizer views identify such an entry by its email; no
+player-facing surface ever shows the email as a name. Play preparation —
+starting the event, seating a Player Meeting — waits until no entrant
+included in play is in this state; the organizer resolves each by naming,
+having the player sign in, or removing the entry. No deadline cancels it,
+and an account is never required to play.
+_Avoid_: unverified, pending player (it is confirmed and seated), invited
 
 **Claim**:
-The automatic merge, at sign-in, of every Guest whose contact email matches
-the account's verified email into that account holder's Participant. A Guest
-whose merge would collide — both identities registered in the same
-tournament — stays unclaimed.
+The automatic merge, when an account holder next uses the app (every
+authenticated sign-in or mutation), of every Guest whose contact email
+matches the account's verified email into that account holder's Participant.
+Each moved entry takes the account's name, which is how an email-enrolled
+entry leaves Awaiting Player Details, except an entry an organizer named
+for its event, which keeps that name. A Guest whose merge would collide —
+both identities registered in the same tournament — stays unclaimed, both
+entries explicit and intact. A Guest whose history is too long to merge in
+one transaction is merged by a scheduled walk under the same rule. A Claim
+changes neither admission nor fee treatment.
 
 **Invite Link**:
 A tournament's shared join code, minted and rotated by organizers. Anyone

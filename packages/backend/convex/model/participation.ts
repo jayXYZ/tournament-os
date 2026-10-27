@@ -71,6 +71,10 @@ type RegistrationStateUpdate =
     };
 
 type RegistrationStateArgs = RegistrationStateUpdate & {
+  // Set by organizer enrollment, cleared (explicit undefined) by a player's
+  // own re-entry, untouched (absent) by every other transition. See the
+  // schema field.
+  entryFeeExempt?: true | undefined;
   playerName?: string;
   organizerLabel?: string;
   tournamentStartDate?: number;

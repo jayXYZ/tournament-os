@@ -47,8 +47,10 @@ import {
 import {
   activeRegistrations,
   comparePlayersAlphabetically,
+  playersAwaitingDetailsReason,
   registrationOrganizerLabel,
   resolveRegistrationDisplayName,
+  unnamedRegistrations,
 } from "./registrations";
 import {
   allSeatWinnersDeparted,
@@ -146,6 +148,12 @@ export type ProgressionFacts = {
   // Loaded only in the states whose rules read the roster: pre-start, and
   // between rounds when a later phase could start.
   activeRegistrations: Doc<"tournamentRegistrations">[] | null;
+  // The active players still awaiting a usable name (CONTEXT.md "Awaiting
+  // Player Details"), from the same roster load; null whenever it is. Play
+  // cannot start — the first round cannot be paired, the first meeting
+  // cannot be seated — while any remain: every entrant included in play
+  // must have a name other players can see.
+  playersAwaitingDetails: Doc<"tournamentRegistrations">[] | null;
   // The completed bracket round's seat winners in table order (departed
   // winners included — their seats advance and the walkover materializes at
   // pairing; see model/singleElimination.ts). Loaded only between bracket
@@ -307,6 +315,8 @@ export async function analyzeProgression(
     pairingsUnpublished && registrations !== null
       ? filterUnpaired(registrations, matchesWithPlayers ?? []).length
       : null;
+  const playersAwaitingDetails =
+    registrations !== null ? unnamedRegistrations(registrations) : null;
 
   // Between bracket rounds the rulebook needs the completed round's seat
   // winners: the next round is paired from them, and a bracket whose every
@@ -354,6 +364,7 @@ export async function analyzeProgression(
     currentRoundHasRecordedResult,
     unpairedActiveCount,
     activeRegistrations: registrations,
+    playersAwaitingDetails,
     bracketSeatWinners,
     nextUpcomingPhase,
     laterUpcomingPhases,
@@ -462,6 +473,15 @@ function startTournamentVerdict(
   }
   if (registrations.length < 2) {
     return disallowed(AT_LEAST_TWO_PLAYERS);
+  }
+  // Every entrant paired into round 1 needs a name other players can see:
+  // an entry enrolled by email that nobody has named yet, or a nameless
+  // account, holds the start until the organizer names it, the player signs
+  // in with a name, or the entry is removed (CONTEXT.md "Awaiting Player
+  // Details").
+  const awaitingDetails = facts.playersAwaitingDetails ?? [];
+  if (awaitingDetails.length > 0) {
+    return disallowed(playersAwaitingDetailsReason(awaitingDetails.length));
   }
   return { allowed: true, reason: null, phase, registrations };
 }
@@ -1399,6 +1419,13 @@ export async function startPlayerMeeting(
   }
   if (registrations.length < 2) {
     throw userError(AT_LEAST_TWO_PLAYERS);
+  }
+  // The seating sheet is the first thing other players read about each
+  // other, so the meeting keeps the start's gate: no entrant awaiting
+  // player details is seated (CONTEXT.md "Awaiting Player Details").
+  const awaitingDetails = unnamedRegistrations(registrations);
+  if (awaitingDetails.length > 0) {
+    throw userError(playersAwaitingDetailsReason(awaitingDetails.length));
   }
 
   const players = await mapAsyncInBatches(

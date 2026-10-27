@@ -21,7 +21,10 @@ import { createConvexTest } from "./specHelpers.runtime";
 // email and nothing else. Player-facing surfaces must show other players
 // nothing for this account rather than its email (model/participants.ts
 // participantPublicIdentity); organizer surfaces may keep the email as the
-// roster's fallback label.
+// roster's fallback label. Play cannot start while such an entry is in the
+// field (CONTEXT.md "Awaiting Player Details"), so the in-play scenarios
+// below register the account with a name and have the provider drop it
+// once the event is under way — the one way a nameless entry reaches play.
 const NAMELESS_EMAIL = "nameless@example.test";
 const namelessIdentity = {
   issuer: "https://convex.test",
@@ -29,6 +32,7 @@ const namelessIdentity = {
   tokenIdentifier: "https://convex.test|nameless",
   email: NAMELESS_EMAIL,
 };
+const namedIdentity = { ...namelessIdentity, name: "Nancy" };
 
 test("standings never show another player's email in place of a missing name", async () => {
   const t = createConvexTest();
@@ -40,14 +44,17 @@ test("standings never show another player's email in place of a missing name", a
   const organizer = t.withIdentity(organizerIdentity);
   // Registers through the real sign-in + registration path, so the name
   // denormalized onto the registration (and from there onto standings) is
-  // exactly what production would stamp.
+  // exactly what production would stamp. The provider drops the name once
+  // play is under way: the sign-in re-stamp clears the player-safe copy, so
+  // the standings written at round completion carry none for the row.
   const namelessRegistrationId = await t
-    .withIdentity(namelessIdentity)
+    .withIdentity(namedIdentity)
     .mutation(api.tournaments.registrations.registerSelf, { tournamentId });
 
   await organizer.mutation(api.tournaments.rounds.startTournament, {
     tournamentId,
   });
+  await t.withIdentity(namelessIdentity).mutation(api.users.upsertMe, {});
   await playOutCurrentRound(t, tournamentId);
 
   const standings = await t
@@ -82,7 +89,7 @@ test("standings never show another player's email in place of a missing name", a
   ).toBe(NAMELESS_EMAIL);
 });
 
-test("a player meeting never shows a seatmate's email in place of a missing name", async () => {
+test("a player meeting waits for a nameless entrant's name and seats the name the organizer gives", async () => {
   const t = createConvexTest();
   const { tournamentId } = await seedTournamentWithPlayers(t, {
     name: "Nameless Meeting Event",
@@ -90,10 +97,23 @@ test("a player meeting never shows a seatmate's email in place of a missing name
     phases: [{ phaseOrder: 1, phaseRoundMode: "dynamic", playerMeeting: true }],
   });
   const organizer = t.withIdentity(organizerIdentity);
-  await t
+  const namelessRegistrationId = await t
     .withIdentity(namelessIdentity)
     .mutation(api.tournaments.registrations.registerSelf, { tournamentId });
   const phaseId = await firstPhaseId(t, tournamentId);
+  // The seating sheet is the first thing players read about each other, so
+  // no seat is drawn while an entrant has nothing to print but an email.
+  await expect(
+    organizer.mutation(api.tournaments.playerMeeting.startPlayerMeeting, {
+      phaseId,
+    }),
+  ).rejects.toThrow("1 player needs a name before play can start");
+
+  // The organizer names the entry for this event, and the meeting seats it.
+  await organizer.mutation(api.tournaments.registrations.continueAsGuest, {
+    registrationId: namelessRegistrationId,
+    displayName: "Table Guest",
+  });
   await organizer.mutation(api.tournaments.playerMeeting.startPlayerMeeting, {
     phaseId,
   });
@@ -105,17 +125,15 @@ test("a player meeting never shows a seatmate's email in place of a missing name
   expect(JSON.stringify(view)).not.toContain(NAMELESS_EMAIL);
   if (view.kind === "player_meeting") {
     expect(view.meeting.tableNumber).toBe(1);
-    expect(view.meeting.seatmateName).toBeNull();
+    expect(view.meeting.seatmateName).toBe("Table Guest");
   }
-
-  // The organizer's seating list keeps the email as the fallback label.
   const seating = await organizer.query(
     api.tournaments.playerMeeting.listPlayerMeetingSeats,
     { phaseId },
   );
   expect(seating.seats.map((seat) => seat.playerName).sort()).toEqual([
     "Player 1",
-    NAMELESS_EMAIL,
+    "Table Guest",
   ]);
 });
 
@@ -276,27 +294,28 @@ test("organizer pairing edits and results label a nameless player by email", asy
   });
   const organizer = t.withIdentity(organizerIdentity);
   const nameless = t.withIdentity(namelessIdentity);
-  const namelessRegistrationId = await nameless.mutation(
-    api.tournaments.registrations.registerSelf,
-    { tournamentId },
-  );
+  const namelessRegistrationId = await t
+    .withIdentity(namedIdentity)
+    .mutation(api.tournaments.registrations.registerSelf, { tournamentId });
   const roundId = await organizer.mutation(
     api.tournaments.rounds.startTournament,
     { tournamentId },
   );
-
-  // The organizer pairings list resolves the nameless match-player row to
-  // the email with its one registration read; named rows read nothing.
+  // The provider drops the name once round 1 is paired. The round-1
+  // match-player rows are a pairing-time snapshot and keep "Nancy"; every
+  // row written from here on is nameless, and the organizer surfaces
+  // resolve each to the email with one registration read.
+  await nameless.mutation(api.users.upsertMe, {});
   const pairings = await organizer.query(
     api.tournaments.rounds.listRoundPairings,
     { roundId },
   );
   const seats = pairings.flatMap(({ players }) => players);
   expect(seats.map((seat) => seat.playerName).sort()).toEqual([
+    "Nancy",
     "Player 1",
     "Player 2",
     "Player 3",
-    NAMELESS_EMAIL,
   ]);
   const namelessMatch = pairings.find(({ players }) =>
     players.some((seat) => seat.playerId === namelessRegistrationId),
@@ -356,6 +375,8 @@ test("organizer pairing edits and results label a nameless player by email", asy
   // Every arm that references the row — the single-player registration
   // event, the freed/paired player lists, and both result-line arrays of
   // the override — carries the email, newest first.
+  // The two events written while the account still had its name — the
+  // registration and the break of the round-1 snapshot — carry it.
   expect(await auditLabelsFor(t, tournamentId, namelessRegistrationId)).toEqual(
     [
       `match_result_recorded:${NAMELESS_EMAIL}`,
@@ -364,8 +385,8 @@ test("organizer pairing edits and results label a nameless player by email", asy
       `pairing_created:${NAMELESS_EMAIL}`,
       `pairing_broken:${NAMELESS_EMAIL}`,
       `pairing_created:${NAMELESS_EMAIL}`,
-      `pairing_broken:${NAMELESS_EMAIL}`,
-      `player_registered:${NAMELESS_EMAIL}`,
+      "pairing_broken:Nancy",
+      "player_registered:Nancy",
     ],
   );
   // The opponent's lines in the same events are labelled by name.
@@ -398,13 +419,15 @@ test("a nameless player's mid-round drop is logged as a concession labelled by e
   });
   const organizer = t.withIdentity(organizerIdentity);
   const nameless = t.withIdentity(namelessIdentity);
-  const namelessRegistrationId = await nameless.mutation(
-    api.tournaments.registrations.registerSelf,
-    { tournamentId },
-  );
+  const namelessRegistrationId = await t
+    .withIdentity(namedIdentity)
+    .mutation(api.tournaments.registrations.registerSelf, { tournamentId });
   await organizer.mutation(api.tournaments.rounds.startTournament, {
     tournamentId,
   });
+  // The name is dropped after pairing: the match-player snapshot keeps it,
+  // the registration loses it.
+  await nameless.mutation(api.users.upsertMe, {});
   const match = await matchForPlayer(
     t,
     tournamentId,
@@ -421,13 +444,14 @@ test("a nameless player's mid-round drop is logged as a concession labelled by e
   await nameless.mutation(api.tournaments.player.dropSelf, { tournamentId });
 
   // The drop and the concession it awards both label the conceding player
-  // by the organizer label — on the event's player and on its result line.
+  // by the organizer label — the email now — on the event's player; the
+  // result line reads the round-1 snapshot, which still carries the name.
   expect(await auditLabelsFor(t, tournamentId, namelessRegistrationId)).toEqual(
     [
       `match_conceded:${NAMELESS_EMAIL}`,
-      `match_conceded:${NAMELESS_EMAIL}`,
+      "match_conceded:Nancy",
       `player_dropped:${NAMELESS_EMAIL}`,
-      `player_registered:${NAMELESS_EMAIL}`,
+      "player_registered:Nancy",
     ],
   );
   expect(
@@ -457,11 +481,13 @@ test("a name gained after registering reaches the standings and roster on the ne
   });
   const organizer = t.withIdentity(organizerIdentity);
   const namelessRegistrationId = await t
-    .withIdentity(namelessIdentity)
+    .withIdentity(namedIdentity)
     .mutation(api.tournaments.registrations.registerSelf, { tournamentId });
   await organizer.mutation(api.tournaments.rounds.startTournament, {
     tournamentId,
   });
+  // Nameless before the first standings are written.
+  await t.withIdentity(namelessIdentity).mutation(api.users.upsertMe, {});
   await playOutCurrentRound(t, tournamentId);
 
   // The player-facing rows carry no registration id, so the nameless
@@ -495,8 +521,8 @@ test("a name gained after registering reaches the standings and roster on the ne
       (row) => row.registration._id === namelessRegistrationId,
     )?.playerName;
   };
-  // Nameless at registration: the completed round's standings carry no
-  // name for the row, for other players and for the player themself.
+  // Nameless when the round completed: its standings carry no name for the
+  // row, for other players and for the player themself.
   expect(await standingsNameFor(playerIdentity(1))).toBeNull();
   expect(await standingsNameFor(namelessIdentity)).toBeNull();
   expect(await rosterNameFor()).toBe(NAMELESS_EMAIL);
@@ -595,8 +621,17 @@ test("a blank provider name counts as no name", async () => {
       : undefined,
   ).toBe(NAMELESS_EMAIL);
 
-  // The player standings carry no name for the row (rendered as "Unknown
-  // player"), not an empty string.
+  // A blank name is no name: the entry awaits player details and holds the
+  // start exactly as a missing one does, until the organizer names it.
+  await expect(
+    organizer.mutation(api.tournaments.rounds.startTournament, {
+      tournamentId,
+    }),
+  ).rejects.toThrow("1 player needs a name before play can start");
+  await organizer.mutation(api.tournaments.registrations.continueAsGuest, {
+    registrationId,
+    displayName: "Blank Betty",
+  });
   await organizer.mutation(api.tournaments.rounds.startTournament, {
     tournamentId,
   });
@@ -609,10 +644,10 @@ test("a blank provider name counts as no name", async () => {
     standings?.rows
       .map((row) => row.name)
       .sort((a, b) => (a ?? "").localeCompare(b ?? "")),
-  ).toEqual([null, "Player 1", "Player 2"]);
+  ).toEqual(["Blank Betty", "Player 1", "Player 2"]);
 });
 
-test("the organizer seating list is alphabetical by the label it prints", async () => {
+test("the organizer seating list is alphabetical by the name it prints, an organizer-given name included", async () => {
   const t = createConvexTest();
   const { tournamentId } = await seedTournamentWithPlayers(t, {
     name: "Nameless Seating Event",
@@ -620,11 +655,10 @@ test("the organizer seating list is alphabetical by the label it prints", async 
     phases: [{ phaseOrder: 1, phaseRoundMode: "dynamic", playerMeeting: true }],
   });
   const organizer = t.withIdentity(organizerIdentity);
-  // An email that sorts after every named player: seating by the sheet's
-  // label files this account last, where the organizer reading
-  // "zed@example.test" aloud expects it — not first under an empty name.
+  // A nameless account whose entry the organizer names for this event; the
+  // name sorts after every other player, so the sheet files it last.
   const zedEmail = "zed@example.test";
-  await t
+  const zedRegistrationId = await t
     .withIdentity({
       ...namelessIdentity,
       subject: "zed",
@@ -632,6 +666,10 @@ test("the organizer seating list is alphabetical by the label it prints", async 
       email: zedEmail,
     })
     .mutation(api.tournaments.registrations.registerSelf, { tournamentId });
+  await organizer.mutation(api.tournaments.registrations.continueAsGuest, {
+    registrationId: zedRegistrationId,
+    displayName: "Zed",
+  });
   const phaseId = await firstPhaseId(t, tournamentId);
   await organizer.mutation(api.tournaments.playerMeeting.startPlayerMeeting, {
     phaseId,
@@ -646,10 +684,10 @@ test("the organizer seating list is alphabetical by the label it prints", async 
   ).toEqual([
     [1, "Player 1"],
     [1, "Player 2"],
-    [2, zedEmail],
+    [2, "Zed"],
   ]);
-  // Only the ordering saw the email: the seat rows themselves still carry
-  // the player-safe name, and the seatmate players see is name-only.
+  // The seat rows carry the player-safe name, and the email the account
+  // signed in with reaches no seat and no seatmate.
   const storedSeats = await t.run(
     async (ctx) =>
       await ctx.db
@@ -662,7 +700,7 @@ test("the organizer seating list is alphabetical by the label it prints", async 
   expect(storedSeats.map((seat) => seat.playerName)).toEqual([
     "Player 1",
     "Player 2",
-    null,
+    "Zed",
   ]);
   const view = await t
     .withIdentity(playerIdentity(1))

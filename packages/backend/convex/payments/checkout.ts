@@ -187,6 +187,9 @@ export const beginEntryCheckout = internalMutation({
           entryStatus: "pending",
           awaitingReview: false,
           ...registrationNameStamp(user),
+          // Paying their own way back in: an earlier enrollment's fee
+          // exemption does not carry over (schema entryFeeExempt).
+          entryFeeExempt: undefined,
           tournamentStartDate: tournament.startDate,
           updatedAt: Date.now(),
         });

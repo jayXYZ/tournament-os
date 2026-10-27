@@ -578,12 +578,22 @@ export default defineSchema({
     // The linked account; absent for Guests. See ADR 0002 for how a Guest is
     // claimed into an account holder's participant at sign-in.
     userId: v.optional(v.id("users")),
-    // Guest fields: the organizer-provided display name shown wherever the
-    // guest plays, and the normalized contact email that keys claiming (and
-    // later invitations). A user-linked participant reads name and avatar
-    // through its user instead and leaves both unset.
+    // Guest fields. displayName is set only for a guest added by name alone
+    // (CONTEXT.md "Enrollment": "Add guest"), whose one registration carries
+    // the same name; a guest enrolled by email has none — the name an
+    // organizer later gives it belongs to that event's registration
+    // (tournamentRegistrations.organizerNamed), never to the shared guest,
+    // so naming a regular in one event never renames them in another. The
+    // normalized contact email keys the Claim. A user-linked participant
+    // reads name and avatar through its user instead and leaves both unset.
     displayName: v.optional(v.string()),
     contactEmail: v.optional(v.string()),
+    // When a Claim last started (or advanced) a scheduled walk over this
+    // guest's history — set only on a guest too large to merge inside the
+    // sign-in (model/participants.ts startGuestClaimWalk). It throttles
+    // re-scheduling: every authenticated mutation runs the sign-in claim,
+    // and one walk per guest at a time is enough.
+    claimWalkAt: v.optional(v.number()),
     updatedAt: v.number(),
   })
     .index("by_userId", ["userId"])
@@ -628,14 +638,25 @@ export default defineSchema({
     // "eliminated". Rewinding that round can then restore exactly those
     // players without reviving voluntary drops or disqualifications.
     eliminatedByRoundId: v.optional(v.id("tournamentRounds")),
-    // The player-safe display name (user.name — never the email) stamped at
-    // registration time and copied onto standings rows, match players, and
-    // meeting seats, so roster, standings, and pairings list queries never
-    // join through to the user document per row. Absent when the account
-    // has no name: player-facing readers show nothing for such a row.
-    // Kept current by the sign-in re-stamp (syncRegistrationNameStamps in
+    // The player-safe display name (user.name or an organizer-typed name —
+    // never an email) stamped at registration time and copied onto standings
+    // rows, match players, and meeting seats, so roster, standings, and
+    // pairings list queries never join through to the user document per
+    // row. Absent when the entry has no usable name yet — an account with no
+    // name, or an entry enrolled by email alone (CONTEXT.md "Awaiting
+    // Player Details"): player-facing readers show nothing for such a row,
+    // and play cannot start while one is in the field
+    // (model/registrations.ts registrationHasUsableName). Kept current by
+    // the sign-in re-stamp (syncRegistrationNameStamps in
     // model/registrations.ts, which also documents both fields).
     playerName: v.optional(v.string()),
+    // Present (true) when an organizer supplied this entry's playerName for
+    // this event ("Add guest", "Continue as guest" — model/roster.ts). The
+    // name is the event's label for the entrant, not the account's: the
+    // sign-in re-stamp and the Claim leave such a row's stamps alone, and
+    // player-facing surfaces show this name rather than a linked account's
+    // profile (publicIdentityForRegistration).
+    organizerNamed: v.optional(v.literal(true)),
     // The organizer label: the same name, or the account's email when it
     // has none. The roster search indexes it and the organizer readers
     // label nameless rows with it. Organizer-only by construction: the
@@ -660,6 +681,15 @@ export default defineSchema({
     // search through the filter field below, the list through a
     // row-budgeted post-filter (paginateRegistrationHistory).
     paymentStatus: v.optional(paymentOrderStatusValidator),
+    // Present (true) on an entry an organizer enrolled (CONTEXT.md
+    // "Enrollment"): enrollment admits the player without an entry-fee
+    // order, the fee settled outside the app, and that treatment belongs to
+    // the entry rather than to who holds it. restoreEntry and approveEntry
+    // read it so re-admitting the entry never bills it — including after the
+    // Claim moves it to an account holder, whom the guest check alone would
+    // start charging. A player's own re-entry (registerSelf, checkout)
+    // clears it: they come back in under the event's ordinary terms.
+    entryFeeExempt: v.optional(v.literal(true)),
     createdAt: v.number(),
     // The player's fixed random tiebreaker for this tournament, breaking
     // otherwise-perfect standings ties. Derived at registration time from

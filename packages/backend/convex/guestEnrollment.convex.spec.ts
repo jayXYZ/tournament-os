@@ -1,13 +1,14 @@
 /// <reference types="vite/client" />
 
-// Organizer enrollment (CONTEXT.md "Enrollment", model/roster.ts
-// enrollPlayer): seating a player by name or email without an account. The
-// identity rules — an existing account takes the registration directly, a
-// Guest already carrying the email is reused, otherwise a new Guest — the
-// entry gates it keeps (lifecycle, capacity, the per-status handling of an
-// existing row), the gates it bypasses by design (approval mode, the entry
-// fee), and the Claim that later merges an enrolled Guest into the account
-// that signs in with its email.
+// Organizer enrollment (CONTEXT.md "Enrollment", model/roster.ts): the two
+// direct admissions — "Enroll player" by email alone and "Add guest" by name
+// alone — the entry gates they keep (lifecycle, capacity, the per-status
+// handling of an existing row), the gates they bypass by design (approval
+// mode, the entry fee), and what follows an email enrollment: the entry
+// awaits player details (CONTEXT.md "Awaiting Player Details") in one state
+// whether or not the address has an account, the Claim names it when its
+// holder next uses the app, "Continue as guest" names it for one event, and
+// play cannot start while any entrant has no name.
 
 import type { TestConvex } from "convex-test";
 import { expect, test } from "vitest";
@@ -16,6 +17,7 @@ import { api } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { TournamentAuditEvent } from "./model/auditLog";
 import { UserError } from "./model/errors";
+import { publicIdentityForRegistration } from "./model/participants";
 import schema from "./schema";
 import {
   insertLinkedParticipant,
@@ -26,13 +28,32 @@ import {
 } from "./specHelpers";
 import { createConvexTest } from "./specHelpers.runtime";
 
-test("enrolling by name seats a new Guest: participant, confirmed row, seat, audit event", async () => {
+// A sign-in whose provider supplied no display name.
+const namelessIdentity = {
+  issuer: "https://convex.test",
+  subject: "nameless",
+  tokenIdentifier: "https://convex.test|nameless",
+  email: "nameless@example.test",
+};
+
+function guestIdentity(email: string, name?: string) {
+  const subject = email.split("@")[0];
+  return {
+    issuer: "https://convex.test",
+    subject,
+    tokenIdentifier: `https://convex.test|${subject}`,
+    email,
+    ...(name === undefined ? {} : { name }),
+  };
+}
+
+test("adding a guest by name seats a ready Guest: participant, confirmed row, seat, audit event", async () => {
   const t = createConvexTest();
   const { tournamentId } = await seedOpenTournament(t);
   const organizer = t.withIdentity(organizerIdentity);
 
   const registrationId = await organizer.mutation(
-    api.tournaments.registrations.enrollPlayer,
+    api.tournaments.registrations.addGuest,
     { tournamentId, displayName: "  Walk-up Wanda  " },
   );
 
@@ -40,9 +61,11 @@ test("enrolling by name seats a new Guest: participant, confirmed row, seat, aud
   expect(registration).toMatchObject({
     entryStatus: "confirmed",
     participationStatus: "active",
-    // A guest's stamps are the organizer-provided name, trimmed.
+    entryFeeExempt: true,
+    // The typed name, trimmed, is this event's name for the entry.
     playerName: "Walk-up Wanda",
     organizerLabel: "Walk-up Wanda",
+    organizerNamed: true,
   });
   expect(registration?.awaitingReview).toBeUndefined();
   const participant = await t.run(
@@ -57,32 +80,119 @@ test("enrolling by name seats a new Guest: participant, confirmed row, seat, aud
   expect(enrolled).toHaveLength(1);
   expect(enrolled[0].actorRole).toBe("organizer");
   expect(enrolled[0].event).toMatchObject({
-    asGuest: true,
+    by: "name",
     player: { registrationId, playerName: "Walk-up Wanda" },
   });
 
-  // The roster shows the guest like any seated player.
-  const rows = await organizerRegistrationRows(t, tournamentId);
-  expect(rows.map((row) => row.playerName)).toEqual(["Walk-up Wanda"]);
+  // Ready to play: the roster shows the guest like any seated player, with
+  // nothing left to resolve.
+  const [row] = await organizerRegistrationRows(t, tournamentId);
+  expect(row).toMatchObject({
+    playerName: "Walk-up Wanda",
+    awaitingPlayerDetails: false,
+    nameEffect: null,
+  });
+  expect(
+    await t.run(
+      async (ctx) => await publicIdentityForRegistration(ctx, registrationId),
+    ),
+  ).toEqual({ name: "Walk-up Wanda", avatarUrl: null });
 });
 
-test("enrolling by email registers an existing account's participant directly", async () => {
+test("enrolling by email seats one and the same awaiting state whether or not the address has an account", async () => {
+  const t = createConvexTest();
+  const { tournamentId } = await seedOpenTournament(t);
+  const organizer = t.withIdentity(organizerIdentity);
+  const accountUserId = await insertPlayerUser(t, 1);
+
+  const withAccount = await organizer.mutation(
+    api.tournaments.registrations.enrollPlayer,
+    // Matched on the normalized form; the organizer never learns it matched.
+    { tournamentId, email: " Player1@Example.TEST " },
+  );
+  const withoutAccount = await organizer.mutation(
+    api.tournaments.registrations.enrollPlayer,
+    { tournamentId, email: "gary@example.test" },
+  );
+
+  const rows = await Promise.all(
+    [withAccount, withoutAccount].map(async (registrationId) => {
+      const registration = await getRegistration(t, registrationId);
+      const participant = await t.run(
+        async (ctx) => await ctx.db.get(registration!.participantId),
+      );
+      return { registration: registration!, participant: participant! };
+    }),
+  );
+  for (const [index, { registration, participant }] of rows.entries()) {
+    const email = index === 0 ? "player1@example.test" : "gary@example.test";
+    expect(registration).toMatchObject({
+      entryStatus: "confirmed",
+      participationStatus: "active",
+      entryFeeExempt: true,
+      organizerLabel: email,
+    });
+    // No name yet, and no account linked — not even the one that exists:
+    // linking it would show the organizer the account's name.
+    expect(registration.playerName).toBeUndefined();
+    expect(registration.organizerNamed).toBeUndefined();
+    expect(participant.userId).toBeUndefined();
+    expect(participant.displayName).toBeUndefined();
+    expect(participant.contactEmail).toBe(email);
+  }
+  expect(await confirmedCount(t, tournamentId)).toBe(2);
+
+  // Both audit lines read the same way, labelled by the email the organizer
+  // typed, and neither says anything about an account.
+  const enrolled = await auditEventsOfType(t, tournamentId, "player_enrolled");
+  expect(
+    enrolled.map(({ event }) => [event.by, event.player.playerName]).sort(),
+  ).toEqual([
+    ["email", "gary@example.test"],
+    ["email", "player1@example.test"],
+  ]);
+  expect(JSON.stringify(enrolled)).not.toContain("Player 1");
+
+  // The roster identifies each entry by its email and marks it unresolved;
+  // the account's profile name appears nowhere.
+  const roster = await organizerRegistrationRows(t, tournamentId);
+  expect(
+    roster
+      .map((row) => [row.playerName, row.awaitingPlayerDetails, row.nameEffect])
+      .sort(),
+  ).toEqual([
+    ["gary@example.test", true, "name"],
+    ["player1@example.test", true, "name"],
+  ]);
+  expect(JSON.stringify(roster)).not.toContain("Player 1");
+
+  // Nothing resolved just because an account is cached: the account holder
+  // does not hold the entry until they next use the app.
+  const player = t.withIdentity(playerIdentity(1));
+  expect(
+    await player.query(api.tournaments.registrations.getMyRegistration, {
+      tournamentId,
+    }),
+  ).toBeNull();
+  await t.run(async (ctx) => {
+    const user = await ctx.db.get(accountUserId);
+    expect(user?.name).toBe("Player 1");
+  });
+});
+
+test("the account holder's next authenticated action claims the entry and gives it the account's name", async () => {
   const t = createConvexTest();
   const { tournamentId } = await seedOpenTournament(t);
   const organizer = t.withIdentity(organizerIdentity);
   const userId = await insertPlayerUser(t, 1);
-
   const registrationId = await organizer.mutation(
     api.tournaments.registrations.enrollPlayer,
-    {
-      tournamentId,
-      // The organizer's spelling of the name and the email both differ from
-      // the account's: the email matches on its normalized form, and the
-      // account's own name wins the stamp.
-      displayName: "P. One",
-      email: " Player1@Example.TEST ",
-    },
+    { tournamentId, email: playerIdentity(1).email },
   );
+
+  // Opening the app runs upsertMe (useEnsureUserRow); no sign-out needed.
+  const player = t.withIdentity(playerIdentity(1));
+  await player.mutation(api.users.upsertMe, {});
 
   await t.run(async (ctx) => {
     const registration = await ctx.db.get(registrationId);
@@ -90,17 +200,21 @@ test("enrolling by email registers an existing account's participant directly", 
     expect(participant?.userId).toBe(userId);
     expect(registration).toMatchObject({
       entryStatus: "confirmed",
+      participationStatus: "active",
+      entryFeeExempt: true,
       playerName: "Player 1",
       organizerLabel: "Player 1",
     });
-    // No Guest was minted for an email an account already holds.
+    expect(registration?.organizerNamed).toBeUndefined();
+    // The guest that carried the email is gone: one participant, the account's.
     expect(await ctx.db.query("participants").collect()).toHaveLength(1);
   });
-  const enrolled = await auditEventsOfType(t, tournamentId, "player_enrolled");
-  expect(enrolled[0].event).toMatchObject({ asGuest: false });
-
-  // The account holder already holds the registration as their own.
-  const player = t.withIdentity(playerIdentity(1));
+  const [row] = await organizerRegistrationRows(t, tournamentId);
+  expect(row).toMatchObject({
+    playerName: "Player 1",
+    awaitingPlayerDetails: false,
+    nameEffect: null,
+  });
   expect(
     await player.query(api.tournaments.registrations.getMyRegistration, {
       tournamentId,
@@ -110,99 +224,383 @@ test("enrolling by email registers an existing account's participant directly", 
     api.tournaments.registrations.listMyTournaments,
     {},
   );
-  expect(mine.map((row) => row.registration._id)).toEqual([registrationId]);
+  expect(mine.map((entry) => entry.registration._id)).toEqual([registrationId]);
 });
 
-test("the same email across events reuses one Guest, and signing in claims every event", async () => {
+test("a claimed entry whose account has no name keeps awaiting player details until a name arrives", async () => {
   const t = createConvexTest();
-  const { tournamentId: first, organizationId } = await seedOpenTournament(t);
+  const { tournamentId } = await seedOpenTournament(t);
+  const organizer = t.withIdentity(organizerIdentity);
+  await organizer.mutation(api.tournaments.registrations.addGuest, {
+    tournamentId,
+    displayName: "Opponent",
+  });
+  const registrationId = await organizer.mutation(
+    api.tournaments.registrations.enrollPlayer,
+    { tournamentId, email: namelessIdentity.email },
+  );
+
+  await t.withIdentity(namelessIdentity).mutation(api.users.upsertMe, {});
+  const claimed = await getRegistration(t, registrationId);
+  expect(claimed?.playerName).toBeUndefined();
+  expect(claimed?.organizerLabel).toBe(namelessIdentity.email);
+  await t.run(async (ctx) => {
+    const participant = await ctx.db.get(claimed!.participantId);
+    expect(participant?.userId).toBeDefined();
+  });
+  const [, row] = await organizerRegistrationRows(t, tournamentId);
+  expect(row).toMatchObject({
+    playerName: namelessIdentity.email,
+    awaitingPlayerDetails: true,
+    nameEffect: "name",
+  });
+  await expectRefusal(
+    organizer.mutation(api.tournaments.rounds.startTournament, {
+      tournamentId,
+    }),
+    "1 player needs a name before play can start",
+  );
+
+  // The provider supplies a name: the sign-in re-stamp resolves the entry.
+  await t
+    .withIdentity({ ...namelessIdentity, name: "Newly Named" })
+    .mutation(api.users.upsertMe, {});
+  expect(await getRegistration(t, registrationId)).toMatchObject({
+    playerName: "Newly Named",
+    organizerLabel: "Newly Named",
+  });
+  await organizer.mutation(api.tournaments.rounds.startTournament, {
+    tournamentId,
+  });
+});
+
+test("Continue as guest names the entry for this event only, keeping its row, email, and fee treatment", async () => {
+  const t = createConvexTest();
+  const { tournamentId: first, organizationId } = await seedOpenTournament(t, {
+    entryFeeCents: 2000,
+  });
   const second = await createOpenTournament(t, organizationId, "Second");
   const organizer = t.withIdentity(organizerIdentity);
-
   const firstId = await organizer.mutation(
     api.tournaments.registrations.enrollPlayer,
-    { tournamentId: first, displayName: "Gary", email: "gary@example.test" },
+    { tournamentId: first, email: "gary@example.test" },
   );
   const secondId = await organizer.mutation(
     api.tournaments.registrations.enrollPlayer,
-    {
-      tournamentId: second,
-      displayName: "Gary G.",
-      email: "GARY@Example.test",
-    },
+    { tournamentId: second, email: "GARY@Example.test" },
+  );
+  const guestId = (await getRegistration(t, firstId))!.participantId;
+  expect((await getRegistration(t, secondId))?.participantId).toBe(guestId);
+
+  await organizer.mutation(api.tournaments.registrations.continueAsGuest, {
+    registrationId: firstId,
+    displayName: "  Gary G.  ",
+  });
+
+  // The same row: seat, status, and exemption intact, now named for this
+  // event; the shared guest and the other event's entry are untouched.
+  expect(await getRegistration(t, firstId)).toMatchObject({
+    participantId: guestId,
+    entryStatus: "confirmed",
+    participationStatus: "active",
+    entryFeeExempt: true,
+    playerName: "Gary G.",
+    organizerLabel: "Gary G.",
+    organizerNamed: true,
+  });
+  await t.run(async (ctx) => {
+    const guest = await ctx.db.get(guestId);
+    expect(guest?.displayName).toBeUndefined();
+    expect(guest?.contactEmail).toBe("gary@example.test");
+    expect(await publicIdentityForRegistration(ctx, firstId)).toEqual({
+      name: "Gary G.",
+      avatarUrl: null,
+    });
+    expect(await publicIdentityForRegistration(ctx, secondId)).toEqual({
+      name: null,
+      avatarUrl: null,
+    });
+  });
+  expect(await getRegistration(t, secondId)).toMatchObject({
+    organizerLabel: "gary@example.test",
+  });
+  expect((await getRegistration(t, secondId))?.playerName).toBeUndefined();
+  const named = await auditEventsOfType(t, first, "player_named");
+  expect(named).toHaveLength(1);
+  expect(named[0].event).toMatchObject({
+    player: { registrationId: firstId, playerName: "Gary G." },
+    previousLabel: "gary@example.test",
+  });
+  expect(await confirmedCount(t, first)).toBe(1);
+  expect(await orderCount(t)).toBe(0);
+
+  // Not a rename: a named entry is refused.
+  await expectRefusal(
+    organizer.mutation(api.tournaments.registrations.continueAsGuest, {
+      registrationId: firstId,
+      displayName: "Gary Again",
+    }),
+    "This player already has a name",
   );
 
-  const guestId = await t.run(async (ctx) => {
-    const firstRow = await ctx.db.get(firstId);
-    const secondRow = await ctx.db.get(secondId);
-    expect(secondRow?.participantId).toBe(firstRow?.participantId);
-    const guest = await ctx.db.get(firstRow!.participantId);
-    // The latest organizer-provided name is the guest's; each row keeps
-    // the stamp it was enrolled with.
-    expect(guest).toMatchObject({
-      displayName: "Gary G.",
-      contactEmail: "gary@example.test",
-    });
-    expect(firstRow?.playerName).toBe("Gary");
-    expect(secondRow?.playerName).toBe("Gary G.");
-    return guest!._id;
-  });
-
-  // Gary signs in with the enrolled email: the Claim merges the guest.
-  const gary = t.withIdentity({
-    issuer: "https://convex.test",
-    subject: "gary",
-    tokenIdentifier: "https://convex.test|gary",
-    email: "Gary@Example.TEST",
-    name: "Gary Guest",
-  });
+  // Gary signs in: the Claim takes both entries. The organizer's name stays
+  // on the event it was given for; the unnamed entry takes the account's.
+  const gary = t.withIdentity(guestIdentity("gary@example.test", "Gary Guest"));
   await gary.mutation(api.users.upsertMe, {});
   await t.run(async (ctx) => {
     expect(await ctx.db.get(guestId)).toBeNull();
-  });
-  const mine = await gary.query(
-    api.tournaments.registrations.listMyTournaments,
-    {},
-  );
-  expect(mine.map((row) => row.registration._id).sort()).toEqual(
-    [firstId, secondId].sort(),
-  );
-});
-
-test("enrolling without an email always creates a fresh Guest", async () => {
-  const t = createConvexTest();
-  const { tournamentId: first, organizationId } = await seedOpenTournament(t);
-  const second = await createOpenTournament(t, organizationId, "Second");
-  const organizer = t.withIdentity(organizerIdentity);
-
-  const firstId = await organizer.mutation(
-    api.tournaments.registrations.enrollPlayer,
-    { tournamentId: first, displayName: "Sam" },
-  );
-  const secondId = await organizer.mutation(
-    api.tournaments.registrations.enrollPlayer,
-    { tournamentId: second, displayName: "Sam" },
-  );
-
-  await t.run(async (ctx) => {
     const firstRow = await ctx.db.get(firstId);
     const secondRow = await ctx.db.get(secondId);
-    expect(secondRow?.participantId).not.toBe(firstRow?.participantId);
+    expect(firstRow?.participantId).toBe(secondRow?.participantId);
+    expect(firstRow).toMatchObject({
+      playerName: "Gary G.",
+      organizerLabel: "Gary G.",
+      organizerNamed: true,
+      entryFeeExempt: true,
+    });
+    expect(secondRow).toMatchObject({
+      playerName: "Gary Guest",
+      organizerLabel: "Gary Guest",
+    });
+    expect(secondRow?.organizerNamed).toBeUndefined();
+    // Other players still see the event's name, not the account profile.
+    expect(await publicIdentityForRegistration(ctx, firstId)).toEqual({
+      name: "Gary G.",
+      avatarUrl: null,
+    });
   });
+  // A later profile change leaves the event's name alone too.
+  await t
+    .withIdentity(guestIdentity("gary@example.test", "Garrett"))
+    .mutation(api.users.upsertMe, {});
+  expect((await getRegistration(t, firstId))?.playerName).toBe("Gary G.");
+  expect((await getRegistration(t, secondId))?.playerName).toBe("Garrett");
+
+  // The claimed, organizer-named entry still reseats free on the paid event.
+  await organizer.mutation(api.tournaments.registrations.dropRegistration, {
+    registrationId: firstId,
+  });
+  await organizer.mutation(
+    api.tournaments.registrations.reinstateRegistration,
+    {
+      registrationId: firstId,
+    },
+  );
+  expect(await getRegistration(t, firstId)).toMatchObject({
+    entryStatus: "confirmed",
+    entryFeeExempt: true,
+    playerName: "Gary G.",
+  });
+  expect(await orderCount(t)).toBe(0);
 });
 
-test("an existing row for the identity is handled per entry status", async () => {
+test("Continue as guest names a nameless account's entry for this event without touching the account", async () => {
+  const t = createConvexTest();
+  const { tournamentId, organizationId } = await seedOpenTournament(t);
+  const second = await createOpenTournament(t, organizationId, "Second");
+  const organizer = t.withIdentity(organizerIdentity);
+  const nameless = t.withIdentity(namelessIdentity);
+  const registrationId = await nameless.mutation(
+    api.tournaments.registrations.registerSelf,
+    { tournamentId },
+  );
+  const [row] = await organizerRegistrationRows(t, tournamentId);
+  expect(row).toMatchObject({
+    playerName: namelessIdentity.email,
+    awaitingPlayerDetails: true,
+    nameEffect: "name",
+  });
+
+  await organizer.mutation(api.tournaments.registrations.continueAsGuest, {
+    registrationId,
+    displayName: "Walk-in Wes",
+  });
+  expect(await getRegistration(t, registrationId)).toMatchObject({
+    playerName: "Walk-in Wes",
+    organizerLabel: "Walk-in Wes",
+    organizerNamed: true,
+  });
+  await t.run(async (ctx) => {
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_tokenIdentifier", (q) =>
+        q.eq("tokenIdentifier", namelessIdentity.tokenIdentifier),
+      )
+      .unique();
+    expect(user?.name).toBeUndefined();
+  });
+
+  // The provider later supplies a name: the account's other entries take
+  // it, this event keeps the name its organizer gave.
+  const named = t.withIdentity({ ...namelessIdentity, name: "Real Name" });
+  const secondId = await named.mutation(
+    api.tournaments.registrations.registerSelf,
+    { tournamentId: second },
+  );
+  expect((await getRegistration(t, registrationId))?.playerName).toBe(
+    "Walk-in Wes",
+  );
+  expect((await getRegistration(t, secondId))?.playerName).toBe("Real Name");
+});
+
+test("play waits for every entrant's name: the board lists who, and naming or removing them clears the gate", async () => {
+  const t = createConvexTest();
+  const { tournamentId, organizationId } = await seedOpenTournament(t);
+  const organizer = t.withIdentity(organizerIdentity);
+  await organizer.mutation(api.tournaments.registrations.addGuest, {
+    tournamentId,
+    displayName: "Alice",
+  });
+  await organizer.mutation(api.tournaments.registrations.addGuest, {
+    tournamentId,
+    displayName: "Bob",
+  });
+  const xId = await organizer.mutation(
+    api.tournaments.registrations.enrollPlayer,
+    { tournamentId, email: "x@example.test" },
+  );
+  const yId = await organizer.mutation(
+    api.tournaments.registrations.enrollPlayer,
+    { tournamentId, email: "y@example.test" },
+  );
+
+  const blocked = await organizer.query(
+    api.tournaments.rounds.getPairingsBoard,
+    {
+      tournamentId,
+    },
+  );
+  expect(blocked.nextStep).toMatchObject({
+    kind: "startTournament",
+    ready: false,
+    reason: "2 players need a name before play can start",
+  });
+  expect(
+    blocked.playersAwaitingDetails
+      .map((entry) => [entry.registrationId, entry.label])
+      .sort(),
+  ).toEqual(
+    [
+      [xId, "x@example.test"],
+      [yId, "y@example.test"],
+    ].sort(),
+  );
+  await expectRefusal(
+    organizer.mutation(api.tournaments.rounds.startTournament, {
+      tournamentId,
+    }),
+    "2 players need a name before play can start",
+  );
+
+  // Name one, remove the other (the ordinary pre-start drop, which cancels
+  // the entry): a cancelled entry is not in play and holds nothing.
+  await organizer.mutation(api.tournaments.registrations.continueAsGuest, {
+    registrationId: xId,
+    displayName: "Xavier",
+  });
+  expect(
+    (
+      await organizer.query(api.tournaments.rounds.getPairingsBoard, {
+        tournamentId,
+      })
+    ).nextStep,
+  ).toMatchObject({
+    ready: false,
+    reason: "1 player needs a name before play can start",
+  });
+  await organizer.mutation(api.tournaments.registrations.dropRegistration, {
+    registrationId: yId,
+  });
+  const ready = await organizer.query(api.tournaments.rounds.getPairingsBoard, {
+    tournamentId,
+  });
+  expect(ready.nextStep).toMatchObject({
+    kind: "startTournament",
+    ready: true,
+  });
+  expect(ready.playersAwaitingDetails).toEqual([]);
+
+  const roundId = await organizer.mutation(
+    api.tournaments.rounds.startTournament,
+    { tournamentId },
+  );
+  const pairings = await organizer.query(
+    api.tournaments.rounds.listRoundPairings,
+    { roundId },
+  );
+  expect(
+    pairings
+      .flatMap(({ players }) => players.map((player) => player.playerName))
+      .sort(),
+  ).toEqual(["Alice", "Bob", "Xavier"]);
+  expect(JSON.stringify(pairings)).not.toContain("@example.test");
+
+  // The meeting keeps the same gate.
+  const meetingEvent = await createOpenTournament(
+    t,
+    organizationId,
+    "Meeting",
+    {
+      playerMeeting: true,
+    },
+  );
+  await organizer.mutation(api.tournaments.registrations.addGuest, {
+    tournamentId: meetingEvent,
+    displayName: "Alice",
+  });
+  await organizer.mutation(api.tournaments.registrations.enrollPlayer, {
+    tournamentId: meetingEvent,
+    email: "z@example.test",
+  });
+  const meetingBoard = await organizer.query(
+    api.tournaments.rounds.getPairingsBoard,
+    { tournamentId: meetingEvent },
+  );
+  expect(meetingBoard.nextStep).toMatchObject({
+    kind: "startPlayerMeeting",
+    ready: false,
+    reason: "1 player needs a name before play can start",
+  });
+  const phaseId = await firstPhaseId(t, meetingEvent);
+  await expectRefusal(
+    organizer.mutation(api.tournaments.playerMeeting.startPlayerMeeting, {
+      phaseId,
+    }),
+    "1 player needs a name before play can start",
+  );
+});
+
+test("an entry awaiting player details shows no name to other players, and its email reaches no player-facing read", async () => {
+  const t = createConvexTest();
+  const { tournamentId } = await seedOpenTournament(t);
+  const organizer = t.withIdentity(organizerIdentity);
+  const registrationId = await organizer.mutation(
+    api.tournaments.registrations.enrollPlayer,
+    { tournamentId, email: "quiet@example.test" },
+  );
+  await t.run(async (ctx) => {
+    expect(await publicIdentityForRegistration(ctx, registrationId)).toEqual({
+      name: null,
+      avatarUrl: null,
+    });
+  });
+  // The organizer's roster is the one place the email identifies the entry.
+  const [row] = await organizerRegistrationRows(t, tournamentId);
+  expect(row.playerName).toBe("quiet@example.test");
+  expect(row.awaitingPlayerDetails).toBe(true);
+});
+
+test("an existing row for the identity is handled per entry status, for the account's row and the guest's", async () => {
   const t = createConvexTest();
   const { tournamentId } = await seedOpenTournament(t);
   const organizer = t.withIdentity(organizerIdentity);
   const enroll = (email: string) =>
     organizer.mutation(api.tournaments.registrations.enrollPlayer, {
       tournamentId,
-      displayName: "Someone",
       email,
     });
 
-  // Confirmed: already in.
+  // Confirmed: already in — the refusal names no one.
   await insertPlayerUser(t, 1);
   const seatedId = await t
     .withIdentity(playerIdentity(1))
@@ -239,7 +637,8 @@ test("an existing row for the identity is handled per entry status", async () =>
     entryStatus: "rejected",
   });
 
-  // Cancelled: the released seat is retaken on the same row.
+  // Cancelled: the account's released seat is retaken on its own row, which
+  // keeps the stamps it already carries, now fee-exempt.
   await insertPlayerUser(t, 4);
   const player4 = t.withIdentity(playerIdentity(4));
   const cancelledId = await player4.mutation(
@@ -254,11 +653,35 @@ test("an existing row for the identity is handled per entry status", async () =>
   expect(await getRegistration(t, cancelledId)).toMatchObject({
     entryStatus: "confirmed",
     participationStatus: "active",
+    entryFeeExempt: true,
+    playerName: "Player 4",
   });
   expect(await confirmedCount(t, tournamentId)).toBe(1);
+  // No Guest was minted for an address whose account already had a row.
+  await t.run(async (ctx) => {
+    for (const participant of await ctx.db.query("participants").collect()) {
+      expect(participant.userId).toBeDefined();
+    }
+  });
+
+  // The guest's own row follows the same rule: a cancelled enrollment is
+  // re-entered on the same row, a confirmed one is refused.
+  const guestRowId = await enroll("gary@example.test");
+  await expectRefusal(
+    enroll("gary@example.test"),
+    "This player is already registered",
+  );
+  await organizer.mutation(api.tournaments.registrations.dropRegistration, {
+    registrationId: guestRowId,
+  });
+  expect(await enroll("gary@example.test")).toBe(guestRowId);
+  expect(await getRegistration(t, guestRowId)).toMatchObject({
+    entryStatus: "confirmed",
+    organizerLabel: "gary@example.test",
+  });
   expect(
     await auditEventsOfType(t, tournamentId, "player_enrolled"),
-  ).toHaveLength(1);
+  ).toHaveLength(3);
 });
 
 test("enrollment keeps the lifecycle, capacity, and organizer gates", async () => {
@@ -268,23 +691,29 @@ test("enrollment keeps the lifecycle, capacity, and organizer gates", async () =
   });
   const organizer = t.withIdentity(organizerIdentity);
 
-  await organizer.mutation(api.tournaments.registrations.enrollPlayer, {
+  await organizer.mutation(api.tournaments.registrations.addGuest, {
     tournamentId,
     displayName: "One",
   });
-  await organizer.mutation(api.tournaments.registrations.enrollPlayer, {
-    tournamentId,
-    displayName: "Two",
-  });
+  const twoId = await organizer.mutation(
+    api.tournaments.registrations.enrollPlayer,
+    { tournamentId, email: "two@example.test" },
+  );
   await expectRefusal(
     organizer.mutation(api.tournaments.registrations.enrollPlayer, {
       tournamentId,
-      displayName: "Three",
       email: "three@example.test",
     }),
     "Tournament is at capacity",
   );
-  // The refused enrollment left no Guest behind.
+  await expectRefusal(
+    organizer.mutation(api.tournaments.registrations.addGuest, {
+      tournamentId,
+      displayName: "Three",
+    }),
+    "Tournament is at capacity",
+  );
+  // The refused enrollments left no Guest behind.
   await t.run(async (ctx) => {
     expect(await ctx.db.query("participants").collect()).toHaveLength(2);
   });
@@ -302,23 +731,42 @@ test("enrollment keeps the lifecycle, capacity, and organizer gates", async () =
     },
   );
   await expectRefusal(
-    organizer.mutation(api.tournaments.registrations.enrollPlayer, {
+    organizer.mutation(api.tournaments.registrations.addGuest, {
       tournamentId: unpublished,
       displayName: "Early",
     }),
     "Tournament is not open for registration",
   );
+  await expectRefusal(
+    organizer.mutation(api.tournaments.registrations.enrollPlayer, {
+      tournamentId: unpublished,
+      email: "early@example.test",
+    }),
+    "Tournament is not open for registration",
+  );
 
-  // Only organizers enroll.
+  // Only organizers enroll or name.
   await insertPlayerUser(t, 9);
+  const intruder = t.withIdentity(playerIdentity(9));
   await expect(
-    t
-      .withIdentity(playerIdentity(9))
-      .mutation(api.tournaments.registrations.enrollPlayer, {
-        tournamentId,
-        displayName: "Intruder",
-      }),
+    intruder.mutation(api.tournaments.registrations.addGuest, {
+      tournamentId,
+      displayName: "Intruder",
+    }),
   ).rejects.toThrow();
+  await expect(
+    intruder.mutation(api.tournaments.registrations.enrollPlayer, {
+      tournamentId,
+      email: "intruder@example.test",
+    }),
+  ).rejects.toThrow();
+  await expect(
+    intruder.mutation(api.tournaments.registrations.continueAsGuest, {
+      registrationId: twoId,
+      displayName: "Intruder",
+    }),
+  ).rejects.toThrow();
+  expect((await getRegistration(t, twoId))?.playerName).toBeUndefined();
 });
 
 test("enrollment validates the name and the email", async () => {
@@ -327,14 +775,14 @@ test("enrollment validates the name and the email", async () => {
   const organizer = t.withIdentity(organizerIdentity);
 
   await expectRefusal(
-    organizer.mutation(api.tournaments.registrations.enrollPlayer, {
+    organizer.mutation(api.tournaments.registrations.addGuest, {
       tournamentId,
       displayName: "   ",
     }),
     "Enter the player's name",
   );
   await expectRefusal(
-    organizer.mutation(api.tournaments.registrations.enrollPlayer, {
+    organizer.mutation(api.tournaments.registrations.addGuest, {
       tournamentId,
       displayName: "x".repeat(81),
     }),
@@ -343,21 +791,39 @@ test("enrollment validates the name and the email", async () => {
   await expectRefusal(
     organizer.mutation(api.tournaments.registrations.enrollPlayer, {
       tournamentId,
-      displayName: "No At Sign",
+      email: "   ",
+    }),
+    "Enter the player's email address",
+  );
+  await expectRefusal(
+    organizer.mutation(api.tournaments.registrations.enrollPlayer, {
+      tournamentId,
       email: "not-an-email",
     }),
     "Enter a valid email address",
   );
-  // A blank email is no email: a plain guest, not a refusal.
   const registrationId = await organizer.mutation(
     api.tournaments.registrations.enrollPlayer,
-    { tournamentId, displayName: "Blank Email", email: "   " },
+    { tournamentId, email: "valid@example.test" },
   );
-  const participant = await t.run(async (ctx) => {
-    const registration = await ctx.db.get(registrationId);
-    return await ctx.db.get(registration!.participantId);
-  });
-  expect(participant?.contactEmail).toBeUndefined();
+  await expectRefusal(
+    organizer.mutation(api.tournaments.registrations.continueAsGuest, {
+      registrationId,
+      displayName: "  ",
+    }),
+    "Enter the player's name",
+  );
+  await expectRefusal(
+    organizer.mutation(api.tournaments.registrations.continueAsGuest, {
+      registrationId,
+      displayName: "x".repeat(81),
+    }),
+    "Player name must be 80 characters or fewer",
+  );
+  // Nothing refused left a mark: the entry still awaits its name.
+  expect(
+    (await getRegistration(t, registrationId))?.playerName,
+  ).toBeUndefined();
 });
 
 test("enrollment is the admission decision: a seat even under approval mode", async () => {
@@ -367,33 +833,39 @@ test("enrollment is the admission decision: a seat even under approval mode", as
   });
   const organizer = t.withIdentity(organizerIdentity);
 
-  const registrationId = await organizer.mutation(
-    api.tournaments.registrations.enrollPlayer,
+  const guestId = await organizer.mutation(
+    api.tournaments.registrations.addGuest,
     { tournamentId, displayName: "Vouched" },
   );
+  const emailId = await organizer.mutation(
+    api.tournaments.registrations.enrollPlayer,
+    { tournamentId, email: "vouched@example.test" },
+  );
 
-  const registration = await getRegistration(t, registrationId);
-  expect(registration).toMatchObject({
-    entryStatus: "confirmed",
-    participationStatus: "active",
-  });
-  expect(registration?.awaitingReview).toBeUndefined();
+  for (const registrationId of [guestId, emailId]) {
+    const registration = await getRegistration(t, registrationId);
+    expect(registration).toMatchObject({
+      entryStatus: "confirmed",
+      participationStatus: "active",
+    });
+    expect(registration?.awaitingReview).toBeUndefined();
+  }
   expect(
     await organizer.query(api.tournaments.registrations.getPendingReviewCount, {
       tournamentId,
     }),
   ).toMatchObject({ count: 0 });
-  expect(await confirmedCount(t, tournamentId)).toBe(1);
+  expect(await confirmedCount(t, tournamentId)).toBe(2);
 });
 
-test("on a paid event an enrolled guest is seated, reseated, and re-admitted without an order", async () => {
+test("on a paid event an enrolled entry is seated, reseated, and re-admitted without an order", async () => {
   const t = createConvexTest();
   const { tournamentId } = await seedOpenTournament(t, { entryFeeCents: 2000 });
   const organizer = t.withIdentity(organizerIdentity);
 
   const registrationId = await organizer.mutation(
     api.tournaments.registrations.enrollPlayer,
-    { tournamentId, displayName: "Cash Carl", email: "carl@example.test" },
+    { tournamentId, email: "carl@example.test" },
   );
   expect(await getRegistration(t, registrationId)).toMatchObject({
     entryStatus: "confirmed",
@@ -438,6 +910,299 @@ test("on a paid event an enrolled guest is seated, reseated, and re-admitted wit
     await auditEventsOfType(t, tournamentId, "payment_requested"),
   ).toHaveLength(0);
   expect(await confirmedCount(t, tournamentId)).toBe(1);
+});
+
+test("an enrollment's fee exemption survives the Claim, for a new account and an existing one", async () => {
+  const t = createConvexTest();
+  const { tournamentId } = await seedOpenTournament(t, { entryFeeCents: 2000 });
+  const organizer = t.withIdentity(organizerIdentity);
+  const newAccountEntry = await organizer.mutation(
+    api.tournaments.registrations.enrollPlayer,
+    { tournamentId, email: "carl@example.test" },
+  );
+  await insertPlayerUser(t, 1);
+  const existingAccountEntry = await organizer.mutation(
+    api.tournaments.registrations.enrollPlayer,
+    { tournamentId, email: playerIdentity(1).email },
+  );
+
+  // Carl creates his account by signing in; Player 1 just opens the app.
+  await t
+    .withIdentity(guestIdentity("carl@example.test", "Carl"))
+    .mutation(api.users.upsertMe, {});
+  await t.withIdentity(playerIdentity(1)).mutation(api.users.upsertMe, {});
+
+  for (const registrationId of [newAccountEntry, existingAccountEntry]) {
+    const participant = await t.run(async (ctx) => {
+      const registration = await ctx.db.get(registrationId);
+      return await ctx.db.get(registration!.participantId);
+    });
+    expect(participant?.userId).toBeDefined();
+    await organizer.mutation(api.tournaments.registrations.dropRegistration, {
+      registrationId,
+    });
+    await organizer.mutation(
+      api.tournaments.registrations.reinstateRegistration,
+      { registrationId },
+    );
+    expect(await getRegistration(t, registrationId)).toMatchObject({
+      entryStatus: "confirmed",
+      participationStatus: "active",
+      entryFeeExempt: true,
+    });
+    await organizer.mutation(api.tournaments.registrations.rejectRegistration, {
+      registrationId,
+    });
+    await organizer.mutation(
+      api.tournaments.registrations.approveRegistration,
+      { registrationId },
+    );
+    expect(await getRegistration(t, registrationId)).toMatchObject({
+      entryStatus: "confirmed",
+    });
+  }
+  expect(await orderCount(t)).toBe(0);
+  expect(
+    await auditEventsOfType(t, tournamentId, "payment_requested"),
+  ).toHaveLength(0);
+});
+
+test("a player's own re-entry drops the enrollment's fee exemption", async () => {
+  const t = createConvexTest();
+  const { tournamentId } = await seedOpenTournament(t, {
+    entryFeeCents: 2000,
+    requiresApproval: true,
+  });
+  const organizer = t.withIdentity(organizerIdentity);
+  await insertPlayerUser(t, 1);
+  const registrationId = await organizer.mutation(
+    api.tournaments.registrations.enrollPlayer,
+    { tournamentId, email: playerIdentity(1).email },
+  );
+  const player = t.withIdentity(playerIdentity(1));
+  // Cancelling is an authenticated action, so it claims the entry first.
+  await player.mutation(api.tournaments.registrations.cancelMyRegistration, {
+    tournamentId,
+  });
+  await player.mutation(api.tournaments.registrations.registerSelf, {
+    tournamentId,
+  });
+  expect(
+    (await getRegistration(t, registrationId))?.entryFeeExempt,
+  ).toBeUndefined();
+
+  await organizer.mutation(api.tournaments.registrations.approveRegistration, {
+    registrationId,
+  });
+  expect(await getRegistration(t, registrationId)).toMatchObject({
+    entryStatus: "pending",
+  });
+  expect(await orderCount(t)).toBe(1);
+});
+
+test("the same email across events reuses one Guest with a name per event, and one Claim takes them all", async () => {
+  const t = createConvexTest();
+  const { tournamentId: first, organizationId } = await seedOpenTournament(t);
+  const second = await createOpenTournament(t, organizationId, "Second");
+  const organizer = t.withIdentity(organizerIdentity);
+
+  const firstId = await organizer.mutation(
+    api.tournaments.registrations.enrollPlayer,
+    { tournamentId: first, email: "gary@example.test" },
+  );
+  const secondId = await organizer.mutation(
+    api.tournaments.registrations.enrollPlayer,
+    { tournamentId: second, email: "GARY@Example.test" },
+  );
+  await organizer.mutation(api.tournaments.registrations.continueAsGuest, {
+    registrationId: firstId,
+    displayName: "Gary",
+  });
+  await organizer.mutation(api.tournaments.registrations.continueAsGuest, {
+    registrationId: secondId,
+    displayName: "Gary G.",
+  });
+
+  const guestId = await t.run(async (ctx) => {
+    const firstRow = await ctx.db.get(firstId);
+    const secondRow = await ctx.db.get(secondId);
+    expect(secondRow?.participantId).toBe(firstRow?.participantId);
+    const guest = await ctx.db.get(firstRow!.participantId);
+    // Each event shows the name its own organizer action gave the row; the
+    // shared guest is never renamed.
+    expect(guest?.displayName).toBeUndefined();
+    expect(guest?.contactEmail).toBe("gary@example.test");
+    expect(firstRow?.playerName).toBe("Gary");
+    expect(secondRow?.playerName).toBe("Gary G.");
+    expect((await publicIdentityForRegistration(ctx, firstId)).name).toBe(
+      "Gary",
+    );
+    expect((await publicIdentityForRegistration(ctx, secondId)).name).toBe(
+      "Gary G.",
+    );
+    return guest!._id;
+  });
+
+  const gary = t.withIdentity(guestIdentity("Gary@Example.TEST", "Gary Guest"));
+  await gary.mutation(api.users.upsertMe, {});
+  await t.run(async (ctx) => {
+    expect(await ctx.db.get(guestId)).toBeNull();
+  });
+  const mine = await gary.query(
+    api.tournaments.registrations.listMyTournaments,
+    {},
+  );
+  expect(mine.map((row) => row.registration._id).sort()).toEqual(
+    [firstId, secondId].sort(),
+  );
+});
+
+test("adding guests by name always creates fresh Guests, which no sign-in claims", async () => {
+  const t = createConvexTest();
+  const { tournamentId: first, organizationId } = await seedOpenTournament(t);
+  const second = await createOpenTournament(t, organizationId, "Second");
+  const organizer = t.withIdentity(organizerIdentity);
+
+  const firstId = await organizer.mutation(
+    api.tournaments.registrations.addGuest,
+    { tournamentId: first, displayName: "Sam" },
+  );
+  const secondId = await organizer.mutation(
+    api.tournaments.registrations.addGuest,
+    { tournamentId: second, displayName: "Sam" },
+  );
+  await t
+    .withIdentity(guestIdentity("sam@example.test", "Sam"))
+    .mutation(api.users.upsertMe, {});
+
+  await t.run(async (ctx) => {
+    const firstRow = await ctx.db.get(firstId);
+    const secondRow = await ctx.db.get(secondId);
+    expect(secondRow?.participantId).not.toBe(firstRow?.participantId);
+    for (const row of [firstRow, secondRow]) {
+      const guest = await ctx.db.get(row!.participantId);
+      expect(guest?.userId).toBeUndefined();
+    }
+  });
+});
+
+test("a Claim collision leaves both entries in one event separate, and the guest's entry can still be named", async () => {
+  const t = createConvexTest();
+  const { tournamentId } = await seedOpenTournament(t);
+  const organizer = t.withIdentity(organizerIdentity);
+  // Two cached accounts still share an address (neither has signed in since
+  // the provider moved it), so the enrollment cannot tell whose row to
+  // check and seats a Guest — alongside the row one of them already holds.
+  await t.run(async (ctx) => {
+    for (const subject of ["dup-a", "dup-b"]) {
+      await ctx.db.insert("users", {
+        tokenIdentifier: `https://convex.test|${subject}`,
+        publicCode: subject === "dup-a" ? 50 : 51,
+        email: "shared@example.test",
+        name: subject === "dup-a" ? "Dup A" : "Dup B",
+        updatedAt: Date.now(),
+      });
+    }
+  });
+  const dupA = {
+    issuer: "https://convex.test",
+    subject: "dup-a",
+    tokenIdentifier: "https://convex.test|dup-a",
+    email: "shared@example.test",
+    name: "Dup A",
+  };
+  const accountRow = await t
+    .withIdentity(dupA)
+    .mutation(api.tournaments.registrations.registerSelf, { tournamentId });
+  // Signing in released the address from dup-b; re-seed the stale copy to
+  // reproduce the ambiguous cache the enrollment then sees.
+  await t.run(async (ctx) => {
+    const dupB = await ctx.db
+      .query("users")
+      .withIndex("by_tokenIdentifier", (q) =>
+        q.eq("tokenIdentifier", "https://convex.test|dup-b"),
+      )
+      .unique();
+    await ctx.db.patch(dupB!._id, { email: "shared@example.test" });
+  });
+  const guestRow = await organizer.mutation(
+    api.tournaments.registrations.enrollPlayer,
+    { tournamentId, email: "shared@example.test" },
+  );
+  expect(guestRow).not.toBe(accountRow);
+  expect(await confirmedCount(t, tournamentId)).toBe(2);
+
+  // Dup A signs in: the guest would collide with their own row, so it stays
+  // a separate, unclaimed entry — nothing merged, nothing discarded.
+  await t.withIdentity(dupA).mutation(api.users.upsertMe, {});
+  const guestRegistration = await getRegistration(t, guestRow);
+  await t.run(async (ctx) => {
+    const guest = await ctx.db.get(guestRegistration!.participantId);
+    expect(guest?.userId).toBeUndefined();
+    expect(guest?.contactEmail).toBe("shared@example.test");
+  });
+  expect(await confirmedCount(t, tournamentId)).toBe(2);
+  const roster = await organizerRegistrationRows(t, tournamentId);
+  expect(
+    roster.map((row) => [row.playerName, row.awaitingPlayerDetails]).sort(),
+  ).toEqual([
+    ["Dup A", false],
+    ["shared@example.test", true],
+  ]);
+
+  // The organizer resolves the duplicate explicitly: name the second entry
+  // (a second entrant after all) or remove it — both are ordinary actions.
+  await organizer.mutation(api.tournaments.registrations.continueAsGuest, {
+    registrationId: guestRow,
+    displayName: "Second Entrant",
+  });
+  expect(await getRegistration(t, guestRow)).toMatchObject({
+    playerName: "Second Entrant",
+    organizerNamed: true,
+  });
+});
+
+test("the Claim follows the account that holds the email now, not a stale cached copy", async () => {
+  const t = createConvexTest();
+  const { tournamentId } = await seedOpenTournament(t);
+  const organizer = t.withIdentity(organizerIdentity);
+  // Player 1's account still caches player1@ although, at the provider,
+  // they moved to another address and a new account took it.
+  const formerHolder = await insertPlayerUser(t, 1);
+  const newHolder = t.withIdentity({
+    issuer: "https://convex.test",
+    subject: "new-holder",
+    tokenIdentifier: "https://convex.test|new-holder",
+    email: playerIdentity(1).email,
+    name: "New Holder",
+  });
+  const newHolderId = await newHolder.mutation(api.users.upsertMe, {});
+  await t.run(async (ctx) => {
+    expect((await ctx.db.get(formerHolder))?.email).toBeUndefined();
+  });
+
+  const registrationId = await organizer.mutation(
+    api.tournaments.registrations.enrollPlayer,
+    { tournamentId, email: playerIdentity(1).email },
+  );
+  // The former holder's app use claims nothing: their verified email is now
+  // another address.
+  await t
+    .withIdentity({ ...playerIdentity(1), email: "moved@example.test" })
+    .mutation(api.users.upsertMe, {});
+  expect(
+    await t.run(async (ctx) => {
+      const registration = await ctx.db.get(registrationId);
+      return (await ctx.db.get(registration!.participantId))?.userId ?? null;
+    }),
+  ).toBeNull();
+  await newHolder.mutation(api.users.upsertMe, {});
+  await t.run(async (ctx) => {
+    const registration = await ctx.db.get(registrationId);
+    const participant = await ctx.db.get(registration!.participantId);
+    expect(participant?.userId).toBe(newHolderId);
+    expect(registration?.playerName).toBe("New Holder");
+  });
 });
 
 async function seedOpenTournament(
@@ -498,6 +1263,7 @@ async function createOpenTournament(
   t: TestConvex<typeof schema>,
   organizationId: Id<"organizations">,
   name: string,
+  options: { playerMeeting?: boolean } = {},
 ) {
   const organizer = t.withIdentity(organizerIdentity);
   const tournamentId = await organizer.mutation(
@@ -508,13 +1274,29 @@ async function createOpenTournament(
       startDate: Date.now() + 86_400_000,
       playerCapacity: 8,
       format: "standard",
-      phases: [{ phaseOrder: 1, phaseRoundMode: "dynamic" }],
+      phases: [
+        {
+          phaseOrder: 1,
+          phaseRoundMode: "dynamic",
+          ...(options.playerMeeting ? { playerMeeting: true } : {}),
+        },
+      ],
     },
   );
   await organizer.mutation(api.tournaments.lifecycle.publishTournament, {
     tournamentId,
   });
   return tournamentId;
+}
+
+async function firstPhaseId(
+  t: TestConvex<typeof schema>,
+  tournamentId: Id<"tournaments">,
+): Promise<Id<"tournamentPhases">> {
+  const { phases } = await t
+    .withIdentity(organizerIdentity)
+    .query(api.tournaments.lifecycle.getTournamentSetup, { tournamentId });
+  return phases[0]._id;
 }
 
 async function insertPlayerUser(
@@ -590,7 +1372,8 @@ async function organizerRegistrationRows(
       tournamentId,
       paginationOpts: { numItems: 100, cursor: null },
     });
-  return page.page;
+  // Oldest first, so a test's enrollment order is the row order.
+  return [...page.page].reverse();
 }
 
 async function confirmedCount(

@@ -2,7 +2,7 @@ import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 
 import type { Id } from "./_generated/dataModel";
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import { requireIdentity } from "./auth";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "./model/batching";
 import { clampPageSize } from "./model/pagination";
@@ -18,7 +18,10 @@ import {
   resolvePublicPlayer,
   takeConfirmedRegistrationsAfter,
 } from "./model/playerResults";
-import { participantForUser } from "./model/participants";
+import {
+  continueGuestClaimWalk as continueGuestClaimWalkModel,
+  participantForUser,
+} from "./model/participants";
 import { registrationForUser } from "./model/registrations";
 import { ensureCurrentUser, userByTokenIdentifier } from "./model/users";
 import { enforceRateLimit } from "./rateLimits";
@@ -305,5 +308,21 @@ export const getPublicPlayerTournamentLog = query({
     }
 
     return await matchLogForRegistration(ctx, tournament._id, registration._id);
+  },
+});
+
+// One page of the scheduled Claim of a guest too large to merge at sign-in
+// (model/participants.ts continueGuestClaimWalk). Internal: scheduled only
+// by the claim itself.
+export const continueGuestClaimWalk = internalMutation({
+  args: {
+    guestId: v.id("participants"),
+    claimerId: v.id("participants"),
+    phase: v.union(v.literal("check"), v.literal("move")),
+    cursor: v.union(v.string(), v.null()),
+  },
+  handler: async (ctx, args): Promise<null> => {
+    await continueGuestClaimWalkModel(ctx, args);
+    return null;
   },
 });

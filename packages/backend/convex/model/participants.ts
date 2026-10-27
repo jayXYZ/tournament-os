@@ -1,6 +1,12 @@
+import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { normalizeEmail } from "../validators";
+import {
+  type RegistrationNameStamp,
+  registrationNameStamp,
+  restampRegistrationRow,
+} from "./nameStamps";
 
 // The durable competitor identity module (CONTEXT.md "Participant", ADR
 // 0002): registrations belong to participants, a participant links to at most
@@ -12,10 +18,17 @@ import { normalizeEmail } from "../validators";
 // How many guests one sign-in will examine for claiming; matches the
 // pending-invitation bound in model/users.ts.
 const CLAIMABLE_GUESTS_BOUND = 64;
-// Bound on a claimed guest's registrations. Guests are enrolled by
-// organizers one event at a time, so their histories are short; a guest at
-// the bound is skipped rather than merged partially.
+// The largest guest history the sign-in merges in its own transaction, and
+// the page size of the scheduled walk that merges a larger one. A regular
+// enrolled week after week by the same email accumulates one history, so a
+// guest past the bound is ordinary, not anomalous: it is claimed by the
+// walk (startGuestClaimWalk), never skipped.
 const CLAIM_REGISTRATION_BATCH = 64;
+// How long a started walk holds off another for the same guest. Each step
+// refreshes the stamp, so this only lapses on a walk that stopped — a
+// collision refusal, or a step that failed — and the next sign-in after it
+// tries again.
+const CLAIM_WALK_RETRY_MS = 60 * 60 * 1000;
 
 export async function requireParticipant(
   ctx: QueryCtx,
@@ -58,11 +71,14 @@ export async function ensureParticipantForUser(
   return await requireParticipant(ctx, participantId);
 }
 
-// A Guest: organizer-provided display name, optional contact email (the
-// claim key — normalized so sign-in matching is exact). No linked user.
+// A Guest: no linked user. A guest added by name carries that display name;
+// a guest enrolled by email carries only the contact email (the claim key —
+// normalized so sign-in matching is exact), and the names organizers later
+// give it live on its registrations, one per event (schema
+// tournamentRegistrations.organizerNamed).
 export async function createGuestParticipant(
   ctx: MutationCtx,
-  args: { displayName: string; contactEmail?: string },
+  args: { displayName?: string; contactEmail?: string },
 ): Promise<Id<"participants">> {
   return await ctx.db.insert("participants", {
     displayName: args.displayName,
@@ -94,38 +110,34 @@ const GUESTS_PER_EMAIL_BOUND = 8;
 
 // The Guest already carrying a contact email, for an organizer enrollment
 // to reuse (model/roster.ts enrollPlayer): a regular enrolled across several
-// events stays one Participant with one history and one Claim. The
-// organizer-provided name is written onto the reused Guest — the latest
-// name the organizer typed is the freshest, and the participant's identity
-// should agree with the stamp the new registration is about to carry. Null
-// when no Guest holds the email; a user-linked participant never matches,
-// because it carries no contactEmail (the account's email is on the user).
-export async function reuseGuestParticipantForEmail(
-  ctx: MutationCtx,
-  args: { displayName: string; email: string },
+// events stays one Participant with one history and one Claim. The guest is
+// returned untouched: the name each organizer typed belongs to that
+// organizer's registration (its playerName stamp), and the guest's own
+// displayName is shared by every event it plays in, so letting a later
+// enrollment rewrite it would rename the player in other organizers'
+// events. Null when no Guest holds the email; a user-linked participant
+// never matches, because it carries no contactEmail (the account's email is
+// on the user).
+export async function guestParticipantForEmail(
+  ctx: QueryCtx,
+  email: string,
 ): Promise<Doc<"participants"> | null> {
-  const email = normalizeEmail(args.email);
   const matches = await ctx.db
     .query("participants")
-    .withIndex("by_contactEmail", (q) => q.eq("contactEmail", email))
+    .withIndex("by_contactEmail", (q) =>
+      q.eq("contactEmail", normalizeEmail(email)),
+    )
     .take(GUESTS_PER_EMAIL_BOUND);
-  const guest = matches.find((match) => match.userId === undefined);
-  if (!guest) {
-    return null;
-  }
-  if (guest.displayName !== args.displayName) {
-    await ctx.db.patch(guest._id, {
-      displayName: args.displayName,
-      updatedAt: Date.now(),
-    });
-  }
-  return await requireParticipant(ctx, guest._id);
+  return matches.find((match) => match.userId === undefined) ?? null;
 }
 
 // The name and avatar a participant shows other players and the public.
 // User-linked participants read through to the account (name only — never
 // the email, which player-facing surfaces must not leak); guests show the
-// organizer-provided display name and have no avatar.
+// display name they were added with (set only for a guest added by name)
+// and have no avatar. Registration-level surfaces should prefer
+// publicIdentityForRegistration, which honors the event's own name for the
+// entry.
 export async function participantPublicIdentity(
   ctx: QueryCtx,
   participant: Doc<"participants">,
@@ -137,12 +149,18 @@ export async function participantPublicIdentity(
   return { name: user?.name ?? null, avatarUrl: user?.avatarUrl ?? null };
 }
 
-// A registration's public identity, resolved through its participant. The
-// shared read for surfaces that show an opponent to other players (the Player
-// View's match card, the profile match log): always through the participant
-// identity, never the denormalized playerName, so an account without a name
-// can never leak its email. Null fields when the registration or participant
-// is gone.
+// A registration's public identity, resolved for the surfaces that show an
+// opponent to other players (the Player View's match card, the profile match
+// log). An entry an organizer named for this event (organizerNamed) shows
+// that name and no avatar, whoever holds it: the name is the event's label
+// for the entrant, and a linked account's profile is not disclosed in its
+// place just because the Claim found one. Any other guest entry shows its
+// own registration's name — never another event's name for the same guest,
+// and never an email (the playerName stamp is player-safe by construction)
+// — so an entry still awaiting player details shows nothing. An account's
+// entry reads through to the account, never the denormalized stamp, so an
+// account without a name can never leak its email. Null fields when the
+// registration or participant is gone.
 export async function publicIdentityForRegistration(
   ctx: QueryCtx,
   registrationId: Id<"tournamentRegistrations">,
@@ -151,9 +169,13 @@ export async function publicIdentityForRegistration(
   const participant = registration
     ? await ctx.db.get(registration.participantId)
     : null;
-  return participant
-    ? await participantPublicIdentity(ctx, participant)
-    : { name: null, avatarUrl: null };
+  if (!registration || !participant) {
+    return { name: null, avatarUrl: null };
+  }
+  if (registration.organizerNamed || participant.userId === undefined) {
+    return { name: registration.playerName ?? null, avatarUrl: null };
+  }
+  return await participantPublicIdentity(ctx, participant);
 }
 
 // The sign-in Claim (CONTEXT.md "Claim", ADR 0002): merge every guest whose
@@ -162,8 +184,15 @@ export async function publicIdentityForRegistration(
 // All-or-nothing per guest: when the guest and the claiming participant both
 // hold a registration in the same tournament, the guest stays unclaimed, so
 // the one-registration-per-participant-per-tournament invariant survives and
-// no event record is rewritten. Runs on every sign-in (like invitation
-// acceptance) so a guest enrolled after the account existed is still claimed.
+// no event record is rewritten. Runs on every authenticated sign-in and
+// mutation (like invitation acceptance), so a guest enrolled after the
+// account existed is claimed the next time its holder uses the app — no
+// fresh sign-in needed. A guest whose history is too long to merge here is
+// handed to a scheduled walk with the same all-or-nothing rule
+// (startGuestClaimWalk). Each moved entry is stamped from the account
+// (claimedRegistrationStamp), which is how an entry enrolled by email gains
+// its name: the player authenticated after the enrollment with a usable
+// name, and the entry stops awaiting player details.
 export async function claimGuestParticipants(
   ctx: MutationCtx,
   args: { userId: Id<"users">; email?: string; now: number },
@@ -182,59 +211,228 @@ export async function claimGuestParticipants(
   }
 
   const claimer = await ensureParticipantForUser(ctx, args.userId);
+  const stamp = await claimedRegistrationStamp(ctx, claimer);
   for (const guest of guests) {
-    const guestRegistrations = await allRegistrationsForParticipant(
+    const guestRegistrations = await guestRegistrationsQuery(
       ctx,
       guest._id,
-    );
-    if (guestRegistrations === "overflow") {
+    ).take(CLAIM_REGISTRATION_BATCH);
+    if (guestRegistrations.length === CLAIM_REGISTRATION_BATCH) {
+      await startGuestClaimWalk(ctx, { guest, claimer, now: args.now });
       continue;
     }
-    let collides = false;
-    for (const registration of guestRegistrations) {
-      const existing = await ctx.db
-        .query("tournamentRegistrations")
-        .withIndex("by_tournamentId_and_participantId", (q) =>
-          q
-            .eq("tournamentId", registration.tournamentId)
-            .eq("participantId", claimer._id),
-        )
-        .unique();
-      if (existing) {
-        collides = true;
-        break;
-      }
-    }
-    if (collides) {
+    if (await anyRegistrationCollides(ctx, guestRegistrations, claimer._id)) {
       continue;
     }
     for (const registration of guestRegistrations) {
-      await ctx.db.patch(registration._id, {
-        participantId: claimer._id,
-        updatedAt: args.now,
+      await moveRegistrationToClaimer(ctx, {
+        registration,
+        claimer,
+        stamp,
+        now: args.now,
       });
     }
     await ctx.db.delete(guest._id);
   }
 }
 
+// The name stamp a claimed entry takes from the account that now holds it:
+// the same stamp registerSelf would write for the account (its name, or its
+// email for organizers when it has none), so a claimed entry and a
+// self-registered one read alike everywhere.
+async function claimedRegistrationStamp(
+  ctx: QueryCtx,
+  claimer: Doc<"participants">,
+): Promise<RegistrationNameStamp> {
+  const user =
+    claimer.userId === undefined ? null : await ctx.db.get(claimer.userId);
+  return registrationNameStamp(user ?? {});
+}
+
+// Hands one registration to the claiming participant and stamps it from the
+// account — unless an organizer named the entry for its event
+// (organizerNamed): that name is the event's label for the entrant and stays,
+// whoever holds the entry now. Entry status, seat, history, and the fee
+// exemption (entryFeeExempt) ride along untouched.
+async function moveRegistrationToClaimer(
+  ctx: MutationCtx,
+  args: {
+    registration: Doc<"tournamentRegistrations">;
+    claimer: Doc<"participants">;
+    stamp: RegistrationNameStamp;
+    now: number;
+  },
+): Promise<void> {
+  const { registration, claimer, stamp, now } = args;
+  await ctx.db.patch(registration._id, {
+    participantId: claimer._id,
+    updatedAt: now,
+  });
+  if (!registration.organizerNamed) {
+    await restampRegistrationRow(ctx, registration, stamp, now);
+  }
+}
+
 // Every registration a participant holds, whatever its status — the claim
-// walk needs cancelled and rejected rows too, since a merged identity keeps
-// its whole history (prefix query on the participant index). Guest histories
-// are short; a full page means this guest is unexpectedly large, and the
-// caller skips it rather than merge partially.
-async function allRegistrationsForParticipant(
+// needs cancelled and rejected rows too, since a merged identity keeps its
+// whole history (prefix query on the participant index).
+function guestRegistrationsQuery(
   ctx: QueryCtx,
   participantId: Id<"participants">,
-): Promise<Doc<"tournamentRegistrations">[] | "overflow"> {
-  const registrations = await ctx.db
+) {
+  return ctx.db
     .query("tournamentRegistrations")
     .withIndex(
       "by_participantId_and_entryStatus_and_tournamentStartDate",
       (q) => q.eq("participantId", participantId),
+    );
+}
+
+// Whether the claiming participant already holds a registration in the same
+// tournament as one of these — the collision that keeps a guest unclaimed.
+async function anyRegistrationCollides(
+  ctx: QueryCtx,
+  registrations: Doc<"tournamentRegistrations">[],
+  claimerId: Id<"participants">,
+): Promise<boolean> {
+  for (const registration of registrations) {
+    if (await claimerHoldsTournament(ctx, claimerId, registration)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+async function claimerHoldsTournament(
+  ctx: QueryCtx,
+  claimerId: Id<"participants">,
+  registration: Doc<"tournamentRegistrations">,
+): Promise<boolean> {
+  const existing = await ctx.db
+    .query("tournamentRegistrations")
+    .withIndex("by_tournamentId_and_participantId", (q) =>
+      q
+        .eq("tournamentId", registration.tournamentId)
+        .eq("participantId", claimerId),
     )
-    .take(CLAIM_REGISTRATION_BATCH);
-  return registrations.length === CLAIM_REGISTRATION_BATCH
-    ? "overflow"
-    : registrations;
+    .unique();
+  return existing !== null;
+}
+
+export type GuestClaimWalkStep = {
+  guestId: Id<"participants">;
+  claimerId: Id<"participants">;
+  // "check" pages through the whole history for a collision before anything
+  // moves; "move" then repoints it page by page.
+  phase: "check" | "move";
+  cursor: string | null;
+};
+
+// Hands a guest too large for the sign-in transaction to the scheduled
+// claim walk (continueGuestClaimWalk), unless a walk for it started within
+// CLAIM_WALK_RETRY_MS — every authenticated mutation runs the sign-in claim,
+// and one walk at a time is enough.
+async function startGuestClaimWalk(
+  ctx: MutationCtx,
+  args: {
+    guest: Doc<"participants">;
+    claimer: Doc<"participants">;
+    now: number;
+  },
+): Promise<void> {
+  const { guest, claimer, now } = args;
+  if (
+    guest.claimWalkAt !== undefined &&
+    now - guest.claimWalkAt < CLAIM_WALK_RETRY_MS
+  ) {
+    return;
+  }
+  await scheduleGuestClaimWalkStep(
+    ctx,
+    {
+      guestId: guest._id,
+      claimerId: claimer._id,
+      phase: "check",
+      cursor: null,
+    },
+    now,
+  );
+}
+
+async function scheduleGuestClaimWalkStep(
+  ctx: MutationCtx,
+  step: GuestClaimWalkStep,
+  now: number,
+): Promise<void> {
+  await ctx.db.patch(step.guestId, { claimWalkAt: now });
+  await ctx.scheduler.runAfter(0, internal.users.continueGuestClaimWalk, step);
+}
+
+// One page of the scheduled Claim of a large guest. The check phase reads
+// the whole history for a collision first, so the merge stays all-or-nothing
+// as at sign-in: a collision ends the walk with nothing moved, and the
+// guest stays unclaimed. The move phase then repoints page by page and
+// deletes the guest once nothing points at it. A collision can still appear
+// between the phases — the account holder registering themself into an
+// event the guest is entered in — and that row alone stays with the guest:
+// moving it would break one-registration-per-participant-per-tournament.
+// Rows enrolled onto the guest mid-walk likewise keep it alive, and the
+// next sign-in claims them. The walk stops quietly when either side is
+// gone or the guest has become an account's participant.
+export async function continueGuestClaimWalk(
+  ctx: MutationCtx,
+  step: GuestClaimWalkStep,
+): Promise<void> {
+  const guest = await ctx.db.get(step.guestId);
+  const claimer = await ctx.db.get(step.claimerId);
+  if (
+    !guest ||
+    guest.userId !== undefined ||
+    !claimer ||
+    claimer.userId === undefined
+  ) {
+    return;
+  }
+  const now = Date.now();
+  const page = await guestRegistrationsQuery(ctx, guest._id).paginate({
+    numItems: CLAIM_REGISTRATION_BATCH,
+    cursor: step.cursor,
+  });
+
+  if (step.phase === "check") {
+    if (await anyRegistrationCollides(ctx, page.page, claimer._id)) {
+      return;
+    }
+    await scheduleGuestClaimWalkStep(
+      ctx,
+      page.isDone
+        ? { ...step, phase: "move", cursor: null }
+        : { ...step, cursor: page.continueCursor },
+      now,
+    );
+    return;
+  }
+
+  const stamp = await claimedRegistrationStamp(ctx, claimer);
+  for (const registration of page.page) {
+    if (await claimerHoldsTournament(ctx, claimer._id, registration)) {
+      continue;
+    }
+    await moveRegistrationToClaimer(ctx, { registration, claimer, stamp, now });
+  }
+  if (!page.isDone) {
+    await scheduleGuestClaimWalkStep(
+      ctx,
+      { ...step, cursor: page.continueCursor },
+      now,
+    );
+    return;
+  }
+  const remaining = await guestRegistrationsQuery(ctx, guest._id).first();
+  if (remaining === null) {
+    await ctx.db.delete(guest._id);
+  } else {
+    // Done walking: the next sign-in may take up what is left at once.
+    await ctx.db.patch(guest._id, { claimWalkAt: undefined, updatedAt: now });
+  }
 }

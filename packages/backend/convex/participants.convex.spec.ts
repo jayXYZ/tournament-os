@@ -5,10 +5,11 @@
 // user account, a Guest is a participant without one, and signing in claims
 // matching guests — whole-guest merges only.
 
-import { expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import type { MutationCtx } from "./_generated/server";
 import { createGuestParticipant } from "./model/participants";
 import { organizerIdentity, seedOrganizer } from "./specHelpers";
 import { createConvexTest } from "./specHelpers.runtime";
@@ -222,5 +223,112 @@ test("a guest without a contact email is never claimed", async () => {
     const guestRow = await ctx.db.get(guest.participantId);
     expect(guestRow).not.toBeNull();
     expect(guestRow?.userId).toBeUndefined();
+  });
+});
+
+// A regular enrolled week after week under one email accumulates one long
+// history; past the sign-in's inline bound the Claim moves it through a
+// scheduled walk instead of skipping it.
+const LONG_HISTORY = 150;
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+// A guest holding `count` registrations, one per tournament as the
+// invariant requires. The tournaments are copies of a real one: the claim
+// reads only registrations, never the events themselves. `placeLast` puts
+// the final row in that tournament instead.
+async function seedLongGuestHistory(
+  t: ReturnType<typeof createConvexTest>,
+  template: Id<"tournaments">,
+  count: number,
+  placeLast?: Id<"tournaments">,
+) {
+  return await t.run(async (ctx: MutationCtx) => {
+    const source = await ctx.db.get(template);
+    if (!source) {
+      throw new Error("Tournament not found in test setup");
+    }
+    const { _id, _creationTime, ...fields } = source;
+    const participantId = await createGuestParticipant(ctx, {
+      displayName: "Regular Gary",
+      contactEmail: "gary@example.test",
+    });
+    for (let index = 0; index < count; index += 1) {
+      const tournamentId =
+        placeLast !== undefined && index === count - 1
+          ? placeLast
+          : await ctx.db.insert("tournaments", fields);
+      await ctx.db.insert("tournamentRegistrations", {
+        tournamentId,
+        participantId,
+        tournamentStartDate: fields.startDate,
+        entryStatus: "cancelled",
+        playerName: "Regular Gary",
+        createdAt: Date.now(),
+        tiebreakRandom: index,
+        updatedAt: Date.now(),
+      });
+    }
+    return participantId;
+  });
+}
+
+async function registrationsOf(
+  t: ReturnType<typeof createConvexTest>,
+  participantId: Id<"participants">,
+) {
+  return await t.run(async (ctx) =>
+    (await ctx.db.query("tournamentRegistrations").collect()).filter(
+      (row) => row.participantId === participantId,
+    ),
+  );
+}
+
+test("signing in claims a guest whose history outgrew the inline claim", async () => {
+  vi.useFakeTimers();
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const tournamentId = await createOpenTournament(t, organizationId, "Weekly");
+  const guestId = await seedLongGuestHistory(t, tournamentId, LONG_HISTORY);
+
+  const player = t.withIdentity(playerIdentity);
+  await player.mutation(api.users.upsertMe, {});
+  // A second sign-in while the walk is under way schedules no second walk.
+  await player.mutation(api.users.upsertMe, {});
+  await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+  const claimer = await t.run(async (ctx) =>
+    (await ctx.db.query("participants").collect()).find(
+      (row) => row.userId !== undefined,
+    ),
+  );
+  expect(await registrationsOf(t, claimer!._id)).toHaveLength(LONG_HISTORY);
+  await t.run(async (ctx) => {
+    expect(await ctx.db.get(guestId)).toBeNull();
+  });
+});
+
+test("a collision anywhere in a long history leaves the guest fully unclaimed", async () => {
+  vi.useFakeTimers();
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const weekly = await createOpenTournament(t, organizationId, "Weekly");
+  const shared = await createOpenTournament(t, organizationId, "Shared");
+  const player = t.withIdentity(playerIdentity);
+  // The account holder entered the shared event themself; the guest's
+  // entry there is the last row of its history, past the first page.
+  await player.mutation(api.tournaments.registrations.registerSelf, {
+    tournamentId: shared,
+  });
+  const guestId = await seedLongGuestHistory(t, weekly, LONG_HISTORY, shared);
+
+  await player.mutation(api.users.upsertMe, {});
+  await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+  expect(await registrationsOf(t, guestId)).toHaveLength(LONG_HISTORY);
+  await t.run(async (ctx) => {
+    expect(await ctx.db.get(guestId)).not.toBeNull();
   });
 });

@@ -111,7 +111,8 @@ const limits = {
     period: HOUR,
     capacity: 20,
   },
-  // Organizer enrollment mints a guest participant row per call (plus the
+  // Organizer enrollment — enrollPlayer (by email) and addGuest (by name)
+  // share this bucket — can mint a guest participant row per call (plus the
   // registration and its audit row), so unlike the rest of roster
   // management it is row growth and gets a budget — sized for an organizer
   // keying in a walk-up field by hand at the door, which is one player

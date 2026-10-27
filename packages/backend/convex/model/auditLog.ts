@@ -131,8 +131,9 @@ export function auditPlayerRefForUser(
 }
 
 // The same, for a row the caller just wrote from a stamp it already holds
-// (enrollPlayer, which stamps a guest from the organizer-provided name) —
-// so the ref agrees with the row by construction, without reading it back.
+// (the organizer enrollments and continueAsGuest in model/roster.ts, which
+// stamp an entry from the typed name or the enrollment email) — so the ref
+// agrees with the row by construction, without reading it back.
 export function auditPlayerRefForStamp(
   registrationId: Id<"tournamentRegistrations">,
   stamp: RegistrationNameStamp,

@@ -30,19 +30,59 @@ export type UserIdentityFields = {
   avatarUrl?: string;
 };
 
+// How many accounts an email lookup reads: two, so a duplicate is seen
+// rather than silently resolved.
+const ACCOUNTS_PER_EMAIL_BOUND = 2;
+
 // The account holding a verified email, by its normalized form (the stored
-// spelling — see upsertUser). The identity provider allows one account per
-// verified email, so this is a point lookup; first() rather than unique()
-// so a duplicate seeded by hand degrades to the older account instead of
-// an invariant failure.
+// spelling — see upsertUser). Stored emails are a cache refreshed only when
+// their account signs in, so the provider's one-account-per-email rule does
+// not carry over on its own: upsertUser releases an address from every
+// other row when an account signs in holding it (releaseEmailFromOtherUsers).
+// Should two rows still share one, the owner is ambiguous and this returns
+// null rather than guess — a caller handing out a registration must not give
+// it to whoever held the address first.
 export async function userByEmail(
   ctx: QueryCtx,
   email: string,
 ): Promise<Doc<"users"> | null> {
-  return await ctx.db
+  const holders = await ctx.db
     .query("users")
     .withIndex("by_email", (q) => q.eq("email", normalizeEmail(email)))
-    .first();
+    .take(ACCOUNTS_PER_EMAIL_BOUND);
+  return holders.length === 1 ? holders[0] : null;
+}
+
+// Stale holders of one address released per sign-in. Each sign-in releases
+// every other holder, so more than one stale row is already unusual.
+const RELEASED_EMAIL_HOLDERS_BOUND = 8;
+
+// An account signing in with a verified email owns it now, so any other row
+// still carrying it holds a stale copy: its account moved to another address
+// at the provider without signing in here since. Clearing it keeps by_email
+// a point lookup for userByEmail, and re-stamps that account's registrations
+// so their organizer label stops showing the released address. The released
+// account picks up its current email at its own next sign-in.
+async function releaseEmailFromOtherUsers(
+  ctx: MutationCtx,
+  args: { userId: Id<"users">; email: string; now: number },
+) {
+  const holders = await ctx.db
+    .query("users")
+    .withIndex("by_email", (q) => q.eq("email", args.email))
+    .take(RELEASED_EMAIL_HOLDERS_BOUND);
+  for (const holder of holders) {
+    if (holder._id === args.userId) {
+      continue;
+    }
+    await ctx.db.patch(holder._id, { email: undefined, updatedAt: args.now });
+    await syncRegistrationNameStamps(
+      ctx,
+      holder._id,
+      registrationNameStamp({ name: holder.name }),
+      args.now,
+    );
+  }
 }
 
 export async function userByTokenIdentifier(
@@ -100,6 +140,16 @@ export async function upsertUser(
   // roster and the player standings on the next sign-in. Compared before
   // the patch so an unchanged sign-in — the common case — writes nothing
   // beyond the user row.
+  // Every sign-in, not only an email change: one bounded index read, and a
+  // row left holding a stale copy is released by the address's next owner
+  // whenever they next sign in.
+  if (fields.email !== undefined) {
+    await releaseEmailFromOtherUsers(ctx, {
+      userId,
+      email: fields.email,
+      now,
+    });
+  }
   if (
     existing &&
     (existing.name !== fields.name || existing.email !== fields.email)

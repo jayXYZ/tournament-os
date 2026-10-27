@@ -30,9 +30,15 @@ export function describeAuditEvent(row: AuditEventRow): string {
     case 'registration_requested':
       return `${displayPlayerName(event.player.playerName)} requested to register for the event`
     case 'player_enrolled':
-      return event.asGuest
-        ? `Enrolled ${displayPlayerName(event.player.playerName)} as a guest`
-        : `Enrolled ${displayPlayerName(event.player.playerName)}`
+      // By email the label is the address the organizer typed (this log is
+      // organizer-only), named as such rather than passed off as a name.
+      return event.by === 'name'
+        ? `Added ${displayPlayerName(event.player.playerName)} as a guest`
+        : `Enrolled ${event.player.playerName ?? 'a player'} by email; awaiting player details`
+    case 'player_named':
+      return event.previousLabel
+        ? `Named ${displayPlayerName(event.player.playerName)} for this event (was ${event.previousLabel})`
+        : `Named ${displayPlayerName(event.player.playerName)} for this event`
     case 'decklist_submitted':
       return `${displayPlayerName(event.player.playerName)} ${event.isUpdate ? 'updated' : 'submitted'} their decklist (${event.maindeckCardCount} main / ${event.sideboardCardCount} sideboard)`
     case 'registration_cancelled':
