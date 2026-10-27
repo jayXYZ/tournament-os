@@ -389,11 +389,15 @@ claimed by one.
       details"; the Claim links the account and stamps the account's name
       onto the entry — it runs on every authenticated mutation, and both
       apps run the sign-in at the root as soon as the viewer is verified
-      (`useEnsureUserRow` in `@paper-pairings/core`), so opening the app
-      suffices. A player's own registration or checkout into an event where
-      a Guest carrying their email holds an entry takes that entry over
-      (the targeted Claim, `claimGuestEntryInTournament`), never a second
-      seat. "Continue as guest" names an unresolved entry for one event
+      (`useEnsureUserRow` in `@paper-pairings/core`) and again when a Guest
+      appears under the viewer's email while the app stays open
+      (`hasUnclaimedGuest`), so opening the app suffices and an enrollment
+      made while it is open is claimed as it lands. A player's own
+      registration or checkout into an event where a Guest carrying their
+      email holds an entry takes that entry over (the targeted Claim,
+      `claimGuestEntryInTournament`), never a second seat, and a confirmed
+      entry handed over that way is answered as the registration by both
+      — the checkout reports `registered` and takes no payment. "Continue as guest" names an unresolved entry for one event
       (`organizerNamed`, honored by the re-stamp and by the Claim on a live
       entry; dropped for the account's name once an account holder's entry
       is cancelled or re-entered), keeping its seat, history, fee treatment,

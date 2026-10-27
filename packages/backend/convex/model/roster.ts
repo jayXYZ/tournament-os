@@ -610,27 +610,64 @@ function existingEntryBlocksRegistration(
   }
 }
 
-// A signed-in player's own entry into the event (the registerSelf endpoint):
-// a confirmed seat, or — under organizer approval — a pending application
-// for the Review Queue. Owns the entry gates (lifecycle, the private-event
-// grants, the badge gate, the paid-event checkout redirect, capacity), the
-// registration write, the seat counter, and the audit event.
+// The entry a player's own admission into an event starts from, shared by
+// the self-registration (registerEntry) and the entry checkout
+// (payments/checkout.ts beginEntryCheckout): the row the account holds,
+// else the one a Guest carrying the account's email holds in the event,
+// taken over now (claimGuestEntryInTournament).
 //
 // An entry the organizer enrolled for this player (CONTEXT.md "Enrollment")
 // is the player's own entry in the event, and the Claim is how they come to
 // hold it. Two Claims can reach it from here: the sign-in's, which ran just
-// before this (claimedBySignIn is what it moved), and the targeted one for
-// a guest the sign-in's could not merge whole — a history too long for one
-// transaction, or a collision in another event
-// (claimGuestEntryInTournament). Without the latter, this verb would file
-// a second entry for the same person beside the guest's, and the seat it
-// filed would be the collision that then keeps the guest unclaimed for
-// good. A confirmed entry either Claim hands the player in this call is
-// returned as their registration: nothing is left to file, and refusing it
-// as "already registered" would roll the Claim back with the refusal,
-// leaving the player unlinked from a seat they hold. Any other entry the
-// Claim hands over is the row this verb acts on, exactly as a row the
-// account held already — re-entering a cancelled one, refusing the rest.
+// before (claimedBySignIn is what it moved), and the targeted one for a
+// guest the sign-in's could not merge whole — a history too long for one
+// transaction, or a collision in another event. Without the latter, the
+// verb would file a second entry for the same person beside the guest's,
+// and the seat it filed would be the collision that then keeps the guest
+// unclaimed for good. `claimedHere` tells an entry either Claim handed the
+// player in this very call from one they held already: a confirmed entry
+// claimed here is the player's registration, with nothing left to file or
+// pay, and the verb answers with it — refusing it as "already registered"
+// would roll the Claim back with the refusal, leaving the player unlinked
+// from a seat they hold (and, for a guest a collision elsewhere keeps from
+// the sign-in's Claim, unlinked for good). A confirmed entry held already is
+// that ordinary refusal, and any other entry the Claim hands over is the
+// row the verb acts on, exactly as a row the account held already —
+// re-entering a cancelled one, refusing the rest.
+export async function heldOrClaimedEntry(
+  ctx: MutationCtx,
+  args: {
+    tournamentId: Id<"tournaments">;
+    user: Doc<"users">;
+    claimedBySignIn: Id<"tournamentRegistrations">[];
+    now: number;
+  },
+): Promise<{
+  entry: Doc<"tournamentRegistrations"> | null;
+  claimedHere: boolean;
+}> {
+  const held = await registrationForUser(ctx, args.tournamentId, args.user._id);
+  if (held !== null) {
+    return {
+      entry: held,
+      claimedHere: args.claimedBySignIn.includes(held._id),
+    };
+  }
+  const claimed = await claimGuestEntryInTournament(ctx, {
+    user: args.user,
+    tournamentId: args.tournamentId,
+    now: args.now,
+  });
+  return { entry: claimed, claimedHere: claimed !== null };
+}
+
+// A signed-in player's own entry into the event (the registerSelf endpoint):
+// a confirmed seat, or — under organizer approval — a pending application
+// for the Review Queue. Owns the entry gates (lifecycle, the private-event
+// grants, the badge gate, the paid-event checkout redirect, capacity), the
+// registration write, the seat counter, and the audit event. Starts from
+// the row the player holds or the Claim hands them here (heldOrClaimedEntry):
+// a confirmed entry claimed in this call is returned as their registration.
 export async function registerEntry(
   ctx: MutationCtx,
   {
@@ -646,21 +683,15 @@ export async function registerEntry(
   },
 ): Promise<Id<"tournamentRegistrations">> {
   const now = Date.now();
-  const held = await registrationForUser(ctx, tournament._id, user._id);
-  const claimed =
-    held === null
-      ? await claimGuestEntryInTournament(ctx, {
-          user,
-          tournamentId: tournament._id,
-          now,
-        })
-      : claimedBySignIn.includes(held._id)
-        ? held
-        : null;
-  if (claimed?.entryStatus === "confirmed") {
-    return claimed._id;
+  const { entry: existing, claimedHere } = await heldOrClaimedEntry(ctx, {
+    tournamentId: tournament._id,
+    user,
+    claimedBySignIn,
+    now,
+  });
+  if (claimedHere && existing?.entryStatus === "confirmed") {
+    return existing._id;
   }
-  const existing = held ?? claimed;
   // A private event takes no registrations off the public page. Two grants
   // get past that: the event's invite code, which is the organizer's way of
   // letting new players in at all — and an existing row, because a player

@@ -19,13 +19,14 @@ import {
   takeConfirmedRegistrationsAfter,
 } from "./model/playerResults";
 import {
+  anyGuestForEmail,
   continueGuestClaimWalk as continueGuestClaimWalkModel,
   participantForUser,
 } from "./model/participants";
 import { registrationForUser } from "./model/registrations";
 import { ensureCurrentUser, userByTokenIdentifier } from "./model/users";
 import { enforceRateLimit } from "./rateLimits";
-import { userProfileVisibilityValidator } from "./validators";
+import { presentText, userProfileVisibilityValidator } from "./validators";
 
 export const me = query({
   args: {},
@@ -41,6 +42,29 @@ export const upsertMe = mutation({
     await enforceRateLimit(ctx, "upsertMe");
     const user = await ensureCurrentUser(ctx);
     return user._id;
+  },
+});
+
+// Whether a Guest carrying the viewer's verified email exists — one the
+// sign-in's Claim (CONTEXT.md "Claim") has not merged yet, or leaves whole.
+// The apps' sign-in subscribes to it (@paper-pairings/core useEnsureUserRow)
+// and runs upsertMe again when the answer turns true, so an organizer
+// enrolling the viewer while their app is open is claimed as the enrollment
+// lands rather than at the next page load — no polling, and no write while
+// there is nothing to claim. Keyed by the identity's email exactly as the
+// Claim is (one bounded index read), and false, never an error, for a
+// viewer Convex has not verified or whose identity carries no email: each
+// app's root subscribes to this, and must not fall over on it.
+export const hasUnclaimedGuest = query({
+  args: {},
+  returns: v.boolean(),
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    const email = presentText(identity?.email);
+    if (email === undefined) {
+      return false;
+    }
+    return await anyGuestForEmail(ctx, email);
   },
 });
 

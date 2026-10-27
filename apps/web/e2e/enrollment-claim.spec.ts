@@ -6,15 +6,16 @@ import {
   holdToConfirm,
 } from './helpers'
 
-// An organizer enrolls a player by email; the player then merely opens the
-// app signed in with that email. The root-level sign-in (useEnsureUserRow)
-// runs the Claim, so the event page already shows them registered — no
-// Register click, no visit to settings — and the organizer's roster shows the
-// account's name in place of "Awaiting player details".
+// A player has the event page open, signed in and unregistered; an organizer
+// then enrolls them by email. The root-level sign-in (useEnsureUserRow)
+// subscribes to the Claim signal and runs the Claim as the enrollment lands,
+// so the open page shows them registered — no reload, no Register click, no
+// visit to settings — and the organizer's roster shows the account's name in
+// place of "Awaiting player details".
 const PLAYER_EMAIL = 'e2e-enrolled-player@example.com'
 const PLAYER_NAME = { firstName: 'Enrolled', lastName: 'Player' }
 
-test('an email-enrolled player is claimed by opening the app', async ({
+test('an email-enrolled player is claimed while their event page is open', async ({
   page,
   browser,
 }) => {
@@ -33,21 +34,7 @@ test('an email-enrolled player is claimed by opening the app', async ({
   )
   await expect(page.getByText('Open for registration').first()).toBeVisible()
 
-  // -- Enroll by email -----------------------------------------------------
-  await page.goto(`${managerUrl}/registrations`)
-  await page.getByRole('button', { name: 'Enroll player' }).click()
-  const dialog = page.getByRole('dialog', { name: 'Enroll a player' })
-  await dialog.getByLabel('Email').fill(PLAYER_EMAIL)
-  await dialog.getByRole('button', { name: 'Enroll player' }).click()
-  await expect(dialog).toBeHidden()
-  await expect(
-    page.getByText(`${PLAYER_EMAIL} has been enrolled.`, { exact: false }),
-  ).toBeVisible()
-  const row = page.getByRole('row', { name: new RegExp(PLAYER_EMAIL) })
-  await expect(row).toBeVisible()
-  await expect(row.getByText('Awaiting player details')).toBeVisible()
-
-  // -- The player opens the event page signed in ---------------------------
+  // -- The player opens the event page signed in, before any enrollment ----
   // browser.newContext() inherits the organizer storageState; reset it so
   // this context is the player's own.
   const playerContext = await browser.newContext({
@@ -57,6 +44,22 @@ test('an email-enrolled player is claimed by opening the app', async ({
   const playerPage = await playerContext.newPage()
   await signInWithTicket(playerPage, PLAYER_EMAIL, PLAYER_NAME)
   await playerPage.goto(`/tournaments/${publicCode}`)
+  await expect(
+    playerPage.getByRole('button', { name: 'Register for this event' }),
+  ).toBeVisible({ timeout: 30_000 })
+
+  // -- The organizer enrolls the email while that page stays open ----------
+  await page.goto(`${managerUrl}/registrations`)
+  await page.getByRole('button', { name: 'Enroll player' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Enroll a player' })
+  await dialog.getByLabel('Email').fill(PLAYER_EMAIL)
+  await dialog.getByRole('button', { name: 'Enroll player' }).click()
+  await expect(dialog).toBeHidden()
+  await expect(
+    page.getByText(`${PLAYER_EMAIL} has been enrolled.`, { exact: false }),
+  ).toBeVisible()
+
+  // -- The open page is claimed as the enrollment lands --------------------
   await expect(playerPage.getByText("You're registered")).toBeVisible({
     timeout: 30_000,
   })

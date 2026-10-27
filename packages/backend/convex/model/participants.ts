@@ -238,6 +238,17 @@ export async function claimGuestParticipants(
   return claimed;
 }
 
+// Whether any Guest carries a contact email: the Claim's own lookup
+// (guestsForEmail), reduced to the yes/no the apps' sign-in subscribes to
+// (users.ts hasUnclaimedGuest) so a Guest appearing under the viewer's
+// email while the app is open is claimed as it lands.
+export async function anyGuestForEmail(
+  ctx: QueryCtx,
+  email: string,
+): Promise<boolean> {
+  return (await guestsForEmail(ctx, normalizeEmail(email))).length > 0;
+}
+
 // Every Guest carrying a contact email — the rows the Claim examines, one
 // bounded index read.
 async function guestsForEmail(

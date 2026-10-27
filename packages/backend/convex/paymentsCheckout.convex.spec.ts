@@ -5,6 +5,7 @@ import { api, internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { patchOrder } from "./model/payments";
 import { ACCOUNT_NAME_REQUIRED } from "./model/users";
+import type { EntryCheckoutOutcome } from "./payments/checkout";
 import {
   insertLinkedParticipant,
   organizerIdentity,
@@ -75,6 +76,33 @@ beforeEach(() => {
 });
 
 const START_DATE = Date.UTC(2027, 5, 12, 17, 0, 0);
+
+// The Checkout URL a begun checkout redirects to. A checkout that answered
+// with an enrolled seat instead (EntryCheckoutOutcome "registered") is a
+// test failure here, not a missing URL.
+function checkoutUrl(outcome: EntryCheckoutOutcome): string {
+  if (outcome.kind !== "checkout") {
+    throw new Error(`Expected a checkout, got ${outcome.kind}`);
+  }
+  return outcome.url;
+}
+
+// The begin mutation on its own, narrowed to the checkout it filed — the
+// order and attempt token the attach tests drive by hand. A begin that
+// answered with an enrolled seat instead is a test failure here.
+async function beginCheckout(
+  asPlayer: ReturnType<TestConvex<typeof schema>["withIdentity"]>,
+  args: { tournamentId: Id<"tournaments">; inviteCode?: string },
+) {
+  const begin = await asPlayer.mutation(
+    internal.payments.checkout.beginEntryCheckout,
+    args,
+  );
+  if (begin.kind !== "checkout") {
+    throw new Error(`Expected a checkout, got ${begin.kind}`);
+  }
+  return begin;
+}
 
 function playerIdentity(n: number) {
   return {
@@ -281,9 +309,10 @@ test("direct paid registration: checkout, webhook confirm, idempotent redelivery
   await insertPlayerUser(t, 1);
   const asPlayer = t.withIdentity(playerIdentity(1));
 
-  const { url } = await asPlayer.action(
-    api.payments.checkout.createEntryCheckout,
-    { tournamentId },
+  const url = checkoutUrl(
+    await asPlayer.action(api.payments.checkout.createEntryCheckout, {
+      tournamentId,
+    }),
   );
   expect(url).toMatch(/^https:\/\/checkout\.stripe\.test\//);
 
@@ -456,14 +485,8 @@ test("concurrent checkouts: the newest attempt's attach wins and the stale one i
   const asPlayer = t.withIdentity(playerIdentity(1));
 
   // Both begins run before either attach — the double-click interleaving.
-  const beginA = await asPlayer.mutation(
-    internal.payments.checkout.beginEntryCheckout,
-    { tournamentId },
-  );
-  const beginB = await asPlayer.mutation(
-    internal.payments.checkout.beginEntryCheckout,
-    { tournamentId },
-  );
+  const beginA = await beginCheckout(asPlayer, { tournamentId });
+  const beginB = await beginCheckout(asPlayer, { tournamentId });
   expect(beginB.orderId).toBe(beginA.orderId);
   // Each begin persists its own attempt token — the Stripe idempotency
   // scope, so two attempts can never be handed the same session.
@@ -597,10 +620,7 @@ test("attach refuses an order a webhook closed mid-flight", async () => {
   await insertPlayerUser(t, 1);
   const asPlayer = t.withIdentity(playerIdentity(1));
 
-  const begin = await asPlayer.mutation(
-    internal.payments.checkout.beginEntryCheckout,
-    { tournamentId },
-  );
+  const begin = await beginCheckout(asPlayer, { tournamentId });
   await t.run(async (ctx) => {
     const order = (await ctx.db.get(begin.orderId))!;
     await patchOrder(ctx, order, { status: "canceled" });
@@ -685,10 +705,7 @@ test("a superseded session's expiry event cannot cancel the replacement checkout
   expect(first.stripeCheckoutSessionId).toBe("cs_test_1");
 
   // The retry's begin detaches the old session before the action expires it.
-  const begin = await asPlayer.mutation(
-    internal.payments.checkout.beginEntryCheckout,
-    { tournamentId },
-  );
+  const begin = await beginCheckout(asPlayer, { tournamentId });
   expect(begin.existingSessionId).toBe("cs_test_1");
 
   // The race under test: Stripe's checkout.session.expired for the old
@@ -821,9 +838,11 @@ test("a private paid event admits a first-time payer through its invite code", a
   ).rejects.toThrow("not open for registration");
 
   // The invite code opens the paid direct path end to end.
-  const { url } = await asPlayer.action(
-    api.payments.checkout.createEntryCheckout,
-    { tournamentId, inviteCode: code },
+  const url = checkoutUrl(
+    await asPlayer.action(api.payments.checkout.createEntryCheckout, {
+      tournamentId,
+      inviteCode: code,
+    }),
   );
   expect(url).toMatch(/^https:\/\/checkout\.stripe\.test\//);
   const order = await latestOrderFor(t, tournamentId, 1);
@@ -998,7 +1017,97 @@ test("the entry fee freezes once an order exists", async () => {
   ).rejects.toThrow("locked once a payment exists");
 });
 
-test("a checkout for an event where a guest the Claim could not merge holds the player's seat is refused and files no second entry", async () => {
+// The player's own view of the event, as the registration panel reads it.
+async function myRegistration(
+  t: TestConvex<typeof schema>,
+  tournamentId: Id<"tournaments">,
+  playerN: number,
+) {
+  return await t
+    .withIdentity(playerIdentity(playerN))
+    .query(api.tournaments.registrations.getMyRegistration, { tournamentId });
+}
+
+// Every entry row the event holds, oldest first.
+async function registrationRows(
+  t: TestConvex<typeof schema>,
+  tournamentId: Id<"tournaments">,
+) {
+  return await t.run(
+    async (ctx) =>
+      await ctx.db
+        .query("tournamentRegistrations")
+        .withIndex("by_tournamentId_and_participantId", (q) =>
+          q.eq("tournamentId", tournamentId),
+        )
+        .collect(),
+  );
+}
+
+async function orderCount(t: TestConvex<typeof schema>): Promise<number> {
+  return await t.run(
+    async (ctx) => (await ctx.db.query("paymentOrders").collect()).length,
+  );
+}
+
+test("an enrollment after the player's sign-in: the checkout answers with the enrolled seat, linked to the account, and takes no payment", async () => {
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const tournamentId = await seedPaidTournament(t, organizationId);
+  await insertPlayerUser(t, 1);
+  // The player's app is open: its root sign-in has run, with nothing to
+  // claim yet.
+  const asPlayer = t.withIdentity(playerIdentity(1));
+  await asPlayer.mutation(api.users.upsertMe, {});
+  // The organizer then enrolls the player's email: a Guest's confirmed,
+  // fee-exempt seat, which the open event page reads as not registered.
+  const enrolledSeat = await t
+    .withIdentity(organizerIdentity)
+    .mutation(api.tournaments.registrations.enrollPlayer, {
+      tournamentId,
+      email: playerIdentity(1).email,
+    });
+  expect(await myRegistration(t, tournamentId, 1)).toBeNull();
+
+  // The page's one action is the paid checkout. Its begin runs the sign-in,
+  // whose Claim hands the player the seat; the begin answers with that seat
+  // rather than refusing it — a refusal would roll the Claim back and leave
+  // the page showing "Register" under an "Already registered" toast.
+  const outcome = await asPlayer.action(
+    api.payments.checkout.createEntryCheckout,
+    { tournamentId },
+  );
+  expect(outcome).toEqual({ kind: "registered" });
+  expect(gatewayState.sessions).toHaveLength(0);
+  expect(await orderCount(t)).toBe(0);
+  expect(await myRegistration(t, tournamentId, 1)).toMatchObject({
+    _id: enrolledSeat,
+    entryStatus: "confirmed",
+    participationStatus: "active",
+    entryFeeExempt: true,
+    playerName: "Player 1",
+  });
+  expect(
+    (await registrationRows(t, tournamentId)).map((row) => row._id),
+  ).toEqual([enrolledSeat]);
+  expect(
+    (await tournamentDoc(t, tournamentId)).confirmedRegistrationCount,
+  ).toBe(1);
+  // The guest that carried the email is gone: one participant, the account's.
+  await t.run(async (ctx) => {
+    expect(await ctx.db.query("participants").collect()).toHaveLength(1);
+  });
+
+  // Holding the seat, a second checkout is the ordinary refusal.
+  await expect(
+    asPlayer.action(api.payments.checkout.createEntryCheckout, {
+      tournamentId,
+    }),
+  ).rejects.toThrow("Already registered");
+  expect(await orderCount(t)).toBe(0);
+});
+
+test("a checkout for an event where a guest the Claim could not merge holds the player's seat takes that seat over: no second entry, no payment", async () => {
   const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const tournamentId = await seedPaidTournament(t, organizationId);
@@ -1047,32 +1156,48 @@ test("a checkout for an event where a guest the Claim could not merge holds the 
     },
   );
 
-  // Paying would seat the same person twice; the enrolled seat is refused
-  // as already registered, with nothing filed and nothing to pay.
+  // The sign-in's Claim leaves the guest whole; the open event page reads
+  // the player as not registered, and offers only the paid checkout.
   const asPlayer = t.withIdentity(playerIdentity(1));
+  await asPlayer.mutation(api.users.upsertMe, {});
+  expect(await myRegistration(t, tournamentId, 1)).toBeNull();
+
+  // Paying would seat the same person twice, so the checkout takes the
+  // enrolled seat over (the targeted Claim) and answers with it: nothing
+  // filed, nothing to pay, and the hand-over committed — a refusal would
+  // roll it back, and with the collision keeping the guest from every
+  // later sign-in, the player could never reach their seat.
+  const outcome = await asPlayer.action(
+    api.payments.checkout.createEntryCheckout,
+    { tournamentId },
+  );
+  expect(outcome).toEqual({ kind: "registered" });
+  expect(gatewayState.sessions).toHaveLength(0);
+  expect(await orderCount(t)).toBe(0);
+  expect(await myRegistration(t, tournamentId, 1)).toMatchObject({
+    _id: enrolledSeat,
+    entryStatus: "confirmed",
+    entryFeeExempt: true,
+    playerName: "Player 1",
+  });
+  const rows = await registrationRows(t, tournamentId);
+  expect(rows.map((row) => row._id)).toEqual([enrolledSeat]);
+  expect(rows[0]!.participantId).not.toBe(guestId);
+  expect(
+    (await tournamentDoc(t, tournamentId)).confirmedRegistrationCount,
+  ).toBe(1);
+  // The guest keeps its other entry, still unclaimed beside the account's.
+  await t.run(async (ctx) => {
+    expect((await ctx.db.get(guestId))?.userId).toBeUndefined();
+  });
+
+  // Holding the seat, a second checkout is the ordinary refusal.
   await expect(
     asPlayer.mutation(internal.payments.checkout.beginEntryCheckout, {
       tournamentId,
     }),
   ).rejects.toThrow("Already registered");
-  const rows = await t.run(
-    async (ctx) =>
-      await ctx.db
-        .query("tournamentRegistrations")
-        .withIndex("by_tournamentId_and_participantId", (q) =>
-          q.eq("tournamentId", tournamentId),
-        )
-        .collect(),
-  );
-  expect(rows.map((row) => row._id)).toEqual([enrolledSeat]);
-  expect(
-    await t.run(
-      async (ctx) => (await ctx.db.query("paymentOrders").collect()).length,
-    ),
-  ).toBe(0);
-  expect(
-    (await tournamentDoc(t, tournamentId)).confirmedRegistrationCount,
-  ).toBe(1);
+  expect(await orderCount(t)).toBe(0);
 });
 
 test("paying back into an entry an organizer once named files it under the account's own name", async () => {
@@ -1095,10 +1220,7 @@ test("paying back into an entry an organizer once named files it under the accou
     tournamentId,
   });
 
-  const begin = await asPlayer.mutation(
-    internal.payments.checkout.beginEntryCheckout,
-    { tournamentId },
-  );
+  const begin = await beginCheckout(asPlayer, { tournamentId });
   expect(begin.totalCents).toBeGreaterThan(0);
   const pending = await t.run(async (ctx) => await ctx.db.get(registrationId));
   expect(pending).toMatchObject({

@@ -99,7 +99,16 @@ close them:
   run the sign-in once at the root, as soon as Convex verifies the viewer
   (`useEnsureUserRow` in `@paper-pairings/core`), and `registerSelf`
   returns a confirmed entry the Claim hands the player in that very call as
-  their registration rather than refusing it.
+  their registration rather than refusing it. A second review found the
+  one-time sign-in short of the promise: an organizer enrolling the player
+  after their app had opened — a tab left on the event page, a phone
+  resumed days later — was claimed by nothing until the next page load,
+  and the page kept showing the player unregistered. So the sign-in also
+  subscribes to whether a Guest carries the viewer's email
+  (`hasUnclaimedGuest`) and runs again when the answer turns true: the
+  entry is claimed as the enrollment lands, with no polling and no write
+  while there is nothing to claim. An answer that stays true — a Guest the
+  Claim leaves whole, below — runs nothing more.
 - **The targeted Claim.** The sign-in's Claim can leave a Guest whole: a
   history too long to merge in one transaction waits for the scheduled
   walk, and a collision in another event keeps the Guest unclaimed. A
@@ -111,7 +120,16 @@ close them:
   moved and stamped exactly as the Claim moves it; the walk skips rows the
   account now holds and carries on with the rest. The whole-guest rule
   stands for the automatic merge; this is the one row the player's own
-  action is about.
+  action is about. The checkout answers a confirmed entry either Claim
+  hands the player in that call as their registration, exactly as
+  `registerSelf` does: the first cut refused it as already registered, and
+  the refusal rolled the hand-over back, so a paid event's page — whose one
+  action is the checkout — told an enrolled player "already registered"
+  while still showing them unregistered, and with a collision elsewhere
+  keeping the Guest from every later sign-in, nothing could recover the
+  seat. An enrolled seat has nothing to pay for; the begin commits the
+  hand-over and the action reports it, and the page's live registration
+  query shows the seat.
 - **An organizer's name ends with the entry.** "Continue as guest" labels a
   Guest's entry for one event, and the Claim keeps that label on the live
   entry it hands to an account. It does not outlive the entry under an

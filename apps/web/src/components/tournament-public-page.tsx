@@ -389,11 +389,21 @@ function RegistrationPanel({
   const startCheckout = async () => {
     setCheckoutPending(true)
     try {
-      const { url } = await createEntryCheckout({
+      const outcome = await createEntryCheckout({
         tournamentId: tournament._id,
         inviteCode,
       })
-      window.location.assign(url)
+      if (outcome.kind === 'registered') {
+        // The organizer had enrolled this player, and the Claim handed them
+        // the seat in that very call: nothing to pay, and the panel above
+        // re-renders registered from the live registration query.
+        toast.success(
+          "You're already registered for this event — there's nothing to pay.",
+        )
+        setCheckoutPending(false)
+        return
+      }
+      window.location.assign(outcome.url)
     } catch (error) {
       toast.error(mutationErrorMessage(error, 'Could not start checkout.'))
       setCheckoutPending(false)

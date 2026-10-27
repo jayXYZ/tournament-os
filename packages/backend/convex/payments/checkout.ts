@@ -21,10 +21,7 @@ import {
 } from "../model/conventions";
 import { userError } from "../model/errors";
 import { inviteCodeGrantsAccess } from "../model/invites";
-import {
-  claimGuestEntryInTournament,
-  ensureParticipantForUser,
-} from "../model/participants";
+import { ensureParticipantForUser } from "../model/participants";
 import { setRegistrationState } from "../model/participation";
 import {
   createEntryOrder,
@@ -42,12 +39,12 @@ import {
 } from "../model/ticketTypes";
 import { tiebreakRandom } from "../model/random";
 import {
-  registrationForUser,
   registrationNameStamp,
   requireCapacityAvailable,
 } from "../model/registrations";
+import { heldOrClaimedEntry } from "../model/roster";
 import { requireTournament } from "../model/tournaments";
-import { ensureCurrentUser } from "../model/users";
+import { ensureCurrentUser, signInCurrentUser } from "../model/users";
 import { enforceRateLimit } from "../rateLimits";
 import { getStripeGateway, type StripeGateway } from "../stripe/client";
 import { requireStripeSecretKey, requireWebAppOrigin } from "../stripe/config";
@@ -86,35 +83,48 @@ function entryBlocksCheckout(
   }
 }
 
+// What the entry begin hands the action: a checkout to mint a session for,
+// or the registration an enrolled player already holds — handed to them by
+// the Claim in that very begin, with nothing to pay.
+type EntryCheckoutBegin =
+  | ({ kind: "checkout"; tournamentPublicCode: string } & CheckoutBegin)
+  | { kind: "registered"; registrationId: Id<"tournamentRegistrations"> };
+
 export const beginEntryCheckout = internalMutation({
   args: {
     tournamentId: v.id("tournaments"),
     inviteCode: v.optional(v.string()),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<EntryCheckoutBegin> => {
     await enforceRateLimit(ctx, "createCheckout");
-    const user = await ensureCurrentUser(ctx);
+    const { user, claimedRegistrationIds } = await signInCurrentUser(ctx);
     const tournament = await requireTournament(ctx, args.tournamentId);
     if (!isPaidEvent(tournament)) {
       throw userError("This event has no entry fee");
     }
-    // The row this checkout acts on: the account's, or — when it holds
-    // none — the entry a Guest carrying its email holds here, claimed now
-    // (claimGuestEntryInTournament). As in registerSelf, the Claim is how an
-    // enrolled entry becomes the player's own, and filing a pending row
-    // beside it would seat the same person twice once paid and leave the
-    // guest unclaimable. A claimed confirmed entry is refused below as
-    // already registered: an enrolled seat has nothing to pay for, and the
-    // refusal rolls the hand-over back, so the Claim finishes it at the
-    // player's next sign-in or in the scheduled walk, never with a second
-    // seat in between.
-    const existing =
-      (await registrationForUser(ctx, args.tournamentId, user._id)) ??
-      (await claimGuestEntryInTournament(ctx, {
-        user,
-        tournamentId: args.tournamentId,
-        now: Date.now(),
-      }));
+    // The row this checkout acts on (model/roster.ts heldOrClaimedEntry):
+    // the account's, or — when it holds none — the entry a Guest carrying
+    // its email holds here, claimed now. As in registerSelf, the Claim is
+    // how an enrolled entry becomes the player's own, and filing a pending
+    // row beside it would seat the same person twice once paid and leave
+    // the guest unclaimable. A confirmed entry either Claim handed the
+    // player in this call — the sign-in's just above, or the targeted one —
+    // is their registration: an enrolled seat has nothing to pay for, so
+    // the begin answers with it and the hand-over commits. Refusing it as
+    // already registered would roll the hand-over back with the refusal,
+    // and the paid-event page offers nothing but this checkout, so the
+    // player would be told "already registered" by a page that still shows
+    // them unregistered — for good, when a collision in another event keeps
+    // the guest from the sign-in's Claim.
+    const { entry: existing, claimedHere } = await heldOrClaimedEntry(ctx, {
+      tournamentId: args.tournamentId,
+      user,
+      claimedBySignIn: claimedRegistrationIds,
+      now: Date.now(),
+    });
+    if (claimedHere && existing?.entryStatus === "confirmed") {
+      return { kind: "registered", registrationId: existing._id };
+    }
     // Same admission gates as registerSelf: open lifecycle, and a private
     // event admits a first-time payer only through its invite code — an
     // existing row is the standing re-admission for a player already let in.
@@ -230,6 +240,7 @@ export const beginEntryCheckout = internalMutation({
     );
 
     return {
+      kind: "checkout",
       orderId: order._id,
       checkoutAttempt,
       transferGroup: orderTransferGroup(order._id),
@@ -517,26 +528,40 @@ async function mintAndAttachSession(
   return { url };
 }
 
-// Public entry point for both paid tournament flows; returns the
-// Stripe-hosted Checkout URL the client redirects to.
+// What a paid entry's checkout comes to: the Stripe-hosted Checkout URL the
+// client redirects to, or — for a player an organizer enrolled, whose seat
+// the Claim handed them in this very call (beginEntryCheckout) — their
+// registration, already confirmed, with nothing to pay and no page to go
+// to. The client's live registration query shows the seat from here.
+export type EntryCheckoutOutcome =
+  | { kind: "checkout"; url: string }
+  | { kind: "registered" };
+
+// Public entry point for both paid tournament flows.
 export const createEntryCheckout = action({
   args: {
     tournamentId: v.id("tournaments"),
     inviteCode: v.optional(v.string()),
   },
-  handler: async (ctx, args): Promise<{ url: string }> => {
+  handler: async (ctx, args): Promise<EntryCheckoutOutcome> => {
     const secretKey = requireStripeSecretKey();
     const origin = requireWebAppOrigin();
     const gateway = getStripeGateway(secretKey);
 
-    const begin: CheckoutBegin & { tournamentPublicCode: string } =
-      await ctx.runMutation(internal.payments.checkout.beginEntryCheckout, {
+    const begin: EntryCheckoutBegin = await ctx.runMutation(
+      internal.payments.checkout.beginEntryCheckout,
+      {
         tournamentId: args.tournamentId,
         inviteCode: args.inviteCode,
-      });
+      },
+    );
+    if (begin.kind === "registered") {
+      return { kind: "registered" };
+    }
 
     const eventUrl = `${origin}/tournaments/${begin.tournamentPublicCode}`;
-    return await mintAndAttachSession(ctx, gateway, begin, eventUrl);
+    const { url } = await mintAndAttachSession(ctx, gateway, begin, eventUrl);
+    return { kind: "checkout", url };
   },
 });
 

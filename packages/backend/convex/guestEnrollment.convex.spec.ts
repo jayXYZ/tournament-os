@@ -230,6 +230,50 @@ test("the account holder's next authenticated action claims the entry and gives 
   expect(mine.map((entry) => entry.registration._id)).toEqual([registrationId]);
 });
 
+test("the sign-in's Claim signal: true while a Guest carries the viewer's email, false once the Claim merges it, never for a nameless Guest or a viewer without an email", async () => {
+  const t = createConvexTest();
+  const { tournamentId } = await seedOpenTournament(t);
+  const organizer = t.withIdentity(organizerIdentity);
+  await insertPlayerUser(t, 1);
+  const player = t.withIdentity(playerIdentity(1));
+  const signal = () => player.query(api.users.hasUnclaimedGuest, {});
+
+  // The app is open with nothing enrolled: nothing to claim.
+  await player.mutation(api.users.upsertMe, {});
+  expect(await signal()).toBe(false);
+
+  // The organizer enrolls the player's email while the app stays open: the
+  // signal turns true, and the open app's sign-in runs on it
+  // (useEnsureUserRow) — the address matched however it was typed.
+  const registrationId = await organizer.mutation(
+    api.tournaments.registrations.enrollPlayer,
+    { tournamentId, email: ` ${playerIdentity(1).email.toUpperCase()} ` },
+  );
+  expect(await signal()).toBe(true);
+  await player.mutation(api.users.upsertMe, {});
+  expect(await signal()).toBe(false);
+  expect(
+    await player.query(api.tournaments.registrations.getMyRegistration, {
+      tournamentId,
+    }),
+  ).toMatchObject({ _id: registrationId, playerName: "Player 1" });
+
+  // A guest added by name carries no email: nobody's to claim.
+  await organizer.mutation(api.tournaments.registrations.addGuest, {
+    tournamentId,
+    displayName: "Walk-up Wanda",
+  });
+  expect(await signal()).toBe(false);
+
+  // Read at every app's root, the signal answers false rather than throwing
+  // for a viewer Convex has not verified or whose identity has no email.
+  expect(await t.query(api.users.hasUnclaimedGuest, {})).toBe(false);
+  const { email: _email, ...withoutEmail } = playerIdentity(2);
+  expect(
+    await t.withIdentity(withoutEmail).query(api.users.hasUnclaimedGuest, {}),
+  ).toBe(false);
+});
+
 test("an email enrollment is claimed only by a sign-in that carries a name", async () => {
   const t = createConvexTest();
   const { tournamentId } = await seedOpenTournament(t);
@@ -1101,7 +1145,9 @@ test("a Claim collision leaves both entries in one event separate, and the guest
   expect(await confirmedCount(t, tournamentId)).toBe(2);
 
   // Dup A signs in: the guest would collide with their own row, so it stays
-  // a separate, unclaimed entry — nothing merged, nothing discarded.
+  // a separate, unclaimed entry — nothing merged, nothing discarded. The
+  // Claim signal stays true for it, which the open app's sign-in reads as
+  // nothing new to run on (useEnsureUserRow).
   await t.withIdentity(dupA).mutation(api.users.upsertMe, {});
   const guestRegistration = await getRegistration(t, guestRow);
   await t.run(async (ctx) => {
@@ -1109,6 +1155,9 @@ test("a Claim collision leaves both entries in one event separate, and the guest
     expect(guest?.userId).toBeUndefined();
     expect(guest?.contactEmail).toBe("shared@example.test");
   });
+  expect(
+    await t.withIdentity(dupA).query(api.users.hasUnclaimedGuest, {}),
+  ).toBe(true);
   expect(await confirmedCount(t, tournamentId)).toBe(2);
   const roster = await organizerRegistrationRows(t, tournamentId);
   expect(
