@@ -1,6 +1,9 @@
 import { ClerkProvider, useAuth } from "@clerk/expo";
 import { tokenCache } from "@clerk/expo/token-cache";
-import { ConvexClerkAuthProvider } from "@paper-pairings/core";
+import {
+  ConvexClerkAuthProvider,
+  useEnsureUserRow,
+} from "@paper-pairings/core";
 import * as Sentry from "@sentry/react-native";
 import { DarkTheme, Stack, ThemeProvider } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -72,6 +75,7 @@ function RootLayout() {
   return (
     <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
       <ConvexClerkAuthProvider client={convex} useAuth={useAuth}>
+        <EnsureUserRow />
         <ThemeProvider value={navigationTheme}>
           <StatusBar style="light" />
           <Stack
@@ -97,6 +101,16 @@ function RootLayout() {
       </ConvexClerkAuthProvider>
     </ClerkProvider>
   );
+}
+
+// The app's sign-in (see @paper-pairings/core useEnsureUserRow): runs once
+// Convex verifies the viewer, so the users row exists and the entries an
+// organizer enrolled under the account's email are claimed before the home
+// screen lists the viewer's tournaments. Nothing here gates on its outcome —
+// a refusal leaves the list as it would be without a row — so no error UI.
+function EnsureUserRow() {
+  useEnsureUserRow();
+  return null;
 }
 
 export default sentryDsn ? Sentry.wrap(RootLayout) : RootLayout;

@@ -83,3 +83,53 @@ admission, a usable display name, and account association.
 Personal invitations — an emailed invite the player accepts, or a pay-later
 enrollment — are deliberately out of scope; the shareable Invite Link covers
 the organizer who wants to email a player a way in.
+
+### Review follow-ups, 2026-10-27
+
+Three gaps the review of the enrollment redesign found, and the rules that
+close them:
+
+- **Opening the app is a sign-in.** "The Claim runs on every authenticated
+  mutation" was only a promise while the web app ran the sign-in
+  (`upsertMe`) on the settings page and in the organizer workspace; player
+  pages only query, so an enrolled account holder opening their event page
+  read as not registered, and the Register button could not recover — the
+  sign-in inside `registerSelf` claimed the entry, the verb refused it as
+  already registered, and the refusal rolled the Claim back. Both apps now
+  run the sign-in once at the root, as soon as Convex verifies the viewer
+  (`useEnsureUserRow` in `@paper-pairings/core`), and `registerSelf`
+  returns a confirmed entry the Claim hands the player in that very call as
+  their registration rather than refusing it.
+- **The targeted Claim.** The sign-in's Claim can leave a Guest whole: a
+  history too long to merge in one transaction waits for the scheduled
+  walk, and a collision in another event keeps the Guest unclaimed. A
+  self-registration or checkout that then ignored the Guest's entry in the
+  event would seat the same person twice, and the seat it filed would be
+  the collision that keeps the Guest unclaimed for good. So `registerSelf`
+  and the entry checkout first take over the entry a Guest carrying the
+  account's email holds in that event (`claimGuestEntryInTournament`),
+  moved and stamped exactly as the Claim moves it; the walk skips rows the
+  account now holds and carries on with the rest. The whole-guest rule
+  stands for the automatic merge; this is the one row the player's own
+  action is about.
+- **An organizer's name ends with the entry.** "Continue as guest" labels a
+  Guest's entry for one event, and the Claim keeps that label on the live
+  entry it hands to an account. It does not outlive the entry under an
+  account holder: cancelling an account holder's entry (by the player or
+  the organizer) or the player's own re-entry drops `organizerNamed` and
+  stamps the account's name, which the sign-in re-stamp then keeps
+  current; a cancelled entry the Claim hands to an account takes the
+  account's name the same way. Before this, a re-entered entry carried the
+  account's name under `organizerNamed` and was frozen there for good. A
+  Guest's cancelled entry keeps its name — it has no other, and an
+  organizer reinstating it should not have to name it again. Organizers
+  name guests, never account holders.
+
+The stale-cache concern the review also raised — an account whose cached
+email the provider has since reassigned, re-seated by an enrollment of that
+email — is closed by configuration rather than code: email addresses cannot
+be changed on a profile at the identity provider, so a cached email only
+goes stale through an operator action (an account deleted and re-created
+under the same address, a dashboard edit), and for those the sign-in's
+release of stale copies and the ambiguous-holder rule in `userByEmail`
+remain the guard.

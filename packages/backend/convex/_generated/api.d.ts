@@ -27,6 +27,7 @@ import type * as model_errors from "../model/errors.js";
 import type * as model_invites from "../model/invites.js";
 import type * as model_manualPairing from "../model/manualPairing.js";
 import type * as model_matchResults from "../model/matchResults.js";
+import type * as model_nameStamps from "../model/nameStamps.js";
 import type * as model_nextStep from "../model/nextStep.js";
 import type * as model_pagination from "../model/pagination.js";
 import type * as model_paidEventOwner from "../model/paidEventOwner.js";
@@ -102,6 +103,7 @@ declare const fullApi: ApiFromModules<{
   "model/invites": typeof model_invites;
   "model/manualPairing": typeof model_manualPairing;
   "model/matchResults": typeof model_matchResults;
+  "model/nameStamps": typeof model_nameStamps;
   "model/nextStep": typeof model_nextStep;
   "model/pagination": typeof model_pagination;
   "model/paidEventOwner": typeof model_paidEventOwner;

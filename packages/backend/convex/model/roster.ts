@@ -19,6 +19,7 @@ import { userError } from "./errors";
 import { inviteCodeGrantsAccess } from "./invites";
 import { concedeUnfinishedMatchOnDrop } from "./matchResults";
 import {
+  claimGuestEntryInTournament,
   createGuestParticipant,
   ensureParticipantForUser,
   guestParticipantForEmail,
@@ -223,6 +224,7 @@ export async function cancelEntry(
     entryStatus: "cancelled",
     updatedAt: now,
   });
+  await dropOrganizerNameFromAccountEntry(ctx, registration, now);
   if (cancelEffect === "release") {
     await adjustConfirmedRegistrationCount(ctx, tournament, -1, now);
   }
@@ -243,6 +245,40 @@ export async function cancelEntry(
     actor,
     actorRole,
   });
+}
+
+// An organizer's name for an entry ("Continue as guest", organizerNamed)
+// labels a Guest's entry for one event, and the Claim keeps it on the live
+// entry it hands to an account (CONTEXT.md "Claim"). It ends with the
+// entry: organizers name guests, not account holders, so once an account
+// holder's entry is cancelled — here — or re-entered by the player
+// (registerEntry, the checkout) the label is dropped and the account's own
+// name takes over, which the sign-in re-stamp then keeps current. A Guest's
+// cancelled entry keeps its name: it has no other, and the organizer who
+// reinstates it should not have to name it again.
+async function dropOrganizerNameFromAccountEntry(
+  ctx: MutationCtx,
+  registration: Doc<"tournamentRegistrations">,
+  now: number,
+): Promise<void> {
+  if (!registration.organizerNamed) {
+    return;
+  }
+  const participant = await ctx.db.get(registration.participantId);
+  const user =
+    participant?.userId === undefined
+      ? null
+      : await ctx.db.get(participant.userId);
+  if (!user) {
+    return;
+  }
+  await restampRegistrationRow(
+    ctx,
+    registration,
+    registrationNameStamp(user),
+    now,
+    { organizerNamed: undefined },
+  );
 }
 
 // Whether re-admitting an entry skips the entry-fee order: an organizer
@@ -579,19 +615,52 @@ function existingEntryBlocksRegistration(
 // for the Review Queue. Owns the entry gates (lifecycle, the private-event
 // grants, the badge gate, the paid-event checkout redirect, capacity), the
 // registration write, the seat counter, and the audit event.
+//
+// An entry the organizer enrolled for this player (CONTEXT.md "Enrollment")
+// is the player's own entry in the event, and the Claim is how they come to
+// hold it. Two Claims can reach it from here: the sign-in's, which ran just
+// before this (claimedBySignIn is what it moved), and the targeted one for
+// a guest the sign-in's could not merge whole — a history too long for one
+// transaction, or a collision in another event
+// (claimGuestEntryInTournament). Without the latter, this verb would file
+// a second entry for the same person beside the guest's, and the seat it
+// filed would be the collision that then keeps the guest unclaimed for
+// good. A confirmed entry either Claim hands the player in this call is
+// returned as their registration: nothing is left to file, and refusing it
+// as "already registered" would roll the Claim back with the refusal,
+// leaving the player unlinked from a seat they hold. Any other entry the
+// Claim hands over is the row this verb acts on, exactly as a row the
+// account held already — re-entering a cancelled one, refusing the rest.
 export async function registerEntry(
   ctx: MutationCtx,
   {
     tournament,
     user,
     inviteCode,
+    claimedBySignIn,
   }: {
     tournament: Doc<"tournaments">;
     user: Doc<"users">;
     inviteCode?: string;
+    claimedBySignIn: Id<"tournamentRegistrations">[];
   },
 ): Promise<Id<"tournamentRegistrations">> {
-  const existing = await registrationForUser(ctx, tournament._id, user._id);
+  const now = Date.now();
+  const held = await registrationForUser(ctx, tournament._id, user._id);
+  const claimed =
+    held === null
+      ? await claimGuestEntryInTournament(ctx, {
+          user,
+          tournamentId: tournament._id,
+          now,
+        })
+      : claimedBySignIn.includes(held._id)
+        ? held
+        : null;
+  if (claimed?.entryStatus === "confirmed") {
+    return claimed._id;
+  }
+  const existing = held ?? claimed;
   // A private event takes no registrations off the public page. Two grants
   // get past that: the event's invite code, which is the organizer's way of
   // letting new players in at all — and an existing row, because a player
@@ -665,7 +734,6 @@ export async function registerEntry(
         entryStatus: "confirmed" as const,
         participationStatus: "active" as const,
       };
-  const now = Date.now();
   const nameStamp = registrationNameStamp(user);
   const participant = await ensureParticipantForUser(ctx, user._id);
   const registrationId =
@@ -687,9 +755,13 @@ export async function registerEntry(
     await setRegistrationState(ctx, existing._id, {
       ...admission,
       ...nameStamp,
-      // A player's own re-entry is under the event's ordinary terms, so an
-      // earlier enrollment's fee exemption does not carry over.
+      // A player's own re-entry is under the event's ordinary terms and
+      // under the player's own name: an earlier enrollment's fee exemption
+      // does not carry over, and neither does the name an organizer gave
+      // the entry (dropOrganizerNameFromAccountEntry) — the account's name
+      // is stamped above, and the sign-in re-stamp keeps it current.
       entryFeeExempt: undefined,
+      organizerNamed: undefined,
       tournamentStartDate: tournament.startDate,
       updatedAt: now,
     });

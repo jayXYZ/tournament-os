@@ -38,7 +38,8 @@ export function PlayerSettingsPage() {
 
 function SettingsContent() {
   // A Clerk session can exist before its users row does (first visit); the
-  // upsert also refreshes name/avatar from the identity.
+  // root-level sign-in (EnsureUserRowProvider) creates it, and this page
+  // reads that sign-in's outcome to surface a refusal.
   const { failure: upsertFailure, retry: retryUpsert } = useEnsureUserRow()
 
   const me = useQuery(api.users.me)

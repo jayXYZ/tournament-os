@@ -40,6 +40,10 @@ session through `window.Clerk`, and saves the browser storage state to
   `match_conceded` audit event) and the round completes off the concession.
 - `invite-links.spec.ts` — the `/join/<code>` route and `?invite` param for
   private events, plus the invite-link settings card (regenerate/disable).
+- `enrollment-claim.spec.ts` — an organizer enrolls a player by email; the
+  player opening the event page signed in is already registered (the
+  root-level sign-in runs the Claim), and the roster shows the account's
+  name in place of "Awaiting player details".
 
 ## Test data
 

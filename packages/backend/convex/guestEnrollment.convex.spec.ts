@@ -24,6 +24,7 @@ import {
   insertLinkedParticipant,
   organizerIdentity,
   playerIdentity,
+  rawSeed,
   rejection,
   seedOrganizer,
 } from "./specHelpers";
@@ -387,7 +388,10 @@ test("Continue as guest names the entry for this event only, keeping its row, em
   expect((await getRegistration(t, firstId))?.playerName).toBe("Gary G.");
   expect((await getRegistration(t, secondId))?.playerName).toBe("Garrett");
 
-  // The claimed, organizer-named entry still reseats free on the paid event.
+  // The claimed entry still reseats free on the paid event. The event's
+  // name ended with the entry, though: cancelling an account holder's entry
+  // drops the organizer's label for the account's own name (organizers
+  // name guests, not account holders), so it comes back as Garrett.
   await organizer.mutation(api.tournaments.registrations.dropRegistration, {
     registrationId: firstId,
   });
@@ -397,11 +401,13 @@ test("Continue as guest names the entry for this event only, keeping its row, em
       registrationId: firstId,
     },
   );
-  expect(await getRegistration(t, firstId)).toMatchObject({
+  const reseated = await getRegistration(t, firstId);
+  expect(reseated).toMatchObject({
     entryStatus: "confirmed",
     entryFeeExempt: true,
-    playerName: "Gary G.",
+    playerName: "Garrett",
   });
+  expect(reseated?.organizerNamed).toBeUndefined();
   expect(await orderCount(t)).toBe(0);
 });
 
@@ -1165,6 +1171,280 @@ test("the Claim follows the account that holds the email now, not a stale cached
     expect(participant?.userId).toBe(newHolderId);
     expect(registration?.playerName).toBe("New Holder");
   });
+});
+
+test("a player's own registration into an event they were enrolled in takes over the enrolled entry", async () => {
+  const t = createConvexTest();
+  const { tournamentId } = await seedOpenTournament(t);
+  const organizer = t.withIdentity(organizerIdentity);
+  const registrationId = await organizer.mutation(
+    api.tournaments.registrations.enrollPlayer,
+    { tournamentId, email: playerIdentity(1).email },
+  );
+
+  // Registering is the first thing the player does signed in: the sign-in's
+  // Claim hands them the enrolled entry, and the registration is that entry
+  // — not a refusal, which would roll the Claim back with it.
+  const player = t.withIdentity(playerIdentity(1));
+  expect(
+    await player.mutation(api.tournaments.registrations.registerSelf, {
+      tournamentId,
+    }),
+  ).toBe(registrationId);
+  expect(
+    await player.query(api.tournaments.registrations.getMyRegistration, {
+      tournamentId,
+    }),
+  ).toMatchObject({
+    _id: registrationId,
+    entryStatus: "confirmed",
+    participationStatus: "active",
+    entryFeeExempt: true,
+    playerName: "Player 1",
+  });
+  expect(await confirmedCount(t, tournamentId)).toBe(1);
+  expect(await organizerRegistrationRows(t, tournamentId)).toHaveLength(1);
+  // Nothing was filed: the roster saw an enrollment, never a registration.
+  expect(
+    await auditEventsOfType(t, tournamentId, "player_registered"),
+  ).toHaveLength(0);
+  await t.run(async (ctx) => {
+    expect(await ctx.db.query("participants").collect()).toHaveLength(1);
+  });
+
+  // Holding the seat, a second attempt is the ordinary refusal.
+  await expectRefusal(
+    player.mutation(api.tournaments.registrations.registerSelf, {
+      tournamentId,
+    }),
+    "Already registered",
+  );
+});
+
+test("a player registering into an event where a guest the Claim could not merge holds their entry takes that entry, never a second seat", async () => {
+  const t = createConvexTest();
+  const { tournamentId: shared, organizationId } = await seedOpenTournament(t);
+  const enrolledIn = await createOpenTournament(t, organizationId, "Enrolled");
+  const cancelledIn = await createOpenTournament(
+    t,
+    organizationId,
+    "Cancelled",
+  );
+  const organizer = t.withIdentity(organizerIdentity);
+  const enroll = (tournamentId: Id<"tournaments">) =>
+    organizer.mutation(api.tournaments.registrations.enrollPlayer, {
+      tournamentId,
+      email: playerIdentity(1).email,
+    });
+  // One Guest, enrolled in three events: seated in two, and in the third
+  // named for the event and then removed.
+  const sharedGuestRow = await enroll(shared);
+  const enrolledRow = await enroll(enrolledIn);
+  const cancelledRow = await enroll(cancelledIn);
+  await organizer.mutation(api.tournaments.registrations.continueAsGuest, {
+    registrationId: cancelledRow,
+    displayName: "Event Alias",
+  });
+  await organizer.mutation(api.tournaments.registrations.dropRegistration, {
+    registrationId: cancelledRow,
+  });
+  const guestId = (await getRegistration(t, sharedGuestRow))!.participantId;
+  // The account holds its own entry in the shared event beside the guest's
+  // — the collision that keeps the guest whole and unclaimed at sign-in.
+  const userId = await insertPlayerUser(t, 1);
+  const accountSharedRow = await rawSeed(
+    t,
+    "a Claim collision: the account's own entry in an event the guest is also entered in, which no public write files beside a guest carrying the account's email",
+    async (ctx) => {
+      const tournament = (await ctx.db.get(shared))!;
+      const participantId = await insertLinkedParticipant(ctx, userId);
+      const now = Date.now();
+      const registrationId = await ctx.db.insert("tournamentRegistrations", {
+        tournamentId: shared,
+        participantId,
+        tournamentStartDate: tournament.startDate,
+        entryStatus: "confirmed",
+        participationStatus: "active",
+        playerName: "Player 1",
+        organizerLabel: "Player 1",
+        createdAt: now,
+        tiebreakRandom: 1,
+        updatedAt: now,
+      });
+      await ctx.db.patch(shared, {
+        confirmedRegistrationCount: tournament.confirmedRegistrationCount + 1,
+      });
+      return registrationId;
+    },
+  );
+  const player = t.withIdentity(playerIdentity(1));
+  await player.mutation(api.users.upsertMe, {});
+  expect((await getRegistration(t, enrolledRow))?.participantId).toBe(guestId);
+
+  // The seat the organizer enrolled is the player's registration there.
+  expect(
+    await player.mutation(api.tournaments.registrations.registerSelf, {
+      tournamentId: enrolledIn,
+    }),
+  ).toBe(enrolledRow);
+  const claimedSeat = await getRegistration(t, enrolledRow);
+  expect(claimedSeat).toMatchObject({
+    entryStatus: "confirmed",
+    entryFeeExempt: true,
+    playerName: "Player 1",
+  });
+  expect(claimedSeat?.participantId).not.toBe(guestId);
+  expect(await confirmedCount(t, enrolledIn)).toBe(1);
+  expect(await organizerRegistrationRows(t, enrolledIn)).toHaveLength(1);
+
+  // The removed entry is re-entered the same way a cancelled row of the
+  // account's own would be: on the player's terms and under their name.
+  expect(
+    await player.mutation(api.tournaments.registrations.registerSelf, {
+      tournamentId: cancelledIn,
+    }),
+  ).toBe(cancelledRow);
+  const reentered = await getRegistration(t, cancelledRow);
+  expect(reentered).toMatchObject({
+    entryStatus: "confirmed",
+    participationStatus: "active",
+    playerName: "Player 1",
+    organizerLabel: "Player 1",
+  });
+  expect(reentered?.entryFeeExempt).toBeUndefined();
+  expect(reentered?.organizerNamed).toBeUndefined();
+  expect(reentered?.participantId).toBe(claimedSeat?.participantId);
+  expect(await confirmedCount(t, cancelledIn)).toBe(1);
+  expect(await organizerRegistrationRows(t, cancelledIn)).toHaveLength(1);
+
+  // The shared event keeps both entrants, and the guest with its one entry.
+  expect((await getRegistration(t, sharedGuestRow))?.participantId).toBe(
+    guestId,
+  );
+  expect((await getRegistration(t, accountSharedRow))?.participantId).toBe(
+    claimedSeat?.participantId,
+  );
+  expect(await confirmedCount(t, shared)).toBe(2);
+  await t.run(async (ctx) => {
+    expect((await ctx.db.get(guestId))?.contactEmail).toBe(
+      playerIdentity(1).email,
+    );
+  });
+});
+
+test("an organizer's name for an entry ends with the entry: an account holder's cancellation or re-entry drops it for the account's name", async () => {
+  const t = createConvexTest();
+  const { tournamentId, organizationId } = await seedOpenTournament(t);
+  const organizer = t.withIdentity(organizerIdentity);
+  const registrationId = await organizer.mutation(
+    api.tournaments.registrations.enrollPlayer,
+    { tournamentId, email: playerIdentity(1).email },
+  );
+  await organizer.mutation(api.tournaments.registrations.continueAsGuest, {
+    registrationId,
+    displayName: "Event Alias",
+  });
+  const player = t.withIdentity(playerIdentity(1));
+  await player.mutation(api.users.upsertMe, {});
+  expect(await getRegistration(t, registrationId)).toMatchObject({
+    playerName: "Event Alias",
+    organizerNamed: true,
+  });
+
+  // Cancelling the claimed entry drops the event's label: the entry is an
+  // account holder's now, labelled by the account.
+  await player.mutation(api.tournaments.registrations.cancelMyRegistration, {
+    tournamentId,
+  });
+  const cancelled = await getRegistration(t, registrationId);
+  expect(cancelled).toMatchObject({
+    entryStatus: "cancelled",
+    playerName: "Player 1",
+    organizerLabel: "Player 1",
+  });
+  expect(cancelled?.organizerNamed).toBeUndefined();
+
+  // Re-entering keeps it that way, and the account's later rename reaches
+  // the entry like any of the account's rows — it is no longer frozen.
+  await player.mutation(api.tournaments.registrations.registerSelf, {
+    tournamentId,
+  });
+  const reentered = await getRegistration(t, registrationId);
+  expect(reentered).toMatchObject({
+    entryStatus: "confirmed",
+    playerName: "Player 1",
+  });
+  expect(reentered?.organizerNamed).toBeUndefined();
+  const renamed = t.withIdentity({
+    ...playerIdentity(1),
+    name: "Updated Profile Name",
+  });
+  await renamed.mutation(api.users.upsertMe, {});
+  expect(await getRegistration(t, registrationId)).toMatchObject({
+    playerName: "Updated Profile Name",
+    organizerLabel: "Updated Profile Name",
+  });
+
+  // The organizer's own removal of an account holder's named entry drops
+  // the label the same way, so reinstating seats the account under its name.
+  const second = await createOpenTournament(t, organizationId, "Second");
+  const secondId = await organizer.mutation(
+    api.tournaments.registrations.enrollPlayer,
+    { tournamentId: second, email: playerIdentity(1).email },
+  );
+  await organizer.mutation(api.tournaments.registrations.continueAsGuest, {
+    registrationId: secondId,
+    displayName: "Second Alias",
+  });
+  await renamed.mutation(api.users.upsertMe, {});
+  expect((await getRegistration(t, secondId))?.playerName).toBe("Second Alias");
+  await organizer.mutation(api.tournaments.registrations.dropRegistration, {
+    registrationId: secondId,
+  });
+  expect(await getRegistration(t, secondId)).toMatchObject({
+    entryStatus: "cancelled",
+    playerName: "Updated Profile Name",
+  });
+  expect((await getRegistration(t, secondId))?.organizerNamed).toBeUndefined();
+  await organizer.mutation(
+    api.tournaments.registrations.reinstateRegistration,
+    { registrationId: secondId },
+  );
+  expect(await getRegistration(t, secondId)).toMatchObject({
+    entryStatus: "confirmed",
+    playerName: "Updated Profile Name",
+  });
+
+  // A Guest's cancelled entry keeps the name it was given — it has no
+  // other — and the Claim that hands a cancelled entry to an account gives
+  // it the account's name rather than carrying the label over.
+  const third = await createOpenTournament(t, organizationId, "Third");
+  const thirdId = await organizer.mutation(
+    api.tournaments.registrations.enrollPlayer,
+    { tournamentId: third, email: "gary@example.test" },
+  );
+  await organizer.mutation(api.tournaments.registrations.continueAsGuest, {
+    registrationId: thirdId,
+    displayName: "Gary G.",
+  });
+  await organizer.mutation(api.tournaments.registrations.dropRegistration, {
+    registrationId: thirdId,
+  });
+  expect(await getRegistration(t, thirdId)).toMatchObject({
+    entryStatus: "cancelled",
+    playerName: "Gary G.",
+    organizerNamed: true,
+  });
+  await t
+    .withIdentity(guestIdentity("gary@example.test", "Garrett"))
+    .mutation(api.users.upsertMe, {});
+  const claimedCancelled = await getRegistration(t, thirdId);
+  expect(claimedCancelled).toMatchObject({
+    entryStatus: "cancelled",
+    playerName: "Garrett",
+    organizerLabel: "Garrett",
+  });
+  expect(claimedCancelled?.organizerNamed).toBeUndefined();
 });
 
 async function seedOpenTournament(

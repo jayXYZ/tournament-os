@@ -192,26 +192,26 @@ export async function publicIdentityForRegistration(
 // (startGuestClaimWalk). Each moved entry is stamped from the account
 // (claimedRegistrationStamp), which is how an entry enrolled by email gains
 // its name: the player authenticated after the enrollment with a usable
-// name, and the entry stops awaiting player details.
+// name, and the entry stops awaiting player details. Returns the entries it
+// moved here and now (the walk's are not included), for the one caller that
+// must tell a seat this Claim just handed the player from one they already
+// held (model/roster.ts registerEntry).
 export async function claimGuestParticipants(
   ctx: MutationCtx,
   args: { userId: Id<"users">; email?: string; now: number },
-): Promise<void> {
+): Promise<Id<"tournamentRegistrations">[]> {
   if (!args.email) {
-    return;
+    return [];
   }
   const email = normalizeEmail(args.email);
-  const matches = await ctx.db
-    .query("participants")
-    .withIndex("by_contactEmail", (q) => q.eq("contactEmail", email))
-    .take(CLAIMABLE_GUESTS_BOUND);
-  const guests = matches.filter((match) => match.userId === undefined);
+  const guests = await guestsForEmail(ctx, email);
   if (guests.length === 0) {
-    return;
+    return [];
   }
 
   const claimer = await ensureParticipantForUser(ctx, args.userId);
   const stamp = await claimedRegistrationStamp(ctx, claimer);
+  const claimed: Id<"tournamentRegistrations">[] = [];
   for (const guest of guests) {
     const guestRegistrations = await guestRegistrationsQuery(
       ctx,
@@ -231,9 +231,82 @@ export async function claimGuestParticipants(
         stamp,
         now: args.now,
       });
+      claimed.push(registration._id);
     }
     await ctx.db.delete(guest._id);
   }
+  return claimed;
+}
+
+// Every Guest carrying a contact email — the rows the Claim examines, one
+// bounded index read.
+async function guestsForEmail(
+  ctx: QueryCtx,
+  email: string,
+): Promise<Doc<"participants">[]> {
+  const matches = await ctx.db
+    .query("participants")
+    .withIndex("by_contactEmail", (q) => q.eq("contactEmail", email))
+    .take(CLAIMABLE_GUESTS_BOUND);
+  return matches.filter((match) => match.userId === undefined);
+}
+
+// The Claim's targeted form, for the account holder's own entry into one
+// event (model/roster.ts registerEntry, payments/checkout.ts
+// beginEntryCheckout): the entry a Guest carrying the account's email holds
+// in that tournament is handed to the account before the account files one
+// of its own. The sign-in Claim can leave such an entry with the guest — a
+// history too long to merge inline is walked afterwards (startGuestClaimWalk),
+// and a guest colliding with the account in another event stays unclaimed —
+// and a self-registration that overlooked it would seat the same person
+// twice in one event, then be the very collision the walk refuses. So the
+// entry the player already has in the event is theirs: moved and stamped
+// exactly as the Claim moves it (moveRegistrationToClaimer), the guest
+// deleted once nothing else points at it, and the walk — which skips rows
+// the account now holds — carries on with the rest. Null when no guest holds
+// a row in the tournament. The account must hold no row there, which the
+// callers establish first.
+export async function claimGuestEntryInTournament(
+  ctx: MutationCtx,
+  args: { user: Doc<"users">; tournamentId: Id<"tournaments">; now: number },
+): Promise<Doc<"tournamentRegistrations"> | null> {
+  if (args.user.email === undefined) {
+    return null;
+  }
+  for (const guest of await guestsForEmail(ctx, args.user.email)) {
+    const registration = await ctx.db
+      .query("tournamentRegistrations")
+      .withIndex("by_tournamentId_and_participantId", (q) =>
+        q.eq("tournamentId", args.tournamentId).eq("participantId", guest._id),
+      )
+      .unique();
+    if (!registration) {
+      continue;
+    }
+    const claimer = await ensureParticipantForUser(ctx, args.user._id);
+    await moveRegistrationToClaimer(ctx, {
+      registration,
+      claimer,
+      stamp: registrationNameStamp(args.user),
+      now: args.now,
+    });
+    if ((await guestRegistrationsQuery(ctx, guest._id).first()) === null) {
+      await ctx.db.delete(guest._id);
+    }
+    return await requireRegistrationRow(ctx, registration._id);
+  }
+  return null;
+}
+
+async function requireRegistrationRow(
+  ctx: QueryCtx,
+  registrationId: Id<"tournamentRegistrations">,
+): Promise<Doc<"tournamentRegistrations">> {
+  const registration = await ctx.db.get(registrationId);
+  if (!registration) {
+    throw new Error("Registration not found");
+  }
+  return registration;
 }
 
 // The name stamp a claimed entry takes from the account that now holds it:
@@ -250,9 +323,14 @@ async function claimedRegistrationStamp(
 
 // Hands one registration to the claiming participant and stamps it from the
 // account — unless an organizer named the entry for its event
-// (organizerNamed): that name is the event's label for the entrant and stays,
-// whoever holds the entry now. Entry status, seat, history, and the fee
-// exemption (entryFeeExempt) ride along untouched.
+// (organizerNamed) and the entry is still live: that name is the event's
+// label for the entrant and stays, whoever holds the entry now. A cancelled
+// entry's organizer name does not survive the hand-over: organizers name
+// guests, not account holders (CONTEXT.md "Claim"), so an account's
+// cancelled entry carries the account's own name, as it would had the
+// account held it when it was cancelled (model/roster.ts cancelEntry), and
+// re-admitting it never revives the label. Entry status, seat, history, and
+// the fee exemption (entryFeeExempt) ride along untouched.
 async function moveRegistrationToClaimer(
   ctx: MutationCtx,
   args: {
@@ -269,6 +347,10 @@ async function moveRegistrationToClaimer(
   });
   if (!registration.organizerNamed) {
     await restampRegistrationRow(ctx, registration, stamp, now);
+  } else if (registration.entryStatus === "cancelled") {
+    await restampRegistrationRow(ctx, registration, stamp, now, {
+      organizerNamed: undefined,
+    });
   }
 }
 

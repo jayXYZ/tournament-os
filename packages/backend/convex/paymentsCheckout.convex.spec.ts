@@ -5,7 +5,12 @@ import { api, internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { patchOrder } from "./model/payments";
 import { ACCOUNT_NAME_REQUIRED } from "./model/users";
-import { organizerIdentity, seedOrganizer } from "./specHelpers";
+import {
+  insertLinkedParticipant,
+  organizerIdentity,
+  rawSeed,
+  seedOrganizer,
+} from "./specHelpers";
 import { createConvexTest } from "./specHelpers.runtime";
 import type { TestConvex } from "convex-test";
 import type schema from "./schema";
@@ -991,4 +996,116 @@ test("the entry fee freezes once an order exists", async () => {
         entryFeeCents: 3000,
       }),
   ).rejects.toThrow("locked once a payment exists");
+});
+
+test("a checkout for an event where a guest the Claim could not merge holds the player's seat is refused and files no second entry", async () => {
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const tournamentId = await seedPaidTournament(t, organizationId);
+  await insertPlayerUser(t, 1);
+  // The organizer enrolled the player's email: a Guest's confirmed, fee-exempt
+  // seat, since an enrollment never links the account.
+  const enrolledSeat = await t
+    .withIdentity(organizerIdentity)
+    .mutation(api.tournaments.registrations.enrollPlayer, {
+      tournamentId,
+      email: playerIdentity(1).email,
+    });
+  const guestId = (await t.run(async (ctx) => await ctx.db.get(enrolledSeat)))!
+    .participantId;
+  // In another event the guest and the account both hold an entry, so the
+  // sign-in Claim leaves the guest whole and unclaimed (ADR 0002).
+  await rawSeed(
+    t,
+    "a Claim collision: the account's own entry beside the guest's in a second event, which no public write files for a guest carrying the account's email",
+    async (ctx) => {
+      const paid = (await ctx.db.get(tournamentId))!;
+      const { _id, _creationTime, ...fields } = paid;
+      const other = await ctx.db.insert("tournaments", fields);
+      const user = (await ctx.db
+        .query("users")
+        .withIndex("by_tokenIdentifier", (q) =>
+          q.eq("tokenIdentifier", playerIdentity(1).tokenIdentifier),
+        )
+        .unique())!;
+      const now = Date.now();
+      for (const participantId of [
+        guestId,
+        await insertLinkedParticipant(ctx, user._id),
+      ]) {
+        await ctx.db.insert("tournamentRegistrations", {
+          tournamentId: other,
+          participantId,
+          tournamentStartDate: fields.startDate,
+          entryStatus: "cancelled",
+          playerName: "Player 1",
+          createdAt: now,
+          tiebreakRandom: 1,
+          updatedAt: now,
+        });
+      }
+    },
+  );
+
+  // Paying would seat the same person twice; the enrolled seat is refused
+  // as already registered, with nothing filed and nothing to pay.
+  const asPlayer = t.withIdentity(playerIdentity(1));
+  await expect(
+    asPlayer.mutation(internal.payments.checkout.beginEntryCheckout, {
+      tournamentId,
+    }),
+  ).rejects.toThrow("Already registered");
+  const rows = await t.run(
+    async (ctx) =>
+      await ctx.db
+        .query("tournamentRegistrations")
+        .withIndex("by_tournamentId_and_participantId", (q) =>
+          q.eq("tournamentId", tournamentId),
+        )
+        .collect(),
+  );
+  expect(rows.map((row) => row._id)).toEqual([enrolledSeat]);
+  expect(
+    await t.run(
+      async (ctx) => (await ctx.db.query("paymentOrders").collect()).length,
+    ),
+  ).toBe(0);
+  expect(
+    (await tournamentDoc(t, tournamentId)).confirmedRegistrationCount,
+  ).toBe(1);
+});
+
+test("paying back into an entry an organizer once named files it under the account's own name", async () => {
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const tournamentId = await seedPaidTournament(t, organizationId);
+  await insertPlayerUser(t, 1);
+  const organizer = t.withIdentity(organizerIdentity);
+  const registrationId = await organizer.mutation(
+    api.tournaments.registrations.enrollPlayer,
+    { tournamentId, email: playerIdentity(1).email },
+  );
+  await organizer.mutation(api.tournaments.registrations.continueAsGuest, {
+    registrationId,
+    displayName: "Event Alias",
+  });
+  const asPlayer = t.withIdentity(playerIdentity(1));
+  // Cancelling claims the entry first; the organizer's label ends with it.
+  await asPlayer.mutation(api.tournaments.registrations.cancelMyRegistration, {
+    tournamentId,
+  });
+
+  const begin = await asPlayer.mutation(
+    internal.payments.checkout.beginEntryCheckout,
+    { tournamentId },
+  );
+  expect(begin.totalCents).toBeGreaterThan(0);
+  const pending = await t.run(async (ctx) => await ctx.db.get(registrationId));
+  expect(pending).toMatchObject({
+    entryStatus: "pending",
+    playerName: "Player 1",
+    organizerLabel: "Player 1",
+  });
+  expect(pending?.entryFeeExempt).toBeUndefined();
+  expect(pending?.organizerNamed).toBeUndefined();
 });

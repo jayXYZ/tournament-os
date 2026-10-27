@@ -21,7 +21,10 @@ import {
 } from "../model/conventions";
 import { userError } from "../model/errors";
 import { inviteCodeGrantsAccess } from "../model/invites";
-import { ensureParticipantForUser } from "../model/participants";
+import {
+  claimGuestEntryInTournament,
+  ensureParticipantForUser,
+} from "../model/participants";
 import { setRegistrationState } from "../model/participation";
 import {
   createEntryOrder,
@@ -95,11 +98,23 @@ export const beginEntryCheckout = internalMutation({
     if (!isPaidEvent(tournament)) {
       throw userError("This event has no entry fee");
     }
-    const existing = await registrationForUser(
-      ctx,
-      args.tournamentId,
-      user._id,
-    );
+    // The row this checkout acts on: the account's, or — when it holds
+    // none — the entry a Guest carrying its email holds here, claimed now
+    // (claimGuestEntryInTournament). As in registerSelf, the Claim is how an
+    // enrolled entry becomes the player's own, and filing a pending row
+    // beside it would seat the same person twice once paid and leave the
+    // guest unclaimable. A claimed confirmed entry is refused below as
+    // already registered: an enrolled seat has nothing to pay for, and the
+    // refusal rolls the hand-over back, so the Claim finishes it at the
+    // player's next sign-in or in the scheduled walk, never with a second
+    // seat in between.
+    const existing =
+      (await registrationForUser(ctx, args.tournamentId, user._id)) ??
+      (await claimGuestEntryInTournament(ctx, {
+        user,
+        tournamentId: args.tournamentId,
+        now: Date.now(),
+      }));
     // Same admission gates as registerSelf: open lifecycle, and a private
     // event admits a first-time payer only through its invite code — an
     // existing row is the standing re-admission for a player already let in.
@@ -187,9 +202,12 @@ export const beginEntryCheckout = internalMutation({
           entryStatus: "pending",
           awaitingReview: false,
           ...registrationNameStamp(user),
-          // Paying their own way back in: an earlier enrollment's fee
-          // exemption does not carry over (schema entryFeeExempt).
+          // Paying their own way back in, under their own name: an earlier
+          // enrollment's fee exemption does not carry over (schema
+          // entryFeeExempt), nor does a name an organizer gave the entry
+          // (schema organizerNamed) — the account's is stamped above.
           entryFeeExempt: undefined,
+          organizerNamed: undefined,
           tournamentStartDate: tournament.startDate,
           updatedAt: Date.now(),
         });

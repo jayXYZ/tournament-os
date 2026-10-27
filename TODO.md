@@ -386,11 +386,18 @@ claimed by one.
       reinstatements). An email enrollment always seats the Guest keyed by
       the address, never linking an existing account, so every email
       enrollment starts in one organizer-visible state, "Awaiting player
-      details"; the Claim (which runs on every authenticated mutation, so
-      opening the app suffices) links the account and stamps the account's
-      name onto the entry. "Continue as guest" names an unresolved entry for
-      one event (`organizerNamed`, honored by the re-stamp and the Claim),
-      keeping its seat, history, fee treatment, and contact email. Starting
+      details"; the Claim links the account and stamps the account's name
+      onto the entry — it runs on every authenticated mutation, and both
+      apps run the sign-in at the root as soon as the viewer is verified
+      (`useEnsureUserRow` in `@paper-pairings/core`), so opening the app
+      suffices. A player's own registration or checkout into an event where
+      a Guest carrying their email holds an entry takes that entry over
+      (the targeted Claim, `claimGuestEntryInTournament`), never a second
+      seat. "Continue as guest" names an unresolved entry for one event
+      (`organizerNamed`, honored by the re-stamp and by the Claim on a live
+      entry; dropped for the account's name once an account holder's entry
+      is cancelled or re-entered), keeping its seat, history, fee treatment,
+      and contact email. Starting
       the event and seating a player meeting refuse while any active entrant
       has no name; the organizer board lists them with the resolutions. An
       account always has a name (`users.name` is required: a first sign-in

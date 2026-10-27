@@ -197,15 +197,24 @@ _Avoid_: unverified, pending player (it is confirmed and seated), invited
 
 **Claim**:
 The automatic merge, when an account holder next uses the app (every
-authenticated sign-in or mutation), of every Guest whose contact email
-matches the account's verified email into that account holder's Participant.
-Each moved entry takes the account's name, which is how an email-enrolled
-entry leaves Awaiting Player Details, except an entry an organizer named
-for its event, which keeps that name. A Guest whose merge would collide —
-both identities registered in the same tournament — stays unclaimed, both
-entries explicit and intact. A Guest whose history is too long to merge in
-one transaction is merged by a scheduled walk under the same rule. A Claim
-changes neither admission nor fee treatment.
+authenticated sign-in or mutation — and opening the app signed in is one,
+since every app runs the sign-in as soon as the viewer is verified), of
+every Guest whose contact email matches the account's verified email into
+that account holder's Participant. Each moved entry takes the account's
+name, which is how an email-enrolled entry leaves Awaiting Player Details,
+except a live entry an organizer named for its event, which keeps that
+name. A Guest whose merge would collide — both identities registered in the
+same tournament — stays unclaimed, both entries explicit and intact. A
+Guest whose history is too long to merge in one transaction is merged by a
+scheduled walk under the same rule. One exception is targeted: a player's
+own registration or checkout into an event where a Guest carrying their
+email holds an entry takes that entry over first, whatever kept the Guest
+unclaimed, so the player is never seated twice in one event — a confirmed
+entry taken over this way simply is the registration. A Claim changes
+neither admission nor fee treatment. An organizer's name for an entry
+labels a Guest's entry: it ends when an account holder's entry is cancelled
+or re-entered by the player, and a cancelled entry handed to an account
+takes the account's name — organizers name guests, not account holders.
 
 **Invite Link**:
 A tournament's shared join code, minted and rotated by organizers. Anyone

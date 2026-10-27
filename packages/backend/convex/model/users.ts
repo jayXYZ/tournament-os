@@ -98,10 +98,18 @@ export async function userByTokenIdentifier(
 export const ACCOUNT_NAME_REQUIRED =
   "Your account has no name. Add a name to your profile, then sign in again.";
 
+// The sign-in: the account row filed or refreshed from the identity, plus
+// what it triggered — the entries the Claim moved to the account here and
+// now (claimedRegistrationIds; a scheduled walk's are not included).
+export type SignIn = {
+  userId: Id<"users">;
+  claimedRegistrationIds: Id<"tournamentRegistrations">[];
+};
+
 export async function upsertUser(
   ctx: MutationCtx,
   identity: UserIdentityFields,
-): Promise<Id<"users">> {
+): Promise<SignIn> {
   const now = Date.now();
   // Blank provider strings count as absent (presentText). The email is
   // stored normalized (trimmed, lowercased): it is the key invitations,
@@ -166,20 +174,25 @@ export async function upsertUser(
   // Same sign-in trigger as invitations: guest participants whose contact
   // email matches this verified email merge into the account holder's
   // participant (CONTEXT.md "Claim", ADR 0002).
-  await claimGuestParticipants(ctx, {
+  const claimedRegistrationIds = await claimGuestParticipants(ctx, {
     userId,
     email,
     now,
   });
 
-  return userId;
+  return { userId, claimedRegistrationIds };
 }
 
-export async function ensureCurrentUser(
+// The sign-in every authenticated mutation runs first (upsertUser), with the
+// account it resolved to and the entries the Claim handed it on the way.
+// Most callers want only the account (ensureCurrentUser); registerSelf needs
+// the entries too, to tell a seat this very call just linked from one the
+// player already held (model/roster.ts registerEntry).
+export async function signInCurrentUser(
   ctx: MutationCtx,
-): Promise<Doc<"users">> {
+): Promise<{ user: Doc<"users"> } & Omit<SignIn, "userId">> {
   const identity = await requireIdentity(ctx);
-  const userId = await upsertUser(ctx, {
+  const { userId, claimedRegistrationIds } = await upsertUser(ctx, {
     tokenIdentifier: identity.tokenIdentifier,
     email: identity.email,
     name: identity.name,
@@ -189,7 +202,13 @@ export async function ensureCurrentUser(
   if (!user) {
     throw new Error("User not found");
   }
-  return user;
+  return { user, claimedRegistrationIds };
+}
+
+export async function ensureCurrentUser(
+  ctx: MutationCtx,
+): Promise<Doc<"users">> {
+  return (await signInCurrentUser(ctx)).user;
 }
 
 // Invitations are keyed by email. When a user signs in (or refreshes their

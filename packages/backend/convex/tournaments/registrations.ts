@@ -42,7 +42,7 @@ import {
   waitlistEntry,
   type RosterTransitionArgs,
 } from "../model/roster";
-import { ensureCurrentUser } from "../model/users";
+import { ensureCurrentUser, signInCurrentUser } from "../model/users";
 import {
   requireOrganizerAccess,
   requireTournament,
@@ -107,12 +107,13 @@ export const registerSelf = mutation({
   },
   handler: async (ctx, args): Promise<Id<"tournamentRegistrations">> => {
     await enforceRateLimit(ctx, "registerSelf");
-    const user = await ensureCurrentUser(ctx);
+    const { user, claimedRegistrationIds } = await signInCurrentUser(ctx);
     const tournament = await requireTournament(ctx, args.tournamentId);
     return await registerEntry(ctx, {
       tournament,
       user,
       inviteCode: args.inviteCode,
+      claimedBySignIn: claimedRegistrationIds,
     });
   },
 });

@@ -332,3 +332,71 @@ test("a collision anywhere in a long history leaves the guest fully unclaimed", 
     expect(await ctx.db.get(guestId)).not.toBeNull();
   });
 });
+
+test("registering into an event while the walk is still to run takes the guest's entry there, never a second seat", async () => {
+  vi.useFakeTimers();
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const weekly = await createOpenTournament(t, organizationId, "Weekly");
+  const current = await createOpenTournament(t, organizationId, "Current");
+  // The guest's newest row is the seat the organizer enrolled in the
+  // current event.
+  const guestId = await seedLongGuestHistory(t, weekly, LONG_HISTORY, current);
+  const enrolledSeat = await t.run(async (ctx) => {
+    const row = await ctx.db
+      .query("tournamentRegistrations")
+      .withIndex("by_tournamentId_and_participantId", (q) =>
+        q.eq("tournamentId", current).eq("participantId", guestId),
+      )
+      .unique();
+    await ctx.db.patch(row!._id, {
+      entryStatus: "confirmed",
+      participationStatus: "active",
+      entryFeeExempt: true,
+    });
+    await ctx.db.patch(current, { confirmedRegistrationCount: 1 });
+    return row!._id;
+  });
+
+  // Registering is the player's first signed-in action: the sign-in hands
+  // the guest to the walk and moves nothing itself, so the registration
+  // claims the one entry the guest holds in this event rather than filing a
+  // second one — which the walk would then have refused as a collision.
+  const player = t.withIdentity(playerIdentity);
+  expect(
+    await player.mutation(api.tournaments.registrations.registerSelf, {
+      tournamentId: current,
+    }),
+  ).toBe(enrolledSeat);
+  const claimer = await t.run(async (ctx) =>
+    (await ctx.db.query("participants").collect()).find(
+      (row) => row.userId !== undefined,
+    ),
+  );
+  const inCurrent = await t.run(
+    async (ctx) =>
+      await ctx.db
+        .query("tournamentRegistrations")
+        .withIndex("by_tournamentId_and_participantId", (q) =>
+          q.eq("tournamentId", current),
+        )
+        .collect(),
+  );
+  expect(inCurrent).toHaveLength(1);
+  expect(inCurrent[0]).toMatchObject({
+    _id: enrolledSeat,
+    participantId: claimer!._id,
+    entryStatus: "confirmed",
+    playerName: "Gary",
+  });
+  await t.run(async (ctx) => {
+    expect((await ctx.db.get(current))?.confirmedRegistrationCount).toBe(1);
+  });
+
+  // The walk then merges the rest of the history.
+  await t.finishAllScheduledFunctions(vi.runAllTimers);
+  expect(await registrationsOf(t, claimer!._id)).toHaveLength(LONG_HISTORY);
+  await t.run(async (ctx) => {
+    expect(await ctx.db.get(guestId)).toBeNull();
+  });
+});

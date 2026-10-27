@@ -75,6 +75,10 @@ type RegistrationStateArgs = RegistrationStateUpdate & {
   // own re-entry, untouched (absent) by every other transition. See the
   // schema field.
   entryFeeExempt?: true | undefined;
+  // Cleared (explicit undefined) by a player's own re-entry, which stamps
+  // the row from the account alongside; untouched (absent) by every other
+  // transition. See the schema field.
+  organizerNamed?: true | undefined;
   playerName?: string;
   organizerLabel?: string;
   tournamentStartDate?: number;
