@@ -12,23 +12,21 @@ import {
   type RegistrationNameStamp,
   nameStampIsStale,
   registrationHasUsableName,
-  registrationOrganizerLabel,
   restampRegistrationRow,
 } from "./nameStamps";
 import { ORGANIZER_LIST_PAGE_SIZE } from "./pagination";
-import { participantForUser, participantPublicIdentity } from "./participants";
+import { participantForUser } from "./participants";
 
 // Hard ceiling on players (and therefore matches) per tournament. Bounds every
 // per-tournament `.take(...)` so list and standings queries stay well under
 // Convex's 4,096 index-ranges-read-per-transaction limit. Raising this requires
 // re-checking that the read queries denormalize joins (see playerName fields)
-// and that the organizer readers' one-read-per-nameless-row fallback
-// (resolveOrganizerDisplayName) still fits beside the query's own ranges.
+// rather than reading through per row.
 export const MAX_TOURNAMENT_PLAYERS = 2048;
 
-// Registration and badge rows one re-stamp rewrites when an account's name or
-// email changes (syncRegistrationNameStamps): one prefix range per table over
-// the participant's rows. Far above any real player's history; a history past
+// Registration and badge rows one re-stamp rewrites when an account's name
+// changes (syncRegistrationNameStamps): one prefix range per table over the
+// participant's rows. Far above any real player's history; a history past
 // the bound keeps its old labels on rows beyond it.
 const NAME_RESTAMP_BOUND = 1024;
 
@@ -97,63 +95,10 @@ export {
   unnamedRegistrations,
 } from "./nameStamps";
 
-// Name for a player as other players may see it, preferring the denormalized
-// copy and only reading through to the participant's public identity when a
-// registration lacks one. Used by readers as the fallback path so a missing
-// denormalized name never blocks correctness. Safe for player-facing
-// surfaces: neither the stamp nor the fallback ever yields an email.
-export async function registrationDisplayName(
-  ctx: QueryCtx,
-  registrationId: Id<"tournamentRegistrations">,
-): Promise<string | undefined> {
-  const registration = await ctx.db.get(registrationId);
-  if (!registration) {
-    return undefined;
-  }
-  if (registration.playerName !== undefined) {
-    return registration.playerName;
-  }
-  const participant = await ctx.db.get(registration.participantId);
-  if (!participant) {
-    return undefined;
-  }
-  return (await participantPublicIdentity(ctx, participant)).name ?? undefined;
-}
-
-export async function resolveRegistrationDisplayName(
-  ctx: QueryCtx,
-  playerName: string | undefined,
-  registrationId: Id<"tournamentRegistrations">,
-) {
-  return playerName ?? (await registrationDisplayName(ctx, registrationId));
-}
-
-// The organizer label for a row that carries only the player-safe copy (a
-// standings row, a match player, a meeting seat): the copy when present,
-// otherwise one read of the registration for its organizerLabel. Only
-// organizer-gated queries may call this; it must never feed a player-facing
-// response or a denormalized field. Budget: at most one document read per
-// nameless row, so a reader over MAX_TOURNAMENT_PLAYERS rows spends at most
-// that many reads on names even if every account were nameless — within the
-// 4,096-range transaction limit beside the reader's own ranges (the
-// per-row participant and user reads a live identity lookup would add are
-// exactly what the stamp exists to avoid).
-export async function resolveOrganizerDisplayName(
-  ctx: QueryCtx,
-  playerName: string | undefined,
-  registrationId: Id<"tournamentRegistrations">,
-): Promise<string | undefined> {
-  if (playerName !== undefined) {
-    return playerName;
-  }
-  const registration = await ctx.db.get(registrationId);
-  return registration ? registrationOrganizerLabel(registration) : undefined;
-}
-
-// Rewrites the name stamps on every row an account holds after its name or
-// email changed at sign-in (the only writer of users.name): its tournament
-// registrations and convention badges in every entry status, through
-// restampRegistrationRow. A registration an organizer named for its event
+// Rewrites the name stamps on every row an account holds after its name
+// changed at sign-in (upsertUser, the only writer of users.name): its
+// tournament registrations and convention badges in every entry status,
+// through restampRegistrationRow. A registration an organizer named for its event
 // (organizerNamed) keeps that name: it labels the entrant in that event
 // whatever the account's profile says. Rows whose stamps already match are
 // skipped, so an unchanged sign-in writes nothing.
@@ -196,23 +141,17 @@ export async function syncRegistrationNameStamps(
 }
 
 // Seating order for player meetings: alphabetical (case-insensitive,
-// locale-aware) by the label the organizer's seating sheet prints — the
-// organizer label, so a nameless account files under its email where the
-// organizer reading the sheet will look for it rather than under "" at the
-// front — tie-broken by registration createdAt so players with identical
-// labels still seat deterministically (the same tie-break pairing and
-// standings use). Only the ordering key sees the email; the seat's stored
-// playerName stays the player-safe copy.
+// locale-aware) by the name the organizer's seating sheet prints, tie-broken
+// by registration createdAt so players with identical names still seat
+// deterministically (the same tie-break pairing and standings use).
 export function comparePlayersAlphabetically(
-  a: { seatingLabel: string | null; createdAt: number },
-  b: { seatingLabel: string | null; createdAt: number },
+  a: { playerName: string; createdAt: number },
+  b: { playerName: string; createdAt: number },
 ) {
-  const byLabel = (a.seatingLabel ?? "").localeCompare(
-    b.seatingLabel ?? "",
-    undefined,
-    { sensitivity: "base" },
-  );
-  return byLabel !== 0 ? byLabel : a.createdAt - b.createdAt;
+  const byName = a.playerName.localeCompare(b.playerName, undefined, {
+    sensitivity: "base",
+  });
+  return byName !== 0 ? byName : a.createdAt - b.createdAt;
 }
 
 export async function requireRegistration(

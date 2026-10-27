@@ -4,6 +4,7 @@ import { beforeEach, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { patchOrder } from "./model/payments";
+import { ACCOUNT_NAME_REQUIRED } from "./model/users";
 import { organizerIdentity, seedOrganizer } from "./specHelpers";
 import { createConvexTest } from "./specHelpers.runtime";
 import type { TestConvex } from "convex-test";
@@ -344,12 +345,13 @@ test("direct paid registration: checkout, webhook confirm, idempotent redelivery
   expect(auditTypes).toContain("player_registered");
 });
 
-test("the payment audit labels a nameless payer by email", async () => {
+test("a checkout by an identity without a name is refused before any order is filed", async () => {
   const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);
   const tournamentId = await seedPaidTournament(t, organizationId);
-  // A sign-in whose provider supplied no display name: the account the
-  // checkout's identity hop creates carries only the email.
+  // The checkout's identity hop signs the caller in (ensureCurrentUser), and
+  // a first sign-in without a name is refused there — an account always has
+  // one — so no account, registration, or order comes of the attempt.
   const nameless = {
     issuer: "https://convex.test",
     subject: "nameless",
@@ -357,46 +359,28 @@ test("the payment audit labels a nameless payer by email", async () => {
     email: "nameless@example.test",
   };
 
-  await t
-    .withIdentity(nameless)
-    .action(api.payments.checkout.createEntryCheckout, { tournamentId });
-  const order = await latestOrderForIdentity(
-    t,
-    tournamentId,
-    nameless.tokenIdentifier,
-  );
-  await completePayment(t, order, "nameless");
+  await expect(
+    t
+      .withIdentity(nameless)
+      .action(api.payments.checkout.createEntryCheckout, { tournamentId }),
+  ).rejects.toThrow(ACCOUNT_NAME_REQUIRED);
 
-  // The pending row the checkout filed carries the email only in the
-  // organizer label, like a free registration.
-  const registration = await t.run(
-    async (ctx) =>
-      (await ctx.db.get(
-        order.registrationId as Id<"tournamentRegistrations">,
-      ))!,
-  );
-  expect(registration.entryStatus).toBe("confirmed");
-  expect(registration.playerName).toBeUndefined();
-  expect(registration.organizerLabel).toBe(nameless.email);
-
-  // The webhook's payment event (routed by logEntryPaymentAudit) and the
-  // seat it then took are both labelled off that stamp.
-  const labels = await t.run(async (ctx) =>
-    (
-      await ctx.db
-        .query("tournamentAuditEvents")
-        .withIndex("by_tournamentId", (q) => q.eq("tournamentId", tournamentId))
-        .take(64)
-    ).flatMap(({ event }) =>
-      "player" in event && event.player.registrationId === registration._id
-        ? [`${event.type}:${event.player.playerName}`]
-        : [],
-    ),
-  );
-  expect(labels).toEqual([
-    `payment_completed:${nameless.email}`,
-    `player_registered:${nameless.email}`,
-  ]);
+  const filed = await t.run(async (ctx) => ({
+    users: await ctx.db
+      .query("users")
+      .withIndex("by_tokenIdentifier", (q) =>
+        q.eq("tokenIdentifier", nameless.tokenIdentifier),
+      )
+      .collect(),
+    registrations: await ctx.db
+      .query("tournamentRegistrations")
+      .withIndex("by_tournamentId_and_tournamentStartDate", (q) =>
+        q.eq("tournamentId", tournamentId),
+      )
+      .collect(),
+    orders: await ctx.db.query("paymentOrders").collect(),
+  }));
+  expect(filed).toEqual({ users: [], registrations: [], orders: [] });
 });
 
 // convex-test serializes mutations, so the race is driven as an explicit

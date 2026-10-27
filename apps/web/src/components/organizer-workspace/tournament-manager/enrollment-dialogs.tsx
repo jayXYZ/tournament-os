@@ -36,7 +36,8 @@ import { useBusyAction } from '@/hooks/use-busy-action'
 // confirmed, counted against capacity, no in-app entry payment — and differ
 // only in what the entry has to start with: a guest added by name is ready
 // to play; an entry enrolled by email awaits player details until the
-// player opens the app signed in with a name, or the organizer names them.
+// player opens the app signed in with that email (every account has a
+// name), or the organizer names them.
 // Nothing here says whether an email has an account: every email enrollment
 // lands in the same state, by design.
 
@@ -168,8 +169,8 @@ export function EnrollPlayerDialog({
           />
           <FieldDescription>
             The entry shows as awaiting player details until the player opens
-            the app signed in with this email and a name, or until you name them
-            with &ldquo;Continue as guest&rdquo;. Play can&apos;t start while an
+            the app signed in with this email, or until you name them with
+            &ldquo;Continue as guest&rdquo;. Play can&apos;t start while an
             entrant has no name.
           </FieldDescription>
         </Field>

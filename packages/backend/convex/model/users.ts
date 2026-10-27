@@ -1,6 +1,7 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { requireIdentity } from "../auth";
+import { userError } from "./errors";
 import { claimGuestParticipants } from "./participants";
 import { nextPublicCode } from "./publicCodes";
 import {
@@ -60,9 +61,9 @@ const RELEASED_EMAIL_HOLDERS_BOUND = 8;
 // An account signing in with a verified email owns it now, so any other row
 // still carrying it holds a stale copy: its account moved to another address
 // at the provider without signing in here since. Clearing it keeps by_email
-// a point lookup for userByEmail, and re-stamps that account's registrations
-// so their organizer label stops showing the released address. The released
-// account picks up its current email at its own next sign-in.
+// a point lookup for userByEmail. The released account's registrations are
+// untouched: an account's rows are labelled by its name, never its email,
+// and it picks up its current email at its own next sign-in.
 async function releaseEmailFromOtherUsers(
   ctx: MutationCtx,
   args: { userId: Id<"users">; email: string; now: number },
@@ -76,12 +77,6 @@ async function releaseEmailFromOtherUsers(
       continue;
     }
     await ctx.db.patch(holder._id, { email: undefined, updatedAt: args.now });
-    await syncRegistrationNameStamps(
-      ctx,
-      holder._id,
-      registrationNameStamp({ name: holder.name }),
-      args.now,
-    );
   }
 }
 
@@ -97,35 +92,44 @@ export async function userByTokenIdentifier(
     .unique();
 }
 
+// The refusal a first sign-in gets when the identity carries no usable name.
+// Written for the user: the provider's own sign-up asks for a name, so this
+// is reached only by an account that slipped through without one.
+export const ACCOUNT_NAME_REQUIRED =
+  "Your account has no name. Add a name to your profile, then sign in again.";
+
 export async function upsertUser(
   ctx: MutationCtx,
   identity: UserIdentityFields,
 ): Promise<Id<"users">> {
   const now = Date.now();
-  // Blank provider strings are stored as absent (presentText), so every
-  // reader's name-then-email fallback — and the re-stamp comparison below —
-  // sees an account with a "" name as nameless.
-  // The email is stored normalized (trimmed, lowercased): it is the key
-  // invitations, guest claims, and organizer enrollment by email all match
-  // on, and by_email lookups need the one canonical spelling.
-  const email = presentText(identity.email);
-  const fields = {
-    ...identity,
-    name: presentText(identity.name),
-    email: email === undefined ? undefined : normalizeEmail(email),
-  };
-  const existing = await userByTokenIdentifier(ctx, fields.tokenIdentifier);
+  // Blank provider strings count as absent (presentText). The email is
+  // stored normalized (trimmed, lowercased): it is the key invitations,
+  // guest claims, and organizer enrollment by email all match on, and
+  // by_email lookups need the one canonical spelling.
+  const rawEmail = presentText(identity.email);
+  const email = rawEmail === undefined ? undefined : normalizeEmail(rawEmail);
+  const existing = await userByTokenIdentifier(ctx, identity.tokenIdentifier);
+  // An account always has a name (schema users.name). A sign-in carrying
+  // one stores it; a sign-in without one keeps the stored name, so a
+  // provider that stops supplying the claim never strips a player's name
+  // off their rosters and standings; and a first sign-in without one is
+  // refused rather than filed nameless.
+  const name = presentText(identity.name) ?? existing?.name;
+  if (name === undefined) {
+    throw userError(ACCOUNT_NAME_REQUIRED);
+  }
   const patch = {
-    email: fields.email,
-    name: fields.name,
-    avatarUrl: fields.avatarUrl,
+    email,
+    name,
+    avatarUrl: identity.avatarUrl,
     updatedAt: now,
   };
 
   const userId = existing
     ? (await ctx.db.patch(existing._id, patch), existing._id)
     : await ctx.db.insert("users", {
-        tokenIdentifier: fields.tokenIdentifier,
+        tokenIdentifier: identity.tokenIdentifier,
         publicCode: await nextUserPublicCode(ctx, now),
         // Visibility fields are set only on insert: the sign-in patch above
         // must never touch them or it would clobber saved privacy settings.
@@ -133,38 +137,30 @@ export async function upsertUser(
         historyVisibility: "public",
         ...patch,
       });
-  // This patch is the only writer of users.name and users.email, so it is
-  // where the name stamps denormalized onto the account's registrations,
-  // badges, and standings rows are kept true (see registrationNameStamp):
-  // a provider that starts supplying a name, or drops one, reaches every
-  // roster and the player standings on the next sign-in. Compared before
-  // the patch so an unchanged sign-in — the common case — writes nothing
-  // beyond the user row.
   // Every sign-in, not only an email change: one bounded index read, and a
   // row left holding a stale copy is released by the address's next owner
   // whenever they next sign in.
-  if (fields.email !== undefined) {
-    await releaseEmailFromOtherUsers(ctx, {
-      userId,
-      email: fields.email,
-      now,
-    });
+  if (email !== undefined) {
+    await releaseEmailFromOtherUsers(ctx, { userId, email, now });
   }
-  if (
-    existing &&
-    (existing.name !== fields.name || existing.email !== fields.email)
-  ) {
+  // This patch is the only writer of users.name, so it is where the name
+  // stamps denormalized onto the account's registrations, badges, and
+  // standings rows are kept true (see registrationNameStamp): a renamed
+  // account reaches every roster and the player standings on its next
+  // sign-in. Compared before the patch so an unchanged sign-in — the common
+  // case — writes nothing beyond the user row.
+  if (existing && existing.name !== name) {
     await syncRegistrationNameStamps(
       ctx,
       userId,
-      registrationNameStamp(fields),
+      registrationNameStamp({ name }),
       now,
     );
   }
 
   await acceptPendingInvitations(ctx, {
     userId,
-    email: fields.email,
+    email,
     now,
   });
   // Same sign-in trigger as invitations: guest participants whose contact
@@ -172,7 +168,7 @@ export async function upsertUser(
   // participant (CONTEXT.md "Claim", ADR 0002).
   await claimGuestParticipants(ctx, {
     userId,
-    email: fields.email,
+    email,
     now,
   });
 

@@ -52,9 +52,9 @@ admission, a usable display name, and account association.
   nameless refusals the Guest's own row gets.
 - **Readiness is a property of the registration, not the Participant.** An
   entry is ready when its player-safe `playerName` stamp is present. The
-  Claim stamps each entry it moves from the account's name; a nameless
-  account's entry stays unready; a Guest added by name is ready from the
-  start. Readiness never derives from a cached account or from another
+  Claim stamps each entry it moves from the account's name; a Guest added
+  by name is ready from the start. Readiness never derives from a cached
+  account or from another
   event's name for the same Guest, and play preparation — `startTournament`
   and `startPlayerMeeting` — refuses while any active entrant is unready.
   The organizer board lists them with the three resolutions: the player
@@ -66,6 +66,19 @@ admission, a usable display name, and account association.
   account's profile, and no other event's entry for the person is renamed.
   Guest Participants enrolled by email therefore carry no `displayName` of
   their own.
+
+- **An account always has a name.** `users.name` is required. The identity
+  provider asks for a first and last name at sign-up, and `upsertUser` is
+  the backend's own guarantee: a first sign-in without a usable name is
+  refused with a user-facing error, and a later sign-in without one keeps
+  the stored name rather than clearing it. So a name can never be dropped
+  from under a roster or standings, the only nameless entry is one enrolled
+  by email that nobody has named yet, and once play starts — which the
+  gates above refuse while such an entry is in the field — every row in
+  play carries a name for good. The organizer-only email fallbacks the
+  in-play readers (pairings, unpaired players, standings, meeting seats, the
+  audit log's match-player references) used to make for a nameless row were
+  removed with it: a row's stamped name is the whole answer.
 
 Personal invitations — an emailed invite the player accepts, or a pay-later
 enrollment — are deliberately out of scope; the shareable Invite Link covers

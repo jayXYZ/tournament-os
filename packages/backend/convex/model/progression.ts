@@ -4,7 +4,6 @@ import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { logAuditEvent } from "./auditLog";
 import { userError } from "./errors";
 import { deleteResultRevisionsForMatch } from "./matchResults";
-import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "./batching";
 import {
   type CutoffPartition,
   activeRegistrationsInRankOrder,
@@ -48,8 +47,7 @@ import {
   activeRegistrations,
   comparePlayersAlphabetically,
   playersAwaitingDetailsReason,
-  registrationOrganizerLabel,
-  resolveRegistrationDisplayName,
+  registrationHasUsableName,
   unnamedRegistrations,
 } from "./registrations";
 import {
@@ -1422,34 +1420,19 @@ export async function startPlayerMeeting(
   }
   // The seating sheet is the first thing other players read about each
   // other, so the meeting keeps the start's gate: no entrant awaiting
-  // player details is seated (CONTEXT.md "Awaiting Player Details").
-  const awaitingDetails = unnamedRegistrations(registrations);
-  if (awaitingDetails.length > 0) {
-    throw userError(playersAwaitingDetailsReason(awaitingDetails.length));
+  // player details is seated (CONTEXT.md "Awaiting Player Details"). Every
+  // seat then carries the player-safe name the entrant had when seated.
+  const named = registrations.filter(registrationHasUsableName);
+  if (named.length < registrations.length) {
+    throw userError(
+      playersAwaitingDetailsReason(registrations.length - named.length),
+    );
   }
-
-  const players = await mapAsyncInBatches(
-    registrations,
-    DATABASE_IO_BATCH_SIZE,
-    async (registration) => {
-      const playerName =
-        (await resolveRegistrationDisplayName(
-          ctx,
-          registration.playerName,
-          registration._id,
-        )) ?? null;
-      return {
-        registrationId: registration._id,
-        // The seat stores the player-safe name (other players read it); the
-        // ordering key is the organizer label the seating sheet prints
-        // (comparePlayersAlphabetically), falling back to the resolved name
-        // for a row with no stamp at all.
-        playerName,
-        seatingLabel: registrationOrganizerLabel(registration) ?? playerName,
-        createdAt: registration.createdAt,
-      };
-    },
-  );
+  const players = named.map((registration) => ({
+    registrationId: registration._id,
+    playerName: registration.playerName,
+    createdAt: registration.createdAt,
+  }));
   players.sort(comparePlayersAlphabetically);
 
   const now = Date.now();

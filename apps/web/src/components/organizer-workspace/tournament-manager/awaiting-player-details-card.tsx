@@ -16,10 +16,10 @@ import { SectionHeader } from '@/components/shared/section-header'
 import { Button } from '@/components/ui/button'
 
 // The entrants holding the start (CONTEXT.md "Awaiting Player Details"):
-// entries enrolled by email that nobody has named yet, and accounts with no
-// name. The board lists them with the three ways to resolve each — the
-// player opens the app signed in with a name, the organizer names them
-// here, or the organizer removes the entry (the ordinary pre-start drop) —
+// entries enrolled by email that nobody has named yet. The board lists them
+// with the three ways to resolve each — the player opens the app signed in
+// with that email, the organizer names them here, or the organizer removes
+// the entry (the ordinary pre-start drop) —
 // so the blocked start never leaves the organizer hunting through the
 // roster. Organizer-only: each entry is identified by its email.
 export function AwaitingPlayerDetailsCard({
@@ -38,9 +38,9 @@ export function AwaitingPlayerDetailsCard({
         title={`${entrants.length} ${entrants.length === 1 ? 'player is' : 'players are'} awaiting player details`}
         description={
           <>
-            Each needs a name before pairings or seats can be drawn: they can
-            open the app signed in with their email, or you can name them here.
-            Entries you remove free their seat.{' '}
+            Each needs a name before pairings or seats can be drawn: the player
+            can open the app signed in with their email, or you can name them
+            here. Entries you remove free their seat.{' '}
             <Link
               to="/admin/tournaments/$tournamentId/registrations"
               params={{ tournamentId: publicCode }}

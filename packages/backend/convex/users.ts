@@ -83,7 +83,7 @@ export const getPublicPlayer = query({
 
     return {
       publicCode: user.publicCode,
-      name: user.name ?? null,
+      name: user.name,
       avatarUrl: user.avatarUrl ?? null,
       isOwner,
       profileHidden: user.profileVisibility === "private",

@@ -60,7 +60,13 @@ export default defineSchema({
     // enrollment by email resolves an existing account through by_email
     // with the same normalized form invitations and guest claims match on.
     email: v.optional(v.string()),
-    name: v.optional(v.string()),
+    // Required: an account always has a name. The provider asks for one at
+    // sign-up, and upsertUser (model/users.ts) is the backend's own
+    // guarantee — a first sign-in without a usable name is refused, and a
+    // later sign-in without one keeps the stored name — so the name an
+    // entry's stamps copy (registrationNameStamp) is never cleared from
+    // under a roster or standings.
+    name: v.string(),
     avatarUrl: v.optional(v.string()),
     updatedAt: v.number(),
   })
@@ -451,8 +457,9 @@ export default defineSchema({
     .index("by_conventionId_and_createdAt", ["conventionId", "createdAt"])
     .index("by_conventionId_and_entryStatus", ["conventionId", "entryStatus"])
     .index("by_participantId_and_entryStatus", ["participantId", "entryStatus"])
-    // Over the organizer label, not playerName, so a badge holder whose
-    // account has no name is still findable by email (organizer-only).
+    // Over the organizer label — the stamp shared with tournament
+    // registrations (model/nameStamps.ts); for a badge, which only an
+    // account can hold, it is the account's name.
     .searchIndex("search_organizerLabel", {
       searchField: "organizerLabel",
       filterFields: ["conventionId"],
@@ -657,8 +664,9 @@ export default defineSchema({
     // player-facing surfaces show this name rather than a linked account's
     // profile (publicIdentityForRegistration).
     organizerNamed: v.optional(v.literal(true)),
-    // The organizer label: the same name, or the account's email when it
-    // has none. The roster search indexes it and the organizer readers
+    // The organizer label: the same name, or the enrollment email for an
+    // entry enrolled by email that nobody has named yet (an account always
+    // has a name). The roster search indexes it and the organizer readers
     // label nameless rows with it. Organizer-only by construction: the
     // registration document is returned to its holder and to organizers
     // only, so this must never be copied onto a row other players read.
@@ -922,7 +930,9 @@ export default defineSchema({
     tournamentMatchId: v.id("tournamentMatches"),
     playerId: v.id("tournamentRegistrations"),
     // Denormalized from the registration at pairing time so the pairings list
-    // query renders names without a per-row user join. Optional for legacy rows.
+    // query renders names without a per-row user join. A copy of the
+    // registration's optional stamp; present on every row, since the start
+    // gate admits only named entrants to play.
     playerName: v.optional(v.string()),
     opponentPlayerId: v.optional(v.id("tournamentRegistrations")),
     matchPointsEarned: v.optional(v.number()),
@@ -950,9 +960,10 @@ export default defineSchema({
     // row is written so the standings list query renders names without a
     // per-row user join, and re-stamped on the latest completed round's row
     // when the account's name changes (syncRegistrationNameStamps). Absent
-    // when the account has no name; the player-facing standings query treats
-    // that as final (no read-through), the organizer one resolves the
-    // registration's organizer label with one read.
+    // only when the registration had no player-safe name as the row was
+    // written — an entry enrolled by email that nobody named, which the
+    // start and meeting gates keep out of play; both standings queries treat
+    // the stamp as final (no read-through).
     playerName: v.optional(v.string()),
     rank: v.number(),
     matchPoints: v.number(),

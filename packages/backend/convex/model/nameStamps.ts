@@ -16,12 +16,13 @@ import { presentText } from "../validators";
 //   organizer typed for the entry, and nothing else. It is the copy carried
 //   onward onto standings rows, match players, and meeting seats, which
 //   other players read (the player standings, a seatmate's name), so the
-//   stamp itself must be safe to show anyone. An account without a name — or
-//   with a blank one — and an entry enrolled by email alone stamp nothing
-//   here.
-// - organizerLabel is the ORGANIZER label: the same name, or the email when
-//   there is none, so an organizer can still tell who a nameless entrant is
-//   and the roster search (search_organizerLabel) can still find them. It
+//   stamp itself must be safe to show anyone. Only an entry enrolled by
+//   email that nobody has named yet stamps nothing here: an account always
+//   has a name (schema users.name).
+// - organizerLabel is the ORGANIZER label: the same name, or the enrollment
+//   email when there is none, so an organizer can still tell who a nameless
+//   entrant is and the roster search (search_organizerLabel) can still find
+//   them. It
 //   lives only on the registration row, which is returned to its holder and
 //   to organizers and to no one else — never copy it onto a row other
 //   players read, and never return it from a player-facing query. The
@@ -45,8 +46,8 @@ export function registrationNameStamp(identity: {
   name?: string;
   email?: string;
 }): RegistrationNameStamp {
-  // Blank provider strings count as absent (presentText): a "" name would
-  // otherwise stamp "" and pass as present on every reader's fallback check.
+  // A blank name counts as absent (presentText), so nothing can stamp ""
+  // and pass as present on a reader's fallback check.
   const playerName = presentText(identity.name);
   return {
     playerName,
@@ -66,12 +67,13 @@ export function registrationOrganizerLabel(row: {
 // Whether an entry has a name play can use (CONTEXT.md "Awaiting Player
 // Details"): the player-safe stamp is present. The one predicate behind the
 // start and player-meeting gates, the organizer roster's readiness marker,
-// and the "Continue as guest" offer, so they can never disagree. An entry
-// enrolled by email alone, or held by an account with no name, has none
-// until the player signs in with a name or an organizer names them.
-export function registrationHasUsableName(row: {
-  playerName?: string;
-}): boolean {
+// and the "Continue as guest" offer, so they can never disagree. Only an
+// entry enrolled by email that nobody has named yet lacks one, until the
+// player next uses the app (the Claim stamps the account's name) or an
+// organizer names them.
+export function registrationHasUsableName<Row extends { playerName?: string }>(
+  row: Row,
+): row is Row & { playerName: string } {
   return row.playerName !== undefined;
 }
 
@@ -105,9 +107,8 @@ export function nameStampIsStale(
 // latestStandingsRowFor finds it: the newest row by player, since rows are
 // only ever created at round completion and rewinds delete the reopened
 // round's). Match players and meeting seats are per-round snapshots and are
-// left alone: the organizer readers resolve their nameless rows through the
-// registration's fresh label, and the player-facing seatmate name is
-// name-only by construction. A row whose stamps already match is skipped.
+// left alone: they carry the name as it stood when the round was paired or
+// the meeting seated. A row whose stamps already match is skipped.
 // Shared by the sign-in re-stamp, the Claim (which stamps a claimed entry
 // from the account it now belongs to), and the organizer's naming of an
 // entry for its event. `fields` rides along on the registration patch for

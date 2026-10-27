@@ -18,6 +18,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import type { TournamentAuditEvent } from "./model/auditLog";
 import { UserError } from "./model/errors";
 import { publicIdentityForRegistration } from "./model/participants";
+import { ACCOUNT_NAME_REQUIRED } from "./model/users";
 import schema from "./schema";
 import {
   insertLinkedParticipant,
@@ -28,7 +29,8 @@ import {
 } from "./specHelpers";
 import { createConvexTest } from "./specHelpers.runtime";
 
-// A sign-in whose provider supplied no display name.
+// A sign-in whose provider supplied no display name — refused at first
+// sign-in, since an account always has a name.
 const namelessIdentity = {
   issuer: "https://convex.test",
   subject: "nameless",
@@ -227,7 +229,7 @@ test("the account holder's next authenticated action claims the entry and gives 
   expect(mine.map((entry) => entry.registration._id)).toEqual([registrationId]);
 });
 
-test("a claimed entry whose account has no name keeps awaiting player details until a name arrives", async () => {
+test("an email enrollment is claimed only by a sign-in that carries a name", async () => {
   const t = createConvexTest();
   const { tournamentId } = await seedOpenTournament(t);
   const organizer = t.withIdentity(organizerIdentity);
@@ -240,14 +242,22 @@ test("a claimed entry whose account has no name keeps awaiting player details un
     { tournamentId, email: namelessIdentity.email },
   );
 
-  await t.withIdentity(namelessIdentity).mutation(api.users.upsertMe, {});
-  const claimed = await getRegistration(t, registrationId);
-  expect(claimed?.playerName).toBeUndefined();
-  expect(claimed?.organizerLabel).toBe(namelessIdentity.email);
-  await t.run(async (ctx) => {
-    const participant = await ctx.db.get(claimed!.participantId);
-    expect(participant?.userId).toBeDefined();
-  });
+  // An account always has a name: a first sign-in without one is refused
+  // before any account is filed, so nothing claims the entry and it keeps
+  // awaiting player details.
+  await expectRefusal(
+    t.withIdentity(namelessIdentity).mutation(api.users.upsertMe, {}),
+    ACCOUNT_NAME_REQUIRED,
+  );
+  const unclaimed = await getRegistration(t, registrationId);
+  expect(unclaimed?.playerName).toBeUndefined();
+  expect(unclaimed?.organizerLabel).toBe(namelessIdentity.email);
+  expect(
+    await t.run(async (ctx) => {
+      const participant = await ctx.db.get(unclaimed!.participantId);
+      return participant?.userId ?? null;
+    }),
+  ).toBeNull();
   const [, row] = await organizerRegistrationRows(t, tournamentId);
   expect(row).toMatchObject({
     playerName: namelessIdentity.email,
@@ -261,7 +271,8 @@ test("a claimed entry whose account has no name keeps awaiting player details un
     "1 player needs a name before play can start",
   );
 
-  // The provider supplies a name: the sign-in re-stamp resolves the entry.
+  // The sign-in that carries a name files the account, and the Claim
+  // stamps the entry with it.
   await t
     .withIdentity({ ...namelessIdentity, name: "Newly Named" })
     .mutation(api.users.upsertMe, {});
@@ -392,55 +403,6 @@ test("Continue as guest names the entry for this event only, keeping its row, em
     playerName: "Gary G.",
   });
   expect(await orderCount(t)).toBe(0);
-});
-
-test("Continue as guest names a nameless account's entry for this event without touching the account", async () => {
-  const t = createConvexTest();
-  const { tournamentId, organizationId } = await seedOpenTournament(t);
-  const second = await createOpenTournament(t, organizationId, "Second");
-  const organizer = t.withIdentity(organizerIdentity);
-  const nameless = t.withIdentity(namelessIdentity);
-  const registrationId = await nameless.mutation(
-    api.tournaments.registrations.registerSelf,
-    { tournamentId },
-  );
-  const [row] = await organizerRegistrationRows(t, tournamentId);
-  expect(row).toMatchObject({
-    playerName: namelessIdentity.email,
-    awaitingPlayerDetails: true,
-    nameEffect: "name",
-  });
-
-  await organizer.mutation(api.tournaments.registrations.continueAsGuest, {
-    registrationId,
-    displayName: "Walk-in Wes",
-  });
-  expect(await getRegistration(t, registrationId)).toMatchObject({
-    playerName: "Walk-in Wes",
-    organizerLabel: "Walk-in Wes",
-    organizerNamed: true,
-  });
-  await t.run(async (ctx) => {
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_tokenIdentifier", (q) =>
-        q.eq("tokenIdentifier", namelessIdentity.tokenIdentifier),
-      )
-      .unique();
-    expect(user?.name).toBeUndefined();
-  });
-
-  // The provider later supplies a name: the account's other entries take
-  // it, this event keeps the name its organizer gave.
-  const named = t.withIdentity({ ...namelessIdentity, name: "Real Name" });
-  const secondId = await named.mutation(
-    api.tournaments.registrations.registerSelf,
-    { tournamentId: second },
-  );
-  expect((await getRegistration(t, registrationId))?.playerName).toBe(
-    "Walk-in Wes",
-  );
-  expect((await getRegistration(t, secondId))?.playerName).toBe("Real Name");
 });
 
 test("play waits for every entrant's name: the board lists who, and naming or removing them clears the gate", async () => {

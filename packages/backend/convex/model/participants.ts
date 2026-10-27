@@ -158,9 +158,9 @@ export async function participantPublicIdentity(
 // own registration's name — never another event's name for the same guest,
 // and never an email (the playerName stamp is player-safe by construction)
 // — so an entry still awaiting player details shows nothing. An account's
-// entry reads through to the account, never the denormalized stamp, so an
-// account without a name can never leak its email. Null fields when the
-// registration or participant is gone.
+// entry reads through to the account (its name and avatar), never the
+// denormalized stamp. Null fields when the registration or participant is
+// gone.
 export async function publicIdentityForRegistration(
   ctx: QueryCtx,
   registrationId: Id<"tournamentRegistrations">,
@@ -237,9 +237,8 @@ export async function claimGuestParticipants(
 }
 
 // The name stamp a claimed entry takes from the account that now holds it:
-// the same stamp registerSelf would write for the account (its name, or its
-// email for organizers when it has none), so a claimed entry and a
-// self-registered one read alike everywhere.
+// the same stamp registerSelf would write for the account (its name), so a
+// claimed entry and a self-registered one read alike everywhere.
 async function claimedRegistrationStamp(
   ctx: QueryCtx,
   claimer: Doc<"participants">,

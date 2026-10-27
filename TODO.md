@@ -392,7 +392,10 @@ claimed by one.
       one event (`organizerNamed`, honored by the re-stamp and the Claim),
       keeping its seat, history, fee treatment, and contact email. Starting
       the event and seating a player meeting refuse while any active entrant
-      has no name; the organizer board lists them with the resolutions. A
+      has no name; the organizer board lists them with the resolutions. An
+      account always has a name (`users.name` is required: a first sign-in
+      without one is refused, a later one keeps the stored name), so only
+      an email enrollment is ever nameless. A
       cancelled row for the identity (the account's or the Guest's) is
       re-entered; pending/waitlisted/rejected rows are refused toward the
       review verbs. Metered by the `enrollPlayer` bucket. Covered by

@@ -176,12 +176,14 @@ seats themself)
 
 **Awaiting Player Details**:
 The state of an admitted entry that has no usable name yet — one enrolled
-by email that nobody has named, or one held by an account with no name.
-Every email Enrollment starts here, identically whether or not the address
-has an account, so enrolling is never a way to learn that it does. It
-resolves when the player next uses the app signed in with that email and a
-name (the Claim stamps the entry), when a nameless account gains a name, or
-when an organizer names the entry for this event with "Continue as guest" —
+by email that nobody has named. (An account always has a name: a first
+sign-in without one is refused, and a later sign-in without one keeps the
+stored name, so no account-held entry is ever in this state.) Every email
+Enrollment starts here, identically whether or not the address has an
+account, so enrolling is never a way to learn that it does. It resolves
+when the player next uses the app signed in with that email (the Claim
+stamps the account's name onto the entry) or when an organizer names the
+entry for this event with "Continue as guest" —
 the same registration, seat, history, and fee treatment, the contact email
 kept for a later Claim, and no other event's entry renamed. It never
 resolves merely because an account exists or another event has a name for
