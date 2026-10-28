@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import { api, internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
-import { organizerIdentity, seedOrganizer } from "./specHelpers";
+import { organizerIdentity, rawSeed, seedOrganizer } from "./specHelpers";
 import { createConvexTest } from "./specHelpers.runtime";
 import type { TestConvex } from "convex-test";
 import type schema from "./schema";
@@ -546,6 +546,13 @@ test("hard deletion refuses while payments are unsettled and proceeds after the 
   const tournamentId = await seedPaidTournament(t, organizationId);
   await payAsPlayer(t, tournamentId, 1);
   const asOwner = t.withIdentity(organizerIdentity);
+  await rawSeed(
+    t,
+    "only a test event may be deleted once published, and a test event cannot charge an entry fee through the public seam; this scenario exercises the money guard that sits behind the deletion gate",
+    async (ctx) => {
+      await ctx.db.patch(tournamentId, { isTestEvent: true });
+    },
+  );
 
   await expect(
     asOwner.mutation(api.tournaments.lifecycle.deleteTournament, {

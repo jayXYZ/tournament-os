@@ -4,7 +4,13 @@ import { expect, test, vi } from "vitest";
 
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { organizerIdentity, seedOrganizer } from "./specHelpers";
+import {
+  insertLinkedParticipant,
+  organizerIdentity,
+  rawSeed,
+  seedOrganizer,
+  seedTournamentWithPlayers,
+} from "./specHelpers";
 import { createConvexTest } from "./specHelpers.runtime";
 
 async function countTournamentRows(
@@ -151,6 +157,140 @@ test("deleteTournament rejects callers without organizer access", async () => {
       tournamentId,
     }),
   ).rejects.toThrow("Unauthorized");
+  const rows = await countTournamentRows(t, tournamentId);
+  expect(rows.tournament).not.toBeNull();
+});
+
+test("deleteTournament removes an unpublished event with no entries", async () => {
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const authed = t.withIdentity(organizerIdentity);
+
+  const tournamentId = await authed.mutation(
+    api.tournaments.lifecycle.createTournamentWithPhases,
+    {
+      organizationId,
+      name: "Draft Delete Check",
+      startDate: Date.now(),
+      playerCapacity: 16,
+      format: "standard",
+      phases: [{ phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 3 }],
+    },
+  );
+
+  await authed.mutation(api.tournaments.lifecycle.deleteTournament, {
+    tournamentId,
+  });
+
+  const after = await countTournamentRows(t, tournamentId);
+  expect(after.tournament).toBeNull();
+  expect(after.total).toBe(0);
+});
+
+test("deleteTournament refuses a published event and keeps its players' history", async () => {
+  const t = createConvexTest();
+  const { tournamentId } = await seedTournamentWithPlayers(t, {
+    name: "Published Delete Check",
+    playerCount: 4,
+  });
+  const authed = t.withIdentity(organizerIdentity);
+
+  await expect(
+    authed.mutation(api.tournaments.lifecycle.deleteTournament, {
+      tournamentId,
+    }),
+  ).rejects.toThrow("cancel it instead");
+
+  const rows = await countTournamentRows(t, tournamentId);
+  expect(rows.tournament?.lifecycle).toBe("registration");
+  expect(rows.total).toBeGreaterThan(0);
+
+  // Cancellation is the sanctioned exit: it ends the event and keeps every
+  // row, and the cancelled event still cannot be deleted afterwards.
+  await authed.mutation(api.tournaments.lifecycle.cancelTournament, {
+    tournamentId,
+  });
+  await expect(
+    authed.mutation(api.tournaments.lifecycle.deleteTournament, {
+      tournamentId,
+    }),
+  ).rejects.toThrow("has ended");
+  const cancelled = await countTournamentRows(t, tournamentId);
+  expect(cancelled.tournament?.lifecycle).toBe("cancelled");
+  expect(cancelled.total).toBe(rows.total);
+});
+
+test("deleteTournament refuses a completed event", async () => {
+  const t = createConvexTest();
+  const { tournamentId } = await seedTournamentWithPlayers(t, {
+    name: "Completed Delete Check",
+    playerCount: 4,
+    phases: [{ phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 1 }],
+  });
+  const authed = t.withIdentity(organizerIdentity);
+  await rawSeed(
+    t,
+    "completion is reached by playing out every round; the gate only reads the lifecycle",
+    async (ctx) => {
+      await ctx.db.patch(tournamentId, {
+        lifecycle: "completed",
+        updatedAt: Date.now(),
+      });
+    },
+  );
+
+  await expect(
+    authed.mutation(api.tournaments.lifecycle.deleteTournament, {
+      tournamentId,
+    }),
+  ).rejects.toThrow("has ended");
+  const rows = await countTournamentRows(t, tournamentId);
+  expect(rows.tournament?.lifecycle).toBe("completed");
+});
+
+test("deleteTournament refuses an unpublished event that already has an entry", async () => {
+  const t = createConvexTest();
+  const { organizationId, userId } = await seedOrganizer(t);
+  const authed = t.withIdentity(organizerIdentity);
+
+  const tournamentId = await authed.mutation(
+    api.tournaments.lifecycle.createTournamentWithPhases,
+    {
+      organizationId,
+      name: "Entered Draft Delete Check",
+      startDate: Date.now(),
+      playerCapacity: 16,
+      format: "standard",
+      phases: [{ phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 3 }],
+    },
+  );
+  await rawSeed(
+    t,
+    "registerSelf refuses an unpublished event; the roster check must hold on its own if a future seam enrols before publication",
+    async (ctx) => {
+      const tournament = await ctx.db.get(tournamentId);
+      if (!tournament) {
+        throw new Error("Tournament missing");
+      }
+      const participantId = await insertLinkedParticipant(ctx, userId);
+      const now = Date.now();
+      await ctx.db.insert("tournamentRegistrations", {
+        tournamentId,
+        participantId,
+        tournamentStartDate: tournament.startDate,
+        entryStatus: "confirmed",
+        createdAt: now,
+        tiebreakRandom: 1,
+        updatedAt: now,
+      });
+    },
+  );
+
+  await expect(
+    authed.mutation(api.tournaments.lifecycle.deleteTournament, {
+      tournamentId,
+    }),
+  ).rejects.toThrow("enrolled players cannot be deleted");
   const rows = await countTournamentRows(t, tournamentId);
   expect(rows.tournament).not.toBeNull();
 });
