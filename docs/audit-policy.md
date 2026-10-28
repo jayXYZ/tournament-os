@@ -14,13 +14,13 @@ This is an event history for organizers, not an organization security log:
   event is set up, not what happened in it. Invite links are also secrets the
   journal must never copy.
 - **Hard deletion leaves no record.** Deleting an event purges its rows and
-  its journal together; no deletion record survives anywhere. What protects
-  players is the deletion gate, not a tombstone: only a test event or an
-  unpublished event with no enrolled players can be deleted
-  (`requireTournamentDeletable`), so no real player history is ever purged.
-  Every other event is cancelled instead, which keeps its journal. The money
-  guard (`requireEventPaymentsSettled`) still covers a test event's
-  synthetic payments.
+  its journal together. Tournament deletion requires a test event or an
+  unpublished event with no enrolled players (`requireTournamentDeletable`);
+  other tournaments must be cancelled, preserving their history. Convention
+  deletion has the payment-settlement guard but no equivalent badge-history
+  gate; it detaches child tournaments and purges the convention's rows and
+  journal. Both event kinds require `requireEventPaymentsSettled` before
+  deletion. The convention policy follow-up is in roadmap section 4.
 - **One event per operation.** Side effects an operation performs on the
   way are part of its own event rather than separate rows: timer cleanup on
   round completion, rewind, and cancellation; auto-publication at pairing
@@ -68,8 +68,8 @@ stamp the organizer label at append time.
 | webhooks | handleCheckoutCompleted, handleCheckoutExpired, handleAsyncPaymentFailed, handleDisputeCreated                                                                                                                                          | `payment_completed` (+ `player_registered`/`badge_registered`, or `refund_issued` when the seat is gone), `payment_expired`, `payment_failed`, `order_disputed`. A direct registration's withdrawn pending entry is part of the expiry/failure line. Duplicate or obsolete deliveries are silent. |
 | refunds  | closeOpenOrdersSweep                                                                                                                                                                                                                    | Closes open orders and withdraws the pending entries behind them. Logs `payment_expired` only for an order with a live Checkout session; an order that never opened Checkout closes under the enclosing start/cancel event.                                                                       |
 | refunds  | cancelEventPaymentsSweep                                                                                                                                                                                                                | Each refund decision logs `refund_issued` through `queueRefund`, once per refund, never once per batch continuation.                                                                                                                                                                              |
-| refunds  | beginRefundExecution, executeRefund                                                                                                                                                                                                     | Silent provider execution/attempt bookkeeping.                                                                                                                                                                                                                                                    |
-| refunds  | markRefundResult, handleRefundEvent                                                                                                                                                                                                     | The decision was already logged as `refund_issued`; the shared outcome path logs `refund_failed`. Deduplicated callbacks are silent.                                                                                                                                                              |
+| refunds  | beginRefundExecution, executeRefund, guardRefundExecution                                                                                                                                                                               | Provider attempts are silent; parking an uncertain outcome through `parkRefund` records one `refund_stalled` event.                                                                                                                                                                               |
+| refunds  | markRefundResult, handleRefundEvent, checkRefundStatus, beginRefundStatusCheck                                                                                                                                                          | Status-check reads and authorization are silent. The shared outcome path records `refund_failed` on failure or `refund_stalled` when execution becomes uncertain. Successful reconciliation uses the already-recorded `refund_issued` decision; duplicate callbacks are silent.                   |
 | payouts  | startPayoutSweep, sumAbsorbedFeesBatch, enumeratePayoutBatch, beginSendTransfers, takeQueuedTransfers, markTransferResult, sendTransfers                                                                                                | Silent batching/transfer bookkeeping.                                                                                                                                                                                                                                                             |
 | payouts  | finalizePayout                                                                                                                                                                                                                          | `payout_sent` / `payout_failed`, in the same transaction as the outcome.                                                                                                                                                                                                                          |
 | payouts  | markPayoutBlocked                                                                                                                                                                                                                       | Silent retryable capability block; no transfer outcome has occurred.                                                                                                                                                                                                                              |
@@ -86,8 +86,9 @@ model/conventions, the lifecycle transitions still from their handlers in
 `conventions/lifecycle.ts` (the one remaining handler-level write-and-log
 site, left for a convention-side pass).
 Convention setup, details, visibility, and ticket types are silent
-configuration; `deleteConvention` / `continueDeleteConvention` purge like
-tournament deletion.
+configuration; `deleteConvention` / `continueDeleteConvention` purge their
+journal and detach children, subject to the convention-specific deletion
+rules above.
 
 `organizations.ts` and `users.ts` (organization setup, membership invites,
 profiles) belong to no event and write no journal.

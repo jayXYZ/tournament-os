@@ -1,22 +1,44 @@
 # Paper Pairings roadmap
 
-This roadmap was audited against the current implementation and reordered to
-build reusable domain foundations before client polish or provider-specific
-integrations. A checked child under an open parent records foundation that is
-already in place; the parent remains open until all of its acceptance criteria
-are satisfied.
+Audited 2026-10-28 against `main` and fetched `origin/main` at `7fc16a3`,
+plus the feature branches listed in [delivery status](docs/delivery-status.md).
+Section numbers are stable references, not a strict execution order.
 
-Tasks that cannot proceed yet carry an explicit "(blocked on …)" note naming
-the prerequisite. Treat these markers as authoritative when picking the next
-open task — skip blocked items without re-deriving the block, and when a task
-turns out to be blocked (on other sections, human-only account/dashboard
-steps, or plan tiers), add the note rather than leaving it implicit.
+A checked implementation item means the code is merged into `main`. Work
+built on a branch stays unchecked here and names that branch. Deployment
+verification is a separate task with a named environment, tested revision,
+date, and outcome. Tests, merges, design artifacts, and configured credentials
+do not by themselves prove that a deployed workflow works. Historical checks
+retain their original scope; see the delivery record for missing evidence.
+
+A checked child under an open parent records the part already merged. Mark a
+task blocked only when its next step actually requires the named prerequisite;
+distinguish unverified account setup from a confirmed external block.
+
+## Next priorities
+
+1. Establish a release baseline in section 0: verify the Vercel deployment,
+   auth, and monitoring, then repeat the payment checks in section 9 against
+   that revision. Record the target and evidence before declaring it ready.
+2. Finish delivery of existing branch work: random event codes and web QR
+   sharing, native free/approval join, and organizer guest/email enrollment.
+   Integrate each against current `main`, run its relevant checks, and verify
+   the deployed flow. Schema changes need a DB reset, not a migration.
+3. Close event-day gaps: remove stale confirmation copy, provide an organizer
+   deck-check view and printable pairings/standings, and finish native player
+   controls. These can proceed while account setup is pending.
+4. Build judge permissions and adjudication in section 5, then their E2E
+   cases. Late entry follows organizer admission; publication policy precedes
+   public decklists; the outbox precedes external notifications.
+
+Cross-border payments, local-currency pricing, favorites, and advanced
+convention management remain later work. This ordering does not make every
+open feature a launch requirement.
 
 ## 0. Delivery guardrails
 
-Cross-cutting foundations. Most of the original guardrail work has landed —
-see "Completed foundations" at the bottom; what remains here is blocked on
-external setup or on later sections.
+Cross-cutting foundations are listed under "Completed foundations" below.
+The open work separates missing coverage from deployment verification.
 
 - [ ] Extend the browser E2E suite with no-show and forfeit scenarios once
       the judge adjudication actions land (section 5; until then a forfeit
@@ -24,19 +46,27 @@ external setup or on later sections.
       the organizer happy path, active-round corrections with audit trail,
       pairing rewind, organizer drops, mid-round drop concession, and
       invite links (`apps/web/e2e/`)
-- [ ] Enable Convex exception reporting to Sentry in the deployment
-      dashboard — blocked on the team being on Convex Pro (the integration
-      is Pro-only; no code side exists). Web and native Sentry wiring is
-      complete and `scripts/setup-error-monitoring.sh` has been run for
-      projects and DSNs (`docs/error-monitoring.md`)
-- [ ] Verify an actual Vercel production deploy end-to-end (blocked on
-      human-only dashboard setup: `CONVEX_DEPLOY_KEY` in the Vercel project
-      and confirming the root directory is `apps/web` with workspace-root
-      install). The `vercel.json` build boundary itself is fixed and
-      pnpm-only
-- [ ] Configure and verify the custom domain (blocked on human-only
-      registrar/DNS and Vercel dashboard setup; any code-side follow-ups
-      such as allowed auth origins land once the domain exists)
+- [ ] Verify web browser/SSR and native Sentry capture, with readable source
+      locations, in the intended deployments/builds. Wiring is merged and a
+      setup-script run was previously reported; event receipt and source-map
+      verification are not recorded (`docs/error-monitoring.md`).
+- [ ] Enable and verify Convex exception reporting. The recorded blocker is
+      the Convex Pro integration requirement; confirm the current team plan
+      and target deployment before carrying that blocker forward. No backend
+      Sentry wiring is delivered merely by configuring the client DSNs.
+- [ ] Verify the Vercel production deployment end-to-end. First confirm
+      `CONVEX_DEPLOY_KEY`, root directory `apps/web`, workspace-root install,
+      and the environment contract. The pnpm build command and `srvx` start
+      script are merged; deployment success is not recorded. Exercise SSR,
+      sign-in/auth recovery, registration, result entry, and a user-facing
+      refusal; record the URL, deployed SHA, and outcome.
+- [ ] Configure and verify the custom domain, including DNS, TLS, auth
+      origins, and payment redirects. Account-side setup remains unverified;
+      universal links in section 8 depend on a stable domain.
+- [ ] Extend browser coverage for approval, waitlist/rejection, and paid
+      registration states, plus invite rotation and disabling. Existing
+      invite E2E covers creation and joining; the broader grant rules have
+      backend specs. QR browser coverage belongs to the branch delivery work.
 
 ## 1. Result and adjudication foundation
 
@@ -90,6 +120,10 @@ no-shows, and disqualifications without each workflow inventing its own rules.
 - [x] Remove opponent result confirmation — the confirmed match status,
       mutation, audit event, hook, and player UI are gone; the reporter stamp
       stays for provenance and disputes resolve through organizer override
+- [ ] Remove the remaining confirmation wording in the organizer Overview:
+      `overview-ledger.tsx` still names `UnconfirmedResultsCard` and says
+      reports are "not yet confirmed". Use player-report provenance and
+      organizer correction language; reports already count toward completion.
 - [x] Result corrections are active-round-only by design (decided 2026-08-12):
       organizers override results in the open round, and rewinding the latest
       untouched round reopens the previous round for fixes — including
@@ -377,7 +411,24 @@ claimed by one.
         item is the automatic/ordered promotion when a seat frees, and
         should also revisit registerSelf's full-event behavior, which today
         refuses applications at capacity instead of auto-waitlisting them)
-- [ ] Enroll players as guests or by email without requiring an account
+- [ ] Deliver organizer guest/email enrollment. Implemented on
+      `feat/guest-enrollment` at `9e565c0`, not merged into the audited `main`:
+      separate add-guest/enroll-by-email flows, event-local names, claim and
+      duplicate-seat handling, and coverage. Reconcile its schema and ADR 0002
+      changes with current `main`, reset the DB, and verify admission and claim
+      flows before closing this item. Late entry remains separate section 1 work.
+- [ ] Deliver random event codes and organizer QR sharing. Built on
+      `feat/join-qr-web` at `422285d` and included in `feat/qr-codes` at
+      `3fd2d71`; neither implementation is on audited `main`.
+  - [ ] Merge random six-character tournament/convention codes and the join
+        resolver for public codes versus private invite grants. Reset the DB;
+        user public codes remain numeric.
+  - [ ] Merge the web QR dialog, copy/download/print actions, and
+        visibility-aware sharing. Verify public, unlisted, private,
+        rotated/disabled, and changed-visibility links after integration.
+  - [ ] Keep private invite grants revocable without rotating event identity.
+        Existing invite links are merged; the new code distinction is branch
+        work. Native join delivery and remaining scanner work are in section 8.
 - [ ] Persist organizer favorite players across tournaments
   - [ ] Decide whether favorites are scoped to an organizer or the organization
   - [ ] Filter pairings, registrations, and standings by favorites
@@ -387,7 +438,7 @@ claimed by one.
 Model conventions and other umbrella events as first-class containers instead
 of overloading a tournament or relying on naming conventions. Tournaments must
 remain usable on their own and keep their own registration, phases, rounds,
-results, and standings. Core landed (see ADR 0003): the `conventions` entity
+results, and standings. Core landed (see ADRs 0003 and 0004): the `conventions` entity
 with badge registration and badge fees through the shared payment engine,
 parent-child attach/detach, configurable badge gating for child-event
 registration, the organizer convention workspace, and the public landing page.
@@ -414,13 +465,22 @@ registration, the organizer convention workspace, and the public landing page.
   - [x] Add convention-scoped navigation and an organizer overview across all child events
   - [x] Add a public convention landing page with schedule and event discovery
   - [x] Preserve direct tournament URLs and standalone discovery for child events
+- [x] Add composable convention ticket types and door sales (ADR 0004,
+      merged in PR #23): per-type price/capacity, sale and admission windows,
+      included child events, and ticket selection at registration/Checkout.
+      The convention stays in `registration` throughout its live run until
+      completion or cancellation; there is no separate start action.
 - [ ] Convention follow-ups deliberately out of v1
-  - [ ] Badge sales while the convention is in progress (door sales) — widen
-        `isConventionRegistrationOpen` in model/conventions.ts
   - [ ] Badge approval/waitlist flows (the shared entry-status validator
         already admits the states)
   - [ ] Convention invite links for private conventions
   - [ ] Guest badge enrollment
+  - [ ] Multiple passes per participant, pass upgrades, and per-type refund
+        deadlines, if needed; the current model allows one badge per participant
+- [ ] Decide whether convention deletion should preserve badge history as
+      tournament deletion now preserves player history. The current
+      convention delete checks settled payments and detaches children, but
+      does not apply the tournament's test-event/unpublished-empty gate.
 
 ## 5. Judge operations and player conduct
 
@@ -537,6 +597,21 @@ push, analytics, and monitoring should be independent consumers.
 
 ## 8. Event-day outputs and client parity
 
+- [ ] Deliver native free/approval joining. Implemented on `feat/qr-codes`
+      at `3fd2d71`, not merged into `main`: `/join/<code>`, shared join-state
+      hooks, withdrawal, and a web payment handoff. The branch plan is
+      available with `git show feat/qr-codes:docs/plans/qr-join.md`; its PR 0,
+      PR 1, and PR 2a labels are plan stages, not GitHub PR numbers.
+- [ ] Build the remaining QR/join stages after the branch foundation lands
+  - [ ] Native scanner, permission handling, camera lifecycle, torch, and
+        manual code entry; verify on physical iOS and Android devices
+  - [ ] Move the web registration panel onto the shared join-state derivation,
+        preserving coverage for each current registration/payment state
+  - [ ] Native Checkout return/cancel/dismiss flow with webhook-owned
+        fulfillment; until then payment hands off to the web
+  - [ ] Universal/app links, blocked on the custom domain, Apple Team ID,
+        and Android signing fingerprint; verify installed-app and web fallback
+        behavior. The branch plan's temporary web-to-app bridge is optional.
 - [ ] Add printable outputs
   - [ ] Pairings by table
   - [ ] Pairings by player name
@@ -576,16 +651,18 @@ push, analytics, and monitoring should be independent consumers.
 
 ## 9. Payments
 
-Stripe Connect integration (2026-08-26, see `docs/payments.md` and the
-`payments.structure.convex.spec.ts` invariants). Architecture: Accounts v2
+Stripe Connect implementation is merged; deployment verification is tracked
+separately below and in [delivery status](docs/delivery-status.md). See
+`docs/payments.md` and the
+`payments.structure.convex.spec.ts` invariants. Architecture: Accounts v2
 recipient-configured connected accounts (express dashboard, platform-owned
 fees and losses — the legacy Standard/Express account types are deprecated in
 favor of these explicit v2 dimensions) with separate charges and transfers:
 players pay the platform via Stripe-hosted Checkout, funds hold through the
 refund window, and entry fees transfer to the organization when the
 tournament completes. Players absorb the platform fee (default 5%) plus a
-grossed-up processing estimate (`@paper-pairings/shared/payment-fees`); the
-organizer is paid exactly the entry cost per paid seat.
+grossed-up processing estimate (`@paper-pairings/shared/payment-fees`). The
+organizer's share is the entry cost per paid seat before absorbed refund fees.
 
 - [x] Decide platform versus marketplace payment architecture
   - [x] Evaluate organizer payout account shapes: Accounts v2 recipient
@@ -601,7 +678,7 @@ organizer is paid exactly the entry cost per paid seat.
       player-price breakdown, requiring a payouts-ready connection, frozen
       once any order exists
 - [x] Add separate order, payment, and refund records with idempotent webhook
-      processing: paymentOrders/paymentRefunds/tournamentPayouts/
+      processing: paymentOrders/paymentRefunds/eventPayouts/
       payoutTransfers plus the processed-event table; fulfillment happens
       only in the signed `/stripe/events` httpAction, which re-checks
       capacity at payment time and auto-refunds when the seat is gone
@@ -620,19 +697,35 @@ organizer is paid exactly the entry cost per paid seat.
       overloading registration status: no new entry statuses — "awaiting
       payment" is a pending entry plus a live order, seats move only through
       the webhook, and hard deletion refuses while money is unsettled
-- [x] Verify the flow end-to-end against a Stripe sandbox (2026-10-04):
+- [x] Record the historical Stripe sandbox exercise (2026-10-04):
       hosted Connect onboarding → thin-event status sync → paid Checkout
       registrations fulfilled by webhook → player-cancel full refund with the
       organizer-absorbed fee → completion payout sweep (two transfers,
       `source_transaction`-anchored, absorbed fee deducted). Surfaced and
       fixed two account-creation requirements (`contact_email`,
       `identity.country`) and the Accounts v2 restricted-key permission.
-- [x] Subscribe a v2 thin-event destination
+      The record does not identify a deployed SHA or target environment and
+      predates the refund recovery fixes; it is not current-release or
+      live-mode verification.
+- [x] Implement the signed v2 thin-event endpoint and capability sync
       (`/stripe/account-events`, `STRIPE_ACCOUNT_WEBHOOK_SECRET`) for
       `v2.core.account[configuration.recipient].capability_status_updated`
       and `v2.core.account[requirements].updated` so connected-account
       status stays fresh without polling; the payout still re-checks live
       before every transfer
+- [x] Merge bounded refund execution and recovery (PR #40), including
+      parked/processing lists, webhook reconciliation, and owner status checks;
+      merge start/cancel withdrawal of unpaid pending entries (PR #42).
+      See `docs/refund-recovery.md` for the contract and operator runbook.
+- [ ] Verify the current release against a named Stripe sandbox and deployed
+      SHA. Cover direct and approval-mode tournament entry, convention ticket
+      purchase, both webhook endpoints, cancel/refund, parked-refund recovery,
+      and completion payout. Record redelivery outcomes and provider/event
+      references in `docs/delivery-status.md` without credentials.
+- [ ] Verify live-mode configuration before accepting real payments: account
+      readiness, restricted-key permissions, both endpoint subscriptions and
+      signing secrets, HTTPS return origin, and the release revision. A sandbox
+      pass alone does not close this gate. The app remains pre-production.
 - [x] Give organizers Express Dashboard access through in-app single-use
       login links (`createDashboardLink`)
 - [ ] Build the dispute workflow beyond v1's record-and-exclude (evidence
@@ -664,13 +757,29 @@ organizer is paid exactly the entry cost per paid seat.
 
 ## 10. Design system and platform polish
 
-- [ ] Establish a design language beyond stock shadcn defaults
+The web design foundation is merged: PR #32 supplied the rebrand, theme,
+and organizer Overview; PR #33 the shared page layout and workspace restyle;
+PR #34 the Radix-based component styling. The Figma ledger records design
+work, not deployment or accessibility verification. Current conventions are
+in [the design guide](docs/design/README.md).
+
+- [x] Establish the shared web design foundation
   - [x] Share player-facing site chrome through SiteShell
   - [x] Share workspace headers, table states, result badges, and common interaction components
-  - [ ] Define semantic color, type, spacing, elevation, and motion tokens
-  - [ ] Restyle core organizer and player workflows using the new system
-  - [ ] Document reusable composition patterns and accessibility expectations
-- [ ] Complete accessibility and keyboard audits for organizer and player workflows
+  - [x] Define semantic color, Geist type, radius, and elevation tokens in
+        `apps/web/src/styles/app.css`, with light/dark/system theme support
+  - [x] Standardize page gutters, reading width, section spacing, and table
+        controls through shared components
+  - [x] Restyle core organizer and web player workflows using the shared system
+- [ ] Finish design guidance and verification
+  - [x] Document the merged composition patterns and accessibility expectations
+        in `docs/design/README.md`
+  - [ ] Consolidate motion durations/easing and audit reduced-motion behavior;
+        individual animations and reduced-motion rules already exist
+  - [ ] Complete keyboard, focus, screen-reader, contrast, and touch-target
+        audits across organizer and player workflows in both themes
+  - [ ] Verify responsive layouts and record viewport/theme coverage against
+        the release revision; web safe-area work remains in section 8
 - [ ] Add bundle budgets and performance regression checks
 
 ## Completed foundations
@@ -687,10 +796,13 @@ organizer is paid exactly the entry cost per paid seat.
 - [x] Committed `.env.example` contracts and typed Convex env declarations
       via `defineApp({ env })` (`docs/environment.md`)
 - [x] CI on pull requests (against the merge ref) and pushes to `main`, with
-      three jobs — test, checks (single-copy
+      four jobs: test, checks (single-copy
       guard for react/react-dom/react-native/convex via
       `scripts/check-single-version.js`, lint, typecheck, format), native
-      smoke export — plus the local one-shot gate `pnpm check`. Expo's
+      smoke export, and production web build. The local `pnpm check` runs
+      dependency, format, type, lint, and test checks; it does not build or
+      run browser E2E. The CI web artifact has no runtime credentials and
+      is not deployed. Expo's
       `expo install --check` runs weekly in `expo-drift.yml` and files an
       issue, since it tracks npm release state rather than the commit.
 - [x] Backend ESLint at zero warnings
@@ -710,9 +822,11 @@ organizer is paid exactly the entry cost per paid seat.
 
 - [x] Full tournament settings page with pre-start edit rules
 - [x] Cancel tournament and hard-delete it with all child rows (deletion is gated to test events and unpublished events with no entries; everything else is cancelled so player history survives)
-- [x] Admin Overview as the organizer's live dashboard: status band (round, clock, results in, one advance action), outstanding-tables ledger, unconfirmed player reports, recent activity; the public page is a link
+- [x] Admin Overview as the organizer's live dashboard: status band (round, clock, results in, one advance action), outstanding tables, player-reported results available for organizer correction, and recent activity; the public page is a link
 - [x] Markdown event details editing and public rendering
-- [x] Synced round timer with organizer controls, progress chip, overtime, and web/native/public display
+- [x] Synced round timer with organizer controls, progress chip, overtime, and
+      web/public display; the native pill exists but is unmounted pending the
+      custom app bar in section 8
 - [x] Phase player meetings with alphabetical seating
 - [x] Append-only typed tournament audit log and paginated organizer Log tab
 - [x] Phase add/remove/reorder while the tournament is editable

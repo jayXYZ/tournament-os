@@ -11,7 +11,8 @@ pnpm test:e2e          # from the repo root or apps/web
 
 The config starts `vite dev` on port 3000 if it isn't already running. If
 backend code changed since the Convex dev process last pushed, run
-`pnpm dev:backend` (or `convex dev --once` in `packages/backend`) first so the
+`pnpm dev:backend` (or `pnpm --filter @paper-pairings/backend exec convex dev --once`
+from the repo root) first so the
 deployment matches the working tree.
 
 Requirements:
@@ -39,7 +40,15 @@ session through `window.Clerk`, and saves the browser storage state to
   concedes it to the opponent immediately (required-wins–0, typed
   `match_conceded` audit event) and the round completes off the concession.
 - `invite-links.spec.ts` — the `/join/<code>` route and `?invite` param for
-  private events, plus the invite-link settings card (regenerate/disable).
+  private events, including creation from the settings card, signed-out
+  viewing, and player registration. Rotation/disabling and the full grant
+  boundary are covered by `inviteLinks.convex.spec.ts`, not this browser spec.
+
+This suite is separate from `pnpm check` and the current CI jobs. A passing
+run exercises the configured development environment, not automatically the
+release deployment. Approval/payment state coverage and QR browser delivery
+remain open in [the roadmap](../../../TODO.md). Record the tested backend
+revision with any deployment verification result.
 
 ## Test data
 

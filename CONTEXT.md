@@ -9,7 +9,9 @@ behavior is the intended behavior.
 Scope: the competitive engine only. Payments, organizations, and decklists
 are separate domains — see `docs/payments.md` and the schema. Entries marked
 _Planned_ describe designed-but-unbuilt rules that currently have no writer
-in code; everything else describes shipped behavior.
+in code; everything else describes behavior implemented on `main`, unless
+explicitly qualified. Deployment verification is recorded separately in
+[delivery status](docs/delivery-status.md).
 
 ## Language
 
@@ -248,19 +250,29 @@ _Avoid_: event as a synonym for tournament specifically
 
 **Convention**:
 A first-class umbrella event spanning a date range: it sells Badges, holds
-Child Events, and never nests inside another convention. It has the
-tournament lifecycle vocabulary but no rounds — an organizer publishes,
-starts, and completes it explicitly, and completing a paid convention
-releases the badge-fee payout.
+Child Events, and never nests inside another convention. Its lifecycle is
+`setup`, `registration`, `completed`, or `cancelled`. Publication opens
+registration for the whole live run; there is no separate start action.
+Ticket-type sale windows govern purchases, including door sales. The organizer
+completes or cancels it explicitly, and completion releases the badge-fee
+payout. See ADR 0004.
 _Avoid_: umbrella event, series, meta event
 
 **Badge**:
-A Participant's registration for a convention itself. A badge has an Entry
+A Participant's registration for a convention itself, with one Ticket Type
+and at most one badge per participant per convention. A badge has an Entry
 Status but no competitive state. When a convention requires badges, a
-confirmed one is the admission gate for self-serve Child Event
-registration — an admission gate only: cancelling a badge never revokes
-event registrations already made, and organizer actions bypass it.
+confirmed badge whose admission window covers the Child Event's start is
+the admission gate for self-serve registration. Cancelling a badge never
+revokes event registrations already made, and organizer actions bypass the gate.
 _Avoid_: convention registration (in UI copy), ticket
+
+**Ticket Type**:
+A convention's badge offering, with its own price, optional capacity, sale
+and admission windows, and included Child Events. An included child event
+admits the badge holder without an entry fee. Sale windows determine when
+the type can be purchased; admission windows determine which dates it covers.
+Types share the convention's visibility and overall attendee capacity.
 
 **Child Event**:
 A tournament held at a convention (`tournaments.conventionId`). It remains a

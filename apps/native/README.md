@@ -93,9 +93,20 @@ src/
 - `metro.config.js` just wraps `getSentryExpoConfig`; Expo's default config
   detects the monorepo on its own.
 
-## Next steps
+## Delivery and next steps
 
-Reporting results and dropping are already available as shared hooks
-(`useReportResult`, `useDropSelf` — there is no confirmation step by design;
-see `CONTEXT.md`) — wire them into `tournament/[code].tsx` to let players
-submit match results from their phone.
+Result reporting is implemented in the match scoreboard and merged through
+PR #31. There is no opponent confirmation step. Dropping has a shared hook
+(`useDropSelf`) but still needs a native control. The custom app/tab bars,
+standings, match history, and decklists remain open in
+[roadmap section 8](../../TODO.md#8-event-day-outputs-and-client-parity).
+
+Free/approval joining at `/join/<code>` and a web payment handoff are built
+on `feat/qr-codes`, not merged into the audited `main`. The scanner, native
+payment return flow, and universal links remain planned. Do not treat those
+branch routes or environment variables as available in this checkout.
+
+The native build script and CI export iOS and Android bundles only. The web
+target remains an open fix-or-remove task. Exporting bundles does not verify
+device behavior or Sentry capture; record those checks in
+[delivery status](../../docs/delivery-status.md).

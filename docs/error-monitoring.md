@@ -1,9 +1,20 @@
 # Error monitoring
 
-Sentry monitors all three surfaces. The code-side wiring is committed and
-inert until DSNs are configured; run `scripts/setup-error-monitoring.sh` for
-a guided walkthrough of the account-side setup (Sentry projects, DSNs,
-source-map credentials, dashboard integrations).
+Web browser/SSR and native Sentry wiring is merged into `main` and inert
+until DSNs are configured. Convex exception reporting is a separate
+deployment integration. Code availability does not establish that any of
+these environments is sending errors.
+
+As of the 2026-10-28 documentation audit, a run of
+`scripts/setup-error-monitoring.sh` for projects/DSNs had been reported, but
+no environment-specific event receipt or source-map check was recorded. The
+recorded Convex blocker was its Pro integration requirement; the audit did
+not inspect the current team plan or dashboard configuration. See
+[delivery status](delivery-status.md).
+
+The setup script walks through projects, DSNs, source-map credentials, and
+dashboard integrations. Completing that walkthrough is configuration work;
+the verification steps below establish whether capture works.
 
 ## Web (`apps/web`) — `@sentry/tanstackstart-react`
 
@@ -38,9 +49,10 @@ Enabled by `EXPO_PUBLIC_SENTRY_DSN`.
   default config) so bundles carry the debug IDs symbolication needs.
 - `app.config.ts` — the `@sentry/react-native` config plugin handles native-build
   source-map/dSYM upload, reading `SENTRY_ORG` / `SENTRY_PROJECT` /
-  `SENTRY_AUTH_TOKEN` from the build environment. Native-crash capture
-  requires a dev build (`expo run:ios|android`) or EAS build — Expo Go
-  cannot load the native module, though JS errors still report there.
+  `SENTRY_AUTH_TOKEN` from the build environment. Verify JS and native-crash
+  capture in a development or EAS build. This app requires Clerk's native
+  modules as well and cannot run in Expo Go; see the
+  [native README](../apps/native/README.md).
 
 ## Convex (`packages/backend`) — dashboard integration
 
@@ -61,4 +73,25 @@ dashboard logs page.
 | `SENTRY_ORG`, `SENTRY_PROJECT` | both `.env.local`s, Vercel, EAS          | source-map upload target (URL slugs, e.g. `my-org` / `my-org-web`; not the DSN) |
 | `SENTRY_AUTH_TOKEN`            | both `.env.local`s (secret), Vercel, EAS | source-map upload auth                                                          |
 
-All are optional: absent, the apps build and run with monitoring disabled.
+DSNs are optional: without them, the apps build and run with reporting
+disabled. Source-map upload credentials are separate from event capture.
+
+## Deployment verification still to record
+
+- Web browser: trigger a controlled exception on the intended deployment,
+  confirm the event arrives in the expected project/environment, and check
+  that its stack resolves to the source file and line for the deployed SHA.
+- Web SSR: exercise a controlled server failure and confirm a separate
+  server event with readable source locations. A browser event does not
+  verify server instrumentation.
+- Native: use a dev or release build on a named OS/device; verify JS capture
+  and native crash reporting separately, including symbolication for that
+  build. A Metro export does not run either path.
+- Convex: after enabling the integration on the target deployment, trigger
+  a controlled function exception and confirm its event and function/request
+  metadata in the backend Sentry project.
+
+Use a test environment for deliberate failures and remove temporary probes.
+Record the deployment/build, revision, date, outcome, and issue reference in
+[delivery status](delivery-status.md). Keep each surface open in roadmap
+section 0 until its own check passes.

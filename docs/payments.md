@@ -7,13 +7,33 @@ fees). The money tables (`paymentOrders`, `paymentRefunds`, `eventPayouts`,
 (`tournamentId`/`conventionId`) matching `registrationId`'s table;
 `model/paidEvents.ts` is the one seam that resolves a row back to its owner,
 and the domain rules in `model/payments.ts` are structural over either doc
-(the convention document deliberately reuses the tournament paid-event field
-names — see ADR 0003). Everything below applies to both kinds unless it says
+(shared event fields follow ADR 0003; convention prices come from the ticket
+types in ADR 0004). Everything below applies to both kinds unless it says
 otherwise. The invariants are pinned by
 `packages/backend/convex/payments.structure.convex.spec.ts`; the behavioral
 suites are `paymentsConnect` / `entryFeeSettings` / `paymentsCheckout` /
 `paymentsRefunds` / `paymentsPayouts` / `paymentsSweeps` /
 `conventionPayments` `.convex.spec.ts`.
+
+## Delivery and verification status
+
+The payment engine, Connect onboarding, signed snapshot/thin-event handlers,
+and refund recovery code are merged into `main`. PR #30 merged the Connect
+updates; PR #40 merged refund recovery; PR #42 merged withdrawal of unpaid
+pending entries during start/cancel sweeps.
+
+The roadmap records a Stripe sandbox exercise on 2026-10-04 for tournament
+Checkout, account sync, cancellation/refund, and completion transfers. That
+record lacks a deployment identifier and tested SHA, and predates the later
+recovery fixes. It does not verify the current release, convention ticket
+purchases, or live-mode configuration. [Delivery status](delivery-status.md)
+preserves the record and defines the evidence needed for the next pass.
+
+Current-release sandbox verification and live-mode readiness remain open in
+roadmap section 9. The setup instructions below describe required
+configuration, not completed dashboard work. Native free/approval joining
+with a web payment handoff exists only on `feat/qr-codes`; an integrated
+native Checkout return/cancel flow is still planned.
 
 ## Architecture
 
@@ -47,16 +67,16 @@ suites are `paymentsConnect` / `entryFeeSettings` / `paymentsCheckout` /
   set: fees are transfer math. Entry fees transfer when the tournament
   **completes**, so pre-start refunds are plain `refunds.create` and
   cancelling an event never needs clawbacks.
-- **Fee economics** — `@paper-pairings/shared/payment-fees`. The organizer is
-  paid exactly the entry cost per paid seat; the player additionally absorbs
+- **Fee economics** — `@paper-pairings/shared/payment-fees`. Before absorbed
+  refund fees, the organizer's share is the entry cost per paid seat; the player additionally absorbs
   the platform fee (`PLATFORM_FEE_PERCENT`, default 5% of entry) and a
   grossed-up estimate of Stripe's processing fee (`STRIPE_FEE_PERCENT` /
   `STRIPE_FEE_FIXED_CENTS`, defaults 2.9 / 30). The gross-up guarantees (a
   tested invariant) that the estimated fee on the total never eats into
   entry + platform fee. Each order snapshots its breakdown at creation;
   config changes never reprice open orders. Variance between the estimate
-  and Stripe's actual per-card fee lands on the platform — watch the margin
-  reports.
+  and Stripe's actual per-card fee lands on the platform. Actual-fee
+  reconciliation remains open in roadmap section 9.
 - **State model** — payment state lives on order records, never on
   registration status. "Awaiting payment" is a `pending` entry plus a live
   `paymentOrders` row. Seats are taken exclusively by the webhook, which

@@ -4,6 +4,12 @@ Each surface has a committed `.env.example` documenting its local file; this
 page is the full contract, including where each variable lives in production.
 `.env.local` files are gitignored and hold real values.
 
+This is a configuration contract, not an inventory of values already set.
+The 2026-10-28 audit checked repository configuration only; current deployment
+setup and workflow verification are tracked in [delivery status](delivery-status.md).
+Branch-only additions, including the QR branch's `EXPO_PUBLIC_WEB_ORIGIN`,
+are not part of main's contract until that code merges.
+
 ## Web app (`apps/web`)
 
 Local: copy `apps/web/.env.example` to `apps/web/.env.local`.
@@ -57,3 +63,8 @@ state, not part of the contract.
 
 Production Vercel builds additionally need `CONVEX_DEPLOY_KEY` in the Vercel
 project so the build command in `apps/web/vercel.json` can run `convex deploy`.
+Confirm the Vercel root directory is `apps/web` and installation includes the
+workspace root. Keep preview and production deployment credentials scoped to
+their intended targets. `pnpm start` serves the built web app via `srvx`;
+the committed command and a successful CI bundle do not establish that a
+Vercel deployment or its runtime environment works.

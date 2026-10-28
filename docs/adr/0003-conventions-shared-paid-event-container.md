@@ -1,5 +1,12 @@
 # Conventions are a first-class container sharing the tournament payment engine
 
+Implemented on `main`. [ADR 0004](0004-composable-convention-ticket-types.md)
+supersedes the original single badge fee and lifecycle assumptions below:
+prices now belong to ticket types, and `registration` spans the live convention
+without a separate start action. The shared payment engine and parent/child
+ownership decisions remain in effect. This decision record is not deployment
+verification; see [delivery status](../delivery-status.md).
+
 Conventions (umbrella events that span a date range, sell their own
 registrations — badges — and hold tournaments) are a separate `conventions`
 table rather than a flavored tournament row, with `tournaments.conventionId`
