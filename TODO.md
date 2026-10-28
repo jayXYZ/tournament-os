@@ -709,7 +709,7 @@ organizer is paid exactly the entry cost per paid seat.
 ### Product
 
 - [x] Full tournament settings page with pre-start edit rules
-- [x] Cancel tournament and hard-delete it with all child rows
+- [x] Cancel tournament and hard-delete it with all child rows (deletion is gated to test events and unpublished events with no entries; everything else is cancelled so player history survives)
 - [x] Admin Overview as the organizer's live dashboard: status band (round, clock, results in, one advance action), outstanding-tables ledger, unconfirmed player reports, recent activity; the public page is a link
 - [x] Markdown event details editing and public rendering
 - [x] Synced round timer with organizer controls, progress chip, overtime, and web/native/public display

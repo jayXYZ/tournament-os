@@ -11,6 +11,7 @@ import {
   organizerIdentity,
   playOutCurrentRound,
   playerIdentity,
+  rawSeed,
   seedTournamentWithPlayers,
 } from "./specHelpers";
 import { createConvexTest } from "./specHelpers.runtime";
@@ -1549,6 +1550,13 @@ test("deleteTournament clears meeting seats", async () => {
   await organizer.mutation(api.tournaments.playerMeeting.startPlayerMeeting, {
     phaseId,
   });
+  await rawSeed(
+    t,
+    "only a test event may be deleted once it has players; the seat purge under test is the same for both kinds",
+    async (ctx) => {
+      await ctx.db.patch(tournamentId, { isTestEvent: true });
+    },
+  );
 
   await organizer.mutation(api.tournaments.lifecycle.deleteTournament, {
     tournamentId,

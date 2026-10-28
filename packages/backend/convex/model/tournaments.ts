@@ -338,6 +338,42 @@ export function isPubliclyViewable(event: {
   return event.visibility !== "private" && event.lifecycle !== "setup";
 }
 
+// The hard-delete gate. A deleted event takes its history with it — every
+// player's registration, results, and standings disappear from their own
+// record too (docs/audit-policy.md) — so only events with no history to
+// lose may be deleted: a test event (synthetic throughout), or an
+// unpublished event nobody has entered. Everything else is cancelled, never
+// deleted. Registration rows are checked rather than inferred from
+// lifecycle so the guard holds even if a future seam enrols a player before
+// publication.
+export async function requireTournamentDeletable(
+  ctx: QueryCtx,
+  tournament: Doc<"tournaments">,
+) {
+  if (tournament.isTestEvent) {
+    return;
+  }
+  if (tournament.lifecycle !== "setup") {
+    throw userError(
+      tournament.lifecycle === "completed" ||
+        tournament.lifecycle === "cancelled"
+        ? "This tournament has ended and its history is kept for its players, so it cannot be deleted"
+        : "A published tournament cannot be deleted — cancel it instead, which keeps its history for its players",
+    );
+  }
+  const enrolled = await ctx.db
+    .query("tournamentRegistrations")
+    .withIndex("by_tournamentId_and_tournamentStartDate", (q) =>
+      q.eq("tournamentId", tournament._id),
+    )
+    .first();
+  if (enrolled) {
+    throw userError(
+      "A tournament with enrolled players cannot be deleted — cancel it instead, which keeps its history for its players",
+    );
+  }
+}
+
 export function requireTestTournament(tournament: Doc<"tournaments">) {
   if (tournament.isTestEvent !== true) {
     throw new Error("Tournament is not a test event");
