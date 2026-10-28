@@ -42,7 +42,7 @@ pnpm dev:native     # apps/native (Metro dev server; needs a dev build first)
 - `pnpm test` — run every workspace's unit/integration tests
 - `pnpm test:e2e` — Playwright browser tests (see `apps/web/e2e/README.md`)
 - `pnpm build` — build the web app and export the native bundles
-- `pnpm start` — serve the built web app
+- `pnpm start` — serve the built web app (`apps/web/dist` via srvx on :3000)
 - `pnpm lint` — eslint over web, native, and backend
 - `pnpm typecheck` — run package typecheck scripts (backend, tournament-core, shared)
 - `pnpm format` / `pnpm format:check` — prettier over the whole repo

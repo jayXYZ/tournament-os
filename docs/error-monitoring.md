@@ -22,7 +22,11 @@ Enabled by `VITE_SENTRY_DSN` (build-time, same handling as
   `tanstackRouterBrowserTracingIntegration`.
 - `vite.config.ts` — the Sentry build plugin (source-map upload) activates
   only when `SENTRY_AUTH_TOKEN` is set, alongside `SENTRY_ORG` and
-  `SENTRY_PROJECT`; a build without credentials is a plain build.
+  `SENTRY_PROJECT`; a build without credentials is a plain build. With the
+  token set, the config refuses to load unless org/project look like Sentry
+  URL slugs (or a numeric project ID), and an upload failure fails the build
+  instead of being logged and ignored. Pasting the DSN or the token into
+  `SENTRY_PROJECT` / `SENTRY_ORG` is the usual mistake.
 
 ## Native (`apps/native`) — `@sentry/react-native`
 
@@ -50,11 +54,11 @@ dashboard logs page.
 
 ## Environment variables
 
-| Variable                       | Where                                    | Purpose                      |
-| ------------------------------ | ---------------------------------------- | ---------------------------- |
-| `VITE_SENTRY_DSN`              | `apps/web/.env.local`, Vercel            | web reporting (client + SSR) |
-| `EXPO_PUBLIC_SENTRY_DSN`       | `apps/native/.env.local`, EAS            | native reporting             |
-| `SENTRY_ORG`, `SENTRY_PROJECT` | both `.env.local`s, Vercel, EAS          | source-map upload target     |
-| `SENTRY_AUTH_TOKEN`            | both `.env.local`s (secret), Vercel, EAS | source-map upload auth       |
+| Variable                       | Where                                    | Purpose                                                                         |
+| ------------------------------ | ---------------------------------------- | ------------------------------------------------------------------------------- |
+| `VITE_SENTRY_DSN`              | `apps/web/.env.local`, Vercel            | web reporting (client + SSR)                                                    |
+| `EXPO_PUBLIC_SENTRY_DSN`       | `apps/native/.env.local`, EAS            | native reporting                                                                |
+| `SENTRY_ORG`, `SENTRY_PROJECT` | both `.env.local`s, Vercel, EAS          | source-map upload target (URL slugs, e.g. `my-org` / `my-org-web`; not the DSN) |
+| `SENTRY_AUTH_TOKEN`            | both `.env.local`s (secret), Vercel, EAS | source-map upload auth                                                          |
 
 All are optional: absent, the apps build and run with monitoring disabled.

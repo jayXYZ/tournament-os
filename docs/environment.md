@@ -16,19 +16,19 @@ Production: set in the Vercel project (except `VITE_CONVEX_URL`, see below).
 | `CLERK_SECRET_KEY`                                                                                                                         | yes      | Clerk secret key for SSR/server functions. Server-only; never expose with a `VITE_` prefix.                                                                                                                                             |
 | `VITE_CLERK_SIGN_IN_URL`, `VITE_CLERK_SIGN_UP_URL`, `VITE_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL`, `VITE_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL` | no       | Clerk routing, read implicitly by the Clerk SDK (`/sign-in`, `/sign-up`, `/`, `/`).                                                                                                                                                     |
 | `VITE_SENTRY_DSN`                                                                                                                          | no       | Enables web error reporting; see [error-monitoring.md](./error-monitoring.md).                                                                                                                                                          |
-| `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN`                                                                                        | no       | Build-time source-map upload; upload activates only when `SENTRY_AUTH_TOKEN` is set.                                                                                                                                                    |
+| `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN`                                                                                        | no       | Build-time source-map upload; upload activates only when `SENTRY_AUTH_TOKEN` is set. Org/project are the Sentry URL slugs (not the DSN or token); the build fails fast on other values.                                                 |
 
 ## Native app (`apps/native`)
 
 Local: copy `apps/native/.env.example` to `apps/native/.env.local`.
 Release builds: set in the EAS build environment.
 
-| Variable                                            | Required | Purpose                                                                           |
-| --------------------------------------------------- | -------- | --------------------------------------------------------------------------------- |
-| `EXPO_PUBLIC_CONVEX_URL`                            | yes      | Same Convex deployment URL as the web app's `VITE_CONVEX_URL`.                    |
-| `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY`                 | yes      | Publishable key from the same Clerk app as web.                                   |
-| `EXPO_PUBLIC_SENTRY_DSN`                            | no       | Enables native error reporting; see [error-monitoring.md](./error-monitoring.md). |
-| `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN` | no       | Build-time source-map/dSYM upload via the Sentry Expo plugin.                     |
+| Variable                                            | Required | Purpose                                                                                                                    |
+| --------------------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `EXPO_PUBLIC_CONVEX_URL`                            | yes      | Same Convex deployment URL as the web app's `VITE_CONVEX_URL`.                                                             |
+| `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY`                 | yes      | Publishable key from the same Clerk app as web.                                                                            |
+| `EXPO_PUBLIC_SENTRY_DSN`                            | no       | Enables native error reporting; see [error-monitoring.md](./error-monitoring.md).                                          |
+| `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN` | no       | Build-time source-map/dSYM upload via the Sentry Expo plugin. Org/project are the Sentry URL slugs (not the DSN or token). |
 
 ## Convex deployment (`packages/backend`)
 
