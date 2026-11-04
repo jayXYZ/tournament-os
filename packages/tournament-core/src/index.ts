@@ -50,8 +50,19 @@ export {
   matchResultKindLabel,
   standingStatusLabel,
 } from "./format";
-export { badgeGateFor, deriveJoinAction } from "./join-action";
-export type { BadgeGate, JoinAction, JoinActionInput } from "./join-action";
+export {
+  badgeGateFor,
+  deriveJoinAction,
+  deriveRegistrationAction,
+} from "./join-action";
+export type {
+  BadgeGate,
+  JoinAction,
+  JoinActionInput,
+  RegistrationAction,
+  RegistrationActionInput,
+  SeatAction,
+} from "./join-action";
 export { useJoinCode } from "./join-code";
 export type { JoinCodeResolution } from "./join-code";
 export { mutationErrorMessage, userErrorMessage } from "./mutation-error";

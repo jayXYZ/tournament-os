@@ -2,17 +2,88 @@ import type { FunctionReturnType } from "convex/server";
 
 import type { api } from "@paper-pairings/backend/convex/_generated/api";
 
+import type { ViewerAuthGate } from "./auth-readiness";
 import type {
   PlayerRegistration,
   PlayerTournamentEvent,
 } from "./player-access";
 
-// The one primary action a join screen offers (docs/plans/qr-join.md), or
-// the status that stands in for it. Every case mirrors a branch of the web's
-// RegistrationPanel (tournament-public-page.tsx), which PR 3 moves onto this
-// derivation; until then the two must agree, and the table tests pin this
-// side. Server mutations stay the authority: this only decides which button
-// is worth showing.
+// What an event's registration surface offers the viewer: the one primary
+// action, or the status that stands in for it (docs/plans/qr-join.md PR 3).
+// It is the single decision behind both clients. The web's
+// RegistrationPanel (tournament-public-page.tsx) renders it whole; the
+// native join screen renders its projection, JoinAction (deriveJoinAction
+// below). Table tests pin both. Server mutations stay the authority: this
+// only decides which button is worth showing.
+export type RegistrationAction =
+  // Something the decision depends on is still loading.
+  | { kind: "loading" }
+  // The provider has a user Convex could not verify (ViewerAuthGate). Only a
+  // verified identity can show the viewer their registration, so this stands
+  // in for every lifecycle.
+  | { kind: "unverified" }
+  | { kind: "signIn" }
+  // registerSelf takes a seat. `comped`: a paid event the viewer's
+  // convention badge covers (ADR 0004), so no payment is asked for.
+  | { kind: "register"; comped: boolean }
+  // registerSelf files an application for the Review Queue.
+  | { kind: "requestToRegister"; comped: boolean }
+  // createEntryCheckout: a paid event with no approval step.
+  // `repeatDropFeesKept`: the viewer already had a full refund for this
+  // event, so cancelling again after paying refunds the entry cost only
+  // (getMyRefundFlag). False while the flag loads.
+  | { kind: "pay"; repeatDropFeesKept: boolean }
+  // A pending entry with a payable order: an approved application
+  // (`post_approval`) or the viewer's own unfinished checkout
+  // (`registration`). Payment takes the seat. `blocked` says why the viewer
+  // can't pay now, or null when they can:
+  // - "closed": registration closed before they paid, so nothing is left to
+  //   do.
+  // - a badge gate reason: the badge stopped admitting the event after the
+  //   entry existed (a cancelled badge, a rescheduled event). The server
+  //   still lets them withdraw.
+  // Withdrawal, like payment, needs registration open.
+  | {
+      kind: "completePayment";
+      purpose: EntryOrderPurpose;
+      blocked: "closed" | Exclude<BadgeGate, null> | null;
+    }
+  // An application waiting on the organizer. `canWithdraw` while
+  // registration is open (cancelMyRegistration).
+  | { kind: "pendingReview"; canWithdraw: boolean }
+  | { kind: "waitlisted"; canWithdraw: boolean }
+  // A confirmed seat. `participation` is where the player stands since (a
+  // missing status reads as active, as the server reads it); `next` is what
+  // the seat allows now.
+  | { kind: "registered"; participation: Participation; next: SeatAction }
+  | { kind: "rejected" }
+  | { kind: "full" }
+  | { kind: "closed" }
+  // A badge-gated convention child event the viewer's badge doesn't admit.
+  | { kind: "badgeBlocked"; reason: Exclude<BadgeGate, null> };
+
+// What a confirmed seat allows next.
+export type SeatAction =
+  // Registration is open: releasing the seat is the one self-service change
+  // (rejoining after a drop is an organizer reinstatement).
+  // `cancelOutcome`: what cancelling does with a paid order's money
+  // (getMyEntryOrder); null on a free event, while the order loads, or when
+  // there is nothing to refund.
+  | { kind: "cancel"; cancelOutcome: CancelOutcome }
+  // The event is running. The player controller admits every confirmed
+  // seat, whatever its participation, so it stays the way to live
+  // standings and match history.
+  | { kind: "openPlayerView" }
+  // Registration changes are over: the event finished or was cancelled.
+  // An eliminated seat outside play lands here too, since elimination only
+  // happens in play.
+  | { kind: "locked" };
+
+// The one primary action the native join screen offers (docs/plans/qr-join.md
+// PR 2a), or the status that stands in for it: RegistrationAction narrowed to
+// what that screen needs. A pending entry it can't pay for reads as
+// `badgeBlocked` (still withdrawable) or `closed`; every confirmed seat reads
+// as `registered`.
 export type JoinAction =
   // Something the decision depends on is still loading.
   | { kind: "loading" }
@@ -52,6 +123,8 @@ type EntryOrder = NonNullable<
   FunctionReturnType<typeof api.payments.queries.getMyEntryOrder>
 >;
 type EntryOrderPurpose = EntryOrder["purpose"];
+type CancelOutcome = EntryOrder["cancelOutcome"];
+type Participation = NonNullable<PlayerRegistration["participationStatus"]>;
 
 type ConventionSummary = PlayerTournamentEvent["convention"];
 
@@ -71,11 +144,54 @@ export function badgeGateFor(convention: ConventionSummary): BadgeGate {
   return convention.myBadgeCoversThisEvent ? null : "wrong_day";
 }
 
-export type JoinActionInput = {
+export type RegistrationActionInput = {
   tournament: Pick<
     PlayerTournamentEvent["tournament"],
     "lifecycle" | "entryFeeCents" | "registrationRequiresApproval"
   >;
+  viewer: ViewerAuthGate;
+  // The viewer's row from getMyRegistration: undefined while it loads,
+  // null when there is none. Ignored unless the viewer is ready.
+  registration:
+    | Pick<PlayerRegistration, "entryStatus" | "participationStatus">
+    | null
+    | undefined;
+  // getMyEntryOrder: undefined while it loads. Its status and purpose decide
+  // a pending entry on a paid event; its cancel outcome only annotates a
+  // confirmed seat's cancel, and reads as null when absent.
+  order:
+    | (Pick<EntryOrder, "status" | "purpose"> &
+        Partial<Pick<EntryOrder, "cancelOutcome">>)
+    | null
+    | undefined;
+  // getMyRefundFlag: undefined while it loads.
+  refundFlag: { repeatDropFeesKept: boolean } | null | undefined;
+  badgeGate: BadgeGate;
+  // getPublicTournament's convention.myBadgeCompsThisEvent.
+  badgeCompsThisEvent: boolean;
+  spotsLeft: number;
+};
+
+export function deriveRegistrationAction(
+  input: RegistrationActionInput,
+): RegistrationAction {
+  // Pending covers the provider loading and Convex validating the token:
+  // never offer sign-in or a data-derived state before the gate settles.
+  if (input.viewer === "pending") {
+    return { kind: "loading" };
+  }
+  if (input.viewer === "unverified") {
+    return { kind: "unverified" };
+  }
+  return deriveForViewer(input, input.viewer === "ready");
+}
+
+export type JoinActionInput = Omit<
+  RegistrationActionInput,
+  "viewer" | "registration" | "order" | "refundFlag"
+> & {
+  // The join screen is mounted behind the access ladder, which settles the
+  // auth gate first, so only signed in or out reaches it.
   signedIn: boolean;
   // The viewer's row from getMyRegistration: undefined while it loads,
   // null when there is none. Ignored when signed out.
@@ -83,21 +199,51 @@ export type JoinActionInput = {
   // getMyEntryOrder: undefined while it loads. Consulted only for a pending
   // entry on a paid event, the one case where it decides anything.
   order: Pick<EntryOrder, "status" | "purpose"> | null | undefined;
-  badgeGate: BadgeGate;
-  // getPublicTournament's convention.myBadgeCompsThisEvent.
-  badgeCompsThisEvent: boolean;
-  spotsLeft: number;
 };
 
 export function deriveJoinAction({
-  tournament,
   signedIn,
-  registration,
-  order,
-  badgeGate,
-  badgeCompsThisEvent,
-  spotsLeft,
+  ...input
 }: JoinActionInput): JoinAction {
+  // The join screen shows neither a confirmed seat's cancel note nor the
+  // repeat-drop warning, so the refund flag plays no part here.
+  const action = deriveForViewer({ ...input, refundFlag: undefined }, signedIn);
+  switch (action.kind) {
+    case "registered":
+      return { kind: "registered" };
+    case "pay":
+      return { kind: "pay" };
+    case "completePayment":
+      if (action.blocked === null) {
+        return { kind: "completePayment", purpose: action.purpose };
+      }
+      return action.blocked === "closed"
+        ? { kind: "closed" }
+        : { kind: "badgeBlocked", reason: action.blocked, canWithdraw: true };
+    case "badgeBlocked":
+      return {
+        kind: "badgeBlocked",
+        reason: action.reason,
+        canWithdraw: false,
+      };
+    default:
+      return action;
+  }
+}
+
+// The decision once the auth gate has settled signed in or out.
+function deriveForViewer(
+  {
+    tournament,
+    registration,
+    order,
+    refundFlag,
+    badgeGate,
+    badgeCompsThisEvent,
+    spotsLeft,
+  }: Omit<RegistrationActionInput, "viewer">,
+  signedIn: boolean,
+): Exclude<RegistrationAction, { kind: "unverified" }> {
   const open = tournament.lifecycle === "registration";
   const isPaid = (tournament.entryFeeCents ?? 0) > 0;
 
@@ -110,8 +256,19 @@ export function deriveJoinAction({
 
   const entryStatus = registration?.entryStatus;
   switch (entryStatus) {
-    case "confirmed":
-      return { kind: "registered" };
+    case "confirmed": {
+      const participation = registration?.participationStatus ?? "active";
+      return {
+        kind: "registered",
+        participation,
+        next:
+          tournament.lifecycle === "in_progress"
+            ? { kind: "openPlayerView" }
+            : open && participation !== "eliminated"
+              ? { kind: "cancel", cancelOutcome: order?.cancelOutcome ?? null }
+              : { kind: "locked" },
+      };
+    }
     case "pending": {
       // Both an application under review and an approved entry that owes
       // payment are "pending"; only the order tells them apart. While it
@@ -127,14 +284,16 @@ export function deriveJoinAction({
         order?.status === "requires_payment" ||
         order?.status === "awaiting_payment"
       ) {
-        // Registration closed before they paid: nothing is left to do.
-        if (!open) {
-          return { kind: "closed" };
-        }
-        return badgeGate === null
-          ? { kind: "completePayment", purpose: order.purpose }
-          : { kind: "badgeBlocked", reason: badgeGate, canWithdraw: true };
+        return {
+          kind: "completePayment",
+          purpose: order.purpose,
+          blocked: !open ? "closed" : badgeGate,
+        };
       }
+      // A defensive default: the backend sweep withdraws the pending entry
+      // behind every order it closes (docs/plans/qr-join.md PR 3), so a
+      // pending row on a paid event with an unpayable order is no longer
+      // stored.
       return { kind: "pendingReview", canWithdraw: open };
     }
     case "waitlisted":
@@ -161,7 +320,7 @@ export function deriveJoinAction({
     return { kind: "full" };
   }
   if (badgeGate !== null) {
-    return { kind: "badgeBlocked", reason: badgeGate, canWithdraw: false };
+    return { kind: "badgeBlocked", reason: badgeGate };
   }
   // A comped viewer never gets Checkout: the server refuses a comped
   // checkout and files the comp through registerSelf.
@@ -169,5 +328,11 @@ export function deriveJoinAction({
   if (tournament.registrationRequiresApproval) {
     return { kind: "requestToRegister", comped };
   }
-  return isPaid && !comped ? { kind: "pay" } : { kind: "register", comped };
+  if (isPaid && !comped) {
+    return {
+      kind: "pay",
+      repeatDropFeesKept: refundFlag?.repeatDropFeesKept ?? false,
+    };
+  }
+  return { kind: "register", comped };
 }
