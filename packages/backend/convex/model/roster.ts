@@ -22,6 +22,7 @@ import {
   claimGuestEntryInTournament,
   createGuestParticipant,
   ensureParticipantForUser,
+  guestHoldsLiveEntryInTournament,
   guestParticipantForEmail,
   isGuestParticipant,
   participantForUser,
@@ -650,6 +651,23 @@ export async function heldOrClaimedEntry(
 }> {
   const held = await registrationForUser(ctx, args.tournamentId, args.user._id);
   if (held !== null) {
+    // A cancelled row is the one both callers re-enter, and the one place a
+    // Guest under the account's email can hold a live entry beside it: the
+    // Claim cannot merge that guest while the account holds a row here
+    // (guestHoldsLiveEntryInTournament). Re-entering would seat the same
+    // person twice, so the re-entry waits on the organizer, who can cancel
+    // either entry.
+    if (
+      held.entryStatus === "cancelled" &&
+      (await guestHoldsLiveEntryInTournament(ctx, {
+        email: args.user.email,
+        tournamentId: args.tournamentId,
+      }))
+    ) {
+      throw userError(
+        "The organizer has already entered you in this event under your email — ask them to sort out your entry",
+      );
+    }
     return {
       entry: held,
       claimedHere: args.claimedBySignIn.includes(held._id),

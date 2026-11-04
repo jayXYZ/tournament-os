@@ -512,3 +512,62 @@ test("a walk whose claimer lost the email hands the guest to the account that ho
     expect(await ctx.db.get(guestId)).toBeNull();
   });
 });
+
+// An account whose email changed at the provider: an organizer enrolled the
+// new address as a Guest in an event where the account still holds a
+// cancelled row. The sign-in Claim refuses the guest whole (the account
+// holds a row in that event), so re-entering the cancelled row would seat the
+// same person twice. The re-entry is refused, and nothing moves.
+test("a cancelled row cannot re-enter beside a live guest entry under the account's email", async () => {
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const tournamentId = await createOpenTournament(
+    t,
+    organizationId,
+    "Re-entry Event",
+  );
+  const player = t.withIdentity(playerIdentity);
+  const accountRow = await player.mutation(
+    api.tournaments.registrations.registerSelf,
+    { tournamentId },
+  );
+  await player.mutation(api.tournaments.registrations.cancelMyRegistration, {
+    tournamentId,
+  });
+  const guest = await seedGuestRegistration(
+    t,
+    tournamentId,
+    "gary@example.test",
+  );
+
+  await expect(
+    player.mutation(api.tournaments.registrations.registerSelf, {
+      tournamentId,
+    }),
+  ).rejects.toThrow("The organizer has already entered you in this event");
+
+  await t.run(async (ctx) => {
+    expect((await ctx.db.get(accountRow))?.entryStatus).toBe("cancelled");
+    expect((await ctx.db.get(guest.registrationId))?.participantId).toBe(
+      guest.participantId,
+    );
+    expect((await ctx.db.get(tournamentId))?.confirmedRegistrationCount).toBe(
+      1,
+    );
+  });
+
+  // Once the organizer cancels the guest's entry, the account's own
+  // re-entry goes through.
+  await t.run(async (ctx) => {
+    await ctx.db.patch(guest.registrationId, {
+      entryStatus: "cancelled",
+      participationStatus: undefined,
+    });
+    await ctx.db.patch(tournamentId, { confirmedRegistrationCount: 0 });
+  });
+  expect(
+    await player.mutation(api.tournaments.registrations.registerSelf, {
+      tournamentId,
+    }),
+  ).toBe(accountRow);
+});

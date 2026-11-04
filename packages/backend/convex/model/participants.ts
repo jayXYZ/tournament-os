@@ -311,6 +311,35 @@ export async function claimGuestEntryInTournament(
   return null;
 }
 
+// Whether a Guest carrying the account's email holds an entry in the
+// tournament that has not been cancelled: the one the account's own
+// cancelled row there must not re-enter beside (model/roster.ts
+// heldOrClaimedEntry). The account changed its email at the provider and an
+// organizer enrolled the new address before the account next signed in, so
+// the sign-in Claim refused the guest whole (the account holds a row here)
+// and the targeted Claim never runs (the account holds a row here). Taking
+// the cancelled row's seat back would seat the same person twice.
+export async function guestHoldsLiveEntryInTournament(
+  ctx: QueryCtx,
+  args: { email: string | undefined; tournamentId: Id<"tournaments"> },
+): Promise<boolean> {
+  if (args.email === undefined) {
+    return false;
+  }
+  for (const guest of await guestsForEmail(ctx, normalizeEmail(args.email))) {
+    const registration = await ctx.db
+      .query("tournamentRegistrations")
+      .withIndex("by_tournamentId_and_participantId", (q) =>
+        q.eq("tournamentId", args.tournamentId).eq("participantId", guest._id),
+      )
+      .unique();
+    if (registration !== null && registration.entryStatus !== "cancelled") {
+      return true;
+    }
+  }
+  return false;
+}
+
 async function requireRegistrationRow(
   ctx: QueryCtx,
   registrationId: Id<"tournamentRegistrations">,
