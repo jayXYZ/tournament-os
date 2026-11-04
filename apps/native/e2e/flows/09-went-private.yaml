@@ -1,0 +1,10 @@
+appId: com.paperpairings.app
+name: Public code after the event went private
+---
+- runFlow: subflows/signed-in.yaml
+- runFlow:
+    file: subflows/open-link.yaml
+    env:
+      LINK: paperpairings://join/${CODE_WENT_PRIVATE}
+- runFlow: subflows/code-not-found.yaml
+- assertNotVisible: "E2E Went Private Event"

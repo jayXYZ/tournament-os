@@ -1,0 +1,38 @@
+# Starts the app fresh and ends on home, signed in or out. A relaunched dev
+# client reopens the bundle it last ran; only when it comes up on its own
+# launcher instead (first run, or Metro moved) is the bundle loaded from
+# DEV_CLIENT_URL. Reopening that URL unconditionally would reload the bundle
+# under the next step, and a link opened mid-reload is dropped.
+appId: com.paperpairings.app
+---
+- launchApp:
+    stopApp: true
+- extendedWaitUntil:
+    visible: "Your tournaments|Sign in to follow your matches and standings live\\."
+    timeout: 20000
+    optional: true
+- runFlow:
+    when:
+      notVisible: "Your tournaments|Sign in to follow your matches and standings live\\."
+    commands:
+      - runFlow:
+          file: open-link.yaml
+          env:
+            LINK: ${DEV_CLIENT_URL}
+      # The dev menu's first-run introduction, then the menu it leaves open.
+      - extendedWaitUntil:
+          visible: "Continue|Your tournaments|Sign in to follow your matches and standings live\\."
+          timeout: 120000
+      - runFlow:
+          when:
+            visible: "Continue"
+          commands:
+            - tapOn: "Continue"
+      - runFlow:
+          when:
+            visible: "Toggle element inspector"
+          commands:
+            - tapOn: "Close"
+- extendedWaitUntil:
+    visible: "Your tournaments|Sign in to follow your matches and standings live\\."
+    timeout: 120000

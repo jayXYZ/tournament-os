@@ -117,6 +117,57 @@ does: `POST https://api.clerk.com/v1/sign_in_tokens` with `{ "user_id": … }`.
 Tickets are single-use credentials: the route never logs, stores, or shows
 one. A release build (`__DEV__` false) renders a refusal and does nothing.
 
+## Device E2E (Maestro)
+
+The join screen's deep-link matrix runs as [Maestro](https://maestro.dev)
+flows on an iOS simulator, with no camera: `e2e/flows/` holds one flow per
+scenario (`docs/plans/qr-join.md`, "Verification") and `e2e/run.mjs` drives
+them.
+
+```sh
+pnpm dev:native                                  # Metro, in its own terminal
+pnpm --filter @paper-pairings/native e2e:ios     # every flow
+pnpm --filter @paper-pairings/native e2e:ios 05-comped.yaml 14-signed-out-then-sign-in.yaml
+```
+
+Each run:
+
+1. finds or creates the Clerk user `e2e-native-player@example.com`;
+2. seeds a fresh organization and its events on the dev deployment named by
+   `packages/backend/.env.local` (it refuses anything but a `dev:`
+   deployment), through the public mutations called with
+   `convex run --identity`, plus `devSeed:markOrganizationPayoutsReady`, a
+   stand-in Stripe account that paid events need and that refuses to run
+   off a Clerk development instance;
+3. serves single-use sign-in tickets on a loopback port for the flows'
+   sign-in step, so `CLERK_SECRET_KEY` never reaches Maestro;
+4. runs `maestro test` against the booted simulator.
+
+Prerequisites:
+
+- Xcode with a booted iPhone simulator (`xcrun simctl boot <udid>`; pick one
+  with `E2E_DEVICE=<udid>` when several are booted) and the dev client
+  installed on it (`pnpm --filter @paper-pairings/native ios`).
+- Metro running on `http://127.0.0.1:8081` (override with `E2E_METRO_URL`).
+  The paid flows read `EXPO_PUBLIC_WEB_ORIGIN` the way Metro does (shell,
+  then `.env.local`); start Metro and the runner with the same value.
+- Maestro, installed per user, never into the repo:
+  `curl -Ls "https://get.maestro.mobile.dev" | bash` (puts it under
+  `~/.maestro`; set `MAESTRO_BIN` to use another). Maestro needs Java 17+;
+  without a system JDK, unpack one under `~/.maestro/jdk/` and the runner
+  sets `JAVA_HOME` from it.
+- `apps/web/.env.local` with the development `CLERK_SECRET_KEY`, and a
+  logged-in Convex CLI for the dev deployment, with this branch's functions
+  pushed (`pnpm --filter @paper-pairings/backend exec convex dev --once`).
+
+Runs accumulate organizations named `E2E Native Join <run id>` in the dev
+deployment; `pnpm db:wipe` clears them. Seeded paid events cannot take
+payment (their Stripe account is a stand-in), so the flows stop at the
+join screen's hand-off. Android, the camera scanner, haptics, the torch, and
+the Stripe round trip are not covered; they need an emulator or physical
+devices. Results are recorded in
+[delivery status](../../docs/delivery-status.md).
+
 ## Monorepo notes
 
 - The repo uses `nodeLinker: hoisted` (set in `pnpm-workspace.yaml`) —

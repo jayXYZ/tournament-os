@@ -11,7 +11,8 @@
     "web": "expo start --web",
     "build": "expo export --platform ios --platform android",
     "reset-project": "node ./scripts/reset-project.js",
-    "lint": "tsc --noEmit && expo lint"
+    "lint": "tsc --noEmit && expo lint",
+    "e2e:ios": "node e2e/run.mjs"
   },
   "dependencies": {
     "@clerk/expo": "3.4.6",

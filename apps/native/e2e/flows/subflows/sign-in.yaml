@@ -1,0 +1,10 @@
+# Signs the test player in through the dev-only session link
+# (src/app/dev/[action].tsx), which returns to the screen it opened over.
+# The caller waits for the signed-in state it expects.
+appId: com.paperpairings.app
+---
+- runScript: mint-ticket.js
+- runFlow:
+    file: open-link.yaml
+    env:
+      LINK: paperpairings://dev/sign-in?ticket=${output.ticket}

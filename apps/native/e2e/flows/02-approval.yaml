@@ -1,0 +1,24 @@
+appId: com.paperpairings.app
+name: Approval event, applied for and withdrawn in the app
+---
+- runFlow: subflows/signed-in.yaml
+- runFlow:
+    file: subflows/open-link.yaml
+    env:
+      LINK: paperpairings://join/${CODE_APPROVAL}
+- extendedWaitUntil:
+    visible: "Request to register"
+    timeout: 30000
+- assertVisible: "E2E Approval Event"
+- assertVisible: "The organizer approves each registration\\."
+- assertVisible: "8 spots left"
+- tapOn: "Request to register"
+- extendedWaitUntil:
+    visible: "Registration pending organizer approval"
+    timeout: 30000
+- assertVisible: "Registration submitted for organizer approval\\."
+- tapOn: "Withdraw registration"
+- extendedWaitUntil:
+    visible: "Request to register"
+    timeout: 30000
+- assertVisible: "Your registration has been withdrawn\\."

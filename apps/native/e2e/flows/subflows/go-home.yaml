@@ -1,0 +1,11 @@
+# Back to home between two codes in one flow, so the second code's screen is
+# a fresh one rather than the first's still showing.
+appId: com.paperpairings.app
+---
+- runFlow:
+    file: open-link.yaml
+    env:
+      LINK: paperpairings:///
+- extendedWaitUntil:
+    visible: "Your tournaments"
+    timeout: 30000
