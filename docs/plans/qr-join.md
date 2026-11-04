@@ -8,7 +8,9 @@ moved the order query and clock hooks into PR 2a and added the PR 4
 cancel/dismiss handling and the PR 2b camera lifecycle. Their verdicts,
 findings, and suggested phase order are folded in below.
 
-Status: PR 0, PR 1, and PR 2a are built. PR 2b (the scanner) is next.
+Status: PR 0, PR 1, PR 2a, and PR 3 are built (PR 3 on
+`qr/web-panel-derivation`, stacked on `qr/verify-join`). PR 2b (the scanner)
+is next.
 
 ## Goal
 
@@ -520,6 +522,42 @@ Needs a dev-client rebuild and physical devices (expo-camera is device-only).
 
 ## PR 3: web `RegistrationPanel` onto the core derivation
 
+**As built** (`qr/web-panel-derivation`), where it differs from the steps
+below:
+
+- Wrapped, not widened. `deriveRegistrationAction` in
+  `packages/tournament-core/src/join-action.ts` is the one decision;
+  `deriveJoinAction` keeps its input and output and is now its projection
+  for the native join screen, so the native view did not change. The full
+  action adds:
+  - `unverified`, since it takes the `ViewerAuthGate` rather than a
+    signed-in flag;
+  - `registered` with the seat's `participation` and `next`: `cancel`
+    (with the order's `cancelOutcome`), `openPlayerView`, or `locked`;
+  - `completePayment` with `blocked`: null, `closed`, or the badge gate
+    reason. The projection reads those as `closed` and `badgeBlocked`;
+  - `pay` with `repeatDropFeesKept`.
+- The web's badge gate comes from `badgeGateFor`, so its local copy is gone.
+- The characterization rows are a web component test,
+  `apps/web/src/components/tournament-public-page.test.tsx`: 81 rendering
+  rows (badges, buttons, links, and notes in order, the badge-gate notice
+  included) and 16 action tests (which server call each button makes).
+  Core's `join-action.test.ts` pins the derivation's new states in 223 rows
+  beside the unchanged `deriveJoinAction` matrix.
+- Two rows exposed a disagreement between the old panel and the derivation.
+  Both were fixed on the panel in their own commits before the refactor:
+  - A pending entry on a paid event showed "Registration pending organizer
+    approval" while its order loaded. It now shows "Checking your
+    registration", as the native screen does.
+  - A confirmed row without a participation status fell through to the
+    register button. It now reads as active, as the server reads it. The
+    state is outside the schema invariant.
+- The pending fall-through stays `pendingReview`. The derivation doesn't
+  read `awaitingReview`; the rows pin the fall-through with a row that
+  lacks it.
+- An eliminated seat while registration is open stays `locked`, with no
+  cancel offer, as before.
+
 - Widen `deriveJoinAction`, or wrap it in a `deriveRegistrationAction`, to
   cover the web-only states:
   - dropped / eliminated / disqualified
@@ -754,15 +792,16 @@ Blocked on the custom domain, the Apple Team ID, and the Android signing cert
   - shared: `app-links`
   - core: `deriveJoinAction` (including approval × full, the comped rows,
     pending with a payable order of each purpose, and pending with the
-    order loading), the updated `player-access`, the PR 3 characterization
-    rows for `RegistrationPanel`, the payment dispatch (each status × each
+    order loading), `deriveRegistrationAction` (PR 3), the updated
+    `player-access`, the payment dispatch (each status × each
     return hint), and the moved `useClientClock` / `useStableQuery` tests
   - backend: the shared normalizer, public code shape and uniqueness,
     deterministic code collisions, `resolveJoinCode`, the three specs moved
     off sequential values,
     `checkoutReturnUrls` (tournament and convention paths), `returnTo`
     threading, and badge checkout URLs unchanged
-  - web: e2e
+  - web: the PR 3 characterization rows for `RegistrationPanel`
+    (`tournament-public-page.test.tsx`), and e2e
 - **Simulator deep links cover the whole of PR 2a without a camera**,
   because expo-router already handles the scheme:
   - `pnpm dlx uri-scheme open "paperpairings://join/<CODE>" --ios` (or

@@ -718,7 +718,14 @@ push, analytics, and monitoring should be independent consumers.
         deferred from the council review
   - [ ] Move the web registration panel onto the shared join-state
         derivation, preserving coverage for each registration and payment
-        state (the plan's PR 3)
+        state (the plan's PR 3). Built on `qr/web-panel-derivation` (not
+        merged): `deriveRegistrationAction` in core decides the web panel,
+        `deriveJoinAction` is its native projection, and
+        `tournament-public-page.test.tsx` pins every panel branch as a
+        characterization row. The registration e2e specs and the native
+        Maestro suite passed at `ed73394` against the personal dev
+        deployment, 2026-11-04 ([record](docs/delivery-status.md));
+        unchecked until merged
   - [ ] Offer "Open in the app" on the mobile web event page reached
         through `/join`, until universal links exist
   - [ ] Pay in the app: Stripe Checkout in `expo-web-browser`, returning
