@@ -20,11 +20,11 @@ distinguish unverified account setup from a confirmed external block.
 1. Establish a release baseline in section 0: verify the Vercel deployment,
    auth, and monitoring, then repeat the payment checks in section 9 against
    that revision. Record the target and evidence before declaring it ready.
-2. Finish delivery of existing branch work: random event codes and web QR
-   sharing, and native free/approval join. Integrate each against current
-   `main`, run its relevant checks, and verify the deployed flow. Schema
-   changes need a DB reset, not a migration. Organizer guest/email enrollment
-   is merged; its deployed flow still needs the section 0 verification.
+2. Verify the newly merged flows in a deployment: random event codes and
+   web QR sharing, native free/approval join, and organizer guest/email
+   enrollment are all on `main`, and none has a recorded deployment result.
+   The native join needs a physical device. The schema changes landed with a
+   dev DB reset, not a migration.
 3. Close event-day gaps: remove stale confirmation copy, provide an organizer
    deck-check view and printable pairings/standings, and finish native player
    controls. These can proceed while account setup is pending.
@@ -46,8 +46,8 @@ The open work separates missing coverage from deployment verification.
       is covered by manually entering the match result). Already covered:
       the organizer happy path, active-round corrections with audit trail,
       pairing rewind, organizer drops, mid-round drop concession, invite
-      links, and organizer email enrollment claimed at sign-in
-      (`apps/web/e2e/`)
+      links with the join QR dialog, and organizer email enrollment claimed
+      at sign-in (`apps/web/e2e/`)
 - [ ] Verify web browser/SSR and native Sentry capture, with readable source
       locations, in the intended deployments/builds. Wiring is merged and a
       setup-script run was previously reported; event receipt and source-map
@@ -73,7 +73,7 @@ The open work separates missing coverage from deployment verification.
 - [ ] Extend browser coverage for approval, waitlist/rejection, and paid
       registration states, plus invite rotation and disabling. Existing
       invite E2E covers creation and joining; the broader grant rules have
-      backend specs. QR browser coverage belongs to the branch delivery work.
+      backend specs. The join QR dialog is covered by the invite-links spec.
 
 ## 1. Result and adjudication foundation
 
@@ -354,7 +354,10 @@ claimed by one.
         (`model/codes.ts`), and `/join/<code>` takes either kind
         (`resolveJoinCode`, told apart by length; a public code resolves
         only for viewers who could open the event page). User codes stay
-        numeric. Reset the dev DB (string `publicCode`, required `seed`)
+        numeric, and a private event's invite grant stays separately
+        revocable (regenerate or disable) without touching the event's
+        public code. The dev DB was reset for the string `publicCode` and
+        required `seed` on 2026-11-04
   - [x] Add the organizer's join QR code on web (2026-10-13, CONTEXT.md
         "Join QR"): the settings share card follows visibility — a public
         or unlisted event shares `/join/<public code>`, a private one its
@@ -487,18 +490,6 @@ claimed by one.
       `heldOrClaimedEntry` refuses to re-enter an account's cancelled row
       while a Guest under the account's email holds a live row in the
       event, for registerSelf and the entry checkout alike.)
-- [ ] Deliver random event codes and organizer QR sharing. Built on
-      `feat/join-qr-web` at `422285d` and included in `feat/qr-codes` at
-      `3fd2d71`; neither implementation is on audited `main`.
-  - [ ] Merge random six-character tournament/convention codes and the join
-        resolver for public codes versus private invite grants. Reset the DB;
-        user public codes remain numeric.
-  - [ ] Merge the web QR dialog, copy/download/print actions, and
-        visibility-aware sharing. Verify public, unlisted, private,
-        rotated/disabled, and changed-visibility links after integration.
-  - [ ] Keep private invite grants revocable without rotating event identity.
-        Existing invite links are merged; the new code distinction is branch
-        work. Native join delivery and remaining scanner work are in section 8.
 - [ ] Persist organizer favorite players across tournaments
   - [ ] Decide whether favorites are scoped to an organizer or the organization
   - [ ] Filter pairings, registrations, and standings by favorites
@@ -668,21 +659,6 @@ push, analytics, and monitoring should be independent consumers.
 
 ## 8. Event-day outputs and client parity
 
-- [ ] Deliver native free/approval joining. Implemented on `feat/qr-codes`
-      at `3fd2d71`, not merged into `main`: `/join/<code>`, shared join-state
-      hooks, withdrawal, and a web payment handoff. The branch plan is
-      available with `git show feat/qr-codes:docs/plans/qr-join.md`; its PR 0,
-      PR 1, and PR 2a labels are plan stages, not GitHub PR numbers.
-- [ ] Build the remaining QR/join stages after the branch foundation lands
-  - [ ] Native scanner, permission handling, camera lifecycle, torch, and
-        manual code entry; verify on physical iOS and Android devices
-  - [ ] Move the web registration panel onto the shared join-state derivation,
-        preserving coverage for each current registration/payment state
-  - [ ] Native Checkout return/cancel/dismiss flow with webhook-owned
-        fulfillment; until then payment hands off to the web
-  - [ ] Universal/app links, blocked on the custom domain, Apple Team ID,
-        and Android signing fingerprint; verify installed-app and web fallback
-        behavior. The branch plan's temporary web-to-app bridge is optional.
 - [ ] Add printable outputs
   - [ ] Pairings by table
   - [ ] Pairings by player name
@@ -713,7 +689,8 @@ push, analytics, and monitoring should be independent consumers.
         fails in the router's static render (`requireNativeComponent` is not
         a function), so the native build script and the CI smoke check export
         ios+android only
-- [ ] Join events from the native app (`docs/plans/qr-join.md`)
+- [ ] Join events from the native app (`docs/plans/qr-join.md`; its PR 0,
+      PR 1, and PR 2a labels are plan stages, not GitHub PR numbers)
   - [x] Add the native join screen for free and approval-mode events
         (2026-10-13): `/join/<code>` resolves either code kind
         (`useJoinCode`), shows the event summary and the one action
@@ -726,6 +703,9 @@ push, analytics, and monitoring should be independent consumers.
         clock and `useStableQuery` moved into core
   - [ ] Add the native QR scanner (`expo-camera`; needs a dev-client
         rebuild and physical devices)
+  - [ ] Move the web registration panel onto the shared join-state
+        derivation, preserving coverage for each registration and payment
+        state (the plan's PR 3)
   - [ ] Offer "Open in the app" on the mobile web event page reached
         through `/join`, until universal links exist
   - [ ] Pay in the app: Stripe Checkout in `expo-web-browser`, returning
