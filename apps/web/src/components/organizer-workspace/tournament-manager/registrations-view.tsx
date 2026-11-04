@@ -18,6 +18,12 @@ import {
   effectiveRegistrationStatus,
 } from '@paper-pairings/shared/registration-status'
 import { toast } from 'sonner'
+import {
+  AddGuestDialog,
+  ContinueAsGuestDialog,
+  ContinueAsGuestIcon,
+  EnrollPlayerDialog,
+} from './enrollment-dialogs'
 import type { ColumnDef } from '@tanstack/react-table'
 import type {
   Doc,
@@ -44,6 +50,7 @@ import {
   StatusDot,
   statusDotToneClassName,
 } from '@/components/shared/status-dot'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { DataTable, DataTableColumnHeader } from '@/components/ui/data-table'
 import { DataTableToolbar } from '@/components/ui/data-table-toolbar'
@@ -60,7 +67,16 @@ import { cn } from '@/lib/utils'
 
 type RegistrationRow = {
   registration: Doc<'tournamentRegistrations'>
+  // The organizer label: the player's name, or the entry's email while it
+  // has none (an entry enrolled by email, or a nameless account).
   playerName: string | undefined
+  // Whether the entry still awaits a usable name (CONTEXT.md "Awaiting
+  // Player Details") — server-computed from the same rule that holds the
+  // start, so the marker and the board's refusal always agree.
+  awaitingPlayerDetails: boolean
+  // Whether "Continue as guest" would name this row right now (null when
+  // unavailable), from the same projection the verb enforces.
+  nameEffect: 'name' | null
   // Server-computed effect of dropRegistration on this row, null when the
   // action is unavailable; the client never re-derives the lifecycle rules.
   dropEffect: 'cancel' | 'drop' | null
@@ -336,7 +352,13 @@ export function RegistrationsView({
           searchPending={searching && searchResults === undefined}
           listPending={listPending}
           showPaymentColumn={(setup?.tournament.entryFeeCents ?? 0) > 0}
-          actions={<RegistrationSettingsMenu tournament={setup?.tournament} />}
+          actions={
+            <>
+              <EnrollPlayerDialog tournament={setup?.tournament} />
+              <AddGuestDialog tournament={setup?.tournament} />
+              <RegistrationSettingsMenu tournament={setup?.tournament} />
+            </>
+          }
         />
         {!searching ? (
           <LoadMoreButton
@@ -458,9 +480,17 @@ function getRegistrationColumns({
       // put as names change length across pages.
       meta: { className: 'w-full' },
       cell: ({ row }) => (
-        <p className="font-medium text-foreground">
-          {displayPlayerName(row.original.playerName)}
-        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="font-medium text-foreground">
+            {displayPlayerName(row.original.playerName)}
+          </p>
+          {/* An entry with no usable name yet: labelled above by its email
+              (organizer-only), and holding the start until it is named,
+              resolved by the player, or removed. */}
+          {row.original.awaitingPlayerDetails ? (
+            <Badge variant="outline">Awaiting player details</Badge>
+          ) : null}
+        </div>
       ),
     },
     {
@@ -678,6 +708,7 @@ function ManagePlayerMenu({
 
   const [confirmingDrop, setConfirmingDrop] = useState(false)
   const [confirmingReject, setConfirmingReject] = useState(false)
+  const [naming, setNaming] = useState(false)
 
   // Whether the row can be dropped — and whether that cancels the entry
   // (freeing the seat) or records a competitive drop — is server-computed on
@@ -721,6 +752,17 @@ function ManagePlayerMenu({
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuGroup>
+            {/* Naming appears only while the server offers it: an entry
+                still awaiting player details, in an event still running. */}
+            {row.nameEffect !== null ? (
+              <DropdownMenuItem
+                disabled={disabled || busy}
+                onSelect={() => setNaming(true)}
+              >
+                <ContinueAsGuestIcon />
+                Continue as guest
+              </DropdownMenuItem>
+            ) : null}
             {/* Review actions appear only when the server offers them, so
                 the everyday confirmed-roster menu stays a drop menu. */}
             {row.approveEffect !== null ? (
@@ -780,6 +822,15 @@ function ManagePlayerMenu({
           </DropdownMenuGroup>
         </DropdownMenuContent>
       </DropdownMenu>
+
+      {row.nameEffect !== null ? (
+        <ContinueAsGuestDialog
+          open={naming}
+          onOpenChange={setNaming}
+          registrationId={row.registration._id}
+          currentLabel={name}
+        />
+      ) : null}
 
       <ConfirmActionDialog
         open={confirmingDrop}

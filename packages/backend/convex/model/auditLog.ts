@@ -4,6 +4,7 @@ import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { parseMoneyRowEntry, parseMoneyRowOwner } from "./paidEventOwner";
 import {
+  type RegistrationNameStamp,
   registrationNameStamp,
   registrationOrganizerLabel,
 } from "./registrations";
@@ -17,14 +18,13 @@ export type ConventionAuditEvent = Infer<typeof conventionAuditEventValidator>;
 
 export type AuditActorRole = "organizer" | "player" | "system";
 
-// The actor label of every append: the same name-then-email rule as the
-// registration's organizerLabel stamp (registrationNameStamp), off the
-// acting user the caller already holds. Player references never use this —
-// they are labelled from a row's stamp (auditPlayerRefOf), so the label a
-// player's own append stores matches the one an organizer's append stores
-// for the same row.
-function auditUserLabel(user: Doc<"users">): string | null {
-  return user.name ?? user.email ?? null;
+// The actor label of every append: the acting user's name (an account
+// always has one — schema users.name), off the user the caller already
+// holds. Player references never use this — they are labelled from a row's
+// stamp (auditPlayerRefOf), so the label a player's own append stores
+// matches the one an organizer's append stores for the same row.
+function auditUserLabel(user: Doc<"users">): string {
+  return user.name;
 }
 
 // The actor half of an audit append, shared by both logs.
@@ -47,8 +47,6 @@ export async function logAuditEvent(
   await ctx.db.insert("tournamentAuditEvents", {
     tournamentId: args.tournamentId,
     actorUserId: actor?._id,
-    // Organizer-only log, so the actor label may fall back to the email
-    // (unlike the playerName stamp, whose copies reach other players).
     actorName: actor ? auditUserLabel(actor) : null,
     actorRole: args.actorRole,
     event: args.event,
@@ -78,13 +76,13 @@ export async function logConventionAuditEvent(
 type AuditLabelStamp = { playerName?: string; organizerLabel?: string };
 
 // The label an audit row stores for a registration or badge: the row's
-// organizer label — the account's name, or its email when it has none
-// (registrationNameStamp). Both audit logs are organizer-only by access, so
-// the email may be denormalized here; the player-safe playerName copies on
-// standings, match players, and seats never carry it. Read straight off
-// the row the caller already holds, so an append costs no extra read. Null
-// for a row with neither stamp (an account with neither name nor email) and
-// for a row that no longer exists.
+// organizer label — its name, or the enrollment email of an entry enrolled
+// by email that nobody has named yet (registrationNameStamp). Both audit
+// logs are organizer-only by access, so the email may be denormalized here;
+// the player-safe playerName copies on standings, match players, and seats
+// never carry it. Read straight off the row the caller already holds, so an
+// append costs no extra read. Null for a row with neither stamp and for a
+// row that no longer exists.
 function auditPlayerLabel(stamp: AuditLabelStamp | null): string | null {
   return stamp ? (registrationOrganizerLabel(stamp) ?? null) : null;
 }
@@ -129,18 +127,23 @@ export function auditPlayerRefForUser(
   return auditPlayerRefOf(registrationId, registrationNameStamp(user));
 }
 
-// The player reference for a match-player row, whose stamped playerName dates
-// from pairing time. A nameless row reads its registration to reach the
-// organizer label; a named one reads nothing.
-export async function auditMatchPlayerRef(
-  ctx: MutationCtx,
+// The same, for a row the caller just wrote from a stamp it already holds
+// (the organizer enrollments and continueAsGuest in model/roster.ts, which
+// stamp an entry from the typed name or the enrollment email) — so the ref
+// agrees with the row by construction, without reading it back.
+export function auditPlayerRefForStamp(
+  registrationId: Id<"tournamentRegistrations">,
+  stamp: RegistrationNameStamp,
+) {
+  return auditPlayerRefOf(registrationId, stamp);
+}
+
+// The player reference for a match-player row, labelled by the playerName
+// stamped on it at pairing time: every entrant in play has one, so no read.
+export function auditMatchPlayerRef(
   playerRow: Doc<"tournamentMatchPlayers">,
-): Promise<AuditPlayerRef> {
-  const stamp =
-    playerRow.playerName !== undefined
-      ? playerRow
-      : await ctx.db.get(playerRow.playerId);
-  return auditPlayerRefOf(playerRow.playerId, stamp);
+): AuditPlayerRef {
+  return auditPlayerRefOf(playerRow.playerId, playerRow);
 }
 
 // The payment/refund audit arms shared verbatim by both logs, minus the

@@ -5,7 +5,6 @@ import type { ReactNode } from 'react'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { Toaster } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
-import { useEnsureUserRow } from '@/hooks/use-ensure-user-row'
 
 export function AdminWorkspaceShell({
   children,
@@ -22,7 +21,6 @@ export function AdminWorkspaceShell({
       <TooltipProvider>
         <OrganizationProvider>
           <SidebarProvider defaultOpen={defaultSidebarOpen}>
-            <UpsertCurrentUser />
             <AdminSidebar />
             <SidebarInset className="h-svh overflow-hidden">
               <AdminHeader />
@@ -34,13 +32,4 @@ export function AdminWorkspaceShell({
       </TooltipProvider>
     </AdminAuthGate>
   )
-}
-
-function UpsertCurrentUser() {
-  // Failure is non-blocking here: nothing in the workspace gates on the users
-  // row (createOrganization ensures it itself, and organizations.listMine
-  // tolerates a missing row), so a rejected upsert only means a stale
-  // name/avatar until the next visit — no error UI needed.
-  useEnsureUserRow()
-  return null
 }

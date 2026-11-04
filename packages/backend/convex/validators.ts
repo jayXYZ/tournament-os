@@ -416,10 +416,10 @@ export const payoutTransferStatusValidator = v.union(
 // A player referenced by an audit event. The name is denormalized at write
 // time so the log stays readable without per-row joins, even if the roster
 // changes later. It is the ORGANIZER label (model/auditLog.ts
-// auditPlayerLabel, from the registration's organizerLabel stamp): an
-// account without a name is labelled by its email, which is safe here only
-// because both audit logs are organizer-only. Null when the row carries no
-// label at all.
+// auditPlayerLabel, from the registration's organizerLabel stamp): an entry
+// enrolled by email that nobody has named yet is labelled by its email,
+// which is safe here only because both audit logs are organizer-only. Null
+// when the row carries no label at all.
 const auditPlayerRefValidator = v.object({
   registrationId: v.id("tournamentRegistrations"),
   playerName: v.union(v.string(), v.null()),
@@ -540,6 +540,30 @@ export const tournamentAuditEventValidator = v.union(
     // gets its own event (registration_approved/rejected/waitlisted).
     type: v.literal("registration_requested"),
     player: auditPlayerRefValidator,
+  }),
+  v.object({
+    // An organizer seated the player directly (enrollPlayerByEmail /
+    // addGuest in model/roster.ts): no application, no approval, and on a
+    // paid event no order — the organizer's enrollment is the admission
+    // decision, and any fee was settled outside the app.
+    type: v.literal("player_enrolled"),
+    // Labelled from the row's stamp: the typed name for a guest added by
+    // name; for an email enrollment the organizer label, which is the email
+    // until the entry has a name (organizer-only log).
+    player: auditPlayerRefValidator,
+    // Which organizer action seated the entry: "email" (Enroll player — the
+    // entry awaits player details until the player signs in or the
+    // organizer names them) or "name" (Add guest).
+    by: v.union(v.literal("email"), v.literal("name")),
+  }),
+  v.object({
+    // An organizer gave an entry awaiting player details its name for this
+    // event ("Continue as guest", model/roster.ts continueAsGuest). The
+    // player ref carries the new name; previousLabel is what the row was
+    // labelled by before (the enrollment email, or null).
+    type: v.literal("player_named"),
+    player: auditPlayerRefValidator,
+    previousLabel: v.union(v.string(), v.null()),
   }),
   v.object({
     type: v.literal("decklist_submitted"),

@@ -1,5 +1,6 @@
 import type { Id } from "../_generated/dataModel";
 import { playerMeetingPending } from "./phases";
+import { playersAwaitingDetailsReason } from "./registrations";
 import { allSeatWinnersDeparted } from "./singleElimination";
 import { isPairingsVisibleToPlayers } from "./tournaments";
 import type { ProgressionActions, ProgressionFacts } from "./progression";
@@ -73,7 +74,11 @@ export function pairingsNextStep(
     // flag no longer matters and play falls through to startTournament, which
     // closes an in-progress meeting itself.
     if (playerMeetingPending(phase)) {
-      return startPlayerMeetingStep(phase._id, registrationCount);
+      return startPlayerMeetingStep(
+        phase._id,
+        registrationCount,
+        facts.playersAwaitingDetails?.length ?? 0,
+      );
     }
     return {
       kind: "startTournament",
@@ -169,6 +174,7 @@ export function pairingsNextStep(
       return startPlayerMeetingStep(
         nextPhase._id,
         facts.activeRegistrations?.length ?? 0,
+        facts.playersAwaitingDetails?.length ?? 0,
       );
     }
     return {
@@ -180,15 +186,26 @@ export function pairingsNextStep(
   return { kind: "completeTournament", ready: true, reason: null };
 }
 
+// Same gates startPlayerMeeting (model/progression.ts) enforces: a pool of
+// at least two, none of them still awaiting player details.
 function startPlayerMeetingStep(
   phaseId: Id<"tournamentPhases">,
   registrationCount: number,
+  awaitingDetailsCount: number,
 ): PairingsNextStep {
   if (registrationCount < 2) {
     return {
       kind: "startPlayerMeeting",
       ready: false,
       reason: "At least two active players are required",
+      phaseId,
+    };
+  }
+  if (awaitingDetailsCount > 0) {
+    return {
+      kind: "startPlayerMeeting",
+      ready: false,
+      reason: playersAwaitingDetailsReason(awaitingDetailsCount),
       phaseId,
     };
   }

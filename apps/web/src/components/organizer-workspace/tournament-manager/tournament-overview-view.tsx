@@ -9,6 +9,7 @@ import {
 } from '@paper-pairings/shared/timer-utils'
 import { DEFAULT_BEST_OF } from '@paper-pairings/shared/match-structure'
 import { useOrganization } from '../organization-context'
+import { AwaitingPlayerDetailsCard } from './awaiting-player-details-card'
 import { describeCurrentRound, describeNextStep } from './next-step'
 import {
   OutstandingTablesCard,
@@ -140,11 +141,19 @@ function OverviewBody({
           publicCode={publicCode}
         />
       ) : (
-        <StateCard
-          body={description.body}
-          board={board}
-          publicCode={publicCode}
-        />
+        <div className="flex flex-col gap-8">
+          <StateCard
+            body={description.body}
+            board={board}
+            publicCode={publicCode}
+          />
+          {/* Pre-start, the entrants holding the start are listed with the
+              way to resolve each, beside the blocked action's reason. */}
+          <AwaitingPlayerDetailsCard
+            entrants={board.playersAwaitingDetails}
+            publicCode={publicCode}
+          />
+        </div>
       )}
       <div className="flex flex-col gap-8">
         {liveRound ? (
@@ -198,7 +207,9 @@ function StateCard({
       text =
         field.confirmed < 2
           ? 'At least two players are needed to pair round 1.'
-          : 'Approvals, waitlist, and decklists live in Registrations. Generate pairings when the field is set.'
+          : board.playersAwaitingDetails.length > 0
+            ? 'Every entrant needs a name before round 1 can be paired; the entries still awaiting player details are listed below.'
+            : 'Approvals, waitlist, and decklists live in Registrations. Generate pairings when the field is set.'
       action = (
         <Button asChild type="button" variant="outline">
           <Link

@@ -21,15 +21,20 @@ import {
   pendingReviewCount,
   registrationDropEffect,
   registrationForUser,
+  registrationHasUsableName,
+  registrationNameEffect,
   registrationOrganizerLabel,
   registrationReinstateEffect,
   requireRegistration,
   searchRegistrationHistory,
 } from "../model/registrations";
 import {
+  addGuest as addGuestEntry,
   approveEntry,
   cancelEntry,
+  continueAsGuest as continueAsGuestEntry,
   dropPlayer,
+  enrollPlayerByEmail,
   registerEntry,
   reinstatePlayer,
   rejectEntry,
@@ -37,7 +42,7 @@ import {
   waitlistEntry,
   type RosterTransitionArgs,
 } from "../model/roster";
-import { ensureCurrentUser } from "../model/users";
+import { ensureCurrentUser, signInCurrentUser } from "../model/users";
 import {
   requireOrganizerAccess,
   requireTournament,
@@ -56,11 +61,23 @@ async function registrationRows(
   // One open-round scan serves every row's concession fact below.
   const concededByDrop = await registrationsConcededByDrop(ctx, tournament);
   // Names come straight off the registration's stamps — no per-row read at
-  // all. Organizer-only surface: a nameless account is labelled by its
-  // email (registrationOrganizerLabel).
+  // all. Organizer-only surface: an entry without a usable name is labelled
+  // by its email (registrationOrganizerLabel) — the enrollment email of an
+  // entry awaiting player details, or a nameless account's.
   return registrations.map((registration) => ({
     registration,
     playerName: registrationOrganizerLabel(registration),
+    // Whether the entry still awaits a usable name (CONTEXT.md "Awaiting
+    // Player Details") on an entrant the start gate counts, so the roster's
+    // readiness marker and the board's refusal always agree: a nameless row
+    // that is cancelled, rejected, or dropped holds nothing up.
+    awaitingPlayerDetails:
+      registration.entryStatus === "confirmed" &&
+      registration.participationStatus === "active" &&
+      !registrationHasUsableName(registration),
+    // Whether continueAsGuest would name this row right now (null when
+    // unavailable), from the same projection the verb enforces.
+    nameEffect: registrationNameEffect(tournament.lifecycle, registration),
     // What dropRegistration would do to this row right now (null when it
     // is unavailable), so the client renders the drop action from server
     // truth instead of mirroring the lifecycle rules.
@@ -94,13 +111,86 @@ export const registerSelf = mutation({
   },
   handler: async (ctx, args): Promise<Id<"tournamentRegistrations">> => {
     await enforceRateLimit(ctx, "registerSelf");
-    const user = await ensureCurrentUser(ctx);
+    const { user, claimedRegistrationIds } = await signInCurrentUser(ctx);
     const tournament = await requireTournament(ctx, args.tournamentId);
     return await registerEntry(ctx, {
       tournament,
       user,
       inviteCode: args.inviteCode,
+      claimedBySignIn: claimedRegistrationIds,
     });
+  },
+});
+
+// The organizer's direct enrollment of a player by email (CONTEXT.md
+// "Enrollment", "Enroll player"): a thin adapter — the rate limit
+// (enrollment mints guest rows, see rateLimits.ts) and organizer access —
+// over the roster verb (model/roster.ts enrollPlayerByEmail), which owns the
+// input rules, the identity resolution, the entry gates, the write, the seat
+// counter, and the audit event. The entry is confirmed at once and awaits
+// player details until the player signs in or the organizer names them.
+export const enrollPlayer = mutation({
+  args: {
+    tournamentId: v.id("tournaments"),
+    email: v.string(),
+  },
+  handler: async (ctx, args): Promise<Id<"tournamentRegistrations">> => {
+    await enforceRateLimit(ctx, "enrollPlayer");
+    const { tournament, user } = await requireOrganizerAccess(
+      ctx,
+      args.tournamentId,
+    );
+    return await enrollPlayerByEmail(ctx, {
+      tournament,
+      actor: user,
+      email: args.email,
+    });
+  },
+});
+
+// The organizer's direct enrollment of a player by name alone (CONTEXT.md
+// "Enrollment", "Add guest"): the same adapter shape over model/roster.ts
+// addGuest. The guest is confirmed, seated, and ready to play.
+export const addGuest = mutation({
+  args: {
+    tournamentId: v.id("tournaments"),
+    displayName: v.string(),
+  },
+  handler: async (ctx, args): Promise<Id<"tournamentRegistrations">> => {
+    await enforceRateLimit(ctx, "enrollPlayer");
+    const { tournament, user } = await requireOrganizerAccess(
+      ctx,
+      args.tournamentId,
+    );
+    return await addGuestEntry(ctx, {
+      tournament,
+      actor: user,
+      displayName: args.displayName,
+    });
+  },
+});
+
+// "Continue as guest": the organizer names an entry still awaiting player
+// details, for this event (model/roster.ts continueAsGuest). Roster
+// management, so no rate limit (see rateLimits.ts); the verb owns the rule.
+export const continueAsGuest = mutation({
+  args: {
+    registrationId: v.id("tournamentRegistrations"),
+    displayName: v.string(),
+  },
+  handler: async (ctx, args): Promise<Id<"tournamentRegistrations">> => {
+    const registration = await requireRegistration(ctx, args.registrationId);
+    const { tournament, user } = await requireOrganizerAccess(
+      ctx,
+      registration.tournamentId,
+    );
+    await continueAsGuestEntry(ctx, {
+      tournament,
+      registration,
+      actor: user,
+      displayName: args.displayName,
+    });
+    return args.registrationId;
   },
 });
 

@@ -171,14 +171,11 @@ export async function applyMatchResult(
     return "applied";
   }
 
-  // The log's reference for each row, resolved once and shared by every
-  // line the row appears in — the result an organizer replaced and the one
-  // recorded — since a nameless row reads its registration to be labelled
-  // (auditMatchPlayerRef).
-  const [playerOneRef, playerTwoRef] = await Promise.all([
-    auditMatchPlayerRef(ctx, playerOne),
-    auditMatchPlayerRef(ctx, playerTwo),
-  ]);
+  // The log's reference for each row, built once and shared by every line
+  // the row appears in — the result an organizer replaced and the one
+  // recorded.
+  const playerOneRef = auditMatchPlayerRef(playerOne);
+  const playerTwoRef = auditMatchPlayerRef(playerTwo);
   // Captured before the patches below overwrite the rows: a non-null value
   // means an organizer edited an existing result, which the log must preserve.
   const previousResult =

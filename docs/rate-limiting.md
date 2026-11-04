@@ -26,6 +26,7 @@ treated as a scarcity gate because any account can mint its own organization.
 | `profileImageUpload`                  | upload-URL minting + image swap (storage abuse)                          |
 | `createTournament`                    | `createTournament`, `createTournamentWithPhases`, `createTestTournament` |
 | `seedTestPlayers`                     | guest participant/registration row growth                                |
+| `enrollPlayer`                        | organizer enrollment (one guest participant + registration per call)     |
 | `stripeOnboarding`                    | Stripe Connect onboarding-link minting (strict: 8 burst, 24/day)         |
 | `refreshStripeStatus`                 | manual Stripe account-status refresh                                     |
 | `createCheckout`                      | Stripe Checkout session creation                                         |

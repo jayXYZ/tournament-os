@@ -16,6 +16,7 @@ import type { ConvexQueryClient } from '@convex-dev/react-query'
 import type { ConvexReactClient } from 'convex/react'
 import type { QueryClient } from '@tanstack/react-query'
 import { ThemeProvider } from '@/components/theme-provider'
+import { EnsureUserRowProvider } from '@/hooks/use-ensure-user-row'
 import appCss from '@/styles/app.css?url'
 
 const fetchClerkAuth = createServerFn({ method: 'GET' }).handler(async () => {
@@ -124,9 +125,14 @@ function RootComponent() {
     // the light/dark toggle along with everything else.
     <ClerkProvider appearance={{ theme: shadcn }}>
       <ConvexClerkAuthProvider client={context.convexClient} useAuth={useAuth}>
-        <RootDocument>
-          <Outlet />
-        </RootDocument>
+        {/* The app's sign-in runs here, once Convex verifies the viewer, so
+            every signed-in page — player pages included — starts with the
+            users row in place and the viewer's enrolled entries claimed. */}
+        <EnsureUserRowProvider>
+          <RootDocument>
+            <Outlet />
+          </RootDocument>
+        </EnsureUserRowProvider>
       </ConvexClerkAuthProvider>
     </ClerkProvider>
   )

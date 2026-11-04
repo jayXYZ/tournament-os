@@ -43,6 +43,10 @@ session through `window.Clerk`, and saves the browser storage state to
   private events, including creation from the settings card, signed-out
   viewing, and player registration. Rotation/disabling and the full grant
   boundary are covered by `inviteLinks.convex.spec.ts`, not this browser spec.
+- `enrollment-claim.spec.ts` — an organizer enrolls a player by email; the
+  player opening the event page signed in is already registered (the
+  root-level sign-in runs the Claim), and the roster shows the account's
+  name in place of "Awaiting player details".
 
 This suite is separate from `pnpm check` and the current CI jobs. A passing
 run exercises the configured development environment, not automatically the

@@ -6,22 +6,27 @@ import type {
 
 import type { DataModel, Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
-import { presentText, type RegistrationFilter } from "../validators";
+import type { RegistrationFilter } from "../validators";
 import { userError } from "./errors";
+import {
+  type RegistrationNameStamp,
+  nameStampIsStale,
+  registrationHasUsableName,
+  restampRegistrationRow,
+} from "./nameStamps";
 import { ORGANIZER_LIST_PAGE_SIZE } from "./pagination";
-import { participantForUser, participantPublicIdentity } from "./participants";
+import { participantForUser } from "./participants";
 
 // Hard ceiling on players (and therefore matches) per tournament. Bounds every
 // per-tournament `.take(...)` so list and standings queries stay well under
 // Convex's 4,096 index-ranges-read-per-transaction limit. Raising this requires
 // re-checking that the read queries denormalize joins (see playerName fields)
-// and that the organizer readers' one-read-per-nameless-row fallback
-// (resolveOrganizerDisplayName) still fits beside the query's own ranges.
+// rather than reading through per row.
 export const MAX_TOURNAMENT_PLAYERS = 2048;
 
-// Registration and badge rows one re-stamp rewrites when an account's name or
-// email changes (syncRegistrationNameStamps): one prefix range per table over
-// the participant's rows. Far above any real player's history; a history past
+// Registration and badge rows one re-stamp rewrites when an account's name
+// changes (syncRegistrationNameStamps): one prefix range per table over the
+// participant's rows. Far above any real player's history; a history past
 // the bound keeps its old labels on rows beyond it.
 const NAME_RESTAMP_BOUND = 1024;
 
@@ -77,120 +82,26 @@ export async function syncRegistrationStartDatesBatch(
   return stale.length < START_DATE_SYNC_BATCH_SIZE;
 }
 
-// The two name fields stamped onto a registration row (tournament entry or
-// convention badge) at write time, so list queries skip the user join:
-//
-// - playerName is the PLAYER-SAFE name: the account's name and nothing else.
-//   It is the copy carried onward onto standings rows, match players, and
-//   meeting seats, which other players read (the player standings, a
-//   seatmate's name), so the stamp itself must be safe to show anyone. An
-//   account without a name — or with a blank one — stamps nothing here.
-// - organizerLabel is the ORGANIZER label: the same name, or the account's
-//   email when it has none, so an organizer can still tell who a nameless
-//   player is and the roster search (search_organizerLabel) can still find
-//   them. It lives only on the registration row, which is returned to its
-//   holder and to organizers and to no one else — never copy it onto a row
-//   other players read, and never return it from a player-facing query.
-//   The organizer-only audit logs stamp the same label at append time
-//   (model/auditLog.ts auditPlayerLabel).
-//
-// Both stamps are kept current: upsertUser re-stamps the account's rows when
-// its name or email changes (syncRegistrationNameStamps), so an absent
-// playerName means the account has no name today — not a stale stamp — and
-// the player-facing standings query can treat the stamp as the whole answer
-// without reading through to user documents.
-export type RegistrationNameStamp = {
-  playerName: string | undefined;
-  organizerLabel: string | undefined;
-};
+// The name stamps and the readiness rule live in model/nameStamps.ts (the
+// participant module's Claim needs them without importing this module);
+// re-exported here so the registration module stays their public home.
+export {
+  type RegistrationNameStamp,
+  playersAwaitingDetailsReason,
+  registrationHasUsableName,
+  registrationNameStamp,
+  registrationOrganizerLabel,
+  restampRegistrationRow,
+  unnamedRegistrations,
+} from "./nameStamps";
 
-export function registrationNameStamp(identity: {
-  name?: string;
-  email?: string;
-}): RegistrationNameStamp {
-  // Blank provider strings count as absent (presentText): a "" name would
-  // otherwise stamp "" and pass as present on every reader's fallback check.
-  const playerName = presentText(identity.name);
-  return {
-    playerName,
-    organizerLabel: playerName ?? presentText(identity.email),
-  };
-}
-
-// The organizer label of a registration or badge row already in hand: no
-// read. Only organizer-gated readers may show the result.
-export function registrationOrganizerLabel(row: {
-  playerName?: string;
-  organizerLabel?: string;
-}): string | undefined {
-  return row.organizerLabel ?? row.playerName;
-}
-
-// Name for a player as other players may see it, preferring the denormalized
-// copy and only reading through to the participant's public identity when a
-// registration lacks one. Used by readers as the fallback path so a missing
-// denormalized name never blocks correctness. Safe for player-facing
-// surfaces: neither the stamp nor the fallback ever yields an email.
-export async function registrationDisplayName(
-  ctx: QueryCtx,
-  registrationId: Id<"tournamentRegistrations">,
-): Promise<string | undefined> {
-  const registration = await ctx.db.get(registrationId);
-  if (!registration) {
-    return undefined;
-  }
-  if (registration.playerName !== undefined) {
-    return registration.playerName;
-  }
-  const participant = await ctx.db.get(registration.participantId);
-  if (!participant) {
-    return undefined;
-  }
-  return (await participantPublicIdentity(ctx, participant)).name ?? undefined;
-}
-
-export async function resolveRegistrationDisplayName(
-  ctx: QueryCtx,
-  playerName: string | undefined,
-  registrationId: Id<"tournamentRegistrations">,
-) {
-  return playerName ?? (await registrationDisplayName(ctx, registrationId));
-}
-
-// The organizer label for a row that carries only the player-safe copy (a
-// standings row, a match player, a meeting seat): the copy when present,
-// otherwise one read of the registration for its organizerLabel. Only
-// organizer-gated queries may call this; it must never feed a player-facing
-// response or a denormalized field. Budget: at most one document read per
-// nameless row, so a reader over MAX_TOURNAMENT_PLAYERS rows spends at most
-// that many reads on names even if every account were nameless — within the
-// 4,096-range transaction limit beside the reader's own ranges (the
-// per-row participant and user reads a live identity lookup would add are
-// exactly what the stamp exists to avoid).
-export async function resolveOrganizerDisplayName(
-  ctx: QueryCtx,
-  playerName: string | undefined,
-  registrationId: Id<"tournamentRegistrations">,
-): Promise<string | undefined> {
-  if (playerName !== undefined) {
-    return playerName;
-  }
-  const registration = await ctx.db.get(registrationId);
-  return registration ? registrationOrganizerLabel(registration) : undefined;
-}
-
-// Rewrites the name stamps on every row an account holds after its name or
-// email changed at sign-in (the only writer of users.name): its tournament
-// registrations and convention badges in every entry status, plus the
-// player-safe copy on each confirmed registration's row in its tournament's
-// latest completed round — the row getLatestStandings reads (found the way
-// model/participation.ts latestStandingsRowFor finds it: the newest row by
-// player, since rows are only ever created at round completion and rewinds
-// delete the reopened round's). Match players and meeting seats are
-// per-round snapshots and are left alone: the organizer readers resolve
-// their nameless rows through the registration's fresh label, and the
-// player-facing seatmate name is name-only by construction. Rows whose
-// stamps already match are skipped, so an unchanged sign-in writes nothing.
+// Rewrites the name stamps on every row an account holds after its name
+// changed at sign-in (upsertUser, the only writer of users.name): its
+// tournament registrations and convention badges in every entry status,
+// through restampRegistrationRow. A registration an organizer named for its event
+// (organizerNamed) keeps that name: it labels the entrant in that event
+// whatever the account's profile says. Rows whose stamps already match are
+// skipped, so an unchanged sign-in writes nothing.
 export async function syncRegistrationNameStamps(
   ctx: MutationCtx,
   userId: Id<"users">,
@@ -201,9 +112,6 @@ export async function syncRegistrationNameStamps(
   if (!participant) {
     return;
   }
-  const isStale = (row: { playerName?: string; organizerLabel?: string }) =>
-    row.playerName !== stamp.playerName ||
-    row.organizerLabel !== stamp.organizerLabel;
 
   const registrations = await ctx.db
     .query("tournamentRegistrations")
@@ -213,23 +121,10 @@ export async function syncRegistrationNameStamps(
     )
     .take(NAME_RESTAMP_BOUND);
   for (const registration of registrations) {
-    if (isStale(registration)) {
-      await ctx.db.patch(registration._id, { ...stamp, updatedAt: now });
-    }
-    if (registration.entryStatus !== "confirmed") {
+    if (registration.organizerNamed) {
       continue;
     }
-    const [standingsRow] = await ctx.db
-      .query("roundStandings")
-      .withIndex("by_playerId", (q) => q.eq("playerId", registration._id))
-      .order("desc")
-      .take(1);
-    if (standingsRow && standingsRow.playerName !== stamp.playerName) {
-      await ctx.db.patch(standingsRow._id, {
-        playerName: stamp.playerName,
-        updatedAt: now,
-      });
-    }
+    await restampRegistrationRow(ctx, registration, stamp, now);
   }
 
   const badges = await ctx.db
@@ -239,30 +134,24 @@ export async function syncRegistrationNameStamps(
     )
     .take(NAME_RESTAMP_BOUND);
   for (const badge of badges) {
-    if (isStale(badge)) {
+    if (nameStampIsStale(badge, stamp)) {
       await ctx.db.patch(badge._id, { ...stamp, updatedAt: now });
     }
   }
 }
 
 // Seating order for player meetings: alphabetical (case-insensitive,
-// locale-aware) by the label the organizer's seating sheet prints — the
-// organizer label, so a nameless account files under its email where the
-// organizer reading the sheet will look for it rather than under "" at the
-// front — tie-broken by registration createdAt so players with identical
-// labels still seat deterministically (the same tie-break pairing and
-// standings use). Only the ordering key sees the email; the seat's stored
-// playerName stays the player-safe copy.
+// locale-aware) by the name the organizer's seating sheet prints, tie-broken
+// by registration createdAt so players with identical names still seat
+// deterministically (the same tie-break pairing and standings use).
 export function comparePlayersAlphabetically(
-  a: { seatingLabel: string | null; createdAt: number },
-  b: { seatingLabel: string | null; createdAt: number },
+  a: { playerName: string; createdAt: number },
+  b: { playerName: string; createdAt: number },
 ) {
-  const byLabel = (a.seatingLabel ?? "").localeCompare(
-    b.seatingLabel ?? "",
-    undefined,
-    { sensitivity: "base" },
-  );
-  return byLabel !== 0 ? byLabel : a.createdAt - b.createdAt;
+  const byName = a.playerName.localeCompare(b.playerName, undefined, {
+    sensitivity: "base",
+  });
+  return byName !== 0 ? byName : a.createdAt - b.createdAt;
 }
 
 export async function requireRegistration(
@@ -303,6 +192,26 @@ export async function registrationForUser(
     return null;
   }
   return await registrationForParticipant(ctx, tournamentId, participant._id);
+}
+
+// What the organizer "Continue as guest" action would do to a registration
+// right now, or null when the action is unavailable: give an entry still
+// awaiting player details its name for this event (model/roster.ts
+// continueAsGuest). Offered on any such row while the event is still
+// running — a cancelled entry can be named before it is restored — and never
+// on an entry that already has a usable name: this is not a rename.
+// continueAsGuest enforces this rule and organizer roster rows report it,
+// so the client renders the action without re-deriving the rule.
+export function registrationNameEffect(
+  lifecycle: Doc<"tournaments">["lifecycle"],
+  registration: Doc<"tournamentRegistrations">,
+): "name" | null {
+  if (registrationHasUsableName(registration)) {
+    return null;
+  }
+  return lifecycle === "registration" || lifecycle === "in_progress"
+    ? "name"
+    : null;
 }
 
 // What the organizer "drop player" action would do to a registration right

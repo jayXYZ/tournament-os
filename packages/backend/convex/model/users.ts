@@ -1,6 +1,7 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { requireIdentity } from "../auth";
+import { userError } from "./errors";
 import { claimGuestParticipants } from "./participants";
 import { nextPublicCode } from "./publicCodes";
 import {
@@ -30,6 +31,65 @@ export type UserIdentityFields = {
   avatarUrl?: string;
 };
 
+// How many accounts an email lookup reads: two, so a duplicate is seen
+// rather than silently resolved.
+const ACCOUNTS_PER_EMAIL_BOUND = 2;
+
+// The account holding a verified email, by its normalized form (the stored
+// spelling — see upsertUser). Stored emails are a cache refreshed only when
+// their account signs in, so the provider's one-account-per-email rule does
+// not carry over on its own: upsertUser releases an address from every
+// other row when an account signs in holding it (releaseEmailFromOtherUsers).
+// Should two rows still share one, the owner is ambiguous and this returns
+// null rather than guess — a caller handing out a registration must not give
+// it to whoever held the address first.
+export async function userByEmail(
+  ctx: QueryCtx,
+  email: string,
+): Promise<Doc<"users"> | null> {
+  const holders = await usersHoldingEmail(ctx, email);
+  return holders.length === 1 ? holders[0] : null;
+}
+
+// Every account whose stored email still carries the address, up to the
+// bound: one is its owner (userByEmail); more than one is the ambiguous
+// state a caller may need to refuse on rather than resolve.
+export async function usersHoldingEmail(
+  ctx: QueryCtx,
+  email: string,
+): Promise<Doc<"users">[]> {
+  return await ctx.db
+    .query("users")
+    .withIndex("by_email", (q) => q.eq("email", normalizeEmail(email)))
+    .take(ACCOUNTS_PER_EMAIL_BOUND);
+}
+
+// Stale holders of one address released per sign-in. Each sign-in releases
+// every other holder, so more than one stale row is already unusual.
+const RELEASED_EMAIL_HOLDERS_BOUND = 8;
+
+// An account signing in with a verified email owns it now, so any other row
+// still carrying it holds a stale copy: its account moved to another address
+// at the provider without signing in here since. Clearing it keeps by_email
+// a point lookup for userByEmail. The released account's registrations are
+// untouched: an account's rows are labelled by its name, never its email,
+// and it picks up its current email at its own next sign-in.
+async function releaseEmailFromOtherUsers(
+  ctx: MutationCtx,
+  args: { userId: Id<"users">; email: string; now: number },
+) {
+  const holders = await ctx.db
+    .query("users")
+    .withIndex("by_email", (q) => q.eq("email", args.email))
+    .take(RELEASED_EMAIL_HOLDERS_BOUND);
+  for (const holder of holders) {
+    if (holder._id === args.userId) {
+      continue;
+    }
+    await ctx.db.patch(holder._id, { email: undefined, updatedAt: args.now });
+  }
+}
+
 export async function userByTokenIdentifier(
   ctx: QueryCtx,
   tokenIdentifier: string,
@@ -42,31 +102,52 @@ export async function userByTokenIdentifier(
     .unique();
 }
 
+// The refusal a first sign-in gets when the identity carries no usable name.
+// Written for the user: the provider's own sign-up asks for a name, so this
+// is reached only by an account that slipped through without one.
+export const ACCOUNT_NAME_REQUIRED =
+  "Your account has no name. Add a name to your profile, then sign in again.";
+
+// The sign-in: the account row filed or refreshed from the identity, plus
+// what it triggered — the entries the Claim moved to the account here and
+// now (claimedRegistrationIds; a scheduled walk's are not included).
+export type SignIn = {
+  userId: Id<"users">;
+  claimedRegistrationIds: Id<"tournamentRegistrations">[];
+};
+
 export async function upsertUser(
   ctx: MutationCtx,
   identity: UserIdentityFields,
-): Promise<Id<"users">> {
+): Promise<SignIn> {
   const now = Date.now();
-  // Blank provider strings are stored as absent (presentText), so every
-  // reader's name-then-email fallback — and the re-stamp comparison below —
-  // sees an account with a "" name as nameless.
-  const fields = {
-    ...identity,
-    name: presentText(identity.name),
-    email: presentText(identity.email),
-  };
-  const existing = await userByTokenIdentifier(ctx, fields.tokenIdentifier);
+  // Blank provider strings count as absent (presentText). The email is
+  // stored normalized (trimmed, lowercased): it is the key invitations,
+  // guest claims, and organizer enrollment by email all match on, and
+  // by_email lookups need the one canonical spelling.
+  const rawEmail = presentText(identity.email);
+  const email = rawEmail === undefined ? undefined : normalizeEmail(rawEmail);
+  const existing = await userByTokenIdentifier(ctx, identity.tokenIdentifier);
+  // An account always has a name (schema users.name). A sign-in carrying
+  // one stores it; a sign-in without one keeps the stored name, so a
+  // provider that stops supplying the claim never strips a player's name
+  // off their rosters and standings; and a first sign-in without one is
+  // refused rather than filed nameless.
+  const name = presentText(identity.name) ?? existing?.name;
+  if (name === undefined) {
+    throw userError(ACCOUNT_NAME_REQUIRED);
+  }
   const patch = {
-    email: fields.email,
-    name: fields.name,
-    avatarUrl: fields.avatarUrl,
+    email,
+    name,
+    avatarUrl: identity.avatarUrl,
     updatedAt: now,
   };
 
   const userId = existing
     ? (await ctx.db.patch(existing._id, patch), existing._id)
     : await ctx.db.insert("users", {
-        tokenIdentifier: fields.tokenIdentifier,
+        tokenIdentifier: identity.tokenIdentifier,
         publicCode: await nextUserPublicCode(ctx, now),
         // Visibility fields are set only on insert: the sign-in patch above
         // must never touch them or it would clobber saved privacy settings.
@@ -74,47 +155,54 @@ export async function upsertUser(
         historyVisibility: "public",
         ...patch,
       });
-  // This patch is the only writer of users.name and users.email, so it is
-  // where the name stamps denormalized onto the account's registrations,
-  // badges, and standings rows are kept true (see registrationNameStamp):
-  // a provider that starts supplying a name, or drops one, reaches every
-  // roster and the player standings on the next sign-in. Compared before
-  // the patch so an unchanged sign-in — the common case — writes nothing
-  // beyond the user row.
-  if (
-    existing &&
-    (existing.name !== fields.name || existing.email !== fields.email)
-  ) {
+  // Every sign-in, not only an email change: one bounded index read, and a
+  // row left holding a stale copy is released by the address's next owner
+  // whenever they next sign in.
+  if (email !== undefined) {
+    await releaseEmailFromOtherUsers(ctx, { userId, email, now });
+  }
+  // This patch is the only writer of users.name, so it is where the name
+  // stamps denormalized onto the account's registrations, badges, and
+  // standings rows are kept true (see registrationNameStamp): a renamed
+  // account reaches every roster and the player standings on its next
+  // sign-in. Compared before the patch so an unchanged sign-in — the common
+  // case — writes nothing beyond the user row.
+  if (existing && existing.name !== name) {
     await syncRegistrationNameStamps(
       ctx,
       userId,
-      registrationNameStamp(fields),
+      registrationNameStamp({ name }),
       now,
     );
   }
 
   await acceptPendingInvitations(ctx, {
     userId,
-    email: fields.email,
+    email,
     now,
   });
   // Same sign-in trigger as invitations: guest participants whose contact
   // email matches this verified email merge into the account holder's
   // participant (CONTEXT.md "Claim", ADR 0002).
-  await claimGuestParticipants(ctx, {
+  const claimedRegistrationIds = await claimGuestParticipants(ctx, {
     userId,
-    email: fields.email,
+    email,
     now,
   });
 
-  return userId;
+  return { userId, claimedRegistrationIds };
 }
 
-export async function ensureCurrentUser(
+// The sign-in every authenticated mutation runs first (upsertUser), with the
+// account it resolved to and the entries the Claim handed it on the way.
+// Most callers want only the account (ensureCurrentUser); registerSelf needs
+// the entries too, to tell a seat this very call just linked from one the
+// player already held (model/roster.ts registerEntry).
+export async function signInCurrentUser(
   ctx: MutationCtx,
-): Promise<Doc<"users">> {
+): Promise<{ user: Doc<"users"> } & Omit<SignIn, "userId">> {
   const identity = await requireIdentity(ctx);
-  const userId = await upsertUser(ctx, {
+  const { userId, claimedRegistrationIds } = await upsertUser(ctx, {
     tokenIdentifier: identity.tokenIdentifier,
     email: identity.email,
     name: identity.name,
@@ -124,7 +212,13 @@ export async function ensureCurrentUser(
   if (!user) {
     throw new Error("User not found");
   }
-  return user;
+  return { user, claimedRegistrationIds };
+}
+
+export async function ensureCurrentUser(
+  ctx: MutationCtx,
+): Promise<Doc<"users">> {
+  return (await signInCurrentUser(ctx)).user;
 }
 
 // Invitations are keyed by email. When a user signs in (or refreshes their

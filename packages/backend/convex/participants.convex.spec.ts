@@ -5,10 +5,11 @@
 // user account, a Guest is a participant without one, and signing in claims
 // matching guests — whole-guest merges only.
 
-import { expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import type { MutationCtx } from "./_generated/server";
 import { createGuestParticipant } from "./model/participants";
 import { organizerIdentity, seedOrganizer } from "./specHelpers";
 import { createConvexTest } from "./specHelpers.runtime";
@@ -223,4 +224,350 @@ test("a guest without a contact email is never claimed", async () => {
     expect(guestRow).not.toBeNull();
     expect(guestRow?.userId).toBeUndefined();
   });
+});
+
+// A regular enrolled week after week under one email accumulates one long
+// history; past the sign-in's inline bound the Claim moves it through a
+// scheduled walk instead of skipping it.
+const LONG_HISTORY = 150;
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+// A guest holding `count` registrations, one per tournament as the
+// invariant requires. The tournaments are copies of a real one: the claim
+// reads only registrations, never the events themselves. `placeLast` puts
+// the final row in that tournament instead.
+async function seedLongGuestHistory(
+  t: ReturnType<typeof createConvexTest>,
+  template: Id<"tournaments">,
+  count: number,
+  placeLast?: Id<"tournaments">,
+  entryStatus: "cancelled" | "confirmed" = "cancelled",
+) {
+  return await t.run(async (ctx: MutationCtx) => {
+    const source = await ctx.db.get(template);
+    if (!source) {
+      throw new Error("Tournament not found in test setup");
+    }
+    const { _id, _creationTime, ...fields } = source;
+    const participantId = await createGuestParticipant(ctx, {
+      displayName: "Regular Gary",
+      contactEmail: "gary@example.test",
+    });
+    for (let index = 0; index < count; index += 1) {
+      const tournamentId =
+        placeLast !== undefined && index === count - 1
+          ? placeLast
+          : await ctx.db.insert("tournaments", fields);
+      await ctx.db.insert("tournamentRegistrations", {
+        tournamentId,
+        participantId,
+        tournamentStartDate: fields.startDate,
+        entryStatus,
+        playerName: "Regular Gary",
+        createdAt: Date.now(),
+        tiebreakRandom: index,
+        updatedAt: Date.now(),
+      });
+    }
+    return participantId;
+  });
+}
+
+async function registrationsOf(
+  t: ReturnType<typeof createConvexTest>,
+  participantId: Id<"participants">,
+) {
+  return await t.run(async (ctx) =>
+    (await ctx.db.query("tournamentRegistrations").collect()).filter(
+      (row) => row.participantId === participantId,
+    ),
+  );
+}
+
+test("signing in claims a guest whose history outgrew the inline claim", async () => {
+  vi.useFakeTimers();
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const tournamentId = await createOpenTournament(t, organizationId, "Weekly");
+  const guestId = await seedLongGuestHistory(t, tournamentId, LONG_HISTORY);
+
+  const player = t.withIdentity(playerIdentity);
+  await player.mutation(api.users.upsertMe, {});
+  // A second sign-in while the walk is under way schedules no second walk.
+  await player.mutation(api.users.upsertMe, {});
+  await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+  const claimer = await t.run(async (ctx) =>
+    (await ctx.db.query("participants").collect()).find(
+      (row) => row.userId !== undefined,
+    ),
+  );
+  expect(await registrationsOf(t, claimer!._id)).toHaveLength(LONG_HISTORY);
+  await t.run(async (ctx) => {
+    expect(await ctx.db.get(guestId)).toBeNull();
+  });
+});
+
+test("a collision anywhere in a long history leaves the guest fully unclaimed", async () => {
+  vi.useFakeTimers();
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const weekly = await createOpenTournament(t, organizationId, "Weekly");
+  const shared = await createOpenTournament(t, organizationId, "Shared");
+  const player = t.withIdentity(playerIdentity);
+  // The account holder entered the shared event themself; the guest's
+  // entry there is the last row of its history, past the first page.
+  await player.mutation(api.tournaments.registrations.registerSelf, {
+    tournamentId: shared,
+  });
+  const guestId = await seedLongGuestHistory(t, weekly, LONG_HISTORY, shared);
+
+  await player.mutation(api.users.upsertMe, {});
+  await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+  expect(await registrationsOf(t, guestId)).toHaveLength(LONG_HISTORY);
+  await t.run(async (ctx) => {
+    expect(await ctx.db.get(guestId)).not.toBeNull();
+  });
+});
+
+test("registering into an event while the walk is still to run takes the guest's entry there, never a second seat", async () => {
+  vi.useFakeTimers();
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const weekly = await createOpenTournament(t, organizationId, "Weekly");
+  const current = await createOpenTournament(t, organizationId, "Current");
+  // The guest's newest row is the seat the organizer enrolled in the
+  // current event.
+  const guestId = await seedLongGuestHistory(t, weekly, LONG_HISTORY, current);
+  const enrolledSeat = await t.run(async (ctx) => {
+    const row = await ctx.db
+      .query("tournamentRegistrations")
+      .withIndex("by_tournamentId_and_participantId", (q) =>
+        q.eq("tournamentId", current).eq("participantId", guestId),
+      )
+      .unique();
+    await ctx.db.patch(row!._id, {
+      entryStatus: "confirmed",
+      participationStatus: "active",
+      entryFeeExempt: true,
+    });
+    await ctx.db.patch(current, { confirmedRegistrationCount: 1 });
+    return row!._id;
+  });
+
+  // Registering is the player's first signed-in action: the sign-in hands
+  // the guest to the walk and moves nothing itself, so the registration
+  // claims the one entry the guest holds in this event rather than filing a
+  // second one — which the walk would then have refused as a collision.
+  const player = t.withIdentity(playerIdentity);
+  expect(
+    await player.mutation(api.tournaments.registrations.registerSelf, {
+      tournamentId: current,
+    }),
+  ).toBe(enrolledSeat);
+  const claimer = await t.run(async (ctx) =>
+    (await ctx.db.query("participants").collect()).find(
+      (row) => row.userId !== undefined,
+    ),
+  );
+  const inCurrent = await t.run(
+    async (ctx) =>
+      await ctx.db
+        .query("tournamentRegistrations")
+        .withIndex("by_tournamentId_and_participantId", (q) =>
+          q.eq("tournamentId", current),
+        )
+        .collect(),
+  );
+  expect(inCurrent).toHaveLength(1);
+  expect(inCurrent[0]).toMatchObject({
+    _id: enrolledSeat,
+    participantId: claimer!._id,
+    entryStatus: "confirmed",
+    playerName: "Gary",
+  });
+  await t.run(async (ctx) => {
+    expect((await ctx.db.get(current))?.confirmedRegistrationCount).toBe(1);
+  });
+
+  // The walk then merges the rest of the history.
+  await t.finishAllScheduledFunctions(vi.runAllTimers);
+  expect(await registrationsOf(t, claimer!._id)).toHaveLength(LONG_HISTORY);
+  await t.run(async (ctx) => {
+    expect(await ctx.db.get(guestId)).toBeNull();
+  });
+});
+
+// Participant of the account that signed in with this identity.
+async function participantOfIdentity(
+  t: ReturnType<typeof createConvexTest>,
+  tokenIdentifier: string,
+) {
+  return await t.run(async (ctx) => {
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_tokenIdentifier", (q) =>
+        q.eq("tokenIdentifier", tokenIdentifier),
+      )
+      .unique();
+    if (!user) {
+      throw new Error("User not found in test");
+    }
+    return await ctx.db
+      .query("participants")
+      .withIndex("by_userId", (q) => q.eq("userId", user._id))
+      .unique();
+  });
+}
+
+// The walk pages across transactions, so the guest's history can change
+// under it. The check phase must still see every row that could collide:
+// here the colliding row is the last of the history and an organizer
+// cancels it after the first check page has run. A cursor keyed on entry
+// status would then find it moved behind the cursor, miss the collision,
+// and merge all but that row — a partial merge the whole-guest rule forbids.
+test("an entry changing status between check pages cannot hide a collision from the walk", async () => {
+  vi.useFakeTimers();
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const weekly = await createOpenTournament(t, organizationId, "Weekly");
+  const shared = await createOpenTournament(t, organizationId, "Shared");
+  const player = t.withIdentity(playerIdentity);
+  await player.mutation(api.tournaments.registrations.registerSelf, {
+    tournamentId: shared,
+  });
+  const history = 65;
+  const guestId = await seedLongGuestHistory(
+    t,
+    weekly,
+    history,
+    shared,
+    "confirmed",
+  );
+
+  await player.mutation(api.users.upsertMe, {});
+  // One check page runs — the first 64 rows, none colliding — and queues
+  // the next.
+  vi.runAllTimers();
+  await t.finishInProgressScheduledFunctions();
+  const lastRow = (await registrationsOf(t, guestId)).find(
+    (row) => row.tournamentId === shared,
+  );
+  expect(lastRow).toBeDefined();
+  await t.run(async (ctx) => {
+    await ctx.db.patch(lastRow!._id, {
+      entryStatus: "cancelled",
+      updatedAt: Date.now(),
+    });
+  });
+  await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+  expect(await registrationsOf(t, guestId)).toHaveLength(history);
+  const claimer = await participantOfIdentity(
+    t,
+    playerIdentity.tokenIdentifier,
+  );
+  expect(await registrationsOf(t, claimer!._id)).toHaveLength(1);
+  await t.run(async (ctx) => {
+    expect(await ctx.db.get(guestId)).not.toBeNull();
+  });
+});
+
+// A walk is queued by the account that held the email at sign-in. Should
+// the address be verified on another account before the queue drains — an
+// operator reassignment at the provider — that account's sign-in releases
+// the address from the first and finds the walk under way, so it must not
+// be the first account that ends up with the history: the queued step
+// hands the walk to the holder the address now belongs to.
+test("a walk whose claimer lost the email hands the guest to the account that holds it now", async () => {
+  vi.useFakeTimers();
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const tournamentId = await createOpenTournament(t, organizationId, "Weekly");
+  const guestId = await seedLongGuestHistory(t, tournamentId, LONG_HISTORY);
+  const formerIdentity = playerIdentity;
+  const currentIdentity = {
+    ...playerIdentity,
+    subject: "player-gary-again",
+    tokenIdentifier: "https://convex.test|player-gary-again",
+    name: "Gary Again",
+  };
+
+  await t.withIdentity(formerIdentity).mutation(api.users.upsertMe, {});
+  await t.withIdentity(currentIdentity).mutation(api.users.upsertMe, {});
+  await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+  const former = await participantOfIdentity(t, formerIdentity.tokenIdentifier);
+  const current = await participantOfIdentity(
+    t,
+    currentIdentity.tokenIdentifier,
+  );
+  expect(await registrationsOf(t, former!._id)).toHaveLength(0);
+  expect(await registrationsOf(t, current!._id)).toHaveLength(LONG_HISTORY);
+  await t.run(async (ctx) => {
+    expect(await ctx.db.get(guestId)).toBeNull();
+  });
+});
+
+// An account whose email changed at the provider: an organizer enrolled the
+// new address as a Guest in an event where the account still holds a
+// cancelled row. The sign-in Claim refuses the guest whole (the account
+// holds a row in that event), so re-entering the cancelled row would seat the
+// same person twice. The re-entry is refused, and nothing moves.
+test("a cancelled row cannot re-enter beside a live guest entry under the account's email", async () => {
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const tournamentId = await createOpenTournament(
+    t,
+    organizationId,
+    "Re-entry Event",
+  );
+  const player = t.withIdentity(playerIdentity);
+  const accountRow = await player.mutation(
+    api.tournaments.registrations.registerSelf,
+    { tournamentId },
+  );
+  await player.mutation(api.tournaments.registrations.cancelMyRegistration, {
+    tournamentId,
+  });
+  const guest = await seedGuestRegistration(
+    t,
+    tournamentId,
+    "gary@example.test",
+  );
+
+  await expect(
+    player.mutation(api.tournaments.registrations.registerSelf, {
+      tournamentId,
+    }),
+  ).rejects.toThrow("The organizer has already entered you in this event");
+
+  await t.run(async (ctx) => {
+    expect((await ctx.db.get(accountRow))?.entryStatus).toBe("cancelled");
+    expect((await ctx.db.get(guest.registrationId))?.participantId).toBe(
+      guest.participantId,
+    );
+    expect((await ctx.db.get(tournamentId))?.confirmedRegistrationCount).toBe(
+      1,
+    );
+  });
+
+  // Once the organizer cancels the guest's entry, the account's own
+  // re-entry goes through.
+  await t.run(async (ctx) => {
+    await ctx.db.patch(guest.registrationId, {
+      entryStatus: "cancelled",
+      participationStatus: undefined,
+    });
+    await ctx.db.patch(tournamentId, { confirmedRegistrationCount: 0 });
+  });
+  expect(
+    await player.mutation(api.tournaments.registrations.registerSelf, {
+      tournamentId,
+    }),
+  ).toBe(accountRow);
 });

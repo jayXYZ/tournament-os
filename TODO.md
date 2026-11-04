@@ -21,9 +21,10 @@ distinguish unverified account setup from a confirmed external block.
    auth, and monitoring, then repeat the payment checks in section 9 against
    that revision. Record the target and evidence before declaring it ready.
 2. Finish delivery of existing branch work: random event codes and web QR
-   sharing, native free/approval join, and organizer guest/email enrollment.
-   Integrate each against current `main`, run its relevant checks, and verify
-   the deployed flow. Schema changes need a DB reset, not a migration.
+   sharing, and native free/approval join. Integrate each against current
+   `main`, run its relevant checks, and verify the deployed flow. Schema
+   changes need a DB reset, not a migration. Organizer guest/email enrollment
+   is merged; its deployed flow still needs the section 0 verification.
 3. Close event-day gaps: remove stale confirmation copy, provide an organizer
    deck-check view and printable pairings/standings, and finish native player
    controls. These can proceed while account setup is pending.
@@ -44,8 +45,9 @@ The open work separates missing coverage from deployment verification.
       the judge adjudication actions land (section 5; until then a forfeit
       is covered by manually entering the match result). Already covered:
       the organizer happy path, active-round corrections with audit trail,
-      pairing rewind, organizer drops, mid-round drop concession, and
-      invite links (`apps/web/e2e/`)
+      pairing rewind, organizer drops, mid-round drop concession, invite
+      links, and organizer email enrollment claimed at sign-in
+      (`apps/web/e2e/`)
 - [ ] Verify web browser/SSR and native Sentry capture, with readable source
       locations, in the intended deployments/builds. Wiring is merged and a
       setup-script run was previously reported; event receipt and source-map
@@ -166,9 +168,9 @@ no-shows, and disqualifications without each workflow inventing its own rules.
         elimination there (rewind clears and re-completion re-records it, and
         reinstates restore it), and bracket standings rank a walked-over
         seat-holder as eliminated in the round they were absent from
-- [ ] Add late entry after round 1 (blocked on an organizer
-      manual-registration feature — section 3's admission work; players never
-      self-join a started tournament)
+- [ ] Add late entry after round 1 (builds on section 3's organizer
+      enrollment, which today is refused once the event leaves the
+      registration lifecycle; players never self-join a started tournament)
   - [ ] Admit a late player by organizer override during the first phase
         only, with player capacity still applying
   - [ ] Record an opponent-less missed-round loss (zero game wins, required
@@ -411,12 +413,58 @@ claimed by one.
         item is the automatic/ordered promotion when a seat frees, and
         should also revisit registerSelf's full-event behavior, which today
         refuses applications at capacity instead of auto-waitlisting them)
-- [ ] Deliver organizer guest/email enrollment. Implemented on
-      `feat/guest-enrollment` at `9e565c0`, not merged into the audited `main`:
-      separate add-guest/enroll-by-email flows, event-local names, claim and
-      duplicate-seat handling, and coverage. Reconcile its schema and ADR 0002
-      changes with current `main`, reset the DB, and verify admission and claim
-      flows before closing this item. Late entry remains separate section 1 work.
+- [x] Enroll players as guests or by email without requiring an account
+      (2026-10-27, CONTEXT.md "Enrollment", "Awaiting Player Details", ADR
+      0002 amendment): the Registrations tab offers two actions — "Enroll
+      player" (email only) and "Add guest" (name only) — both seating a
+      confirmed, capacity-counted entry exempt from in-app entry payment
+      (`entryFeeExempt` persists through Claims and organizer
+      reinstatements). An email enrollment always seats the Guest keyed by
+      the address, never linking an existing account, so every email
+      enrollment starts in one organizer-visible state, "Awaiting player
+      details"; the Claim links the account and stamps the account's name
+      onto the entry — it runs on every authenticated mutation, and both
+      apps run the sign-in at the root as soon as the viewer is verified
+      (`useEnsureUserRow` in `@paper-pairings/core`) and again when a Guest
+      appears under the viewer's email while the app stays open
+      (`hasUnclaimedGuest`), so opening the app suffices and an enrollment
+      made while it is open is claimed as it lands. A player's own
+      registration or checkout into an event where a Guest carrying their
+      email holds an entry takes that entry over (the targeted Claim,
+      `claimGuestEntryInTournament`), never a second seat, and a confirmed
+      entry handed over that way is answered as the registration by both
+      — the checkout reports `registered` and takes no payment. "Continue as guest" names an unresolved entry for one event
+      (`organizerNamed`, honored by the re-stamp and by the Claim on a live
+      entry; dropped for the account's name once an account holder's entry
+      is cancelled or re-entered), keeping its seat, history, fee treatment,
+      and contact email. Starting
+      the event and seating a player meeting refuse while any active entrant
+      has no name; the organizer board lists them with the resolutions. An
+      account always has a name (`users.name` is required: a first sign-in
+      without one is refused, a later one keeps the stored name), so only
+      an email enrollment is ever nameless. A
+      cancelled row for the identity (the account's or the Guest's) is
+      re-entered; pending/waitlisted/rejected rows are refused toward the
+      review verbs. Metered by the `enrollPlayer` bucket. Covered by
+      `guestEnrollment.convex.spec.ts`, the names gate in
+      `tournaments-player-identity.convex.spec.ts`, and the web dialogs in
+      `enrollment-dialogs.test.tsx`
+- [ ] Personal tournament invitations — an emailed invite a player accepts,
+      or a pay-later enrollment — are deliberately deferred and are not part
+      of the enrollment feature above; organizers share the tournament's
+      Invite Link themselves. Revisit only with the transactional-email
+      layer in section 7
+- [ ] Enrollment council follow-ups (2026-11-04; hardening, not defects):
+      gate the Claim, invitation acceptance, and the `hasUnclaimedGuest`
+      signal on `identity.emailVerified` once the Clerk JWT template is
+      confirmed to carry it; answer a Register or checkout that lands just
+      after the app's own sign-in claimed the seat as the registration
+      rather than "Already registered"; skip the sign-in's users-row patch
+      when nothing changed, now that the sign-in runs on every app open.
+      (The double-seat path left by the all-or-nothing Claim is closed:
+      `heldOrClaimedEntry` refuses to re-enter an account's cancelled row
+      while a Guest under the account's email holds a live row in the
+      event, for registerSelf and the entry checkout alike.)
 - [ ] Deliver random event codes and organizer QR sharing. Built on
       `feat/join-qr-web` at `422285d` and included in `feat/qr-codes` at
       `3fd2d71`; neither implementation is on audited `main`.
@@ -579,7 +627,8 @@ push, analytics, and monitoring should be independent consumers.
 - [ ] Add in-app player-controller notifications for event/round transitions and outstanding player actions
 - [ ] Add transactional email
   - [ ] Staff invite emails
-  - [ ] Tournament invitation emails
+  - [ ] Tournament invitation emails (deferred with personal tournament
+        invitations, section 3; the shareable Invite Link stands in)
   - [ ] Registration confirmation and status-change emails
   - [ ] Cancellation and refund emails
 - [ ] Add native push notification infrastructure

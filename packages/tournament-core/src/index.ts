@@ -29,6 +29,10 @@ export {
 } from "./convex-clerk-auth";
 export type { ClerkUseAuth } from "./convex-clerk-auth";
 export {
+  ACCOUNT_SETUP_FAILED_MESSAGE,
+  useEnsureUserRow,
+} from "./ensure-user-row";
+export {
   displayPlayerName,
   formatGameScoreline,
   formatPercent,

@@ -57,7 +57,7 @@ function PlayerProfile({
   player: PublicPlayer
   publicCode: string
 }) {
-  const displayName = player.name ?? `Player #${player.publicCode}`
+  const displayName = player.name
   const initial = displayName.trim().charAt(0).toUpperCase() || '?'
 
   return (

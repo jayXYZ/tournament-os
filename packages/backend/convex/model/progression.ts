@@ -4,7 +4,6 @@ import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { logAuditEvent } from "./auditLog";
 import { userError } from "./errors";
 import { deleteResultRevisionsForMatch } from "./matchResults";
-import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "./batching";
 import {
   type CutoffPartition,
   activeRegistrationsInRankOrder,
@@ -47,8 +46,9 @@ import {
 import {
   activeRegistrations,
   comparePlayersAlphabetically,
-  registrationOrganizerLabel,
-  resolveRegistrationDisplayName,
+  playersAwaitingDetailsReason,
+  registrationHasUsableName,
+  unnamedRegistrations,
 } from "./registrations";
 import {
   allSeatWinnersDeparted,
@@ -146,6 +146,12 @@ export type ProgressionFacts = {
   // Loaded only in the states whose rules read the roster: pre-start, and
   // between rounds when a later phase could start.
   activeRegistrations: Doc<"tournamentRegistrations">[] | null;
+  // The active players still awaiting a usable name (CONTEXT.md "Awaiting
+  // Player Details"), from the same roster load; null whenever it is. Play
+  // cannot start — the first round cannot be paired, the first meeting
+  // cannot be seated — while any remain: every entrant included in play
+  // must have a name other players can see.
+  playersAwaitingDetails: Doc<"tournamentRegistrations">[] | null;
   // The completed bracket round's seat winners in table order (departed
   // winners included — their seats advance and the walkover materializes at
   // pairing; see model/singleElimination.ts). Loaded only between bracket
@@ -307,6 +313,8 @@ export async function analyzeProgression(
     pairingsUnpublished && registrations !== null
       ? filterUnpaired(registrations, matchesWithPlayers ?? []).length
       : null;
+  const playersAwaitingDetails =
+    registrations !== null ? unnamedRegistrations(registrations) : null;
 
   // Between bracket rounds the rulebook needs the completed round's seat
   // winners: the next round is paired from them, and a bracket whose every
@@ -354,6 +362,7 @@ export async function analyzeProgression(
     currentRoundHasRecordedResult,
     unpairedActiveCount,
     activeRegistrations: registrations,
+    playersAwaitingDetails,
     bracketSeatWinners,
     nextUpcomingPhase,
     laterUpcomingPhases,
@@ -462,6 +471,15 @@ function startTournamentVerdict(
   }
   if (registrations.length < 2) {
     return disallowed(AT_LEAST_TWO_PLAYERS);
+  }
+  // Every entrant paired into round 1 needs a name other players can see:
+  // an entry enrolled by email that nobody has named yet, or a nameless
+  // account, holds the start until the organizer names it, the player signs
+  // in with a name, or the entry is removed (CONTEXT.md "Awaiting Player
+  // Details").
+  const awaitingDetails = facts.playersAwaitingDetails ?? [];
+  if (awaitingDetails.length > 0) {
+    return disallowed(playersAwaitingDetailsReason(awaitingDetails.length));
   }
   return { allowed: true, reason: null, phase, registrations };
 }
@@ -1400,29 +1418,21 @@ export async function startPlayerMeeting(
   if (registrations.length < 2) {
     throw userError(AT_LEAST_TWO_PLAYERS);
   }
-
-  const players = await mapAsyncInBatches(
-    registrations,
-    DATABASE_IO_BATCH_SIZE,
-    async (registration) => {
-      const playerName =
-        (await resolveRegistrationDisplayName(
-          ctx,
-          registration.playerName,
-          registration._id,
-        )) ?? null;
-      return {
-        registrationId: registration._id,
-        // The seat stores the player-safe name (other players read it); the
-        // ordering key is the organizer label the seating sheet prints
-        // (comparePlayersAlphabetically), falling back to the resolved name
-        // for a row with no stamp at all.
-        playerName,
-        seatingLabel: registrationOrganizerLabel(registration) ?? playerName,
-        createdAt: registration.createdAt,
-      };
-    },
-  );
+  // The seating sheet is the first thing other players read about each
+  // other, so the meeting keeps the start's gate: no entrant awaiting
+  // player details is seated (CONTEXT.md "Awaiting Player Details"). Every
+  // seat then carries the player-safe name the entrant had when seated.
+  const named = registrations.filter(registrationHasUsableName);
+  if (named.length < registrations.length) {
+    throw userError(
+      playersAwaitingDetailsReason(registrations.length - named.length),
+    );
+  }
+  const players = named.map((registration) => ({
+    registrationId: registration._id,
+    playerName: registration.playerName,
+    createdAt: registration.createdAt,
+  }));
   players.sort(comparePlayersAlphabetically);
 
   const now = Date.now();

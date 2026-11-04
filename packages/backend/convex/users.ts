@@ -2,7 +2,7 @@ import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 
 import type { Id } from "./_generated/dataModel";
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import { requireIdentity } from "./auth";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "./model/batching";
 import { clampPageSize } from "./model/pagination";
@@ -18,11 +18,15 @@ import {
   resolvePublicPlayer,
   takeConfirmedRegistrationsAfter,
 } from "./model/playerResults";
-import { participantForUser } from "./model/participants";
+import {
+  anyGuestForEmail,
+  continueGuestClaimWalk as continueGuestClaimWalkModel,
+  participantForUser,
+} from "./model/participants";
 import { registrationForUser } from "./model/registrations";
 import { ensureCurrentUser, userByTokenIdentifier } from "./model/users";
 import { enforceRateLimit } from "./rateLimits";
-import { userProfileVisibilityValidator } from "./validators";
+import { presentText, userProfileVisibilityValidator } from "./validators";
 
 export const me = query({
   args: {},
@@ -38,6 +42,29 @@ export const upsertMe = mutation({
     await enforceRateLimit(ctx, "upsertMe");
     const user = await ensureCurrentUser(ctx);
     return user._id;
+  },
+});
+
+// Whether a Guest carrying the viewer's verified email exists — one the
+// sign-in's Claim (CONTEXT.md "Claim") has not merged yet, or leaves whole.
+// The apps' sign-in subscribes to it (@paper-pairings/core useEnsureUserRow)
+// and runs upsertMe again when the answer turns true, so an organizer
+// enrolling the viewer while their app is open is claimed as the enrollment
+// lands rather than at the next page load — no polling, and no write while
+// there is nothing to claim. Keyed by the identity's email exactly as the
+// Claim is (one bounded index read), and false, never an error, for a
+// viewer Convex has not verified or whose identity carries no email: each
+// app's root subscribes to this, and must not fall over on it.
+export const hasUnclaimedGuest = query({
+  args: {},
+  returns: v.boolean(),
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    const email = presentText(identity?.email);
+    if (email === undefined) {
+      return false;
+    }
+    return await anyGuestForEmail(ctx, email);
   },
 });
 
@@ -80,7 +107,7 @@ export const getPublicPlayer = query({
 
     return {
       publicCode: user.publicCode,
-      name: user.name ?? null,
+      name: user.name,
       avatarUrl: user.avatarUrl ?? null,
       isOwner,
       profileHidden: user.profileVisibility === "private",
@@ -305,5 +332,21 @@ export const getPublicPlayerTournamentLog = query({
     }
 
     return await matchLogForRegistration(ctx, tournament._id, registration._id);
+  },
+});
+
+// One page of the scheduled Claim of a guest too large to merge at sign-in
+// (model/participants.ts continueGuestClaimWalk). Internal: scheduled only
+// by the claim itself.
+export const continueGuestClaimWalk = internalMutation({
+  args: {
+    guestId: v.id("participants"),
+    claimerId: v.id("participants"),
+    phase: v.union(v.literal("check"), v.literal("move")),
+    cursor: v.union(v.string(), v.null()),
+  },
+  handler: async (ctx, args): Promise<null> => {
+    await continueGuestClaimWalkModel(ctx, args);
+    return null;
   },
 });

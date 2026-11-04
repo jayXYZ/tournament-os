@@ -104,9 +104,7 @@ export async function breakPairing(
       roundId: round._id,
       roundNumber: round.roundNumber,
       tableNumber: match.tableNumber ?? null,
-      players: await Promise.all(
-        players.map((player) => auditMatchPlayerRef(ctx, player)),
-      ),
+      players: players.map((player) => auditMatchPlayerRef(player)),
       wasBye: players.some((player) => player.isBye),
     },
   });

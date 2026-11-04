@@ -38,8 +38,9 @@ export function PlayerSettingsPage() {
 
 function SettingsContent() {
   // A Clerk session can exist before its users row does (first visit); the
-  // upsert also refreshes name/avatar from the identity.
-  const { failed: upsertFailed, retry: retryUpsert } = useEnsureUserRow()
+  // root-level sign-in (EnsureUserRowProvider) creates it, and this page
+  // reads that sign-in's outcome to surface a refusal.
+  const { failure: upsertFailure, retry: retryUpsert } = useEnsureUserRow()
 
   const me = useQuery(api.users.me)
   if (me === undefined) {
@@ -49,8 +50,8 @@ function SettingsContent() {
     // No users row yet: the mount upsert is creating it, and the query
     // re-renders with the row once it lands. If the upsert rejected instead,
     // nothing else will ever resolve this state — surface it with a retry.
-    return upsertFailed ? (
-      <AccountSetupFailedCard onRetry={retryUpsert} />
+    return upsertFailure !== null ? (
+      <AccountSetupFailedCard message={upsertFailure} onRetry={retryUpsert} />
     ) : (
       <SettingsLoadingCard />
     )
@@ -59,13 +60,16 @@ function SettingsContent() {
   return <ProfilePrivacyCard me={me} />
 }
 
-function AccountSetupFailedCard({ onRetry }: { onRetry: () => void }) {
+function AccountSetupFailedCard({
+  message,
+  onRetry,
+}: {
+  message: string
+  onRetry: () => void
+}) {
   return (
     <section className="flex flex-col gap-4">
-      <SectionHeader
-        title="Couldn't load your account"
-        description="Something went wrong while setting up your player account. Check your connection and try again."
-      />
+      <SectionHeader title="Couldn't load your account" description={message} />
       <div>
         <Button type="button" onClick={onRetry}>
           <RotateCcw data-icon="inline-start" />

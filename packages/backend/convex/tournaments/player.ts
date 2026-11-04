@@ -81,13 +81,11 @@ export const getLatestStandings = query({
     // It is name-only by construction (registrationNameStamp), and the
     // sign-in re-stamp (syncRegistrationNameStamps) rewrites this round's
     // row whenever the account's name changes, so an absent stamp means the
-    // account has no name today — not a cache miss to read through. Reading
-    // through here would hang every player's subscription on every nameless
-    // account's user document (which upsertUser patches on each sign-in)
-    // and spend reads per such row against the transaction's index-range
-    // budget. Organizer surfaces label such a row by email from the
-    // registration's organizerLabel instead (resolveOrganizerDisplayName).
-    // So the rows are a plain projection of the standings documents.
+    // entry had no name when the row was written — not a cache miss to read
+    // through. Reading through here would hang every player's subscription
+    // on user documents (which upsertUser patches on each sign-in) and
+    // spend reads per row against the transaction's index-range budget. So
+    // the rows are a plain projection of the standings documents.
     const rows = standings.map((standing) => ({
       rank: standing.rank,
       name: standing.playerName ?? null,
