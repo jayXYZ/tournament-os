@@ -389,3 +389,27 @@ async function getRegistration(
 ) {
   return await t.run(async (ctx) => await ctx.db.get(registrationId));
 }
+
+test("creating the invite link answers the existing code instead of rotating it", async () => {
+  const t = createConvexTest();
+  const { tournamentId } = await seedPrivateTournament(t);
+  const organizer = t.withIdentity(organizerIdentity);
+  const created = await organizer.mutation(
+    api.tournaments.invites.createInviteLink,
+    { tournamentId },
+  );
+  // A second create — the other organizer's click landing a moment later —
+  // changes nothing: the printed code stays live.
+  expect(
+    await organizer.mutation(api.tournaments.invites.createInviteLink, {
+      tournamentId,
+    }),
+  ).toBe(created);
+  expect(
+    await organizer.query(api.tournaments.invites.getInviteLink, {
+      tournamentId,
+    }),
+  ).toEqual({ code: created });
+  // Rotation is the explicit act that replaces it.
+  expect(await regenerateInviteLink(t, tournamentId)).not.toBe(created);
+});

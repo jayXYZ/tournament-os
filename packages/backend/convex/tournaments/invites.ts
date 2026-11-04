@@ -111,6 +111,31 @@ export const regenerateInviteLink = mutation({
   },
 });
 
+// Creates the tournament's invite link if it has none, else answers the one
+// it has. The "Create invite link" buttons call this, not
+// regenerateInviteLink: two organizers creating at nearly the same moment
+// would otherwise have the second click silently rotate the first's link —
+// one perhaps already printed — and skip the confirmation rotation asks
+// for. Concurrent creates conflict on the invite row's index read, so the
+// loser re-runs and finds the winner's code.
+export const createInviteLink = mutation({
+  args: { tournamentId: v.id("tournaments") },
+  handler: async (ctx, args): Promise<string> => {
+    const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
+    const existing = await inviteForTournament(ctx, tournament._id);
+    if (existing) {
+      return existing.code;
+    }
+    const code = await mintUniqueInviteCode(ctx);
+    await ctx.db.insert("tournamentInvites", {
+      tournamentId: tournament._id,
+      code,
+      updatedAt: Date.now(),
+    });
+    return code;
+  },
+});
+
 // Deletes the invite link outright. Registrations it admitted stand — the
 // link is an entry door, not a membership — and disabling is freely
 // reversible by regenerating, which issues a fresh code.

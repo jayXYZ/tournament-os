@@ -45,7 +45,7 @@ function PublicJoinLinkSection({
     <section className="flex flex-col gap-4">
       <SectionHeader
         title="Join link"
-        description="Anyone with this link (or the event's code) can open the event page and register. It never changes, so printed copies keep working. Making the event private is how you stop it admitting anyone."
+        description="Anyone with this link (or the event's code) can open the event page and register. It never changes, so printed copies keep working. Making the event private is how you stop it admitting anyone — though an invite link from an earlier private spell still admits players, and this card shows it again then."
       />
       <div className="flex flex-wrap items-center gap-2">
         <LinkField label="Join link" value={url} />
@@ -61,6 +61,7 @@ function InviteLinkSection({ tournament }: { tournament: Doc<'tournaments'> }) {
   const invite = useQuery(api.tournaments.invites.getInviteLink, {
     tournamentId: tournament._id,
   })
+  const createInviteLink = useMutation(api.tournaments.invites.createInviteLink)
   const regenerateInviteLink = useMutation(
     api.tournaments.invites.regenerateInviteLink,
   )
@@ -71,9 +72,11 @@ function InviteLinkSection({ tournament }: { tournament: Doc<'tournaments'> }) {
   const disabled =
     busy || invite === undefined || tournament.lifecycle === 'cancelled'
 
+  // Create answers an existing link rather than rotating it, so two
+  // organizers creating at once cannot kill each other's copies.
   async function handleCreate() {
     await run(async () => {
-      await regenerateInviteLink({ tournamentId: tournament._id })
+      await createInviteLink({ tournamentId: tournament._id })
       toast.success('Invite link created.')
     }, 'Could not create an invite link.')
   }

@@ -33,8 +33,10 @@ export function joinQrCaption(
   if (tournament.registrationRequiresApproval) {
     return 'Scan to request a spot'
   }
-  if (tournament.entryFeeCents !== undefined) {
-    return `Scan to register — ${formatCents(tournament.entryFeeCents)} entry`
+  // Paid means a fee above zero, as isPaidEvent and deriveJoinAction read it.
+  const entryFeeCents = tournament.entryFeeCents ?? 0
+  if (entryFeeCents > 0) {
+    return `Scan to register — ${formatCents(entryFeeCents)} entry`
   }
   return 'Scan to join'
 }

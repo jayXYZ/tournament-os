@@ -604,6 +604,11 @@ separate concerns. Model them explicitly before adding more boolean settings.
   - [ ] Configure organizer-only, participant, or public audience per artifact
   - [ ] Configure manual, during-event, after-event, or never timing for standings, pairings, and decklists
   - [ ] Enforce publication policy consistently in public, player, and organizer queries
+  - [ ] Project organizer-only fields away from public tournament reads:
+        `getPublicTournament` and `listPublicChildEvents` return the
+        tournament document whole, so the required pairing `seed` is public
+        and lets a player compute every `tiebreakRandom` and the bracket
+        shuffle
 - [ ] Add structured paper-event location data
   - [ ] Store venue name and structured address fields
   - [ ] Store timezone and optional normalized place/coordinate data
@@ -699,10 +704,18 @@ push, analytics, and monitoring should be independent consumers.
         (`EXPO_PUBLIC_WEB_ORIGIN`). The event page's not-registered dead
         end now renders the same panel, and the native event route is
         `tournaments/[code]` to match the web. `@paper-pairings/shared/app-links`
-        parses join URLs and bare codes for the scanner, and the client
-        clock and `useStableQuery` moved into core
+        parses join URLs and bare codes for the scanner (no caller until the
+        scanner lands), and the client clock and `useStableQuery` moved into
+        core
   - [ ] Add the native QR scanner (`expo-camera`; needs a dev-client
         rebuild and physical devices)
+  - [ ] Offer the targeted Claim from the join panel: when a Guest under the
+        viewer's email holds the seat but the viewer's own row is absent and
+        the event is full, closed, or badge-gated, both panels show the gate
+        while registerSelf would hand the seat over first. Needs a
+        viewer-scoped signal from the backend. Reachable only through an
+        unclaimable Guest (a collision elsewhere after an email change), so
+        deferred from the council review
   - [ ] Move the web registration panel onto the shared join-state
         derivation, preserving coverage for each registration and payment
         state (the plan's PR 3)

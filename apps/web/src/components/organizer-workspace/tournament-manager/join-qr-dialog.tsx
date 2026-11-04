@@ -95,9 +95,7 @@ function PrivateJoinQr({ tournament }: { tournament: Doc<'tournaments'> }) {
   const invite = useQuery(api.tournaments.invites.getInviteLink, {
     tournamentId: tournament._id,
   })
-  const regenerateInviteLink = useMutation(
-    api.tournaments.invites.regenerateInviteLink,
-  )
+  const createInviteLink = useMutation(api.tournaments.invites.createInviteLink)
   const { busy, run } = useBusyAction()
 
   if (invite === undefined) {
@@ -115,7 +113,7 @@ function PrivateJoinQr({ tournament }: { tournament: Doc<'tournaments'> }) {
           disabled={busy}
           onClick={() =>
             run(async () => {
-              await regenerateInviteLink({ tournamentId: tournament._id })
+              await createInviteLink({ tournamentId: tournament._id })
               toast.success('Invite link created.')
             }, 'Could not create an invite link.')
           }

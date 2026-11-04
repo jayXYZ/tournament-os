@@ -103,6 +103,12 @@ function JoinEvent({
     case "notRegistered":
     case "ready":
       return view(true, access.registration);
+    default: {
+      // A new ladder state must choose a shell here, never fall through to
+      // an empty screen.
+      const unhandled: never = access;
+      throw new Error(`Unhandled access state: ${JSON.stringify(unhandled)}`);
+    }
   }
 }
 

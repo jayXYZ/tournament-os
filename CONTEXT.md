@@ -337,10 +337,12 @@ _Avoid_: event as a synonym for tournament specifically
 
 **Public Code**:
 An Event's stable identifier: 6 random characters, the code in every URL for
-it (`/tournaments/<code>`, `/join/<code>`) and the one a player types off a
-poster. It is never a secret and never rotates, because bookmarks, payment
-records, and printed codes all hold it. An unlisted event is reachable by
-its public code and nothing else. Random codes keep anyone from counting
+it (`/tournaments/<code>` or `/conventions/<code>`; `/join/<code>` takes
+tournament codes only) and the one a player types off a poster. It is never
+a secret and never rotates, because bookmarks, payment records, and printed
+codes all hold it. An unlisted event is kept out of the public listings and
+reached by its public code — though a child event still appears on its
+convention's page. Random codes keep anyone from counting
 through unlisted events, but random guessing still finds them, so unlisted
 means obscure, not protected. A private event's code opens it only for
 the players and organizers who could already see it; everyone else needs
