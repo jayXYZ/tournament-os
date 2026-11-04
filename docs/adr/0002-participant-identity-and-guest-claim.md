@@ -150,4 +150,7 @@ be changed on a profile at the identity provider, so a cached email only
 goes stale through an operator action (an account deleted and re-created
 under the same address, a dashboard edit), and for those the sign-in's
 release of stale copies and the ambiguous-holder rule in `userByEmail`
-remain the guard.
+remain the guard. The scheduled walk keeps to the same rule across its
+pages: each page re-establishes that its claimer still holds the Guest's
+email, and one that no longer does moves nothing and hands the walk to the
+address's current holder (`continueGuestClaimWalk`).

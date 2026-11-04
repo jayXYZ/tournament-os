@@ -27,7 +27,9 @@ const CLAIM_REGISTRATION_BATCH = 64;
 // How long a started walk holds off another for the same guest. Each step
 // refreshes the stamp, so this only lapses on a walk that stopped — a
 // collision refusal, or a step that failed — and the next sign-in after it
-// tries again.
+// tries again. A walk whose claimer lost the email mid-way does not wait it
+// out: that step hands the walk to the address's current holder itself
+// (continueGuestClaimWalk).
 const CLAIM_WALK_RETRY_MS = 60 * 60 * 1000;
 
 export async function requireParticipant(
@@ -367,17 +369,38 @@ async function moveRegistrationToClaimer(
 
 // Every registration a participant holds, whatever its status — the claim
 // needs cancelled and rejected rows too, since a merged identity keeps its
-// whole history (prefix query on the participant index).
+// whole history. Ordered by creation time, which never changes: the walk
+// pages this query across transactions, and an entry's status can change
+// between two pages (an organizer cancelling it), so a cursor over a
+// status-keyed index could let a row already examined — or one not yet
+// examined — move to the other side of it.
 function guestRegistrationsQuery(
   ctx: QueryCtx,
   participantId: Id<"participants">,
 ) {
   return ctx.db
     .query("tournamentRegistrations")
-    .withIndex(
-      "by_participantId_and_entryStatus_and_tournamentStartDate",
-      (q) => q.eq("participantId", participantId),
-    );
+    .withIndex("by_participantId", (q) => q.eq("participantId", participantId));
+}
+
+// The account holding a verified email right now, as its participant: the
+// stored email cache model/users.ts keeps (userByEmail's rule — exactly one
+// holder, else the owner is unknown), then that account's participant. Null
+// when no account holds the address, two still do, or the holder has not
+// signed in here. Used by the walk to re-establish, every page, that its
+// claimer still owns the guest's email.
+async function participantHoldingEmail(
+  ctx: QueryCtx,
+  email: string,
+): Promise<Doc<"participants"> | null> {
+  const holders = await ctx.db
+    .query("users")
+    .withIndex("by_email", (q) => q.eq("email", email))
+    .take(2);
+  if (holders.length !== 1) {
+    return null;
+  }
+  return await participantForUser(ctx, holders[0]._id);
 }
 
 // Whether the claiming participant already holds a registration in the same
@@ -471,6 +494,16 @@ async function scheduleGuestClaimWalkStep(
 // Rows enrolled onto the guest mid-walk likewise keep it alive, and the
 // next sign-in claims them. The walk stops quietly when either side is
 // gone or the guest has become an account's participant.
+//
+// Each page re-establishes that the claimer still holds the guest's email.
+// The walk was queued by a sign-in that did, but the address can move to
+// another account before the queue drains (the provider reassigning it;
+// upsertUser then releases it from the old holder when the new one signs
+// in, and that sign-in finds this walk under way and defers to it). A page
+// whose claimer no longer holds the address moves nothing: the walk passes
+// to the address's current holder, or, with no such account yet, ends so
+// the next sign-in starts afresh. Pages that ran before the change stand —
+// the rows they moved went to the account that held the address then.
 export async function continueGuestClaimWalk(
   ctx: MutationCtx,
   step: GuestClaimWalkStep,
@@ -480,12 +513,32 @@ export async function continueGuestClaimWalk(
   if (
     !guest ||
     guest.userId !== undefined ||
+    guest.contactEmail === undefined ||
     !claimer ||
     claimer.userId === undefined
   ) {
     return;
   }
   const now = Date.now();
+  const claimerUser = await ctx.db.get(claimer.userId);
+  if (!claimerUser || claimerUser.email !== guest.contactEmail) {
+    const holder = await participantHoldingEmail(ctx, guest.contactEmail);
+    if (holder && holder._id !== claimer._id) {
+      await scheduleGuestClaimWalkStep(
+        ctx,
+        {
+          guestId: guest._id,
+          claimerId: holder._id,
+          phase: "check",
+          cursor: null,
+        },
+        now,
+      );
+    } else {
+      await ctx.db.patch(guest._id, { claimWalkAt: undefined, updatedAt: now });
+    }
+    return;
+  }
   const page = await guestRegistrationsQuery(ctx, guest._id).paginate({
     numItems: CLAIM_REGISTRATION_BATCH,
     cursor: step.cursor,

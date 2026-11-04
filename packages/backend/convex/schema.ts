@@ -740,6 +740,11 @@ export default defineSchema({
       "entryStatus",
       "tournamentStartDate",
     ])
+    // The Claim's page-by-page walk over one participant's whole history
+    // (model/participants.ts guestRegistrationsQuery): ordered by creation
+    // time alone, which never changes, so an entry changing status between
+    // two pages cannot slip behind the cursor.
+    .index("by_participantId", ["participantId"])
     // Organizer roster search over the denormalized name. tournamentId as a
     // filter field scopes matches to one event, so searching never requires
     // loading that event's registration history; the status columns let the

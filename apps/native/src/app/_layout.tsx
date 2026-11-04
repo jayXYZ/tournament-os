@@ -9,6 +9,8 @@ import { DarkTheme, Stack, ThemeProvider } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as SystemUI from "expo-system-ui";
 import { useEffect } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { convex } from "@/lib/convex";
 import { palette } from "@/lib/palette";
@@ -75,7 +77,6 @@ function RootLayout() {
   return (
     <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
       <ConvexClerkAuthProvider client={convex} useAuth={useAuth}>
-        <EnsureUserRow />
         <ThemeProvider value={navigationTheme}>
           <StatusBar style="light" />
           <Stack
@@ -98,6 +99,7 @@ function RootLayout() {
             />
           </Stack>
         </ThemeProvider>
+        <EnsureUserRow />
       </ConvexClerkAuthProvider>
     </ClerkProvider>
   );
@@ -106,11 +108,70 @@ function RootLayout() {
 // The app's sign-in (see @paper-pairings/core useEnsureUserRow): runs once
 // Convex verifies the viewer, so the users row exists and the entries an
 // organizer enrolled under the account's email are claimed before the home
-// screen lists the viewer's tournaments. Nothing here gates on its outcome —
-// a refusal leaves the list as it would be without a row — so no error UI.
+// screen lists the viewer's tournaments. No screen gates on its outcome —
+// a refusal leaves the list as it would be without a row — but a refusal is
+// not silent: an enrolled player whose identity carries no name would
+// otherwise see "No active tournaments" with nothing to explain the seat
+// they were told they have. The backend's message (written for the user
+// when it is one) floats above whichever screen is up, with a retry.
+// Rendered after the navigator so it paints over it.
 function EnsureUserRow() {
-  useEnsureUserRow();
-  return null;
+  const { failure, retry } = useEnsureUserRow();
+  const insets = useSafeAreaInsets();
+  if (!failure) {
+    return null;
+  }
+  return (
+    <View
+      style={[styles.signInFailure, { top: insets.top + 8 }]}
+      accessibilityLiveRegion="polite"
+    >
+      <Text style={styles.signInFailureText}>{failure}</Text>
+      <Pressable
+        style={({ pressed }) => [
+          styles.signInFailureButton,
+          pressed && styles.signInFailureButtonPressed,
+        ]}
+        onPress={retry}
+        accessibilityRole="button"
+      >
+        <Text style={styles.signInFailureButtonLabel}>Try again</Text>
+      </Pressable>
+    </View>
+  );
 }
+
+const styles = StyleSheet.create({
+  signInFailure: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    gap: 10,
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: palette.border,
+    backgroundColor: palette.destructiveMuted,
+    shadowColor: "#000",
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
+  },
+  signInFailureText: { color: palette.destructive, fontSize: 14 },
+  signInFailureButton: {
+    alignSelf: "flex-start",
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    backgroundColor: palette.primary,
+  },
+  signInFailureButtonPressed: { opacity: 0.8 },
+  signInFailureButtonLabel: {
+    color: palette.primaryForeground,
+    fontSize: 14,
+    fontWeight: "600",
+  },
+});
 
 export default sentryDsn ? Sentry.wrap(RootLayout) : RootLayout;

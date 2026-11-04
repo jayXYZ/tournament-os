@@ -129,10 +129,10 @@ export function EnrollPlayerDialog({
     await run(async () => {
       const trimmedEmail = email.trim()
       await enrollPlayer({ tournamentId: tournament._id, email: trimmedEmail })
-      // Same words whoever the email belongs to.
-      toast.success(
-        `${trimmedEmail} has been enrolled. Their entry is awaiting player details.`,
-      )
+      // Same words whoever the email belongs to, and whether or not the
+      // entry already has a name (a cancelled, named entry re-enrolled keeps
+      // it): the roster row says if it awaits player details.
+      toast.success(`${trimmedEmail} has been enrolled.`)
       setEmail('')
       setOpen(false)
     }, 'Could not enroll player.')
