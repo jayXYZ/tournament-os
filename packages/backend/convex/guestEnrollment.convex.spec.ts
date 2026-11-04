@@ -1098,13 +1098,15 @@ test("adding guests by name always creates fresh Guests, which no sign-in claims
   });
 });
 
-test("a Claim collision leaves both entries in one event separate, and the guest's entry can still be named", async () => {
+test("an email two cached accounts still share refuses to enroll beside a row one of them holds", async () => {
   const t = createConvexTest();
   const { tournamentId } = await seedOpenTournament(t);
   const organizer = t.withIdentity(organizerIdentity);
   // Two cached accounts still share an address (neither has signed in since
-  // the provider moved it), so the enrollment cannot tell whose row to
-  // check and seats a Guest — alongside the row one of them already holds.
+  // the provider moved it), so the enrollment cannot tell whose row to act
+  // on. Seating a Guest beside the row one of them holds would seat one
+  // person twice — and the Claim would then refuse that Guest for good — so
+  // a live row of either holder refuses the enrollment, naming no one.
   await t.run(async (ctx) => {
     for (const subject of ["dup-a", "dup-b"]) {
       await ctx.db.insert("users", {
@@ -1123,7 +1125,7 @@ test("a Claim collision leaves both entries in one event separate, and the guest
     email: "shared@example.test",
     name: "Dup A",
   };
-  const accountRow = await t
+  await t
     .withIdentity(dupA)
     .mutation(api.tournaments.registrations.registerSelf, { tournamentId });
   // Signing in released the address from dup-b; re-seed the stale copy to
@@ -1137,46 +1139,96 @@ test("a Claim collision leaves both entries in one event separate, and the guest
       .unique();
     await ctx.db.patch(dupB!._id, { email: "shared@example.test" });
   });
-  const guestRow = await organizer.mutation(
-    api.tournaments.registrations.enrollPlayer,
-    { tournamentId, email: "shared@example.test" },
+
+  await expectRefusal(
+    organizer.mutation(api.tournaments.registrations.enrollPlayer, {
+      tournamentId,
+      email: "shared@example.test",
+    }),
+    "This player is already registered",
   );
-  expect(guestRow).not.toBe(accountRow);
-  expect(await confirmedCount(t, tournamentId)).toBe(2);
-
-  // Dup A signs in: the guest would collide with their own row, so it stays
-  // a separate, unclaimed entry — nothing merged, nothing discarded. The
-  // Claim signal stays true for it, which the open app's sign-in reads as
-  // nothing new to run on (useEnsureUserRow).
-  await t.withIdentity(dupA).mutation(api.users.upsertMe, {});
-  const guestRegistration = await getRegistration(t, guestRow);
+  expect(await confirmedCount(t, tournamentId)).toBe(1);
   await t.run(async (ctx) => {
-    const guest = await ctx.db.get(guestRegistration!.participantId);
-    expect(guest?.userId).toBeUndefined();
-    expect(guest?.contactEmail).toBe("shared@example.test");
+    const guests = (await ctx.db.query("participants").collect()).filter(
+      (row) => row.userId === undefined,
+    );
+    expect(guests).toHaveLength(0);
   });
-  expect(
-    await t.withIdentity(dupA).query(api.users.hasUnclaimedGuest, {}),
-  ).toBe(true);
-  expect(await confirmedCount(t, tournamentId)).toBe(2);
-  const roster = await organizerRegistrationRows(t, tournamentId);
-  expect(
-    roster.map((row) => [row.playerName, row.awaitingPlayerDetails]).sort(),
-  ).toEqual([
-    ["Dup A", false],
-    ["shared@example.test", true],
-  ]);
+});
 
-  // The organizer resolves the duplicate explicitly: name the second entry
-  // (a second entrant after all) or remove it — both are ordinary actions.
+test("an organizer's name ends with a rejected entry too: claimed and re-admitted, it carries the account's name", async () => {
+  const t = createConvexTest();
+  const { tournamentId } = await seedOpenTournament(t);
+  const organizer = t.withIdentity(organizerIdentity);
+  const registrationId = await organizer.mutation(
+    api.tournaments.registrations.enrollPlayer,
+    { tournamentId, email: "alias@example.test" },
+  );
   await organizer.mutation(api.tournaments.registrations.continueAsGuest, {
-    registrationId: guestRow,
-    displayName: "Second Entrant",
+    registrationId,
+    displayName: "Alias",
   });
-  expect(await getRegistration(t, guestRow)).toMatchObject({
-    playerName: "Second Entrant",
+  await organizer.mutation(api.tournaments.registrations.rejectRegistration, {
+    registrationId,
+  });
+  // A Guest's ended entry keeps its name: it has no other.
+  expect(await getRegistration(t, registrationId)).toMatchObject({
+    entryStatus: "rejected",
+    playerName: "Alias",
     organizerNamed: true,
   });
+
+  // The Claim hands the rejected row to the account; the organizer's name
+  // does not come with it, exactly as for a cancelled row.
+  await t
+    .withIdentity(guestIdentity("alias@example.test", "Alicia Real"))
+    .mutation(api.users.upsertMe, {});
+  const claimed = await getRegistration(t, registrationId);
+  expect(claimed).toMatchObject({
+    entryStatus: "rejected",
+    playerName: "Alicia Real",
+  });
+  expect(claimed?.organizerNamed).toBeUndefined();
+
+  // Re-admitted, the account plays under its own name, and a rename at a
+  // later sign-in still reaches the row.
+  await organizer.mutation(api.tournaments.registrations.approveRegistration, {
+    registrationId,
+  });
+  await t
+    .withIdentity(guestIdentity("alias@example.test", "Alicia Renamed"))
+    .mutation(api.users.upsertMe, {});
+  expect(await getRegistration(t, registrationId)).toMatchObject({
+    entryStatus: "confirmed",
+    playerName: "Alicia Renamed",
+  });
+});
+
+test("a row pending its payment refuses enrollment with its own reason", async () => {
+  const t = createConvexTest();
+  const { tournamentId } = await seedOpenTournament(t, { entryFeeCents: 2000 });
+  const organizer = t.withIdentity(organizerIdentity);
+  await seedApplication(t, tournamentId, 6, "pending", "payment");
+  await expectRefusal(
+    organizer.mutation(api.tournaments.registrations.enrollPlayer, {
+      tournamentId,
+      email: playerIdentity(6).email,
+    }),
+    "This player is completing a payment for this event — their entry is seated when it goes through",
+  );
+});
+
+test("an enrollment email is bounded like a name", async () => {
+  const t = createConvexTest();
+  const { tournamentId } = await seedOpenTournament(t);
+  const organizer = t.withIdentity(organizerIdentity);
+  await expectRefusal(
+    organizer.mutation(api.tournaments.registrations.enrollPlayer, {
+      tournamentId,
+      email: `${"a".repeat(250)}@example.test`,
+    }),
+    "Enter a valid email address",
+  );
 });
 
 test("the Claim follows the account that holds the email now, not a stale cached copy", async () => {
@@ -1613,6 +1665,9 @@ async function seedApplication(
   tournamentId: Id<"tournaments">,
   playerNumber: number,
   entryStatus: "pending" | "waitlisted",
+  // A pending row is an application under review unless it is pending its
+  // payment instead (schema awaitingReview).
+  pendingFor: "review" | "payment" = "review",
 ): Promise<Id<"tournamentRegistrations">> {
   const userId = await insertPlayerUser(t, playerNumber);
   return await t.run(async (ctx) => {
@@ -1627,7 +1682,9 @@ async function seedApplication(
       participantId,
       tournamentStartDate: tournament.startDate,
       entryStatus,
-      ...(entryStatus === "pending" ? { awaitingReview: true as const } : {}),
+      ...(entryStatus === "pending" && pendingFor === "review"
+        ? { awaitingReview: true as const }
+        : {}),
       playerName: playerIdentity(playerNumber).name,
       organizerLabel: playerIdentity(playerNumber).name,
       createdAt: now,

@@ -454,6 +454,13 @@ claimed by one.
       of the enrollment feature above; organizers share the tournament's
       Invite Link themselves. Revisit only with the transactional-email
       layer in section 7
+- [ ] Enrollment council follow-ups (2026-11-04; hardening, not defects):
+      gate the Claim, invitation acceptance, and the `hasUnclaimedGuest`
+      signal on `identity.emailVerified` once the Clerk JWT template is
+      confirmed to carry it; answer a Register or checkout that lands just
+      after the app's own sign-in claimed the seat as the registration
+      rather than "Already registered"; skip the sign-in's users-row patch
+      when nothing changed, now that the sign-in runs on every app open
 - [ ] Deliver random event codes and organizer QR sharing. Built on
       `feat/join-qr-web` at `422285d` and included in `feat/qr-codes` at
       `3fd2d71`; neither implementation is on audited `main`.

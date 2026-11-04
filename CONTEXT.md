@@ -182,7 +182,11 @@ by email that nobody has named. (An account always has a name: a first
 sign-in without one is refused, and a later sign-in without one keeps the
 stored name, so no account-held entry is ever in this state.) Every email
 Enrollment starts here, identically whether or not the address has an
-account, so enrolling is never a way to learn that it does. It resolves
+account, so enrolling is not a way to learn that it does — with one
+exception the organizer can already see: an account holding an entry in
+this very event, which the enrollment acts on (re-entering a cancelled row
+under its name, refusing a live one) rather than seat the person twice. It
+resolves
 when the player next uses the app signed in with that email (the Claim
 stamps the account's name onto the entry) or when an organizer names the
 entry for this event with "Continue as guest" —

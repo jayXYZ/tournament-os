@@ -47,11 +47,21 @@ export async function userByEmail(
   ctx: QueryCtx,
   email: string,
 ): Promise<Doc<"users"> | null> {
-  const holders = await ctx.db
+  const holders = await usersHoldingEmail(ctx, email);
+  return holders.length === 1 ? holders[0] : null;
+}
+
+// Every account whose stored email still carries the address, up to the
+// bound: one is its owner (userByEmail); more than one is the ambiguous
+// state a caller may need to refuse on rather than resolve.
+export async function usersHoldingEmail(
+  ctx: QueryCtx,
+  email: string,
+): Promise<Doc<"users">[]> {
+  return await ctx.db
     .query("users")
     .withIndex("by_email", (q) => q.eq("email", normalizeEmail(email)))
     .take(ACCOUNTS_PER_EMAIL_BOUND);
-  return holders.length === 1 ? holders[0] : null;
 }
 
 // Stale holders of one address released per sign-in. Each sign-in releases

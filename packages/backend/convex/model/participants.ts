@@ -338,11 +338,11 @@ async function claimedRegistrationStamp(
 // account — unless an organizer named the entry for its event
 // (organizerNamed) and the entry is still live: that name is the event's
 // label for the entrant and stays, whoever holds the entry now. A cancelled
-// entry's organizer name does not survive the hand-over: organizers name
-// guests, not account holders (CONTEXT.md "Claim"), so an account's
-// cancelled entry carries the account's own name, as it would had the
-// account held it when it was cancelled (model/roster.ts cancelEntry), and
-// re-admitting it never revives the label. Entry status, seat, history, and
+// or rejected entry's organizer name does not survive the hand-over:
+// organizers name guests, not account holders (CONTEXT.md "Claim"), so an
+// account's ended entry carries the account's own name, as it would had the
+// account held it when it ended (model/roster.ts cancelEntry, rejectEntry),
+// and re-admitting it never revives the label. Entry status, seat, history, and
 // the fee exemption (entryFeeExempt) ride along untouched.
 async function moveRegistrationToClaimer(
   ctx: MutationCtx,
@@ -360,7 +360,10 @@ async function moveRegistrationToClaimer(
   });
   if (!registration.organizerNamed) {
     await restampRegistrationRow(ctx, registration, stamp, now);
-  } else if (registration.entryStatus === "cancelled") {
+  } else if (
+    registration.entryStatus === "cancelled" ||
+    registration.entryStatus === "rejected"
+  ) {
     await restampRegistrationRow(ctx, registration, stamp, now, {
       organizerNamed: undefined,
     });

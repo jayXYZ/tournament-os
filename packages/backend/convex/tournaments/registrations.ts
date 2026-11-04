@@ -68,9 +68,13 @@ async function registrationRows(
     registration,
     playerName: registrationOrganizerLabel(registration),
     // Whether the entry still awaits a usable name (CONTEXT.md "Awaiting
-    // Player Details") — the same predicate the start gate applies, so the
-    // roster's readiness marker and the board's refusal always agree.
-    awaitingPlayerDetails: !registrationHasUsableName(registration),
+    // Player Details") on an entrant the start gate counts, so the roster's
+    // readiness marker and the board's refusal always agree: a nameless row
+    // that is cancelled, rejected, or dropped holds nothing up.
+    awaitingPlayerDetails:
+      registration.entryStatus === "confirmed" &&
+      registration.participationStatus === "active" &&
+      !registrationHasUsableName(registration),
     // Whether continueAsGuest would name this row right now (null when
     // unavailable), from the same projection the verb enforces.
     nameEffect: registrationNameEffect(tournament.lifecycle, registration),

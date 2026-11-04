@@ -133,11 +133,11 @@ close them:
 - **An organizer's name ends with the entry.** "Continue as guest" labels a
   Guest's entry for one event, and the Claim keeps that label on the live
   entry it hands to an account. It does not outlive the entry under an
-  account holder: cancelling an account holder's entry (by the player or
-  the organizer) or the player's own re-entry drops `organizerNamed` and
-  stamps the account's name, which the sign-in re-stamp then keeps
-  current; a cancelled entry the Claim hands to an account takes the
-  account's name the same way. Before this, a re-entered entry carried the
+  account holder: cancelling or rejecting an account holder's entry (by
+  the player or the organizer) or the player's own re-entry drops
+  `organizerNamed` and stamps the account's name, which the sign-in
+  re-stamp then keeps current; a cancelled or rejected entry the Claim
+  hands to an account takes the account's name the same way. Before this, a re-entered entry carried the
   account's name under `organizerNamed` and was frozen there for good. A
   Guest's cancelled entry keeps its name — it has no other, and an
   organizer reinstating it should not have to name it again. Organizers

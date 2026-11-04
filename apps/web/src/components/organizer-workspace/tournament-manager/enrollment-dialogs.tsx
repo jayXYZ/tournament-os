@@ -170,8 +170,9 @@ export function EnrollPlayerDialog({
           <FieldDescription>
             The entry shows as awaiting player details until the player opens
             the app signed in with this email, or until you name them with
-            &ldquo;Continue as guest&rdquo;. Play can&apos;t start while an
-            entrant has no name.
+            &ldquo;Continue as guest&rdquo;. The app doesn&apos;t email the
+            player, so let them know. Play can&apos;t start while an entrant has
+            no name.
           </FieldDescription>
         </Field>
       }

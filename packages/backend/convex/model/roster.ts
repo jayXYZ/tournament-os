@@ -52,7 +52,7 @@ import {
   restampRegistrationRow,
 } from "./registrations";
 import { tiebreakRandom } from "./random";
-import { userByEmail } from "./users";
+import { usersHoldingEmail } from "./users";
 import { normalizeEmail, presentText } from "../validators";
 
 // The roster workflow module: the named verbs that change who is in the
@@ -251,8 +251,9 @@ export async function cancelEntry(
 // labels a Guest's entry for one event, and the Claim keeps it on the live
 // entry it hands to an account (CONTEXT.md "Claim"). It ends with the
 // entry: organizers name guests, not account holders, so once an account
-// holder's entry is cancelled — here — or re-entered by the player
-// (registerEntry, the checkout) the label is dropped and the account's own
+// holder's entry is cancelled or rejected (cancelEntry, rejectEntry) or
+// re-entered by the player (registerEntry, the checkout) the label is
+// dropped and the account's own
 // name takes over, which the sign-in re-stamp then keeps current. A Guest's
 // cancelled entry keeps its name: it has no other, and the organizer who
 // reinstates it should not have to name it again.
@@ -515,6 +516,7 @@ export async function rejectEntry(
     entryStatus: "rejected",
     updatedAt: now,
   });
+  await dropOrganizerNameFromAccountEntry(ctx, registration, now);
   if (rejectEffect === "remove") {
     await adjustConfirmedRegistrationCount(ctx, tournament, -1, now);
   }
@@ -821,6 +823,10 @@ export async function registerEntry(
 // Longest organizer-typed player name: the stamp is copied onto every
 // standings row, match player, and seat the entry appears in.
 export const MAX_ENROLLMENT_NAME_LENGTH = 80;
+// The longest address SMTP delivers (RFC 5321's path limit); the enrollment
+// email is stored on the guest, indexed as the organizer label, and
+// journaled, so it is bounded like a name.
+export const MAX_ENROLLMENT_EMAIL_LENGTH = 254;
 
 // The name an organizer types for an entry ("Add guest", "Continue as
 // guest"): trimmed, present, and within the stamp's length — it is the
@@ -850,13 +856,19 @@ function requireEnrollmentName(raw: string): string {
 // row already on the roster says only that, so the enrollment form is not
 // a way to learn whose email an entry is.
 function existingEntryBlocksEnrollment(
-  entryStatus: Doc<"tournamentRegistrations">["entryStatus"],
+  registration: Doc<"tournamentRegistrations">,
 ): string | null {
+  const { entryStatus } = registration;
   switch (entryStatus) {
     case "confirmed":
       return "This player is already registered";
     case "pending":
-      return "This player already has a pending registration — approve it from their row instead";
+      // Pending for review, or pending its payment (schema awaitingReview):
+      // approval decides the first; the second seats itself when the
+      // checkout completes, and no roster verb hurries it along.
+      return registration.awaitingReview
+        ? "This player already has a pending registration — approve it from their row instead"
+        : "This player is completing a payment for this event — their entry is seated when it goes through";
     case "waitlisted":
       return "This player is on the waitlist — approve their registration to seat them";
     case "rejected":
@@ -884,7 +896,7 @@ async function enrollmentRowFor(
     participantId,
   );
   if (existing) {
-    const blockedBecause = existingEntryBlocksEnrollment(existing.entryStatus);
+    const blockedBecause = existingEntryBlocksEnrollment(existing);
     if (blockedBecause !== null) {
       throw userError(blockedBecause);
     }
@@ -991,9 +1003,12 @@ async function seatEnrolledEntry(
 // already holds a row in this event, that row is what the enrollment acts
 // on (re-entering a cancelled one, refusing every other status), exactly as
 // the Guest's own row would be — two entries for one person in one event is
-// what neither this verb nor the Claim will create. An address two cached
-// accounts still share has no certain owner (userByEmail), so only the
-// Guest's row is checked and the Claim sorts out the holder at sign-in.
+// what neither this verb nor the Claim will create. That is also the one
+// way enrolling tells the organizer an address has an account: only for an
+// entrant already on this roster, whose cancelled row re-enters under its
+// name (CONTEXT.md "Awaiting Player Details"). An address two cached
+// accounts still share has no certain owner (userByEmail): no account row
+// is re-entered, and a live row of either holder refuses the enrollment.
 //
 // Like the other organizer verbs it bypasses the invite and badge gates by
 // never routing through registerEntry; capacity and the registration
@@ -1015,13 +1030,14 @@ export async function enrollPlayerByEmail(
     throw userError("Enter the player's email address");
   }
   const email = normalizeEmail(presentEmail);
-  if (!email.includes("@")) {
+  if (!email.includes("@") || email.length > MAX_ENROLLMENT_EMAIL_LENGTH) {
     throw userError("Enter a valid email address");
   }
   requireEnrollmentOpen(tournament);
 
-  const user = await userByEmail(ctx, email);
-  if (user) {
+  const holders = await usersHoldingEmail(ctx, email);
+  if (holders.length === 1) {
+    const [user] = holders;
     const accountParticipant = await participantForUser(ctx, user._id);
     const accountRow = accountParticipant
       ? await enrollmentRowFor(ctx, tournament, accountParticipant._id)
@@ -1037,6 +1053,28 @@ export async function enrollPlayerByEmail(
         tiebreakKey: String(user.publicCode),
         by: "email",
       });
+    }
+  } else if (holders.length > 1) {
+    // Two cached accounts still share the address, so its owner is unknown
+    // (userByEmail) and no account row can be re-entered. A live row either
+    // holds here still refuses — seating a Guest beside it would seat one
+    // person twice, and the Claim would then refuse that Guest for good —
+    // as namelessly as the single-holder refusals; a cancelled row is
+    // simply not acted on, and the Guest is seated.
+    for (const holder of holders) {
+      const holderParticipant = await participantForUser(ctx, holder._id);
+      const holderRow = holderParticipant
+        ? await registrationForParticipant(
+            ctx,
+            tournament._id,
+            holderParticipant._id,
+          )
+        : null;
+      const blockedBecause =
+        holderRow === null ? null : existingEntryBlocksEnrollment(holderRow);
+      if (blockedBecause !== null) {
+        throw userError(blockedBecause);
+      }
     }
   }
 
