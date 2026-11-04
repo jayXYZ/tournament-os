@@ -1,9 +1,14 @@
 import { Link, Navigate, createFileRoute } from '@tanstack/react-router'
-import { useQuery } from 'convex/react'
-import { SearchX } from 'lucide-react'
-import { api } from '@paper-pairings/backend/convex/_generated/api'
+import { useJoinCode } from '@paper-pairings/core'
+import { SearchX, ShieldAlert } from 'lucide-react'
+import { useAppAuth } from '@/lib/use-app-auth'
 import { SiteShell } from '@/components/shared/site-shell'
 import { LoadingCard } from '@/components/shared/loading-card'
+import {
+  UNVERIFIED_VIEWER_DESCRIPTION,
+  UNVERIFIED_VIEWER_TITLE,
+  UnverifiedViewerActions,
+} from '@/components/shared/viewer-unverified'
 import { Button } from '@/components/ui/button'
 import {
   Empty,
@@ -17,21 +22,26 @@ import {
 // read aloud). The code is either the event's public code or, for a private
 // event, its invite code; the server tells them apart and resolves either to
 // the event page. An invite code rides along in the ?invite search param,
-// where it opens the private event and is passed on to registration.
+// where it opens the private event and is passed on to registration. The
+// resolution waits on the viewer auth gate as the native screen does
+// (useJoinCode): a private event's own players resolve its public code only
+// once Convex has verified them, and a viewer it cannot verify is offered
+// the gate's recovery rather than "Code not found".
 export const Route = createFileRoute('/join/$code')({
   component: RouteComponent,
 })
 
 function RouteComponent() {
   const { code } = Route.useParams()
-  const resolved = useQuery(api.tournaments.invites.resolveJoinCode, { code })
+  const { user, loading } = useAppAuth()
+  const resolution = useJoinCode(code, { user, loading })
 
-  if (resolved) {
+  if (resolution.state === 'resolved') {
     return (
       <Navigate
         to="/tournaments/$tournamentId"
-        params={{ tournamentId: resolved.publicCode }}
-        search={{ invite: resolved.inviteCode }}
+        params={{ tournamentId: resolution.publicCode }}
+        search={{ invite: resolution.inviteCode }}
         replace
       />
     )
@@ -39,8 +49,19 @@ function RouteComponent() {
 
   return (
     <SiteShell subtitle="Join a tournament" readingColumn>
-      {resolved === undefined ? (
+      {resolution.state === 'loading' ? (
         <LoadingCard title="Opening event" description="Looking up the code." />
+      ) : resolution.state === 'unverified' ? (
+        <Empty className="min-h-80">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <ShieldAlert aria-hidden="true" />
+            </EmptyMedia>
+            <EmptyTitle>{UNVERIFIED_VIEWER_TITLE}</EmptyTitle>
+            <EmptyDescription>{UNVERIFIED_VIEWER_DESCRIPTION}</EmptyDescription>
+          </EmptyHeader>
+          <UnverifiedViewerActions />
+        </Empty>
       ) : (
         <Empty className="min-h-80">
           <EmptyHeader>

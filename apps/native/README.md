@@ -68,14 +68,22 @@ src/
     _layout.tsx          # Clerk + Convex providers, root Stack
     index.tsx            # Auth gate: <AuthView> modal when signed out,
                          #   <UserButton> + the player's active tournaments when in
-    tournament/[code].tsx # The match page, keyed by the tournament's public
-                          #   code (shared core hooks): the report scoreboard
-                          #   while the viewer's match is reportable, the
-                          #   result card after
+    tournaments/[code].tsx # The event page, keyed by the tournament's public
+                           #   code (shared core hooks): the join panel until
+                           #   the viewer holds a seat, then the report
+                           #   scoreboard while their match is reportable and
+                           #   the result card after
+    join/[code].tsx        # /join/<code> from a scanned QR, shared link, or
+                           #   typed code: resolves either code kind and shows
+                           #   the join panel
   components/
     report-result-scoreboard.tsx # Game-win counts stepped by tapping the
                                  #   upper/lower half of each numeral, draws
                                  #   behind a prompt, hold to submit
+    join-event-view.tsx  # The join panel: event summary and the one action
+                         #   deriveJoinAction (core) picks, or its status
+    unverified-viewer-shell.tsx # Whole-screen recovery for the auth gate's
+                         #   unverified state, shared by the player screens
     hold-button.tsx      # Native port of the web HoldButton (800ms sweep)
     round-timer-pill.tsx # App-bar timer pill, unmounted until the custom
                          #   header lands (iOS 26 glass wraps header items)

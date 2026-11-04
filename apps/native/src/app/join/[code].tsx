@@ -1,4 +1,3 @@
-import { useUser } from "@clerk/expo";
 import { useJoinCode, usePlayerTournamentAccess } from "@paper-pairings/core";
 import type { AppAuthSnapshot, PlayerRegistration } from "@paper-pairings/core";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
@@ -7,7 +6,9 @@ import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { JoinEventView } from "@/components/join-event-view";
+import { UnverifiedViewerShell } from "@/components/unverified-viewer-shell";
 import { palette } from "@/lib/palette";
+import { useAppAuth } from "@/lib/use-app-auth";
 
 // /join/<code>: where a scanned Join QR, a shared join link, or a typed code
 // lands (CONTEXT.md "Join QR"). The path matches the web's, so universal
@@ -16,8 +17,10 @@ import { palette } from "@/lib/palette";
 // server tells them apart; this screen never says which kind a bad code was.
 export default function JoinScreen() {
   const { code } = useLocalSearchParams<{ code: string }>();
-  const { user, isLoaded } = useUser();
-  const appAuth: AppAuthSnapshot = { user: user ?? null, loading: !isLoaded };
+  // The app's identity signal (lib/use-app-auth.ts): a session with pending
+  // tasks reads as signed out here too, so the join panel offers the
+  // sign-in that completes them.
+  const appAuth = useAppAuth();
   const resolution = useJoinCode(code ?? "", appAuth);
 
   if (resolution.state === "loading") {
@@ -25,6 +28,11 @@ export default function JoinScreen() {
   }
   if (resolution.state === "notFound") {
     return <CodeNotFound />;
+  }
+  // A private event's code resolves only for a verified identity, so with
+  // the gate given up the code is not known to be wrong: offer the recovery.
+  if (resolution.state === "unverified") {
+    return <UnverifiedViewerShell />;
   }
   return (
     <JoinEvent
@@ -84,6 +92,8 @@ function JoinEvent({
   switch (access.state) {
     case "notFound":
       return <CodeNotFound />;
+    case "unverified":
+      return <UnverifiedViewerShell />;
     case "loading":
       // Once the event is known, the summary shows while the viewer's
       // registration loads.
