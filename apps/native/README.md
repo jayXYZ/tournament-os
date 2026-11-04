@@ -43,7 +43,11 @@ pnpm dev:native
 ```
 
 Re-run `expo run:ios` only when native dependencies or config plugins change
-(e.g. adding a new Expo module).
+(e.g. adding a new Expo module). `ios/` is generated and gitignored; if
+`pod install` reports version mismatches after a dependency bump, regenerate
+it with `pnpm --filter @paper-pairings/native exec expo prebuild --platform ios --clean`.
+Xcode 27 refuses pod targets below iOS 15, so `app.config.ts` lifts them to
+15.1 in the generated Podfile.
 
 ## Setup
 
