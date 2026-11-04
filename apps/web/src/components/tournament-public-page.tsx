@@ -464,9 +464,12 @@ function RegistrationPanel({
     return checkingButton
   }
 
+  // A confirmed row without a participation status reads as active, as the
+  // server reads it (model/participation.ts); it must never fall through to
+  // the register button below.
   if (
     registration?.entryStatus === 'confirmed' &&
-    registration.participationStatus === 'active'
+    (registration.participationStatus ?? 'active') === 'active'
   ) {
     return (
       <div className="flex flex-wrap items-center gap-3">

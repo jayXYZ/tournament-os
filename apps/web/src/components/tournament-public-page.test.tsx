@@ -559,10 +559,10 @@ const rows: Array<[string, Scenario, Array<string>]> = [
   ],
   [
     // The schema leaves participationStatus optional; mutations set it on
-    // every confirmation, so this row is outside the invariant.
+    // every confirmation, and the server reads a missing one as active.
     'confirmed with no participation status',
     { registration: { entryStatus: 'confirmed' } },
-    ['button: Register for this event', spots],
+    [registered, cancel],
   ],
 
   // A pending entry.
