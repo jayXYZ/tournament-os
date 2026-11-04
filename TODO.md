@@ -727,7 +727,19 @@ push, analytics, and monitoring should be independent consumers.
   - [ ] Claim `/join/*` as universal links (blocked on the custom domain,
         the Apple Team ID, and the Android signing cert)
   - [ ] Run device E2E with Maestro (EAS Workflows supports it), so the
-        scanner and payment device matrix stops being manual
+        scanner and payment device matrix stops being manual. Partial, on
+        `qr/verify-join` (not merged): `apps/native/e2e/` runs the PR 2a
+        deep-link matrix, seeded on the dev deployment and signed in
+        through a dev-only ticket link
+    - [ ] iOS simulator deep-link matrix: passed 17/17 on an iPhone 17 Pro
+          simulator (iOS 26.5) at `2b3d36a` against the personal dev
+          deployment, 2026-11-04 ([record](docs/delivery-status.md));
+          unchecked until merged
+    - [ ] Android emulator run (the recorded machine has no Android SDK)
+    - [ ] Physical iPhone and Android runs, adding the scanner, torch,
+          haptics, and camera permission (PR 2b) and the payment round trip
+          (PR 4)
+    - [ ] Run the suite in CI or EAS Workflows
 - [ ] Add real safe-area support to the web app chrome; ship all parts together
   - [ ] Add `viewport-fit=cover` to the root viewport meta in `apps/web/src/routes/__root.tsx`
   - [ ] Add bottom safe-area padding to SiteShell's fixed bottom-bar chrome
