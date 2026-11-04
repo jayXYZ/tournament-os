@@ -204,6 +204,11 @@ test("invite management is organizer-only and the code never reaches player quer
     }),
   ).rejects.toThrow("Unauthorized");
   await expect(
+    player.mutation(api.tournaments.invites.createInviteLink, {
+      tournamentId,
+    }),
+  ).rejects.toThrow("Unauthorized");
+  await expect(
     player.query(api.tournaments.invites.getInviteLink, { tournamentId }),
   ).rejects.toThrow("Unauthorized");
 });

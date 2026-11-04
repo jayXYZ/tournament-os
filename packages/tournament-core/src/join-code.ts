@@ -26,7 +26,8 @@ export type JoinCodeResolution =
 // through the provider's own loading, Convex's token validation and its
 // grace period, and — once the gate gives up on the identity — as
 // `unverified` rather than a wrong code. A code that resolves does so for
-// anyone and never waits on the gate.
+// anyone: it waits only for the provider to finish loading, never on
+// Convex's verdict.
 export function useJoinCode(
   code: string,
   appAuth: AppAuthSnapshot,
