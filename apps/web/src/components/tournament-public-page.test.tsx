@@ -589,7 +589,7 @@ const rows: Array<[string, Scenario, Array<string>]> = [
   [
     'a pending entry on a paid event while the order loads',
     { registration: pending(), paid: true, order: undefined },
-    [pendingBadge, withdraw],
+    checking,
   ],
   [
     'an approved application owing payment',

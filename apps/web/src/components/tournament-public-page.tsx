@@ -536,6 +536,16 @@ function RegistrationPanel({
     registration?.entryStatus === 'pending' ||
     registration?.entryStatus === 'waitlisted'
   ) {
+    // Only the order tells an application under review from an approved
+    // entry that owes payment, so wait for it: an approved player must never
+    // see "pending organizer approval" flash before "Complete payment".
+    if (
+      registration.entryStatus === 'pending' &&
+      isPaid &&
+      myOrder === undefined
+    ) {
+      return checkingButton
+    }
     // On a paid event a "pending" entry with a payable order is past review:
     // it is either an approved application awaiting its payment, or the
     // player's own unfinished direct checkout. Payment takes the seat.
