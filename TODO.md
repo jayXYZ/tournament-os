@@ -21,9 +21,10 @@ distinguish unverified account setup from a confirmed external block.
    auth, and monitoring, then repeat the payment checks in section 9 against
    that revision. Record the target and evidence before declaring it ready.
 2. Finish delivery of existing branch work: random event codes and web QR
-   sharing, native free/approval join, and organizer guest/email enrollment.
-   Integrate each against current `main`, run its relevant checks, and verify
-   the deployed flow. Schema changes need a DB reset, not a migration.
+   sharing, and native free/approval join. Integrate each against current
+   `main`, run its relevant checks, and verify the deployed flow. Schema
+   changes need a DB reset, not a migration. Organizer guest/email enrollment
+   is merged; its deployed flow still needs the section 0 verification.
 3. Close event-day gaps: remove stale confirmation copy, provide an organizer
    deck-check view and printable pairings/standings, and finish native player
    controls. These can proceed while account setup is pending.
@@ -44,8 +45,9 @@ The open work separates missing coverage from deployment verification.
       the judge adjudication actions land (section 5; until then a forfeit
       is covered by manually entering the match result). Already covered:
       the organizer happy path, active-round corrections with audit trail,
-      pairing rewind, organizer drops, mid-round drop concession, and
-      invite links (`apps/web/e2e/`)
+      pairing rewind, organizer drops, mid-round drop concession, invite
+      links, and organizer email enrollment claimed at sign-in
+      (`apps/web/e2e/`)
 - [ ] Verify web browser/SSR and native Sentry capture, with readable source
       locations, in the intended deployments/builds. Wiring is merged and a
       setup-script run was previously reported; event receipt and source-map
@@ -166,9 +168,9 @@ no-shows, and disqualifications without each workflow inventing its own rules.
         elimination there (rewind clears and re-completion re-records it, and
         reinstates restore it), and bracket standings rank a walked-over
         seat-holder as eliminated in the round they were absent from
-- [ ] Add late entry after round 1 (blocked on an organizer
-      manual-registration feature — section 3's admission work; players never
-      self-join a started tournament)
+- [ ] Add late entry after round 1 (builds on section 3's organizer
+      enrollment, which today is refused once the event leaves the
+      registration lifecycle; players never self-join a started tournament)
   - [ ] Admit a late player by organizer override during the first phase
         only, with player capacity still applying
   - [ ] Record an opponent-less missed-round loss (zero game wins, required
