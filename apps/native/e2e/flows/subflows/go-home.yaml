@@ -1,5 +1,7 @@
 # Back to home between two codes in one flow, so the second code's screen is
-# a fresh one rather than the first's still showing.
+# a fresh one rather than the first's still showing. Maestro's hierarchy
+# keeps screens lower in the stack, so this checks the join screen is gone,
+# not merely covered.
 appId: com.paperpairings.app
 ---
 - runFlow:
@@ -9,3 +11,4 @@ appId: com.paperpairings.app
 - extendedWaitUntil:
     visible: "Your tournaments"
     timeout: 30000
+- assertNotVisible: "Code not found|Register for this event|Join event"
