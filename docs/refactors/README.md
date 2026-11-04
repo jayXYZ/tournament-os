@@ -1,12 +1,12 @@
-# Architecture refactor backlog
+# Architecture refactor records
 
 These handoff prompts came out of a five-report architecture review
-(2026-08-05/06). The original backlog had ten items; seven landed and were
-deleted (auth-readiness seam, progression module, test infrastructure,
+(2026-08-05/06). All ten original items are merged into `main` as of the
+2026-10-28 audit. Seven handoff docs were deleted after implementation
+(auth-readiness seam, progression module, test infrastructure,
 participation/standings sync, player access ladder, match-result module,
-current-match semantics — see git history for the original docs). The
-remaining docs were re-verified against the codebase on 2026-08-29; file:line
-references were accurate at that point.
+current-match semantics; see git history for the original docs). The three
+retained documents now describe implemented conventions, not unstarted work.
 
 | #   | Doc                                                  | One-liner                                                        | Effort |
 | --- | ---------------------------------------------------- | ---------------------------------------------------------------- | ------ |
@@ -14,7 +14,11 @@ references were accurate at that point.
 | 09  | [fixture-consolidation](09-fixture-consolidation.md) | Done: now documents the backend spec fixture conventions         | Done   |
 | 10  | [audit-event-coupling](10-audit-event-coupling.md)   | Done: [audit policy](../audit-policy.md); events live in writes. | Done   |
 
-All three are independent of each other.
+Merge evidence: timeline PR #46 at `7c43ddd`, fixtures PR #45 at `36c7638`,
+and audit coupling PR #43 at `54fb36d`. Remaining follow-ups are optional
+timeline subscription consolidation and moving convention lifecycle writes
+and their audit events into the model layer. They do not reopen the original
+refactors. Deployment verification is a separate [delivery concern](../delivery-status.md).
 
 ## Standing constraints for every refactor
 
@@ -22,7 +26,7 @@ All three are independent of each other.
   if a schema change would otherwise need a migration (see `AGENTS.md`).
 - Read `packages/backend/convex/_generated/ai/guidelines.md` before touching
   Convex code (regenerate with `pnpm --filter @paper-pairings/backend exec convex ai-files install`
-  if missing — it is gitignored).
+  when refreshing it; the generated guidance is tracked in git).
 - Backend verification: `pnpm --filter @paper-pairings/backend test`.
 - Do **not** break up these verified-deep modules — reuse them as internals:
   `model/nextStep.ts`, `model/pairing.ts`, `model/cutoffs.ts`,

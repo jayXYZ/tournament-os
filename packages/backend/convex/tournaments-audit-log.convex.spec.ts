@@ -13,6 +13,7 @@ import {
   outsiderNumber,
   playOutCurrentRound,
   playerIdentity,
+  rawSeed,
   seedOrganizer,
   seedTournamentWithPlayers,
 } from "./specHelpers";
@@ -320,6 +321,13 @@ test("deleting a tournament removes its audit trail", async () => {
   const t = createConvexTest();
   const { tournamentId } = await seedStartedTournament(t, 4);
   expect((await auditEvents(t, tournamentId)).length).toBeGreaterThan(0);
+  await rawSeed(
+    t,
+    "only a test event may be deleted once it has players; the purge under test is the same for both kinds",
+    async (ctx) => {
+      await ctx.db.patch(tournamentId, { isTestEvent: true });
+    },
+  );
 
   await t
     .withIdentity(organizerIdentity)

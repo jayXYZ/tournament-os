@@ -5,6 +5,13 @@ tell whether it did, and what the platform operator does about a refund that
 stays unresolved. Code: `packages/backend/convex/payments/refunds.ts`; the
 tests that pin it are `paymentsRefunds.convex.spec.ts`.
 
+The recovery implementation is merged through PR #40. This document describes
+its code contract and operator procedure; it is not a record of a deployment
+drill. The 2026-10-04 payment sandbox exercise predates this recovery work.
+Verify parked and processing refunds, webhook reconciliation, and owner
+status checks against the release candidate, then record the target and
+result in [delivery status](delivery-status.md).
+
 ## The contract
 
 A refund is a `paymentRefunds` row queued by whatever decided it (a player

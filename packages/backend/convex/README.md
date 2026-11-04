@@ -1,9 +1,10 @@
 # Convex backend
 
-Read `_generated/ai/guidelines.md` before touching this directory — it is the
-authority on Convex API usage and is gitignored, so regenerate it with
-`pnpm --filter @paper-pairings/backend exec convex ai-files install` if it is
-missing.
+Read `_generated/ai/guidelines.md` before touching this directory. It is the
+authority on Convex API usage and is tracked in git alongside the installed
+agent skills and `skills-lock.json`. Refresh it with
+`pnpm --filter @paper-pairings/backend exec convex ai-files install` and commit
+the result so worktrees and fresh clones receive the same guidance.
 
 Layout:
 

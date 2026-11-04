@@ -7,9 +7,15 @@ const ADVANCE_TIMEOUT = 30_000
 
 export const ORGANIZATION_NAME = 'E2E Test Organization'
 
+/**
+ * The tournament's single advance HoldButton sits in the overview's live
+ * status band and in the compact progress bar on every other manager page.
+ * Scope to either landmark so the label alone can't match a stray button.
+ */
 export function advanceButton(page: Page, label: string): Locator {
   return page
-    .locator('nav[aria-label="Tournament progress"]')
+    .getByRole('region', { name: 'Live status' })
+    .or(page.getByRole('navigation', { name: 'Tournament progress' }))
     .getByRole('button', { name: label })
 }
 

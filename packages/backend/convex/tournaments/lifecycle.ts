@@ -43,6 +43,7 @@ import {
   listTournamentsForOrganization,
   requireOrganizerAccess,
   requirePreStartEditable,
+  requireTournamentDeletable,
   validCapacity,
   validDetailsMarkdown,
   validStartDate,
@@ -600,8 +601,11 @@ export const cancelTournament = mutation({
 });
 
 // Permanently deletes a tournament and every child row (registrations, phases,
-// rounds, matches, match players, standings, test data). Allowed from any
-// lifecycle state — the client gates this behind a type-the-name confirmation.
+// rounds, matches, match players, standings, test data). Only a test event or
+// an unpublished event with no enrolled players may be deleted
+// (requireTournamentDeletable); any other event is cancelled instead so its
+// history survives for its players. The client hides the action for
+// undeletable events and gates the rest behind a type-the-name confirmation.
 // The tournament is immediately cancelled and hidden so it disappears from all
 // public surfaces while large events drain in scheduled batches; the tournament
 // row itself is deleted last so live subscriptions resolve gracefully.
@@ -611,8 +615,11 @@ export const deleteTournament = mutation({
   args: { tournamentId: v.id("tournaments") },
   handler: async (ctx, args) => {
     const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
-    // Hard deletion destroys the payment records, so it is refused while any
-    // player money is unsettled (model/payments.ts).
+    await requireTournamentDeletable(ctx, tournament);
+    // Hard deletion destroys the payment records, so a test event with
+    // synthetic money is refused while any of it is unsettled
+    // (model/payments.ts). A deletable real event is unpublished with no
+    // entries, so it never holds an order.
     await requireEventPaymentsSettled(ctx, {
       kind: "tournament",
       event: tournament,

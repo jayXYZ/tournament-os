@@ -4,6 +4,12 @@ Each surface has a committed `.env.example` documenting its local file; this
 page is the full contract, including where each variable lives in production.
 `.env.local` files are gitignored and hold real values.
 
+This is a configuration contract, not an inventory of values already set.
+The 2026-10-28 audit checked repository configuration only; current deployment
+setup and workflow verification are tracked in [delivery status](delivery-status.md).
+Branch-only additions, including the QR branch's `EXPO_PUBLIC_WEB_ORIGIN`,
+are not part of main's contract until that code merges.
+
 ## Web app (`apps/web`)
 
 Local: copy `apps/web/.env.example` to `apps/web/.env.local`.
@@ -16,19 +22,19 @@ Production: set in the Vercel project (except `VITE_CONVEX_URL`, see below).
 | `CLERK_SECRET_KEY`                                                                                                                         | yes      | Clerk secret key for SSR/server functions. Server-only; never expose with a `VITE_` prefix.                                                                                                                                             |
 | `VITE_CLERK_SIGN_IN_URL`, `VITE_CLERK_SIGN_UP_URL`, `VITE_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL`, `VITE_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL` | no       | Clerk routing, read implicitly by the Clerk SDK (`/sign-in`, `/sign-up`, `/`, `/`).                                                                                                                                                     |
 | `VITE_SENTRY_DSN`                                                                                                                          | no       | Enables web error reporting; see [error-monitoring.md](./error-monitoring.md).                                                                                                                                                          |
-| `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN`                                                                                        | no       | Build-time source-map upload; upload activates only when `SENTRY_AUTH_TOKEN` is set.                                                                                                                                                    |
+| `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN`                                                                                        | no       | Build-time source-map upload; upload activates only when `SENTRY_AUTH_TOKEN` is set. Org/project are the Sentry URL slugs (not the DSN or token); the build fails fast on other values.                                                 |
 
 ## Native app (`apps/native`)
 
 Local: copy `apps/native/.env.example` to `apps/native/.env.local`.
 Release builds: set in the EAS build environment.
 
-| Variable                                            | Required | Purpose                                                                           |
-| --------------------------------------------------- | -------- | --------------------------------------------------------------------------------- |
-| `EXPO_PUBLIC_CONVEX_URL`                            | yes      | Same Convex deployment URL as the web app's `VITE_CONVEX_URL`.                    |
-| `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY`                 | yes      | Publishable key from the same Clerk app as web.                                   |
-| `EXPO_PUBLIC_SENTRY_DSN`                            | no       | Enables native error reporting; see [error-monitoring.md](./error-monitoring.md). |
-| `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN` | no       | Build-time source-map/dSYM upload via the Sentry Expo plugin.                     |
+| Variable                                            | Required | Purpose                                                                                                                    |
+| --------------------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `EXPO_PUBLIC_CONVEX_URL`                            | yes      | Same Convex deployment URL as the web app's `VITE_CONVEX_URL`.                                                             |
+| `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY`                 | yes      | Publishable key from the same Clerk app as web.                                                                            |
+| `EXPO_PUBLIC_SENTRY_DSN`                            | no       | Enables native error reporting; see [error-monitoring.md](./error-monitoring.md).                                          |
+| `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN` | no       | Build-time source-map/dSYM upload via the Sentry Expo plugin. Org/project are the Sentry URL slugs (not the DSN or token). |
 
 ## Convex deployment (`packages/backend`)
 
@@ -57,3 +63,8 @@ state, not part of the contract.
 
 Production Vercel builds additionally need `CONVEX_DEPLOY_KEY` in the Vercel
 project so the build command in `apps/web/vercel.json` can run `convex deploy`.
+Confirm the Vercel root directory is `apps/web` and installation includes the
+workspace root. Keep preview and production deployment credentials scoped to
+their intended targets. `pnpm start` serves the built web app via `srvx`;
+the committed command and a successful CI bundle do not establish that a
+Vercel deployment or its runtime environment works.

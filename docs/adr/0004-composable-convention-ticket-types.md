@@ -56,7 +56,8 @@ chosen type's `priceCents`) and stamps `ticketTypeId` onto the order —
 set exactly when `conventionId` is set. The fee freeze moves per type: a
 type's price locks once any order references it (same rationale as the
 event-level freeze — no order status is safe to reprice around), while new
-types can be added any time before the convention starts. The webhook's
+types can be added during setup or registration, including the live convention.
+Completion or cancellation locks editing. The webhook's
 seat decision and the badge exit adjust the type's `confirmedCount`
 alongside the convention counter, and the existing `seat_unavailable`
 refund covers a type selling out mid-checkout. One badge per participant

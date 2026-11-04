@@ -1,8 +1,11 @@
 # MTR research: rematch avoidance, byes, disqualification tiebreakers, single-elim walkovers
 
-Primary-source research against the current official Magic: The Gathering Tournament
-Rules (MTR) and Infraction Procedure Guide (IPG), answering four rule questions for the
-tournament engine. Every claim below is labeled as one of: **explicit** (the text says
+Historical research for the August 2026 domain decisions, using the Magic:
+The Gathering Tournament Rules (MTR) and Infraction Procedure Guide (IPG)
+revisions listed below. References to "current" or "latest" describe the
+versions used in that research, not a fresh check of the publishers. The
+2026-10-28 documentation audit did not re-verify external rules. Current
+application decisions live in `CONTEXT.md`, ADR 0001, and roadmap section 5. Every claim below is labeled as one of: **explicit** (the text says
 it), **implied** (a reasonable reading of the text), or **silent** (the documents do not
 specify it — a finding in itself).
 
