@@ -80,6 +80,8 @@ src/
     join/[code].tsx        # /join/<code> from a scanned QR, shared link, or
                            #   typed code: resolves either code kind and shows
                            #   the join panel
+    dev/[action].tsx       # __DEV__-only session links for test runs
+                           #   (see "Headless sign-in for test runs")
   components/
     report-result-scoreboard.tsx # Game-win counts stepped by tapping the
                                  #   upper/lower half of each numeral, draws
@@ -97,6 +99,23 @@ src/
     palette.ts           # Dark-theme tokens mirrored from the web app.css
     typography.ts        # Scoreboard numeral face (Geist), loaded without gating start
 ```
+
+## Headless sign-in for test runs
+
+Sign-in is Google OAuth through Clerk's native `AuthView`, which a test runner
+cannot drive. Development builds accept two session links instead
+(`src/app/dev/[action].tsx`):
+
+- `paperpairings://dev/sign-in?ticket=<ticket>` ends any current session,
+  redeems a Clerk sign-in ticket (`signIn.create({ strategy: "ticket" })`,
+  then `setActive`), and returns to the screen it opened over, or home.
+- `paperpairings://dev/sign-out` ends the session the same way.
+
+Mint a ticket with the Clerk Backend API and `CLERK_SECRET_KEY` from
+`apps/web/.env.local` (development instance only), as the web `verify` skill
+does: `POST https://api.clerk.com/v1/sign_in_tokens` with `{ "user_id": … }`.
+Tickets are single-use credentials: the route never logs, stores, or shows
+one. A release build (`__DEV__` false) renders a refusal and does nothing.
 
 ## Monorepo notes
 
