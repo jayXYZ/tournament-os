@@ -14,6 +14,7 @@ import type * as conventions_events from "../conventions/events.js";
 import type * as conventions_lifecycle from "../conventions/lifecycle.js";
 import type * as conventions_registrations from "../conventions/registrations.js";
 import type * as conventions_ticketTypes from "../conventions/ticketTypes.js";
+import type * as devSeed from "../devSeed.js";
 import type * as http from "../http.js";
 import type * as maintenance from "../maintenance.js";
 import type * as model_access from "../model/access.js";
@@ -91,6 +92,7 @@ declare const fullApi: ApiFromModules<{
   "conventions/lifecycle": typeof conventions_lifecycle;
   "conventions/registrations": typeof conventions_registrations;
   "conventions/ticketTypes": typeof conventions_ticketTypes;
+  devSeed: typeof devSeed;
   http: typeof http;
   maintenance: typeof maintenance;
   "model/access": typeof model_access;
