@@ -186,10 +186,9 @@ account, so enrolling is not a way to learn that it does — with one
 exception the organizer can already see: an account holding an entry in
 this very event, which the enrollment acts on (re-entering a cancelled row
 under its name, refusing a live one) rather than seat the person twice. It
-resolves
-when the player next uses the app signed in with that email (the Claim
-stamps the account's name onto the entry) or when an organizer names the
-entry for this event with "Continue as guest" —
+resolves when the player next uses the app signed in with that email (the
+Claim stamps the account's name onto the entry) or when an organizer names
+the entry for this event with "Continue as guest" —
 the same registration, seat, history, and fee treatment, the contact email
 kept for a later Claim, and no other event's entry renamed. It never
 resolves merely because an account exists or another event has a name for

@@ -460,7 +460,13 @@ claimed by one.
       confirmed to carry it; answer a Register or checkout that lands just
       after the app's own sign-in claimed the seat as the registration
       rather than "Already registered"; skip the sign-in's users-row patch
-      when nothing changed, now that the sign-in runs on every app open
+      when nothing changed, now that the sign-in runs on every app open;
+      and close the one double-seat path left by the all-or-nothing Claim —
+      an account whose cancelled row in an event collides with a Guest
+      enrolled there under the account's new email can re-enter that row
+      beside the Guest's seat (the start gate still blocks on the nameless
+      Guest), so registerEntry should refuse the re-entry while such a Guest
+      holds a live row in the event
 - [ ] Deliver random event codes and organizer QR sharing. Built on
       `feat/join-qr-web` at `422285d` and included in `feat/qr-codes` at
       `3fd2d71`; neither implementation is on audited `main`.

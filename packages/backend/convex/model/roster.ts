@@ -253,10 +253,10 @@ export async function cancelEntry(
 // entry: organizers name guests, not account holders, so once an account
 // holder's entry is cancelled or rejected (cancelEntry, rejectEntry) or
 // re-entered by the player (registerEntry, the checkout) the label is
-// dropped and the account's own
-// name takes over, which the sign-in re-stamp then keeps current. A Guest's
-// cancelled entry keeps its name: it has no other, and the organizer who
-// reinstates it should not have to name it again.
+// dropped and the account's own name takes over, which the sign-in
+// re-stamp then keeps current. A Guest's cancelled entry keeps its name: it
+// has no other, and the organizer who reinstates it should not have to
+// name it again.
 async function dropOrganizerNameFromAccountEntry(
   ctx: MutationCtx,
   registration: Doc<"tournamentRegistrations">,
