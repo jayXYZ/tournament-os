@@ -9,8 +9,9 @@
 //   pnpm --filter @paper-pairings/native e2e:ios 03-paid.yaml
 //
 // Secrets stay in this process: CLERK_SECRET_KEY mints tickets here, only
-// single-use, five-minute tickets reach Maestro, and every child process gets
-// an environment without credential-named variables (scrubbedEnv). Invite
+// single-use, five-minute tickets reach Maestro, Maestro and xcrun get an
+// environment without credential-named variables, and the Convex CLI keeps
+// only its own CONVEX_* ones (scrubbedEnv). Invite
 // codes are passed to Maestro as flow variables. This script never prints
 // them, but Maestro's own output and saved logs may show the links the
 // flows open.

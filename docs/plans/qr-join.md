@@ -618,7 +618,8 @@ below:
 - The characterization rows are a web component test,
   `apps/web/src/components/tournament-public-page.test.tsx`: 81 rendering
   rows (badges, buttons, links, and notes in order, the badge-gate notice
-  included) and 16 action tests (which server call each button makes).
+  included) and 16 action tests (which server call each button makes); 88
+  rows and 17 action tests after the review fixes on `qr/review-fixes`.
   Core's `join-action.test.ts` pins the derivation's new states in 223 rows
   beside the unchanged `deriveJoinAction` matrix.
 - Two rows exposed a disagreement between the old panel and the derivation.
@@ -687,7 +688,8 @@ below:
     who paid, cancelled for a refund, and re-applied holds a live
     application under a `refunded` order
     (`paymentsRefunds.convex.spec.ts`). The sweep runs only on event start
-    or cancel and convention lifecycle changes. (Review fix, `qr/review-fixes`.)
+    or cancel; the convention sweep closes badge orders, not entries. (Review
+    fix, `qr/review-fixes`.)
 
 ## PR 4: native payment
 

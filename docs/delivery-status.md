@@ -247,15 +247,18 @@ Not covered, and still open in [the roadmap](../TODO.md) section 8:
 
 Not a verification record: no deployment, browser, simulator, or device was
 exercised. `qr/review-fixes` stacks on `qr/native-scanner` at `146637d` (not
-merged) and fixes the findings of a review of the QR join stack. Each fix is
-covered by unit tests, component tests, or convex-test specs, and
-`pnpm check` passes on the branch. What changed that a device run should
-re-check:
+merged) and fixes the findings of a review of the QR join stack. The
+derivation, join-route, scanner, runner-gate, and backend fixes are covered
+by unit tests, component tests, or convex-test specs; the native navigation
+and dev-session-link fixes rest on typecheck, lint, and the installed
+expo-router source. `pnpm check` passes on the branch. What changed that a
+device run should re-check:
 
 - Join states: a pending entry owing payment whose badge now comps the event
-  registers free; a resumed direct checkout on a full event reads "Tournament
-  is full" beside Withdraw; a hidden badge-gated parent still gates its public
-  child without naming it.
+  registers free, with Withdraw beside the button; a pending entry owing
+  payment on a full direct-mode event (by the event's approval setting now,
+  not the order's purpose) reads "Tournament is full" beside Withdraw; a
+  hidden badge-gated parent still gates its public child without naming it.
 - A signed-out viewer whose code or event page opens nothing is offered "Sign
   in to view this event" (web event page, web join route, native join
   screen). The Playwright invite-links spec's signed-out assertions were
@@ -267,7 +270,8 @@ re-check:
   when the camera is ready.
 - The Maestro runner pins the Convex deployment over any deploy key, checks
   the Clerk issuer before seeding, and keeps credential-named variables out
-  of its child processes. The dev seed refuses a live Stripe key.
+  of Maestro and xcrun (the Convex CLI keeps only its own `CONVEX_*`
+  variables). The dev seed refuses a live Stripe key.
 
 ## Recording the next verification
 
