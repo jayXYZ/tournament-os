@@ -18,6 +18,7 @@
     "./organizer-utils": "./src/organizer-utils.ts",
     "./payment-fees": "./src/payment-fees.ts",
     "./registration-status": "./src/registration-status.ts",
+    "./scan-intake": "./src/scan-intake.ts",
     "./timer-utils": "./src/timer-utils.ts",
     "./tournament-creation-utils": "./src/tournament-creation-utils.ts",
     "./organization-profile-image": "./src/organization-profile-image.ts"
