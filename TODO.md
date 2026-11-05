@@ -20,11 +20,13 @@ distinguish unverified account setup from a confirmed external block.
 1. Establish a release baseline in section 0: verify the Vercel deployment,
    auth, and monitoring, then repeat the payment checks in section 9 against
    that revision. Record the target and evidence before declaring it ready.
-2. Verify the newly merged flows in a deployment: random event codes and
-   web QR sharing, native free/approval join, and organizer guest/email
-   enrollment are all on `main`, and none has a recorded deployment result.
-   The native join needs a physical device. The schema changes landed with a
-   dev DB reset, not a migration.
+2. Merge, then verify in a deployment, the QR join work: random event codes
+   and web QR sharing and the native free/approval join are built on
+   `feat/qr-codes` (not merged; head `cd1be4e`), with the join verification,
+   web panel, scanner, and review-fix branches stacked on it. Organizer
+   guest/email enrollment is on `main`. None has a recorded deployment
+   result. The native join needs a physical device. The schema changes
+   landed with a dev DB reset, not a migration.
 3. Close event-day gaps: remove stale confirmation copy, provide an organizer
    deck-check view and printable pairings/standings, and finish native player
    controls. These can proceed while account setup is pending.
@@ -46,8 +48,8 @@ The open work separates missing coverage from deployment verification.
       is covered by manually entering the match result). Already covered:
       the organizer happy path, active-round corrections with audit trail,
       pairing rewind, organizer drops, mid-round drop concession, invite
-      links with the join QR dialog, and organizer email enrollment claimed
-      at sign-in (`apps/web/e2e/`)
+      links (the join QR dialog only on `feat/qr-codes`, not merged), and
+      organizer email enrollment claimed at sign-in (`apps/web/e2e/`)
 - [ ] Verify web browser/SSR and native Sentry capture, with readable source
       locations, in the intended deployments/builds. Wiring is merged and a
       setup-script run was previously reported; event receipt and source-map
@@ -71,9 +73,11 @@ The open work separates missing coverage from deployment verification.
         Vercel preview stops working with the preview. Source the origin
         from a public env var once the domain exists
 - [ ] Extend browser coverage for approval, waitlist/rejection, and paid
-      registration states, plus invite rotation and disabling. Existing
-      invite E2E covers creation and joining; the broader grant rules have
-      backend specs. The join QR dialog is covered by the invite-links spec.
+      registration states, plus invite rotation and disabling. On `main`
+      the invite E2E covers creation and joining; the broader grant rules
+      have backend specs. On `feat/qr-codes` (not merged) the invite-links
+      spec also covers rotation and disabling (each confirmation, and the
+      old link no longer opening the event) and the join QR dialog.
 
 ## 1. Result and adjudication foundation
 
@@ -346,8 +350,8 @@ claimed by one.
         remain blocked on section 6's publication/submission policy work)
 - [ ] Add invite-only admission modes
   - [x] Support public, unlisted, and private tournament visibility
-  - [x] Make event public codes random (2026-10-13, CONTEXT.md "Public
-        Code"): tournaments and conventions get a 6-character Crockford
+  - [ ] Make event public codes random (2026-10-13, CONTEXT.md "Public
+        Code"; built on `feat/qr-codes`, not merged): tournaments and conventions get a 6-character Crockford
         base32 code minted through a uniqueness check instead of a
         sequential counter, so unlisted events can't be walked by code.
         It shares the invite code's alphabet and normalizer
@@ -357,15 +361,15 @@ claimed by one.
         numeric, and a private event's invite grant stays separately
         revocable (regenerate or disable) without touching the event's
         public code. The dev DB was reset for the string `publicCode` and
-        required `seed` on 2026-11-04
-  - [x] Add the organizer's join QR code on web (2026-10-13, CONTEXT.md
-        "Join QR"): the settings share card follows visibility — a public
+        required `seed` on 2026-11-04. Unchecked until merged
+  - [ ] Add the organizer's join QR code on web (2026-10-13, CONTEXT.md
+        "Join QR"; built on `feat/qr-codes`, not merged): the settings share card follows visibility — a public
         or unlisted event shares `/join/<public code>`, a private one its
         invite link — and both it and the Overview open a QR dialog with
         PNG download and a print sheet (`qrcode.react`). The QR code shows
         only while registration is open. Regenerating or disabling the
         invite link now asks for confirmation, since it kills printed codes
-        too; covered by `e2e/invite-links.spec.ts`
+        too; covered by `e2e/invite-links.spec.ts`. Unchecked until merged
   - [x] Add join-by-link/code invitations (2026-08-22, CONTEXT.md "Invite
         Link"): one shared join code per tournament in its own
         `tournamentInvites` table — a bearer secret, kept off the tournament
@@ -696,8 +700,8 @@ push, analytics, and monitoring should be independent consumers.
         ios+android only
 - [ ] Join events from the native app (`docs/plans/qr-join.md`; its PR 0,
       PR 1, and PR 2a labels are plan stages, not GitHub PR numbers)
-  - [x] Add the native join screen for free and approval-mode events
-        (2026-10-13): `/join/<code>` resolves either code kind
+  - [ ] Add the native join screen for free and approval-mode events
+        (2026-10-13; built on `feat/qr-codes`, not merged): `/join/<code>` resolves either code kind
         (`useJoinCode`), shows the event summary and the one action
         `deriveJoinAction` picks, and registers or files the application in
         the app; paid entry hands off to the web event page
@@ -706,7 +710,7 @@ push, analytics, and monitoring should be independent consumers.
         `tournaments/[code]` to match the web. `@paper-pairings/shared/app-links`
         parses join URLs and bare codes for the scanner (no caller until the
         scanner lands), and the client clock and `useStableQuery` moved into
-        core
+        core. Unchecked until merged
   - [ ] Add the native QR scanner (`expo-camera`; needs a dev-client
         rebuild and physical devices). Built on `qr/native-scanner` (not
         merged): `/scan`, opened from home's header and its empty state,
@@ -714,7 +718,9 @@ push, analytics, and monitoring should be independent consumers.
         "Type a code instead", all through one pure intake
         (`@paper-pairings/shared/scan-intake`) that never opens a foreign
         URL. Its simulator-reachable paths passed in the Maestro suite at
-        `ba289b1` against the personal dev deployment, 2026-11-04
+        `ba289b1` against the personal dev deployment, 2026-11-04, on the
+        third full run (the first two each lost one flow to the sign-in
+        failure below, and each such flow passed on rerun)
         ([record](docs/delivery-status.md)); the camera itself is
         unverified until the physical runs below. Unchecked until merged
   - [ ] Offer the targeted Claim from the join panel: when a Guest under the
@@ -730,10 +736,11 @@ push, analytics, and monitoring should be independent consumers.
         merged): `deriveRegistrationAction` in core decides the web panel,
         `deriveJoinAction` is its native projection, and
         `tournament-public-page.test.tsx` pins every panel branch as a
-        characterization row. The registration e2e specs and the native
-        Maestro suite passed at `ed73394` against the personal dev
-        deployment, 2026-11-04 ([record](docs/delivery-status.md));
-        unchecked until merged
+        characterization row. At `ed73394`, against the personal dev
+        deployment on 2026-11-04, the registration e2e specs passed and the
+        native Maestro suite passed on rerun (the first run was 16/17, one
+        flow lost to the sign-in failure below)
+        ([record](docs/delivery-status.md)); unchecked until merged
   - [ ] Offer "Open in the app" on the mobile web event page reached
         through `/join`, until universal links exist
   - [ ] Pay in the app: Stripe Checkout in `expo-web-browser`, returning
@@ -751,6 +758,15 @@ push, analytics, and monitoring should be independent consumers.
           deployment, 2026-11-04 ([record](docs/delivery-status.md));
           unchecked until merged
     - [ ] Android emulator run (the recorded machine has no Android SDK)
+    - [ ] Diagnose the intermittent sign-in failure: after the dev-only
+          ticket link, home sometimes stays on the auth gate's unverified
+          state ("We couldn't verify your account") through the flow's
+          60-second wait. Seen 3 times in about 100 flow runs across the
+          2026-11-04 web panel and scanner records, in a different flow each
+          time, and each passed on rerun ([record](docs/delivery-status.md)).
+          Possibly a token race between Clerk's `setActive` and Convex
+          validating the new session's token; the link is handled in
+          `apps/native/src/app/dev/[action].tsx`
     - [ ] iOS simulator scanner flows (PR 2b): the entry points, the
           permission explainer and refused-state copy, and typed codes
           (a foreign link's toast, a Public Code, a dashed invite, back to
