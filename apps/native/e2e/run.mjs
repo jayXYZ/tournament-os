@@ -52,6 +52,18 @@ function readEnvFile(file) {
   return values;
 }
 
+// A variable name that reads as a credential. Child processes get the
+// parent's environment without these, so a CLERK_SECRET_KEY or deploy key
+// exported in the shell stays in this process (scrubbedEnv).
+const CREDENTIAL_NAME = /SECRET|TOKEN|PASSWORD|CREDENTIAL|KEY$/i;
+
+// This process's environment minus every variable `drop` names.
+function scrubbedEnv(drop) {
+  return Object.fromEntries(
+    Object.entries(process.env).filter(([name]) => !drop(name)),
+  );
+}
+
 function fail(message) {
   console.error(`\n✖ ${message}`);
   process.exit(1);
@@ -86,8 +98,12 @@ if (!deployment?.startsWith("dev:")) {
     "packages/backend/.env.local must set CONVEX_DEPLOYMENT to a dev deployment (dev:…).",
   );
 }
+// The CLI keeps its own CONVEX_* variables (an access-token override, say),
+// minus the selectors; nothing else that reads as a credential.
 const convexEnv = {
-  ...process.env,
+  ...scrubbedEnv(
+    (name) => CREDENTIAL_NAME.test(name) && !name.startsWith("CONVEX_"),
+  ),
   CONVEX_DEPLOYMENT: deployment,
   CONVEX_DEPLOY_KEY: "",
   CONVEX_DEPLOYMENT_TOKEN: "",
@@ -142,13 +158,11 @@ async function bootedSimulator() {
   if (process.env.E2E_DEVICE) {
     return process.env.E2E_DEVICE;
   }
-  const { stdout } = await run("xcrun", [
-    "simctl",
-    "list",
-    "devices",
-    "booted",
-    "-j",
-  ]);
+  const { stdout } = await run(
+    "xcrun",
+    ["simctl", "list", "devices", "booted", "-j"],
+    { env: scrubbedEnv((name) => CREDENTIAL_NAME.test(name)) },
+  );
   const booted = Object.values(JSON.parse(stdout).devices)
     .flat()
     .find((device) => device.state === "Booted");
@@ -640,8 +654,12 @@ async function main() {
       ],
       {
         stdio: "inherit",
+        // Maestro needs none of the shell's credentials or Convex settings:
+        // its flows get only the -e values above.
         env: {
-          ...process.env,
+          ...scrubbedEnv(
+            (name) => CREDENTIAL_NAME.test(name) || name.startsWith("CONVEX_"),
+          ),
           ...(java ? { JAVA_HOME: java } : {}),
           MAESTRO_CLI_NO_ANALYTICS: "1",
           MAESTRO_CLI_ANALYSIS_NOTIFICATION_DISABLED: "true",
