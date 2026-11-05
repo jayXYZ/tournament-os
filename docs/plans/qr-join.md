@@ -500,8 +500,10 @@ Needs a dev-client rebuild and physical devices (expo-camera is device-only).
   in view together (which the camera reports alternately) each answer once
   (review fix). Re-arming restarts the window for every remembered read, so
   a phone still pointed at the poster that opened the join screen doesn't
-  push straight back into it, even beside another code. Typed text respects
-  the lock but not the window.
+  push straight back into it, even beside another code. The camera mounts
+  on focus and starts a moment later, so `onCameraReady` restarts the
+  window again (`restartScanWindow`, review fix). Typed text respects the
+  lock but not the window.
 - Focus comes from expo-router's own `useIsFocused` export, so
   `@react-navigation/native` stays out of the native app's dependencies.
 - The torch goes off whenever the camera does: on blur, and also when the

@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 import {
   initialScanState,
   rearmScan,
+  restartScanWindow,
   SCAN_MEMORY_SIZE,
   SCAN_REPEAT_WINDOW_MS,
   type ScanInput,
@@ -151,6 +152,37 @@ describe("rearmScan", () => {
   test("before any camera read, it only unlocks", () => {
     const afterTyping = feed([[typed("7KQ2MX"), 0]]).state;
     expect(rearmScan(afterTyping, 10_000)).toEqual(initialScanState);
+  });
+});
+
+// The camera mounts when the scanner regains focus and needs a moment
+// before it reads anything, so the window restarts again once it is ready.
+describe("restartScanWindow", () => {
+  const rearmed = rearmScan(feed([[camera(POSTER), 0]]).state, 10_000);
+
+  test("a code still in view when the camera is ready stays quiet", () => {
+    // Ready 2 s after focus: without the restart, the first read is
+    // already past the window rearmScan started.
+    expect(
+      feed([[camera(POSTER), 12_100]], restartScanWindow(rearmed, 12_000))
+        .outcomes,
+    ).toEqual(["ignored"]);
+    expect(feed([[camera(POSTER), 12_100]], rearmed).outcomes).toEqual([
+      "open 7KQ2MX",
+    ]);
+  });
+
+  test("leaves the lock as it was", () => {
+    const locked = feed([[camera(POSTER), 0]]).state;
+    expect(restartScanWindow(locked, 5_000).locked).toBe(true);
+    expect(restartScanWindow(rearmed, 12_000).locked).toBe(false);
+  });
+
+  test("a different code opens once the camera is ready", () => {
+    expect(
+      feed([[camera(OTHER_POSTER), 12_100]], restartScanWindow(rearmed, 12_000))
+        .outcomes,
+    ).toEqual(["open AB12CD34EF"]);
   });
 });
 

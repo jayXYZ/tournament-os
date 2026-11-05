@@ -80,9 +80,16 @@ export function scanIntake(
 // phone still pointed at the same poster doesn't push straight back into it;
 // a different code opens at once.
 export function rearmScan(state: ScanState, now: number): ScanState {
-  return { locked: false, recentReads: restartWindows(state, now) };
+  return { ...restartScanWindow(state, now), locked: false };
 }
 
-function restartWindows(state: ScanState, now: number) {
-  return state.recentReads.map(({ data }) => ({ data, at: now }));
+// Run when the camera is ready to read. The camera mounts when the scanner
+// regains focus but takes a moment to start, and a poster still in view may
+// first be read after the window rearmScan started has run out; restarting
+// it here keeps that read quiet. The lock is left as it was.
+export function restartScanWindow(state: ScanState, now: number): ScanState {
+  return {
+    ...state,
+    recentReads: state.recentReads.map(({ data }) => ({ data, at: now })),
+  };
 }

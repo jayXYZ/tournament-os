@@ -1,6 +1,7 @@
 import {
   initialScanState,
   rearmScan,
+  restartScanWindow,
   scanIntake,
 } from "@paper-pairings/shared/scan-intake";
 import type { ScanInput } from "@paper-pairings/shared/scan-intake";
@@ -76,7 +77,9 @@ export default function ScanScreen() {
   const scan = useRef(initialScanState);
   const [locked, setLocked] = useState(false);
 
-  // Backing out of the screen a code opened lands here again: re-arm.
+  // Backing out of the screen a code opened lands here again: re-arm. The
+  // camera mounts on this same render and starts a moment later, so
+  // onCameraReady restarts the repeat window again (restartScanWindow).
   useFocusEffect(
     useCallback(() => {
       scan.current = rearmScan(scan.current, Date.now());
@@ -158,7 +161,10 @@ export default function ScanScreen() {
           barcodeScannerSettings={QR_ONLY}
           onBarcodeScanned={locked ? undefined : onBarcodeScanned}
           enableTorch={torchOn}
-          onCameraReady={() => setCameraFailed(false)}
+          onCameraReady={() => {
+            setCameraFailed(false);
+            scan.current = restartScanWindow(scan.current, Date.now());
+          }}
           onMountError={() => setCameraFailed(true)}
         />
       ) : null}
