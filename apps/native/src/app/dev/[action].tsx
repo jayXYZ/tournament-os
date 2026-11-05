@@ -1,5 +1,5 @@
 import { isClerkAPIResponseError, useAuth, useClerk } from "@clerk/expo";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -13,8 +13,8 @@ import { palette } from "@/lib/palette";
 //
 //   paperpairings://dev/sign-in?ticket=<ticket>
 //
-// which ends any current session, redeems the ticket, and returns to the
-// screen the link opened over (home when there is none), and
+// which ends any current session, redeems the ticket, and closes this screen,
+// returning to the screen the link opened over (home when there is none), and
 //
 //   paperpairings://dev/sign-out
 //
@@ -36,14 +36,40 @@ function DevSession() {
   const { isLoaded } = useAuth();
   const clerk = useClerk();
   const router = useRouter();
-  const started = useRef(false);
+  const navigation = useNavigation();
+  // The link this screen last acted on. A second session link re-renders
+  // this screen rather than mounting a new one when expo-router keeps the
+  // route (it is keyed on `action`), so the guard is per link, not per
+  // mount: a link with a new ticket after a failed one still runs. Held in
+  // memory only, like the route params it copies.
+  const handled = useRef<string | null>(null);
   const [status, setStatus] = useState("Working…");
 
   useEffect(() => {
-    if (!isLoaded || started.current) {
+    const link = `${action}:${ticket ?? ""}`;
+    if (!isLoaded || handled.current === link) {
       return;
     }
-    started.current = true;
+    handled.current = link;
+    setStatus("Working…");
+
+    // Closes this screen, not whatever is on top: a link that arrived
+    // while the session was changing may have pushed a screen above it,
+    // and router.back() would pop that one instead. A POP aimed at this
+    // stack carries this screen's key as its source (the screen's own
+    // dispatch adds it), which the stack router removes wherever it sits.
+    const close = () => {
+      const stack = navigation.getState();
+      if (stack !== undefined && navigation.canGoBack()) {
+        navigation.dispatch({
+          type: "POP",
+          payload: { count: 1 },
+          target: stack.key,
+        });
+      } else {
+        router.replace("/");
+      }
+    };
 
     const run = async () => {
       if (action !== "sign-in" && action !== "sign-out") {
@@ -71,11 +97,7 @@ function DevSession() {
         }
         await clerk.setActive({ session: attempt.createdSessionId });
       }
-      if (router.canGoBack()) {
-        router.back();
-      } else {
-        router.replace("/");
-      }
+      close();
     };
 
     run().catch((error: unknown) => {
@@ -89,7 +111,7 @@ function DevSession() {
         }`,
       );
     });
-  }, [isLoaded, action, ticket, clerk, router]);
+  }, [isLoaded, action, ticket, clerk, router, navigation]);
 
   return <Status text={status} />;
 }
