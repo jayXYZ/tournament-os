@@ -70,18 +70,41 @@ if (!clerkSecretKey?.startsWith("sk_test_")) {
   );
 }
 
-// The deployment comes from packages/backend/.env.local and is pinned for
-// every CLI call below, so neither a shell CONVEX_DEPLOYMENT nor a deploy
-// key can point the seed anywhere else.
+// The deployment comes from packages/backend/.env.local. Every Convex CLI
+// call below runs with CONVEX_DEPLOYMENT set to it, and with each variable
+// the CLI reads as a deployment selector ahead of CONVEX_DEPLOYMENT (a
+// deploy key under either name, or a self-hosted URL and admin key) set to
+// empty. Empty, not unset: the CLI loads packages/backend/.env.local and
+// .env with dotenv, which fills in a variable that is unset but leaves one
+// that is present, and it reads an empty value as no selector (convex
+// 1.42.0, cli/lib/deploymentSelection.js). seed() also refuses, before its
+// first write, a deployment whose Clerk issuer is not a development
+// instance's. Nothing here reads back which deployment the CLI resolved.
 const deployment = backendEnv.CONVEX_DEPLOYMENT?.split("#")[0].trim();
 if (!deployment?.startsWith("dev:")) {
   fail(
     "packages/backend/.env.local must set CONVEX_DEPLOYMENT to a dev deployment (dev:…).",
   );
 }
-const convexEnv = { ...process.env, CONVEX_DEPLOYMENT: deployment };
-delete convexEnv.CONVEX_DEPLOY_KEY;
-delete convexEnv.CONVEX_SELF_HOSTED_URL;
+const convexEnv = {
+  ...process.env,
+  CONVEX_DEPLOYMENT: deployment,
+  CONVEX_DEPLOY_KEY: "",
+  CONVEX_DEPLOYMENT_TOKEN: "",
+  CONVEX_SELF_HOSTED_URL: "",
+  CONVEX_SELF_HOSTED_ADMIN_KEY: "",
+};
+
+// A Clerk development instance issues from *.clerk.accounts.dev; a
+// production one from the app's own domain.
+function isClerkDevelopmentIssuer(issuer) {
+  try {
+    const url = new URL(issuer.includes("://") ? issuer : `https://${issuer}`);
+    return url.hostname.endsWith(".clerk.accounts.dev");
+  } catch {
+    return false;
+  }
+}
 
 // Metro inlines EXPO_PUBLIC_WEB_ORIGIN from the same sources, so the paid
 // flows know which hand-off the join screen shows.
@@ -268,6 +291,13 @@ async function seed(player) {
       env: convexEnv,
     })
   ).stdout.trim();
+  // Checked before anything is written: a deployment that trusts a
+  // production Clerk instance is not one to seed test events into.
+  if (!isClerkDevelopmentIssuer(issuer)) {
+    fail(
+      `Deployment ${deployment} has CLERK_JWT_ISSUER_DOMAIN "${issuer}", not a Clerk development instance (*.clerk.accounts.dev). Refusing to seed it.`,
+    );
+  }
   const runId = randomBytes(4).toString("hex");
   const organizerIssuer = "https://e2e-native.invalid";
   const organizer = {
