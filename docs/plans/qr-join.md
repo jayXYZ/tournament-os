@@ -495,10 +495,13 @@ Needs a dev-client rebuild and physical devices (expo-camera is device-only).
   10-character code gets the "Not a Paper Pairings code" toast instead of a
   server lookup. The server's normalizer still decides the code.
 - The repeat window slides: the same data is ignored until it has been out
-  of view for 1.5 s, so a foreign QR code held in view toasts once. Re-arming
-  restarts the window for the last read, so a phone still pointed at the
-  poster that opened the join screen doesn't push straight back into it.
-  Typed text respects the lock but not the window.
+  of view for 1.5 s, so a foreign QR code held in view toasts once. It
+  remembers up to eight recent payloads, not just the last one, so two codes
+  in view together (which the camera reports alternately) each answer once
+  (review fix). Re-arming restarts the window for every remembered read, so
+  a phone still pointed at the poster that opened the join screen doesn't
+  push straight back into it, even beside another code. Typed text respects
+  the lock but not the window.
 - Focus comes from expo-router's own `useIsFocused` export, so
   `@react-navigation/native` stays out of the native app's dependencies.
 - The torch goes off whenever the camera does: on blur, and also when the

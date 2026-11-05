@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 import {
   initialScanState,
   rearmScan,
+  SCAN_MEMORY_SIZE,
   SCAN_REPEAT_WINDOW_MS,
   type ScanInput,
   type ScanOutcome,
@@ -13,6 +14,7 @@ import {
 const POSTER = "https://paperpairings.app/join/7KQ2MX";
 const OTHER_POSTER = "https://paperpairings.app/join/AB12CD34EF";
 const ELSEWHERE = "https://example.com/menu";
+const OTHER_ELSEWHERE = "https://example.com/wifi";
 
 const camera = (text: string): ScanInput => ({ source: "camera", text });
 const typed = (text: string): ScanInput => ({ source: "typed", text });
@@ -60,6 +62,40 @@ describe("scanIntake from the camera", () => {
     expect(state.locked).toBe(false);
   });
 
+  // expo-camera reports each code in view once per frame, so two codes in
+  // view read alternately; each still answers once.
+  test("two codes from elsewhere in view together each answer once", () => {
+    expect(
+      feed([
+        [camera(ELSEWHERE), 0],
+        [camera(OTHER_ELSEWHERE), 30],
+        [camera(ELSEWHERE), 60],
+        [camera(OTHER_ELSEWHERE), 90],
+        [camera(ELSEWHERE), 120],
+      ]).outcomes,
+    ).toEqual(["notOurs", "notOurs", "ignored", "ignored", "ignored"]);
+  });
+
+  test("remembers at most SCAN_MEMORY_SIZE codes in view at once", () => {
+    const codes = Array.from(
+      { length: SCAN_MEMORY_SIZE + 1 },
+      (_, index) => `https://example.com/${index}`,
+    );
+    const { outcomes } = feed(
+      [...codes, codes[0]!].map((code, index) => [camera(code), index * 10]),
+    );
+    // The first code fell out of memory when the ninth arrived.
+    expect(outcomes.at(-1)).toBe("notOurs");
+    expect(
+      feed(
+        [...codes.slice(1), codes[1]!].map((code, index) => [
+          camera(code),
+          index * 10,
+        ]),
+      ).outcomes.at(-1),
+    ).toBe("ignored");
+  });
+
   test("a different code inside the window is read at once", () => {
     expect(
       feed([
@@ -86,6 +122,23 @@ describe("rearmScan", () => {
         rearmed,
       ).outcomes,
     ).toEqual(["ignored", "ignored", "open 7KQ2MX"]);
+  });
+
+  // A Join QR beside a foreign one: after backing out, reads alternate
+  // between them, and the foreign read must not reopen the Join QR's window.
+  test("a code beside another stays quiet after rearming", () => {
+    const rearmed = rearmScan(opened, 10_000);
+    expect(
+      feed(
+        [
+          [camera(ELSEWHERE), 10_030],
+          [camera(POSTER), 10_060],
+          [camera(ELSEWHERE), 10_090],
+          [camera(POSTER), 10_120],
+        ],
+        rearmed,
+      ).outcomes,
+    ).toEqual(["notOurs", "ignored", "ignored", "ignored"]);
   });
 
   test("a different code opens right after rearming", () => {
