@@ -358,7 +358,8 @@ never sees a pure-function refactor mixed with a native module install.
   `useMyEntryOrder`, `useFeePreview`, `useRegisterSelf`,
   `useCancelMyRegistration`, and `badgeGateFor`. The web's
   `RegistrationPanel` still computes its own badge gate; PR 3 moves it onto
-  `badgeGateFor`.
+  `badgeGateFor`. (Review fix: `badgeGateFor` is gone; both clients read
+  `getPublicTournament`'s server-computed `badgeGate`, see PR 3.)
 - The web hand-off needs an origin, so native reads an optional
   `EXPO_PUBLIC_WEB_ORIGIN` (`lib/web-links.ts`). Unset, the "Pay on the web"
   and convention buttons are left out. The hand-off opens
@@ -591,6 +592,29 @@ below:
     reason. The projection reads those as `closed` and `badgeBlocked`;
   - `pay` with `repeatDropFeesKept`.
 - The web's badge gate comes from `badgeGateFor`, so its local copy is gone.
+- Review fixes on `qr/review-fixes` (unit tests, component tests, and
+  convex-test specs only; no browser, simulator, or device run):
+  - `blocked` is `PaymentBlock`: `closed`, then `full`, then the badge gate
+    reason. `full` applies to the player's own direct checkout
+    (`registration` orders), which Checkout capacity-checks before resuming,
+    and to an entry the badge now comps; an approved application's payment
+    is not capacity-checked at begin. The web shows a disabled "Tournament
+    is full" beside Withdraw; the projection reads it as `full` with
+    `canWithdraw`, and the native screen offers Withdraw there too.
+  - A pending entry owing payment whose badge started comping the event
+    derives `register` with `comped`. `registerSelf` seats it free (capacity
+    checked) and closes the open order, audited as a comped registration,
+    since Checkout refuses a comped viewer.
+  - `badgeGateFor` is gone. `getPublicTournament` returns a top-level
+    `badgeGate` whatever the parent convention's visibility, so a hidden
+    badge-gated parent still gates its public child; both clients say "This
+    event requires a confirmed convention badge." without naming or linking
+    it, and `registerSelf`'s refusal names the convention only for viewers
+    who may see it.
+  - A null event for a signed-out viewer offers "Sign in to view this
+    event" on the web event page, the web join route, and the native join
+    screen (`useJoinCode`'s `signInToView`), since a private event answers
+    null to anyone it doesn't admit.
 - The characterization rows are a web component test,
   `apps/web/src/components/tournament-public-page.test.tsx`: 81 rendering
   rows (badges, buttons, links, and notes in order, the badge-gate notice
@@ -603,8 +627,9 @@ below:
     approval" while its order loaded. It now shows "Checking your
     registration", as the native screen does.
   - A confirmed row without a participation status fell through to the
-    register button. It now reads as active, as the server reads it. The
-    state is outside the schema invariant.
+    register button. It now reads as active, as the server's standings
+    read it; the server's cancel rule needs an explicit status, so it would
+    refuse the cancel offered. The state is outside the schema invariant.
 - The pending fall-through stays `pendingReview`. The derivation doesn't
   read `awaitingReview`; the rows pin the fall-through with a row that
   lacks it.
@@ -630,7 +655,8 @@ below:
   badge-gated, comped, paid direct, approval, and the repeat-drop refund
   flag. Those rows are characterization tests of the panel as it is; the
   refactor then has to keep them green.
-- **The "pending, paid, order not payable" state is no longer stored.**
+- **The "pending, paid, order not payable" state no longer comes from the
+  start sweep.**
   Both clients say "Registration pending organizer approval" for a pending
   row on a paid event whose order is neither payable nor loading
   (`deriveJoinAction`'s pending fall-through; `tournament-public-page.tsx`

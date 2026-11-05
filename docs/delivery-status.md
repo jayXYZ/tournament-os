@@ -243,6 +243,32 @@ Not covered, and still open in [the roadmap](../TODO.md) section 8:
   icon and the Android permission flow are unverified.
 - The suite runs by hand; it is not in CI or EAS Workflows.
 
+## Review fixes on `qr/review-fixes`, 2026-11-05
+
+Not a verification record: no deployment, browser, simulator, or device was
+exercised. `qr/review-fixes` stacks on `qr/native-scanner` at `146637d` (not
+merged) and fixes the findings of a review of the QR join stack. Each fix is
+covered by unit tests, component tests, or convex-test specs, and
+`pnpm check` passes on the branch. What changed that a device run should
+re-check:
+
+- Join states: a pending entry owing payment whose badge now comps the event
+  registers free; a resumed direct checkout on a full event reads "Tournament
+  is full" beside Withdraw; a hidden badge-gated parent still gates its public
+  child without naming it.
+- A signed-out viewer whose code or event page opens nothing is offered "Sign
+  in to view this event" (web event page, web join route, native join
+  screen). The Playwright invite-links spec's signed-out assertions were
+  updated to it and not run.
+- Native navigation: "Open the event" from a join screen the scanner opened
+  returns home first; a dev session link closes only its own screen and acts
+  on every new ticket.
+- Scanner: the repeat window remembers several recent codes and restarts
+  when the camera is ready.
+- The Maestro runner pins the Convex deployment over any deploy key, checks
+  the Clerk issuer before seeding, and keeps credential-named variables out
+  of its child processes. The dev seed refuses a live Stripe key.
+
 ## Recording the next verification
 
 For each deployment exercise, append a dated record with:
