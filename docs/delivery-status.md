@@ -249,11 +249,13 @@ Not a release check: no simulator or device was exercised, and the one browser
 run is the invite-links spec noted below, against the personal dev deployment.
 `qr/review-fixes` stacks on `qr/native-scanner` at `146637d` (not
 merged) and fixes the findings of a review of the QR join stack. The
-derivation, join-route, scanner, runner-gate, and backend fixes are covered
-by unit tests, component tests, or convex-test specs; the native navigation
-and dev-session-link fixes rest on typecheck, lint, and the installed
-expo-router source. `pnpm check` passes on the branch. What changed that a
-device run should re-check:
+derivation, join-route, scanner, dev-seed, and backend fixes are covered by
+unit tests, component tests, or convex-test specs; the native navigation and
+dev-session-link fixes rest on typecheck, lint, and the installed expo-router
+source; the Maestro runner's deployment pin, issuer gate, and credential
+scrub rest on `node --check`, lint, and throwaway scripts against the
+installed Convex CLI and dotenv, not on a runner execution. `pnpm check`
+passes on the branch. What changed that a device run should re-check:
 
 - Join states: a pending entry owing payment whose badge now comps the event
   registers free, with Withdraw beside the button; a pending entry owing

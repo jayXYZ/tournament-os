@@ -147,8 +147,8 @@ Each run:
    sign-in step. `CLERK_SECRET_KEY`, from `apps/web/.env.local` or the
    shell, stays in the runner: Maestro and `xcrun` run with an environment
    stripped of it and of every other variable whose name reads as a
-   credential, and the Convex CLI keeps only its own `CONVEX_*` variables
-   (minus the deployment selectors, which the runner pins);
+   credential, and of those the Convex CLI keeps only its own `CONVEX_*`
+   variables (minus the deployment selectors, which the runner pins);
 4. runs `maestro test` against the booted simulator, with the camera
    permission allowed on every launch unless a flow sets
    `CAMERA_PERMISSION` (`deny` or `unset`; `flows/subflows/launch.yaml`).

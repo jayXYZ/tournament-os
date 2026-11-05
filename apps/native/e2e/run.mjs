@@ -56,8 +56,9 @@ function readEnvFile(file) {
   return values;
 }
 
-// A variable name that reads as a credential. Child processes get the
-// parent's environment without these, so a CLERK_SECRET_KEY or deploy key
+// A variable name that reads as a credential. Maestro and xcrun get the
+// parent's environment without these, and the Convex CLI without all but its
+// own CONVEX_* ones (convexEnv below), so a CLERK_SECRET_KEY or deploy key
 // exported in the shell stays in this process (scrubbedEnv).
 const CREDENTIAL_NAME = /SECRET|TOKEN|PASSWORD|CREDENTIAL|KEY$/i;
 
