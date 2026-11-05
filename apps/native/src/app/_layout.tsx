@@ -103,6 +103,23 @@ function RootLayout() {
                 headerTintColor: palette.foreground,
               }}
             />
+            {/* Full screen over home, sliding up like a modal, and closed
+                only by its own button. It is a card rather than a
+                `fullScreenModal` because the native stack presents every
+                screen pushed after a modal as a modal too: the join screen
+                a code opens would come up as a sheet with no back arrow.
+                As a card, the join screen pushes above the scanner the way
+                it does above home, and its back arrow returns to the
+                scanner. */}
+            <Stack.Screen
+              name="scan"
+              options={{
+                // The join screen's back button reads it.
+                title: "Scan",
+                animation: "slide_from_bottom",
+                gestureEnabled: false,
+              }}
+            />
             <Stack.Screen
               name="join/[code]"
               options={{
