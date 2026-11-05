@@ -1,7 +1,10 @@
-# Back to home between two codes in one flow, so the second code's screen is
-# a fresh one rather than the first's still showing. Maestro's hierarchy
-# keeps screens lower in the stack, so this checks the join screen is gone,
-# not merely covered.
+# Home between two codes in one flow, so the second code opens a fresh join
+# screen rather than reusing the first's. The root link pushes a new home on
+# top of the join screen ([index, join, index]); it does not pop back to the
+# one below (React Navigation's NAVIGATE pushes unless the target is the
+# focused route). Maestro sees only the screen on top, so the assertion
+# below checks that home covers the join screen, not that the join screen
+# is gone. The next code's link then pushes its own join screen above home.
 appId: com.paperpairings.app
 ---
 - runFlow:
