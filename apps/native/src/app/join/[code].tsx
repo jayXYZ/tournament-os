@@ -73,13 +73,25 @@ function JoinEvent({
     }
   }, [navigation, eventName]);
 
-  // Replace, not push: back from the event page goes home, not to a join
-  // screen that has nothing left to offer.
-  const openEvent = () =>
-    router.replace({
+  // Back from the event page goes home, never to this join screen (it has
+  // nothing left to offer) or to the scanner below it, whose camera would
+  // turn on again. Arrived from home or a link ([index, join]), replacing
+  // this screen does that. From the scanner ([index, scan, join]) a replace
+  // would leave the scanner under the event, so dismissTo pops back to
+  // home first and the event is pushed onto it; expo-router's routing queue
+  // dispatches the two in order against the root stack.
+  const openEvent = () => {
+    const event = {
       pathname: "/tournaments/[code]",
       params: { code: publicCode },
-    });
+    } as const;
+    if (navigation.getState()?.routes.some((route) => route.name === "scan")) {
+      router.dismissTo("/");
+      router.push(event);
+    } else {
+      router.replace(event);
+    }
+  };
   const view = (
     signedIn: boolean,
     registration: PlayerRegistration | null | undefined,

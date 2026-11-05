@@ -518,6 +518,11 @@ Needs a dev-client rebuild and physical devices (expo-camera is device-only).
 - The Maestro suite gained four scanner flows (18 to 21), a never-registered
   "newcomer" test user for home's empty state, and a `CAMERA_PERMISSION`
   variable on every launch.
+- "Open the event" from a join screen the scanner opened returns to home
+  before pushing the event (`router.dismissTo("/")`, then `push`), so back
+  from the event page goes home instead of to the live scanner. Arrived
+  from home or a link, it still replaces the join screen. Review fix on
+  `qr/review-fixes`; not run on a device or simulator.
 
 1. **Install:**
    `pnpm --filter @paper-pairings/native exec expo install expo-camera expo-haptics`.
