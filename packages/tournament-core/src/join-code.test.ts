@@ -69,9 +69,11 @@ describe("useJoinCode", () => {
     });
   });
 
-  it("notFound for a signed-out viewer", () => {
+  // A private event's public code resolves only for viewers it admits, so
+  // for a signed-out viewer the null is not known to be a bad code.
+  it("signInToView, not notFound, for a signed-out viewer", () => {
     expect(run({ gate: "signedOut", resolved: null })).toEqual({
-      state: "notFound",
+      state: "signInToView",
     });
   });
 

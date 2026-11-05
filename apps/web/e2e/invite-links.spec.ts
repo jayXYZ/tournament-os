@@ -13,6 +13,9 @@ import type { Browser, Locator, Page } from '@playwright/test'
 // admitting anyone. A private event shares its invite link instead: without
 // it the event is invisible and closed, and through /join/<code> a player
 // the event has never admitted views it — signed out first — and registers.
+// A signed-out visitor whose code or page opens nothing is offered sign-in,
+// since a private event answers them exactly as a missing one; a signed-in
+// one is told it was not found.
 // Rotating or disabling the invite asks first. The grant's full boundary
 // (rotation, disabling, entry decisions, capacity, setup secrecy) is pinned
 // by inviteLinks.convex.spec.ts and joinCodes.convex.spec.ts; this spec
@@ -68,10 +71,10 @@ test('a player joins a private event through its invite link', async ({
   const anonPage = await signedOutPage(browser)
 
   await anonPage.goto(eventPath)
-  await expect(anonPage.getByText('Tournament not found')).toBeVisible()
+  await expect(anonPage.getByText('Sign in to view this event')).toBeVisible()
 
   await anonPage.goto('/join/0000000000')
-  await expect(anonPage.getByText('Code not found')).toBeVisible()
+  await expect(anonPage.getByText('Sign in to view this event')).toBeVisible()
 
   await anonPage.goto(joinPath)
   await expect(anonPage).toHaveURL(new RegExp(`${eventPath}\\?invite=`))
@@ -130,7 +133,7 @@ test('a player joins a private event through its invite link', async ({
     .pathname
 
   await anonPage.goto(joinPath)
-  await expect(anonPage.getByText('Code not found')).toBeVisible()
+  await expect(anonPage.getByText('Sign in to view this event')).toBeVisible()
   await anonPage.goto(rotatedPath)
   await expect(anonPage).toHaveURL(new RegExp(`${eventPath}\\?invite=`))
 
@@ -145,7 +148,7 @@ test('a player joins a private event through its invite link', async ({
   ).toBeVisible()
 
   await anonPage.goto(rotatedPath)
-  await expect(anonPage.getByText('Code not found')).toBeVisible()
+  await expect(anonPage.getByText('Sign in to view this event')).toBeVisible()
   await anonPage.context().close()
 })
 
@@ -203,7 +206,7 @@ test('a public event shares its join link and QR code until it goes private', as
   ).toBeVisible()
 
   await anonPage.goto(`/join/${publicCode}`)
-  await expect(anonPage.getByText('Code not found')).toBeVisible()
+  await expect(anonPage.getByText('Sign in to view this event')).toBeVisible()
   await anonPage.context().close()
 
   // -- Closed: registration is over, so there is no code to scan -----------

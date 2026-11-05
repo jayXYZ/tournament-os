@@ -15,6 +15,11 @@ export type JoinCodeResolution =
   // identity, so the null is not yet known to be a bad code. The screen
   // offers the gate's recovery (restart the handshake, or sign out).
   | { state: "unverified" }
+  // A signed-out viewer, and the code opened nothing. A private event's
+  // public code resolves only for viewers it admits, so the code is not
+  // known to be wrong: the screen offers sign-in, after which the code may
+  // open the event.
+  | { state: "signInToView" }
   // The event the code opens, plus the invite code when it was one, which
   // the event lookup and registerSelf both need on a private event.
   | { state: "resolved"; publicCode: string; inviteCode?: string };
@@ -25,7 +30,8 @@ export type JoinCodeResolution =
 // null answer waits on the viewer auth gate before it may read as not found:
 // through the provider's own loading, Convex's token validation and its
 // grace period, and — once the gate gives up on the identity — as
-// `unverified` rather than a wrong code. A code that resolves does so for
+// `unverified` rather than a wrong code. For a signed-out viewer it reads as
+// `signInToView`, since signing in may open it. A code that resolves does so for
 // anyone: it waits only for the provider to finish loading, never on
 // Convex's verdict.
 export function useJoinCode(
@@ -44,9 +50,14 @@ export function useJoinCode(
     return { state: "loading" };
   }
   if (resolved === null) {
-    return gate === "unverified"
-      ? { state: "unverified" }
-      : { state: "notFound" };
+    switch (gate) {
+      case "unverified":
+        return { state: "unverified" };
+      case "signedOut":
+        return { state: "signInToView" };
+      default:
+        return { state: "notFound" };
+    }
   }
   return { state: "resolved", ...resolved };
 }

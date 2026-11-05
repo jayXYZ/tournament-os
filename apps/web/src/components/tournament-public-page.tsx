@@ -18,6 +18,7 @@ import { DetailLine } from '@/components/shared/detail-line'
 import { LoadingCard } from '@/components/shared/loading-card'
 import { MarkdownContent } from '@/components/shared/markdown-content'
 import { PageNotFound } from '@/components/shared/page-not-found'
+import { SignInToViewEvent } from '@/components/shared/sign-in-to-view'
 import { cancelOutcomeNote } from '@/components/shared/payment-return'
 import { RoundTimerIndicator } from '@/components/shared/round-timer-indicator'
 import { SiteShell, SiteShellBackLink } from '@/components/shared/site-shell'
@@ -89,12 +90,21 @@ export function TournamentPublicPageContent({
     publicCode,
     inviteCode,
   })
+  // A private event answers null to a viewer it doesn't admit, and to its
+  // own players until Convex has verified them, so a null waits on the auth
+  // gate (as the player access ladder does), and a signed-out viewer is
+  // offered sign-in rather than told the event doesn't exist. The native
+  // app's "Complete payment" hand-off lands here without a session.
+  const { user, loading } = useAppAuth()
+  const viewer = useViewerAuthGate({ user, loading })
 
-  return event === undefined ? (
+  return event === undefined || (event === null && viewer === 'pending') ? (
     <LoadingCard
       title="Loading tournament"
       description="Fetching event details."
     />
+  ) : event === null && viewer === 'signedOut' ? (
+    <SignInToViewEvent className="min-h-80 border bg-card" />
   ) : event === null ? (
     <PageNotFound
       title="Tournament not found"

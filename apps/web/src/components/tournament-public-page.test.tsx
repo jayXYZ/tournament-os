@@ -967,6 +967,45 @@ describe('RegistrationPanel', () => {
   })
 })
 
+// A private event answers null to a viewer it doesn't admit, so a signed-out
+// null is not known to be a missing event: the page offers sign-in, which
+// returns here (refreshAuth). A null for a signed-in viewer is final.
+describe('an event the lookup answers null', () => {
+  function renderNull(viewer: Gate) {
+    setScenario({ viewer })
+    state.answers.event = null
+    act(() => {
+      root.render(
+        <TournamentPublicPageContent
+          publicCode={publicCode}
+          inviteCode={inviteCode}
+        />,
+      )
+    })
+  }
+  const text = () => clean(container.textContent)
+
+  test('a signed-out viewer is offered sign-in', async () => {
+    renderNull('signedOut')
+    expect(text()).toContain('Sign in to view this event')
+    expect(text()).not.toContain('Tournament not found')
+    await click('Sign in')
+    expect(state.refreshAuth).toHaveBeenCalledWith({ ensureSignedIn: true })
+  })
+
+  test('a signed-in viewer is told it was not found', () => {
+    renderNull('ready')
+    expect(text()).toContain('Tournament not found')
+    expect(text()).not.toContain('Sign in')
+  })
+
+  // The null may still turn into the event once Convex verifies the viewer.
+  test('waits while the auth gate settles', () => {
+    renderNull('pending')
+    expect(text()).toContain('Loading tournament')
+  })
+})
+
 describe('RegistrationPanel actions', () => {
   test('signing in asks for a sign-in', async () => {
     render({ viewer: 'signedOut' })

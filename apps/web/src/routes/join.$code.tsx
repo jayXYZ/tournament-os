@@ -4,6 +4,7 @@ import { SearchX, ShieldAlert } from 'lucide-react'
 import { useAppAuth } from '@/lib/use-app-auth'
 import { SiteShell } from '@/components/shared/site-shell'
 import { LoadingCard } from '@/components/shared/loading-card'
+import { SignInToViewEvent } from '@/components/shared/sign-in-to-view'
 import {
   UNVERIFIED_VIEWER_DESCRIPTION,
   UNVERIFIED_VIEWER_TITLE,
@@ -26,7 +27,8 @@ import {
 // resolution waits on the viewer auth gate as the native screen does
 // (useJoinCode): a private event's own players resolve its public code only
 // once Convex has verified them, and a viewer it cannot verify is offered
-// the gate's recovery rather than "Code not found".
+// the gate's recovery rather than "Code not found". A signed-out viewer is
+// offered sign-in instead, for the same reason.
 export const Route = createFileRoute('/join/$code')({
   component: RouteComponent,
 })
@@ -62,6 +64,8 @@ function RouteComponent() {
           </EmptyHeader>
           <UnverifiedViewerActions />
         </Empty>
+      ) : resolution.state === 'signInToView' ? (
+        <SignInToViewEvent className="min-h-80" />
       ) : (
         <Empty className="min-h-80">
           <EmptyHeader>

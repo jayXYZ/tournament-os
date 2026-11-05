@@ -6,6 +6,7 @@ import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { JoinEventView } from "@/components/join-event-view";
+import { SignInButton } from "@/components/sign-in-button";
 import { UnverifiedViewerShell } from "@/components/unverified-viewer-shell";
 import { palette } from "@/lib/palette";
 import { useAppAuth } from "@/lib/use-app-auth";
@@ -33,6 +34,10 @@ export default function JoinScreen() {
   // the gate given up the code is not known to be wrong: offer the recovery.
   if (resolution.state === "unverified") {
     return <UnverifiedViewerShell />;
+  }
+  // Signed out, the same null may be a private event signing in opens.
+  if (resolution.state === "signInToView") {
+    return <SignInToView />;
   }
   return (
     <JoinEvent
@@ -122,9 +127,26 @@ function Loading() {
   );
 }
 
-// One message for every code that opens nothing (unknown, mistyped,
-// replaced, not published yet, or an event that has since gone private), as
-// the server answers them all alike.
+// A signed-out viewer whose code opened nothing (useJoinCode). Once signed
+// in, the screen resolves the code again by itself.
+function SignInToView() {
+  return (
+    <SafeAreaView style={styles.container} edges={["bottom"]}>
+      <View style={styles.message}>
+        <Text style={styles.title}>Sign in to view this event</Text>
+        <Text style={styles.muted}>
+          This may be a private event. Sign in to see it, or check the code with
+          the organizer.
+        </Text>
+        <SignInButton />
+      </View>
+    </SafeAreaView>
+  );
+}
+
+// One message for every code that opens nothing for a signed-in viewer
+// (unknown, mistyped, replaced, not published yet, or an event that has
+// since gone private), as the server answers them all alike.
 function CodeNotFound() {
   return (
     <SafeAreaView style={styles.container} edges={["bottom"]}>
