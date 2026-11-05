@@ -32,6 +32,7 @@ import { setRegistrationState } from "./participation";
 import {
   ensurePostApprovalOrder,
   isPaidEvent,
+  openOrderForRegistration,
   registrationHoldsPaidOrder,
 } from "./payments";
 import {
@@ -738,6 +739,25 @@ export async function registerEntry(
     tournament,
     user._id,
   );
+  // A pass can start comping the event after the entry came to owe payment
+  // (ADR 0004): the organizer adds the event to the player's ticket type
+  // between an approval, or the player's own unfinished checkout, and the
+  // payment. Checkout refuses a comped player, so this is their way in: the
+  // entry is seated free, as approval seats a comped applicant, and the
+  // order nobody will pay closes.
+  if (
+    existing?.entryStatus === "pending" &&
+    isPaidEvent(tournament) &&
+    childAdmission.compedByBadge &&
+    (await openOrderForRegistration(ctx, existing._id)) !== null
+  ) {
+    return await seatCompedEntryOwingPayment(ctx, {
+      tournament,
+      user,
+      registration: existing,
+      now,
+    });
+  }
   // Direct registration on a paid event goes through the Checkout action
   // (payments/checkout.ts), which files the pending row itself; the seat
   // is only ever taken by the payment webhook. Approval-mode paid events
@@ -833,6 +853,48 @@ export async function registerEntry(
         },
   });
   return registrationId;
+}
+
+// registerEntry's comp arm for a pending entry with a payable order (see
+// there). Capacity is checked as for any seat taken here; a payment that
+// still lands on the closed order is a late success and refunds
+// (payments/webhooks.ts), never seating the entry twice. The audit line is
+// the comped registration's, as on a fresh comped entry.
+async function seatCompedEntryOwingPayment(
+  ctx: MutationCtx,
+  {
+    tournament,
+    user,
+    registration,
+    now,
+  }: {
+    tournament: Doc<"tournaments">;
+    user: Doc<"users">;
+    registration: Doc<"tournamentRegistrations">;
+    now: number;
+  },
+): Promise<Id<"tournamentRegistrations">> {
+  requireCapacityAvailable(tournament);
+  await setRegistrationState(ctx, registration._id, {
+    entryStatus: "confirmed",
+    participationStatus: "active",
+    ...registrationNameStamp(user),
+    tournamentStartDate: tournament.startDate,
+    updatedAt: now,
+  });
+  await closeOpenOrdersForRegistration(ctx, registration._id);
+  await adjustConfirmedRegistrationCount(ctx, tournament, 1, now);
+  await logAuditEvent(ctx, {
+    tournamentId: tournament._id,
+    actor: user,
+    actorRole: "player",
+    event: {
+      type: "player_registered",
+      player: auditPlayerRefForUser(registration._id, user),
+      compedByBadge: true,
+    },
+  });
+  return registration._id;
 }
 
 // Longest organizer-typed player name: the stamp is copied onto every

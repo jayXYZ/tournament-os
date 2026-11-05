@@ -937,6 +937,96 @@ describe("deriveRegistrationAction", () => {
       });
     }
 
+    // A pass that started comping the event after the entry came to owe
+    // payment: Checkout refuses a comped viewer, and registerSelf seats the
+    // entry free and closes the order (model/roster.ts registerEntry).
+    describe("once the viewer's badge comps the event", () => {
+      for (const order of orders) {
+        it.each(paidSetups)(
+          `%s: ${order.status} (${order.purpose}) registers free`,
+          (setup) => {
+            expect(
+              deriveFull(setup, {
+                registration: row("pending"),
+                order,
+                badgeCompsThisEvent: true,
+              }),
+            ).toEqual({ kind: "register", comped: true });
+          },
+        );
+
+        // registerSelf checks capacity before seating the comped entry,
+        // whatever the order's purpose.
+        it.each(paidSetups)(
+          `%s: ${order.status} (${order.purpose}) on a full event`,
+          (setup) => {
+            expect(
+              deriveFull(setup, {
+                registration: row("pending"),
+                order,
+                badgeCompsThisEvent: true,
+                spotsLeft: 0,
+              }),
+            ).toEqual({
+              kind: "completePayment",
+              purpose: order.purpose,
+              blocked: "full",
+            });
+          },
+        );
+
+        it.each(paidSetups)(
+          `%s: ${order.status} (${order.purpose}) after registration closed`,
+          (setup) => {
+            expect(
+              deriveFull(setup, {
+                registration: row("pending"),
+                order,
+                badgeCompsThisEvent: true,
+                lifecycle: "in_progress",
+              }),
+            ).toEqual({
+              kind: "completePayment",
+              purpose: order.purpose,
+              blocked: "closed",
+            });
+          },
+        );
+
+        // A pass that comps the event but not its day: the gate refuses
+        // first (model/conventions.ts resolveChildEventAdmission).
+        it.each(paidSetups)(
+          `%s: ${order.status} (${order.purpose}) behind the badge gate`,
+          (setup) => {
+            expect(
+              deriveFull(setup, {
+                registration: row("pending"),
+                order,
+                badgeCompsThisEvent: true,
+                badgeGate: "wrong_day",
+              }),
+            ).toEqual({
+              kind: "completePayment",
+              purpose: order.purpose,
+              blocked: "wrong_day",
+            });
+          },
+        );
+      }
+
+      // An application still under review has no order: the comp waits for
+      // the organizer's decision, which seats it free (approveEntry).
+      it.each(paidSetups)("%s: an application under review", (setup) => {
+        expect(
+          deriveFull(setup, {
+            registration: row("pending"),
+            order: null,
+            badgeCompsThisEvent: true,
+          }),
+        ).toEqual({ kind: "pendingReview", canWithdraw: true });
+      });
+    });
+
     // The defensive fall-through (docs/plans/qr-join.md PR 3): the backend
     // sweep withdraws the pending entry behind every order it closes, so
     // this is no longer stored. A row the organizer is still reviewing

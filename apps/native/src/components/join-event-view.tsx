@@ -105,18 +105,21 @@ export function JoinEventView({
   };
 
   const register = async () => {
-    const approval = tournament.registrationRequiresApproval;
+    // The action, not the event's approval setting, says whether this files
+    // an application: an approved entry the viewer's badge now comps takes
+    // its seat on an approval-mode event.
+    const application = action.kind === "requestToRegister";
     // A direct registration gets no toast: the seat it takes either
     // replaces this route (onOpenEvent) or flips the event page's access
     // ladder to the match view, and this view's toast goes with it. The
     // match page itself is the confirmation.
     const ok = await run(
       () => registerSelf({ tournamentId: tournament._id, inviteCode }),
-      approval ? "Registration submitted for organizer approval." : null,
+      application ? "Registration submitted for organizer approval." : null,
       "Could not register.",
     );
     // An application stays here and turns into its live pending state.
-    if (ok && !approval) {
+    if (ok && !application) {
       onOpenEvent?.();
     }
   };

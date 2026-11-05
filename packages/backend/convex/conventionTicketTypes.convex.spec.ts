@@ -569,6 +569,129 @@ test("approval and restore seat a comped participant free and audit the comp", a
   );
 });
 
+// A pass can start comping an event after the player already owes for it:
+// the organizer adds the event to the player's ticket type between the
+// approval (or the player's own checkout) and the payment. Checkout refuses
+// a comped viewer, so registerSelf is the way in: it seats the entry free
+// and closes the order nobody will pay.
+test.each([
+  ["an approved application", true],
+  ["an unfinished direct checkout", false],
+] as const)(
+  "a pass that starts comping %s seats it free through registerSelf",
+  async (_name, approval) => {
+    const t = createConvexTest();
+    const { organizationId } = await seedOrganizer(t);
+    await makePayoutsReady(t, organizationId);
+    const { conventionId, defaultTicketTypeId } = await seedLiveConvention(
+      t,
+      organizationId,
+    );
+    const organizer = t.withIdentity(organizerIdentity);
+    const tournamentId: Id<"tournaments"> = await organizer.mutation(
+      api.conventions.events.createTournamentForConvention,
+      {
+        conventionId,
+        name: "Paid Side Event",
+        startDate: Date.now() + DAY,
+        playerCapacity: 8,
+        format: "modern",
+        phases: [{ phaseOrder: 1, phaseRoundMode: "dynamic" }],
+      },
+    );
+    await organizer.mutation(api.tournaments.lifecycle.updateTournamentSetup, {
+      tournamentId,
+      entryFeeCents: 2500,
+      registrationRequiresApproval: approval,
+    });
+    await organizer.mutation(api.tournaments.lifecycle.publishTournament, {
+      tournamentId,
+    });
+
+    await insertPlayerUser(t, 1);
+    const player = t.withIdentity(playerIdentity(1));
+    await player.mutation(
+      api.conventions.registrations.registerSelfForConvention,
+      { conventionId, ticketTypeId: defaultTicketTypeId },
+    );
+    if (approval) {
+      const applicationId: Id<"tournamentRegistrations"> =
+        await player.mutation(api.tournaments.registrations.registerSelf, {
+          tournamentId,
+        });
+      await organizer.mutation(
+        api.tournaments.registrations.approveRegistration,
+        { registrationId: applicationId },
+      );
+    }
+    // The player opens Checkout and leaves it unpaid.
+    await player.action(api.payments.checkout.createEntryCheckout, {
+      tournamentId,
+    });
+    const registrationId = (await player.query(
+      api.tournaments.registrations.getMyRegistration,
+      { tournamentId },
+    ))!._id;
+    const orderBefore = (await t.run(async (ctx) =>
+      ctx.db
+        .query("paymentOrders")
+        .withIndex("by_registrationId", (q) =>
+          q.eq("registrationId", registrationId),
+        )
+        .first(),
+    ))!;
+    expect(orderBefore.status).toBe("awaiting_payment");
+    expect(orderBefore.purpose).toBe(
+      approval ? "post_approval" : "registration",
+    );
+
+    // The organizer adds the event to the general-admission pass.
+    await organizer.mutation(api.conventions.ticketTypes.updateTicketType, {
+      ticketTypeId: defaultTicketTypeId,
+      name: "General admission",
+      priceCents: 0,
+      includedTournamentIds: [tournamentId],
+    });
+
+    await expect(
+      player.action(api.payments.checkout.createEntryCheckout, {
+        tournamentId,
+      }),
+    ).rejects.toThrow(/register directly instead of paying/);
+    await player.mutation(api.tournaments.registrations.registerSelf, {
+      tournamentId,
+    });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const registration = await t.run(async (ctx) => ctx.db.get(registrationId));
+    expect(registration).toMatchObject({
+      entryStatus: "confirmed",
+      participationStatus: "active",
+    });
+    expect(
+      (await t.run(async (ctx) => ctx.db.get(tournamentId)))
+        ?.confirmedRegistrationCount,
+    ).toBe(1);
+    const orderAfter = await t.run(async (ctx) => ctx.db.get(orderBefore._id));
+    expect(orderAfter?.status).toBe("canceled");
+    expect(gatewayState.expired).toContain(
+      orderBefore.stripeCheckoutSessionId!,
+    );
+    const auditEvents = await t.run(async (ctx) =>
+      ctx.db
+        .query("tournamentAuditEvents")
+        .withIndex("by_tournamentId", (q) => q.eq("tournamentId", tournamentId))
+        .take(32),
+    );
+    expect(auditEvents.map((row) => row.event)).toContainEqual(
+      expect.objectContaining({
+        type: "player_registered",
+        compedByBadge: true,
+      }),
+    );
+  },
+);
+
 test("a paid type stays editable when Stripe readiness regresses; a price change re-checks", async () => {
   const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);

@@ -24,7 +24,8 @@ export type RegistrationAction =
   | { kind: "unverified" }
   | { kind: "signIn" }
   // registerSelf takes a seat. `comped`: a paid event the viewer's
-  // convention badge covers (ADR 0004), so no payment is asked for.
+  // convention badge covers (ADR 0004), so no payment is asked for. That
+  // includes a pending entry owing payment the badge started comping since.
   | { kind: "register"; comped: boolean }
   // registerSelf files an application for the Review Queue.
   | { kind: "requestToRegister"; comped: boolean }
@@ -36,7 +37,8 @@ export type RegistrationAction =
   // A pending entry with a payable order: an approved application
   // (`post_approval`) or the viewer's own unfinished checkout
   // (`registration`). Payment takes the seat. `blocked` says why the viewer
-  // can't pay now, or null when they can (PaymentBlock).
+  // can't pay now, or null when they can (PaymentBlock). Once the viewer's
+  // badge comps the event, the same entry reads as `register` instead.
   | {
       kind: "completePayment";
       purpose: EntryOrderPurpose;
@@ -63,7 +65,9 @@ export type RegistrationAction =
 // - "full": the event filled before they paid. Checkout re-checks capacity
 //   before resuming the player's own direct checkout (payments/checkout.ts),
 //   but not before an approved application's payment, which the approval
-//   already checked. A badge would not help, so this outranks the gate.
+//   already checked. registerSelf checks it before seating an entry the
+//   viewer's badge now comps, whatever the order. A badge would not help,
+//   so this outranks the gate.
 // - a badge gate reason: the badge stopped admitting the event after the
 //   entry existed (a cancelled badge, a rescheduled event).
 // The server still lets the viewer withdraw while registration is open.
@@ -303,15 +307,20 @@ function deriveForViewer(
         order?.status === "requires_payment" ||
         order?.status === "awaiting_payment"
       ) {
-        return {
-          kind: "completePayment",
-          purpose: order.purpose,
-          blocked: !open
-            ? "closed"
-            : order.purpose === "registration" && spotsLeft === 0
-              ? "full"
-              : badgeGate,
-        };
+        // A pass that started comping the event after the entry came to
+        // owe payment: Checkout refuses a comped viewer, and registerSelf
+        // seats the entry free and closes the order (model/roster.ts
+        // registerEntry), checking capacity like any seat it takes.
+        const comped = badgeCompsThisEvent;
+        const blocked: PaymentBlock = !open
+          ? "closed"
+          : spotsLeft === 0 && (comped || order.purpose === "registration")
+            ? "full"
+            : badgeGate;
+        if (comped && blocked === null) {
+          return { kind: "register", comped: true };
+        }
+        return { kind: "completePayment", purpose: order.purpose, blocked };
       }
       // A defensive default: the backend sweep withdraws the pending entry
       // behind every order it closes (docs/plans/qr-join.md PR 3), so a

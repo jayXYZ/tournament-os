@@ -676,6 +676,32 @@ const rows: Array<[string, Scenario, Array<string>]> = [
     [approvedBadge, 'button: Complete payment — $16.52', withdraw],
   ],
   [
+    // Checkout refuses a comped viewer; registerSelf seats the entry free.
+    'an approved application owing payment the badge now comps',
+    {
+      registration: pending(),
+      approval: true,
+      paid: true,
+      order: order('requires_payment', 'post_approval'),
+      convention: compingBadge,
+    },
+    [
+      'button: Register for this event',
+      'note: 10 spots left · included with your convention badge',
+    ],
+  ],
+  [
+    'an unfinished direct checkout the badge now comps, on a full event',
+    {
+      registration: pending(),
+      paid: true,
+      order: order('awaiting_payment', 'registration'),
+      convention: compingBadge,
+      spotsLeft: 0,
+    },
+    [directDueBadge, 'button(disabled): Tournament is full', withdraw],
+  ],
+  [
     'an approved application owing payment behind a wrong-day badge',
     {
       registration: pending(),
@@ -953,6 +979,26 @@ describe('RegistrationPanel actions', () => {
       tournamentId,
       inviteCode,
     })
+    expect(state.createEntryCheckout).not.toHaveBeenCalled()
+  })
+
+  test('an entry owing payment the badge now comps registers through registerSelf', async () => {
+    state.registerSelf.mockResolvedValue('registration-1')
+    render({
+      registration: pending(),
+      approval: true,
+      paid: true,
+      order: order('requires_payment', 'post_approval'),
+      convention: compingBadge,
+    })
+    await click('Register for this event')
+    expect(state.registerSelf).toHaveBeenCalledWith({
+      tournamentId,
+      inviteCode,
+    })
+    expect(state.toast.success).toHaveBeenCalledWith(
+      "You're registered. See you at the event!",
+    )
     expect(state.createEntryCheckout).not.toHaveBeenCalled()
   })
 
