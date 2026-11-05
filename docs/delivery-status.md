@@ -245,8 +245,9 @@ Not covered, and still open in [the roadmap](../TODO.md) section 8:
 
 ## Review fixes on `qr/review-fixes`, 2026-11-05
 
-Not a verification record: no deployment, browser, simulator, or device was
-exercised. `qr/review-fixes` stacks on `qr/native-scanner` at `146637d` (not
+Not a release check: no simulator or device was exercised, and the one browser
+run is the invite-links spec noted below, against the personal dev deployment.
+`qr/review-fixes` stacks on `qr/native-scanner` at `146637d` (not
 merged) and fixes the findings of a review of the QR join stack. The
 derivation, join-route, scanner, runner-gate, and backend fixes are covered
 by unit tests, component tests, or convex-test specs; the native navigation
@@ -262,7 +263,9 @@ device run should re-check:
 - A signed-out viewer whose code or event page opens nothing is offered "Sign
   in to view this event" (web event page, web join route, native join
   screen). The Playwright invite-links spec's signed-out assertions were
-  updated to it and not run.
+  updated to it, and the spec passed (both tests plus the auth setup, 48 s)
+  in Chromium against the personal dev deployment with the branch's backend
+  pushed, at `907dd55`, 2026-11-05. The other browser specs were not run.
 - Native navigation: "Open the event" from a join screen the scanner opened
   returns home first; a dev session link closes only its own screen and acts
   on every new ticket.
