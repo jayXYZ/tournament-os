@@ -84,6 +84,18 @@ const config: ExpoConfig = {
     "@sentry/react-native",
     "expo-web-browser",
     "expo-image",
+    // The scanner (src/app/scan.tsx) only reads QR codes, so the
+    // microphone permission stays out of Info.plist and the Android
+    // manifest; `android.permission.CAMERA` is always added.
+    [
+      "expo-camera",
+      {
+        cameraPermission:
+          "Paper Pairings uses the camera to scan tournament QR codes.",
+        microphonePermission: false,
+        recordAudioAndroid: false,
+      },
+    ],
   ],
   experiments: {
     typedRoutes: true,
