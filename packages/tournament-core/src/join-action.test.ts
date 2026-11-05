@@ -100,7 +100,7 @@ const matrix: Array<[string, Scenario, Record<Setup, JoinAction>]> = [
     "no registration row",
     {},
     {
-      free: { kind: "register", comped: false },
+      free: { kind: "register", comped: false, canWithdraw: false },
       approval: { kind: "requestToRegister", comped: false },
       paid: { kind: "pay" },
       paidApproval: { kind: "requestToRegister", comped: false },
@@ -110,7 +110,7 @@ const matrix: Array<[string, Scenario, Record<Setup, JoinAction>]> = [
     "a cancelled row re-registers like a fresh one",
     { registration: row("cancelled") },
     {
-      free: { kind: "register", comped: false },
+      free: { kind: "register", comped: false, canWithdraw: false },
       approval: { kind: "requestToRegister", comped: false },
       paid: { kind: "pay" },
       paidApproval: { kind: "requestToRegister", comped: false },
@@ -276,9 +276,9 @@ const matrix: Array<[string, Scenario, Record<Setup, JoinAction>]> = [
     { badgeCompsThisEvent: true },
     {
       // Nothing to comp on a free event.
-      free: { kind: "register", comped: false },
+      free: { kind: "register", comped: false, canWithdraw: false },
       approval: { kind: "requestToRegister", comped: false },
-      paid: { kind: "register", comped: true },
+      paid: { kind: "register", comped: true, canWithdraw: false },
       paidApproval: { kind: "requestToRegister", comped: true },
     },
   ],
@@ -377,25 +377,35 @@ describe("deriveJoinAction", () => {
       },
     );
 
-    // Checkout refuses to resume the player's own direct checkout on a full
-    // event; the entry is still theirs to withdraw.
+    // Checkout re-checks capacity in direct mode by the event's approval
+    // setting now, not the order's purpose; the entry is still theirs to
+    // withdraw. In approval mode the approval's check stands, whichever
+    // order the entry carries.
     it.each(paidSetups)(
-      "%s: an unfinished direct checkout on a full event is full but can be withdrawn",
+      "%s: a payable order on a full event is full in direct mode but can be withdrawn",
       (setup) => {
+        const full =
+          setup === "paid"
+            ? { kind: "full", canWithdraw: true }
+            : { kind: "completePayment", purpose: "registration" };
         expect(
           derive(setup, {
             registration: row("pending"),
             order: { status: "awaiting_payment", purpose: "registration" },
             spotsLeft: 0,
           }),
-        ).toEqual({ kind: "full", canWithdraw: true });
+        ).toEqual(full);
         expect(
           derive(setup, {
             registration: row("pending"),
             order: { status: "requires_payment", purpose: "post_approval" },
             spotsLeft: 0,
           }),
-        ).toEqual({ kind: "completePayment", purpose: "post_approval" });
+        ).toEqual(
+          setup === "paid"
+            ? { kind: "full", canWithdraw: true }
+            : { kind: "completePayment", purpose: "post_approval" },
+        );
       },
     );
 
@@ -511,7 +521,7 @@ describe("deriveRegistrationAction", () => {
       "no registration row",
       {},
       {
-        free: { kind: "register", comped: false },
+        free: { kind: "register", comped: false, canWithdraw: false },
         approval: { kind: "requestToRegister", comped: false },
         paid: { kind: "pay", repeatDropFeesKept: false },
         paidApproval: { kind: "requestToRegister", comped: false },
@@ -521,7 +531,7 @@ describe("deriveRegistrationAction", () => {
       "a cancelled row re-registers like a fresh one",
       { registration: row("cancelled") },
       {
-        free: { kind: "register", comped: false },
+        free: { kind: "register", comped: false, canWithdraw: false },
         approval: { kind: "requestToRegister", comped: false },
         paid: { kind: "pay", repeatDropFeesKept: false },
         paidApproval: { kind: "requestToRegister", comped: false },
@@ -534,7 +544,7 @@ describe("deriveRegistrationAction", () => {
       "an earlier full refund for this event",
       { refundFlag: { repeatDropFeesKept: true } },
       {
-        free: { kind: "register", comped: false },
+        free: { kind: "register", comped: false, canWithdraw: false },
         approval: { kind: "requestToRegister", comped: false },
         paid: { kind: "pay", repeatDropFeesKept: true },
         paidApproval: { kind: "requestToRegister", comped: false },
@@ -544,7 +554,7 @@ describe("deriveRegistrationAction", () => {
       "the refund flag still loading",
       { refundFlag: undefined },
       {
-        free: { kind: "register", comped: false },
+        free: { kind: "register", comped: false, canWithdraw: false },
         approval: { kind: "requestToRegister", comped: false },
         paid: { kind: "pay", repeatDropFeesKept: false },
         paidApproval: { kind: "requestToRegister", comped: false },
@@ -554,9 +564,9 @@ describe("deriveRegistrationAction", () => {
       "a convention badge that comps this event",
       { badgeCompsThisEvent: true, refundFlag: { repeatDropFeesKept: true } },
       {
-        free: { kind: "register", comped: false },
+        free: { kind: "register", comped: false, canWithdraw: false },
         approval: { kind: "requestToRegister", comped: false },
-        paid: { kind: "register", comped: true },
+        paid: { kind: "register", comped: true, canWithdraw: false },
         paidApproval: { kind: "requestToRegister", comped: true },
       },
     ],
@@ -845,9 +855,13 @@ describe("deriveRegistrationAction", () => {
           },
         );
 
-        // Checkout re-checks capacity before resuming the player's own
-        // direct checkout (payments/checkout.ts), but not before an
-        // approved application's payment: the approval already checked it.
+        // Checkout re-checks capacity in direct mode (payments/checkout.ts),
+        // by the event's approval setting now, not the order's purpose: a
+        // post_approval order on an event switched back to direct mode is
+        // re-checked, and a registration order on one switched to approval
+        // mode is not. Approval mode trusts the approval's own check. Both
+        // orders run against both setups here, so the two toggles are
+        // covered.
         it.each(paidSetups)("%s: on a full event", (setup) => {
           expect(
             deriveFull(setup, {
@@ -858,7 +872,7 @@ describe("deriveRegistrationAction", () => {
           ).toEqual({
             kind: "completePayment",
             purpose: order.purpose,
-            blocked: order.purpose === "registration" ? "full" : null,
+            blocked: setup === "paid" ? "full" : null,
           });
         });
 
@@ -877,7 +891,7 @@ describe("deriveRegistrationAction", () => {
             ).toEqual({
               kind: "completePayment",
               purpose: order.purpose,
-              blocked: order.purpose === "registration" ? "full" : "missing",
+              blocked: setup === "paid" ? "full" : "missing",
             });
             expect(
               deriveFull(setup, {
@@ -910,7 +924,7 @@ describe("deriveRegistrationAction", () => {
                 order,
                 badgeCompsThisEvent: true,
               }),
-            ).toEqual({ kind: "register", comped: true });
+            ).toEqual({ kind: "register", comped: true, canWithdraw: true });
           },
         );
 

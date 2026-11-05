@@ -694,6 +694,7 @@ const rows: Array<[string, Scenario, Array<string>]> = [
     [
       'button: Register for this event',
       'note: 10 spots left · included with your convention badge',
+      withdraw,
     ],
   ],
   [

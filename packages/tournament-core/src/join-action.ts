@@ -25,8 +25,11 @@ export type RegistrationAction =
   | { kind: "signIn" }
   // registerSelf takes a seat. `comped`: a paid event the viewer's
   // convention badge covers (ADR 0004), so no payment is asked for. That
-  // includes a pending entry owing payment the badge started comping since.
-  | { kind: "register"; comped: boolean }
+  // includes a pending entry owing payment the badge started comping since;
+  // `canWithdraw` then, since the viewer already holds that entry and
+  // releasing it (cancelMyRegistration) is the other way out. False for a
+  // viewer with no entry.
+  | { kind: "register"; comped: boolean; canWithdraw: boolean }
   // registerSelf files an application for the Review Queue.
   | { kind: "requestToRegister"; comped: boolean }
   // createEntryCheckout: a paid event with no approval step.
@@ -67,11 +70,12 @@ export type RegistrationAction =
 // - "closed": registration closed before they paid, so nothing is left to
 //   do, withdrawal included.
 // - "full": the event filled before they paid. Checkout re-checks capacity
-//   before resuming the player's own direct checkout (payments/checkout.ts),
-//   but not before an approved application's payment, which the approval
-//   already checked. registerSelf checks it before seating an entry the
-//   viewer's badge now comps, whatever the order. A badge would not help,
-//   so this outranks the gate.
+//   in direct mode (payments/checkout.ts), by the event's approval setting
+//   as it stands now rather than the order's purpose: an approval switched
+//   off since re-checks, one switched on since does not. Approval mode
+//   skips it, since the approval already checked. registerSelf checks it
+//   before seating an entry the viewer's badge now comps, whatever the
+//   order. A badge would not help, so this outranks the gate.
 // - a badge gate reason: the badge stopped admitting the event after the
 //   entry existed (a cancelled badge, a rescheduled event).
 // The server still lets the viewer withdraw while registration is open.
@@ -104,8 +108,10 @@ export type JoinAction =
   | { kind: "loading" }
   | { kind: "signIn" }
   // registerSelf takes a seat. `comped`: a paid event the viewer's
-  // convention badge covers (ADR 0004), so no payment is asked for.
-  | { kind: "register"; comped: boolean }
+  // convention badge covers (ADR 0004), so no payment is asked for;
+  // `canWithdraw` when the viewer already holds the pending entry this
+  // seats (RegistrationAction).
+  | { kind: "register"; comped: boolean; canWithdraw: boolean }
   // registerSelf files an application for the Review Queue.
   | { kind: "requestToRegister"; comped: boolean }
   // createEntryCheckout: a paid event with no approval step.
@@ -308,13 +314,17 @@ function deriveForViewer(
         // seats the entry free and closes the order (model/roster.ts
         // registerEntry), checking capacity like any seat it takes.
         const comped = badgeCompsThisEvent;
+        // Checkout re-checks capacity in direct mode, by the event's
+        // setting now, not the order's purpose (PaymentBlock).
+        const capacityChecked =
+          comped || !tournament.registrationRequiresApproval;
         const blocked: PaymentBlock = !open
           ? "closed"
-          : spotsLeft === 0 && (comped || order.purpose === "registration")
+          : spotsLeft === 0 && capacityChecked
             ? "full"
             : badgeGate;
         if (comped && blocked === null) {
-          return { kind: "register", comped: true };
+          return { kind: "register", comped: true, canWithdraw: true };
         }
         return { kind: "completePayment", purpose: order.purpose, blocked };
       }
@@ -326,7 +336,7 @@ function deriveForViewer(
       // sweep that withdraws a pending entry behind the order it closes
       // (payments/refunds.ts closeOpenOrdersSweep) covers only the current
       // payment attempt, and runs only when the event starts or is
-      // cancelled, or its convention's lifecycle moves on.
+      // cancelled (the convention sweep closes badge orders, not entries).
       return { kind: "pendingReview", canWithdraw: open };
     }
     case "waitlisted":
@@ -367,5 +377,5 @@ function deriveForViewer(
       repeatDropFeesKept: refundFlag?.repeatDropFeesKept ?? false,
     };
   }
-  return { kind: "register", comped };
+  return { kind: "register", comped, canWithdraw: false };
 }

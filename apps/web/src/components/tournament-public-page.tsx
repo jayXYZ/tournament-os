@@ -637,6 +637,12 @@ function RegistrationPanel({
                 ? ` · ${formatCents(feePreview.totalCents)} due after approval`
                 : null}
           </p>
+          {/* The viewer already holds the pending entry this seats (its
+              badge now comps the payment it owed); releasing it is the
+              other way out. */}
+          {action.kind === 'register' && action.canWithdraw
+            ? withdrawButton
+            : null}
         </div>
       )
     }

@@ -296,6 +296,8 @@ function ActionSection({
             {spots}
             {action.comped ? " · included with your convention badge" : ""}
           </Text>
+          {/* The viewer already holds the pending entry this seats. */}
+          {action.canWithdraw ? withdrawButton : null}
         </View>
       );
     case "requestToRegister":
