@@ -365,8 +365,11 @@ A Participant's registration for a convention itself, with one Ticket Type
 and at most one badge per participant per convention. A badge has an Entry
 Status but no competitive state. When a convention requires badges, a
 confirmed badge whose admission window covers the Child Event's start is
-the admission gate for self-serve registration. Cancelling a badge never
-revokes event registrations already made, and organizer actions bypass the gate.
+the admission gate for self-serve registration. The gate holds even when the
+viewer may not see the convention (private or unpublished): the Child Event's
+page and the refusal say a badge is required without naming the convention.
+Cancelling a badge never revokes event registrations already made, and
+organizer actions bypass the gate.
 _Avoid_: convention registration (in UI copy), ticket
 
 **Ticket Type**:

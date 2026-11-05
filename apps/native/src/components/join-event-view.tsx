@@ -1,5 +1,4 @@
 import {
-  badgeGateFor,
   deriveJoinAction,
   mutationErrorMessage,
   useCancelMyRegistration,
@@ -56,7 +55,15 @@ export function JoinEventView({
   // is the event page, which switches to the match view by itself.
   onOpenEvent?: () => void;
 }) {
-  const { tournament, organizationName, registeredCount, convention } = event;
+  // `convention` is null for a standalone event and for a parent the viewer
+  // may not open; `badgeGate` holds either way (getPublicTournament).
+  const {
+    tournament,
+    organizationName,
+    registeredCount,
+    convention,
+    badgeGate,
+  } = event;
   const isPaid = (tournament.entryFeeCents ?? 0) > 0;
   const spotsLeft = Math.max(tournament.playerCapacity - registeredCount, 0);
 
@@ -78,7 +85,7 @@ export function JoinEventView({
     signedIn,
     registration,
     order,
-    badgeGate: badgeGateFor(convention),
+    badgeGate,
     badgeCompsThisEvent: convention?.myBadgeCompsThisEvent ?? false,
     spotsLeft,
   });
@@ -371,18 +378,23 @@ function ActionSection({
       );
     case "closed":
       return <View style={styles.section}>{closedNote}</View>;
-    case "badgeBlocked": {
-      const name = conventionName ?? "convention";
+    // A parent the viewer may not open (conventionName null) is neither
+    // named nor linked.
+    case "badgeBlocked":
       return (
         <View style={styles.section}>
           <Text style={styles.muted}>
-            {action.reason === "missing"
-              ? `This event requires a confirmed ${name} badge — register for the convention first.`
-              : `Your ${name} badge does not cover this event’s date — upgrade your badge first.`}
+            {conventionName === null
+              ? action.reason === "missing"
+                ? "This event requires a confirmed convention badge."
+                : "Your convention badge does not cover this event’s date."
+              : action.reason === "missing"
+                ? `This event requires a confirmed ${conventionName} badge — register for the convention first.`
+                : `Your ${conventionName} badge does not cover this event’s date — upgrade your badge first.`}
           </Text>
-          {conventionUrl ? (
+          {conventionName !== null && conventionUrl ? (
             <Button
-              label={`Open ${name} on the web`}
+              label={`Open ${conventionName} on the web`}
               variant="outline"
               onPress={() => onOpenWeb(conventionUrl)}
             />
@@ -390,7 +402,6 @@ function ActionSection({
           {action.canWithdraw ? withdrawButton : null}
         </View>
       );
-    }
   }
 }
 

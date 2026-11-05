@@ -1,7 +1,6 @@
 import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
 import {
-  badgeGateFor,
   deriveRegistrationAction,
   mutationErrorMessage,
   useMyRefundFlag,
@@ -107,6 +106,7 @@ export function TournamentPublicPageContent({
       organizationName={event.organizationName}
       registeredCount={event.registeredCount}
       convention={event.convention}
+      badgeGate={event.badgeGate}
       inviteCode={inviteCode}
     />
   )
@@ -117,19 +117,24 @@ function TournamentDetails({
   organizationName,
   registeredCount,
   convention,
+  badgeGate,
   inviteCode,
 }: {
   tournament: Tournament
   organizationName: string | null
   registeredCount: number
+  // Null for a standalone event, and for a convention the viewer may not
+  // open (getPublicTournament): its name and code must not leak here.
   convention: ConventionSummary | null
+  // The server's badge-gate verdict, independent of whether the convention
+  // summary is shown. The notice and the registration panel both read it,
+  // so they can never disagree: registerSelf and beginEntryCheckout both
+  // reject a gated viewer, so the panel must not offer a button that
+  // reaches them.
+  badgeGate: BadgeGate
   inviteCode?: string
 }) {
   const spotsLeft = Math.max(tournament.playerCapacity - registeredCount, 0)
-  // Resolved once here so the notice and the registration panel can never
-  // disagree: registerSelf and beginEntryCheckout both reject a gated
-  // viewer, so the panel must not offer a button that reaches them.
-  const badgeGate = badgeGateFor(convention)
 
   return (
     <article className="flex flex-col gap-4">
@@ -190,11 +195,17 @@ function TournamentDetails({
           ) : null}
         </div>
         <Separator />
-        {convention &&
-        badgeGate !== null &&
-        tournament.lifecycle === 'registration' ? (
+        {badgeGate !== null && tournament.lifecycle === 'registration' ? (
           <p className="rounded-md border bg-muted/50 px-4 py-3 text-sm text-muted-foreground">
-            {badgeGate === 'missing' ? (
+            {convention === null ? (
+              // A parent the viewer may not open: say what stands in the
+              // way without naming or linking it.
+              badgeGate === 'missing' ? (
+                'This event requires a confirmed convention badge.'
+              ) : (
+                "Your convention badge does not cover this event's date."
+              )
+            ) : badgeGate === 'missing' ? (
               <>
                 This event requires a confirmed {convention.name} badge —{' '}
                 <Link
@@ -542,7 +553,8 @@ function RegistrationPanel({
     case 'full':
       return fullButton
 
-    // The notice above the panel links to the convention page.
+    // The notice above the panel says what to do, linking the convention
+    // page when the viewer may open it.
     case 'badgeBlocked':
       return (
         <div className="flex flex-wrap items-center gap-3">

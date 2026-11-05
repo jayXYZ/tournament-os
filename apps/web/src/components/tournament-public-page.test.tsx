@@ -158,11 +158,9 @@ type Order = {
 type Convention = {
   name: string
   publicCode: string
-  badgeRequiredForChildEvents: boolean
-  myBadgeStatus: Doc<'tournamentRegistrations'>['entryStatus'] | null
   myBadgeCompsThisEvent: boolean
-  myBadgeCoversThisEvent: boolean
 }
+type BadgeGate = 'missing' | 'wrong_day' | null
 
 type Scenario = {
   lifecycle?: Lifecycle
@@ -175,6 +173,7 @@ type Scenario = {
   refundFlag?: { repeatDropFeesKept: boolean } | undefined
   feePreview?: 'loaded' | 'loading'
   convention?: Convention | null
+  badgeGate?: BadgeGate
 }
 
 function tournament(scenario: Scenario): Doc<'tournaments'> {
@@ -210,6 +209,7 @@ function setScenario(scenario: Scenario) {
     organizationName: null,
     registeredCount: capacity - (scenario.spotsLeft ?? 10),
     convention: scenario.convention ?? null,
+    badgeGate: scenario.badgeGate ?? null,
   }
   state.answers.viewer = scenario.viewer ?? 'ready'
   state.answers.registration =
@@ -238,21 +238,24 @@ const order = (
   cancelOutcome: Order['cancelOutcome'] = null,
 ): Order => ({ status: orderStatus, purpose, cancelOutcome })
 
-const convention = (overrides: Partial<Convention> = {}): Convention => ({
+// The convention summary and the server's badge-gate verdict, as
+// getPublicTournament ships them (model/conventions.ts childEventBadgeGate
+// decides the verdict).
+const summerCon: Convention = {
   name: 'Summer Con',
   publicCode: 'SUMCON',
-  badgeRequiredForChildEvents: true,
-  myBadgeStatus: 'confirmed',
   myBadgeCompsThisEvent: false,
-  myBadgeCoversThisEvent: true,
-  ...overrides,
-})
-const noBadge = convention({ myBadgeStatus: null })
-const wrongDayBadge = convention({ myBadgeCoversThisEvent: false })
-const compingBadge = convention({
-  badgeRequiredForChildEvents: false,
-  myBadgeCompsThisEvent: true,
-})
+}
+const noBadge = { convention: summerCon, badgeGate: 'missing' } as const
+const wrongDayBadge = { convention: summerCon, badgeGate: 'wrong_day' } as const
+const admittingBadge = { convention: summerCon, badgeGate: null } as const
+const compingBadge = {
+  convention: { ...summerCon, myBadgeCompsThisEvent: true },
+  badgeGate: null,
+} as const
+// A badge-gated parent the viewer may not open: no summary, still gated.
+const hiddenNoBadge = { convention: null, badgeGate: 'missing' } as const
+const hiddenWrongDay = { convention: null, badgeGate: 'wrong_day' } as const
 
 let root: Root
 let container: HTMLDivElement
@@ -355,6 +358,8 @@ const wrongDayNotice = [
   "note: Your Summer Con badge does not cover this event's date — upgrade your badge first.",
   'link(/conventions/SUMCON): upgrade your badge',
 ]
+const hiddenMissingNotice =
+  'note: This event requires a confirmed convention badge.'
 const missingBadgeButton = 'button(disabled): Convention badge required'
 const wrongDayButton = 'button(disabled): Your badge does not cover this date'
 const fullRefundNote = 'note: Cancelling refunds your payment in full.'
@@ -401,7 +406,7 @@ const rows: Array<[string, Scenario, Array<string>]> = [
   ],
   [
     'signed out on a badge-gated event',
-    { viewer: 'signedOut', convention: noBadge },
+    { viewer: 'signedOut', ...noBadge },
     [...missingBadgeNotice, 'button: Sign in to register', spots],
   ],
   [
@@ -460,7 +465,7 @@ const rows: Array<[string, Scenario, Array<string>]> = [
       paid: true,
       registration: confirmed('active'),
       order: null,
-      convention: compingBadge,
+      ...compingBadge,
     },
     [registered, cancel],
   ],
@@ -497,7 +502,7 @@ const rows: Array<[string, Scenario, Array<string>]> = [
   [
     // The notice above the panel reads the badge alone.
     'active on a badge-gated event without a badge',
-    { registration: confirmed('active'), convention: noBadge },
+    { registration: confirmed('active'), ...noBadge },
     [...missingBadgeNotice, registered, cancel],
   ],
 
@@ -683,7 +688,7 @@ const rows: Array<[string, Scenario, Array<string>]> = [
       approval: true,
       paid: true,
       order: order('requires_payment', 'post_approval'),
-      convention: compingBadge,
+      ...compingBadge,
     },
     [
       'button: Register for this event',
@@ -696,7 +701,7 @@ const rows: Array<[string, Scenario, Array<string>]> = [
       registration: pending(),
       paid: true,
       order: order('awaiting_payment', 'registration'),
-      convention: compingBadge,
+      ...compingBadge,
       spotsLeft: 0,
     },
     [directDueBadge, 'button(disabled): Tournament is full', withdraw],
@@ -708,7 +713,7 @@ const rows: Array<[string, Scenario, Array<string>]> = [
       approval: true,
       paid: true,
       order: order('requires_payment', 'post_approval'),
-      convention: wrongDayBadge,
+      ...wrongDayBadge,
     },
     [...wrongDayNotice, approvedBadge, wrongDayButton, withdraw],
   ],
@@ -718,7 +723,7 @@ const rows: Array<[string, Scenario, Array<string>]> = [
       registration: pending(),
       paid: true,
       order: order('awaiting_payment', 'registration'),
-      convention: noBadge,
+      ...noBadge,
     },
     [...missingBadgeNotice, directDueBadge, missingBadgeButton, withdraw],
   ],
@@ -860,7 +865,7 @@ const rows: Array<[string, Scenario, Array<string>]> = [
   ],
   [
     'a paid event the badge comps',
-    { paid: true, convention: compingBadge },
+    { paid: true, ...compingBadge },
     [
       'button: Register for this event',
       'note: 10 spots left · included with your convention badge',
@@ -868,7 +873,7 @@ const rows: Array<[string, Scenario, Array<string>]> = [
   ],
   [
     'a paid event in approval mode the badge comps',
-    { paid: true, approval: true, convention: compingBadge },
+    { paid: true, approval: true, ...compingBadge },
     [
       'button: Request to register',
       'note: 10 spots left · included with your convention badge',
@@ -876,12 +881,12 @@ const rows: Array<[string, Scenario, Array<string>]> = [
   ],
   [
     'a free event the badge would comp',
-    { convention: compingBadge },
+    { ...compingBadge },
     ['button: Register for this event', spots],
   ],
   [
     'a badge-gated event the badge admits',
-    { convention: convention() },
+    { ...admittingBadge },
     ['button: Register for this event', spots],
   ],
   ['registration closed', { lifecycle: 'in_progress' }, [closedNote]],
@@ -895,37 +900,61 @@ const rows: Array<[string, Scenario, Array<string>]> = [
   ],
   [
     'a full paid event the badge comps',
-    { spotsLeft: 0, paid: true, convention: compingBadge },
+    { spotsLeft: 0, paid: true, ...compingBadge },
     ['button(disabled): Tournament is full'],
   ],
   [
     'a full badge-gated event without a badge',
-    { spotsLeft: 0, convention: noBadge },
+    { spotsLeft: 0, ...noBadge },
     [...missingBadgeNotice, 'button(disabled): Tournament is full'],
   ],
   [
     'a badge-gated event without a badge',
-    { convention: noBadge },
-    [...missingBadgeNotice, missingBadgeButton, spots],
-  ],
-  [
-    'a badge-gated event with a pending badge',
-    { convention: convention({ myBadgeStatus: 'pending' }) },
+    { ...noBadge },
     [...missingBadgeNotice, missingBadgeButton, spots],
   ],
   [
     'a badge-gated event with a wrong-day badge',
-    { convention: wrongDayBadge },
+    { ...wrongDayBadge },
     [...wrongDayNotice, wrongDayButton, spots],
   ],
   [
     'a badge-gated paid event without a badge',
-    { paid: true, convention: noBadge },
+    { paid: true, ...noBadge },
     [...missingBadgeNotice, missingBadgeButton, spots],
   ],
   [
+    'a hidden badge-gated parent',
+    { ...hiddenNoBadge },
+    [hiddenMissingNotice, missingBadgeButton, spots],
+  ],
+  [
+    'a hidden badge-gated parent, signed out',
+    { viewer: 'signedOut', ...hiddenNoBadge },
+    [hiddenMissingNotice, 'button: Sign in to register', spots],
+  ],
+  [
+    'a hidden badge-gated parent with a wrong-day badge',
+    { ...hiddenWrongDay },
+    [
+      "note: Your convention badge does not cover this event's date.",
+      wrongDayButton,
+      spots,
+    ],
+  ],
+  [
+    'an unfinished direct checkout behind a hidden badge-gated parent',
+    {
+      registration: pending(),
+      paid: true,
+      order: order('awaiting_payment', 'registration'),
+      ...hiddenNoBadge,
+    },
+    [hiddenMissingNotice, directDueBadge, missingBadgeButton, withdraw],
+  ],
+  [
     'a badge-gated event after registration closed',
-    { convention: noBadge, lifecycle: 'in_progress' },
+    { ...noBadge, lifecycle: 'in_progress' },
     [closedNote],
   ],
 ]
@@ -973,7 +1002,7 @@ describe('RegistrationPanel actions', () => {
 
   test('a comped viewer registers directly, never through Checkout', async () => {
     state.registerSelf.mockResolvedValue('registration-1')
-    render({ paid: true, convention: compingBadge })
+    render({ paid: true, ...compingBadge })
     await click('Register for this event')
     expect(state.registerSelf).toHaveBeenCalledWith({
       tournamentId,
@@ -989,7 +1018,7 @@ describe('RegistrationPanel actions', () => {
       approval: true,
       paid: true,
       order: order('requires_payment', 'post_approval'),
-      convention: compingBadge,
+      ...compingBadge,
     })
     await click('Register for this event')
     expect(state.registerSelf).toHaveBeenCalledWith({
@@ -1103,7 +1132,7 @@ describe('RegistrationPanel actions', () => {
         registration: pending(),
         paid: true,
         order: order('awaiting_payment', 'registration'),
-        convention: noBadge,
+        ...noBadge,
       },
     ],
   ])('withdrawing %s calls cancelMyRegistration', async (_name, scenario) => {

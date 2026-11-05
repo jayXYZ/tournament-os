@@ -8,13 +8,14 @@ import {
   query,
   type QueryCtx,
 } from "../_generated/server";
-import {
-  currentUserOrNull,
-  getActiveMembership,
-  requireActiveMembership,
-} from "../model/access";
+import { currentUserOrNull, requireActiveMembership } from "../model/access";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "../model/batching";
-import { badgeChildEventAdmission, badgeForUser } from "../model/conventions";
+import {
+  badgeChildEventAdmission,
+  badgeForUser,
+  childEventBadgeGate,
+  conventionVisibleTo,
+} from "../model/conventions";
 import { deleteTournamentOperationalDataBatch } from "../model/deletion";
 import { userError } from "../model/errors";
 import { phasesInOrder, writePhases } from "../model/phases";
@@ -36,7 +37,6 @@ import {
   canViewTournament,
   cleanName,
   createTournament as createTournamentModel,
-  isPubliclyViewable,
   listTournamentsForOrganization,
   requireOrganizerAccess,
   requirePreStartEditable,
@@ -143,23 +143,23 @@ export const getPublicTournament = query({
 
     const organization = await ctx.db.get(tournament.organizationId);
 
-    // The owning convention's summary plus the viewer's own badge status,
-    // so the public page can show "Part of {Convention}" and — on a
-    // badge-gated child event — say up front whether registering will be
-    // refused (registerSelf/beginEntryCheckout enforce the gate
-    // authoritatively; this is the honest warning, not the gate). Included
+    // The owning convention's summary, and — on a badge-gated child event
+    // — whether registering will be refused, so the public page can show
+    // "Part of {Convention}" and say up front what stands in the way
+    // (registerSelf/beginEntryCheckout enforce the gate authoritatively;
+    // this is the honest warning, not the gate). The summary is included
     // only for viewers who could open the convention page themselves
-    // (getPublicConvention's rule: publicly viewable, organizing team, or a
-    // badge holder) — a private or unpublished parent must not leak its
-    // name and code through a public child event.
+    // (conventionVisibleTo, getPublicConvention's rule: publicly viewable,
+    // organizing team, or a badge holder) — a private or unpublished parent
+    // must not leak its name and code through a public child event. The
+    // gate is not: a hidden parent still refuses the viewer, so the page
+    // says a badge is required without naming the convention.
     let convention: {
       name: string;
       publicCode: string;
-      badgeRequiredForChildEvents: boolean;
-      myBadgeStatus: Doc<"conventionRegistrations">["entryStatus"] | null;
       myBadgeCompsThisEvent: boolean;
-      myBadgeCoversThisEvent: boolean;
     } | null = null;
+    let badgeGate: "missing" | "wrong_day" | null = null;
     if (tournament.conventionId !== undefined) {
       const owningConvention = await ctx.db.get(tournament.conventionId);
       if (owningConvention) {
@@ -167,35 +167,34 @@ export const getPublicTournament = query({
         const badge = user
           ? await badgeForUser(ctx, owningConvention._id, user._id)
           : null;
-        const parentVisible =
-          isPubliclyViewable(owningConvention) ||
-          badge !== null ||
-          (user !== null &&
-            (await getActiveMembership(
-              ctx,
-              owningConvention.organizationId,
-              user._id,
-            )) !== null);
-        if (parentVisible) {
-          // Whether the viewer's confirmed badge comps this event (ADR
-          // 0004), so a paid event's page offers free direct registration
-          // instead of Checkout, and whether its pass admits the event's
-          // day, so a badge-gated page can warn a wrong-day pass holder
-          // before they click Register — registerSelf and beginEntryCheckout
-          // enforce both authoritatively; these only pick the UI.
-          const badgeAdmission = await badgeChildEventAdmission(
+        // Whether the viewer's confirmed badge comps this event (ADR 0004),
+        // so a paid event's page offers free direct registration instead
+        // of Checkout, and whether its pass admits the event's day, so a
+        // badge-gated page can warn a wrong-day pass holder before they
+        // click Register — registerSelf and beginEntryCheckout enforce both
+        // authoritatively; these only pick the UI.
+        const badgeAdmission = await badgeChildEventAdmission(
+          ctx,
+          tournament,
+          badge,
+        );
+        badgeGate = childEventBadgeGate(
+          owningConvention,
+          badge,
+          badgeAdmission.coversThisEvent,
+        );
+        if (
+          await conventionVisibleTo(
             ctx,
-            tournament,
+            owningConvention,
+            user?._id ?? null,
             badge,
-          );
+          )
+        ) {
           convention = {
             name: owningConvention.name,
             publicCode: owningConvention.publicCode,
-            badgeRequiredForChildEvents:
-              owningConvention.badgeRequiredForChildEvents,
-            myBadgeStatus: badge?.entryStatus ?? null,
             myBadgeCompsThisEvent: badgeAdmission.compsThisEvent,
-            myBadgeCoversThisEvent: badgeAdmission.coversThisEvent,
           };
         }
       }
@@ -206,6 +205,7 @@ export const getPublicTournament = query({
       organizationName: organization?.name ?? null,
       registeredCount: tournament.confirmedRegistrationCount,
       convention,
+      badgeGate,
     };
   },
 });

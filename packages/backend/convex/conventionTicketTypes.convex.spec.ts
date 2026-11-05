@@ -782,15 +782,20 @@ test("the badge gate requires the pass's admission window to cover the child eve
   ).rejects.toThrow(/does not cover/);
 
   // The public page's flag warns the wrong-day pass holder before they
-  // click Register; an unrestricted pass covers the event.
+  // click Register; an unrestricted pass covers the event, and no badge at
+  // all reads as missing.
   const publicCode = (await t.run(async (ctx) => ctx.db.get(tournamentId)))!
     .publicCode;
-  const playerView = (await player.query(
-    api.tournaments.lifecycle.getPublicTournament,
-    { publicCode },
-  ))!.convention!;
-  expect(playerView.myBadgeStatus).toBe("confirmed");
-  expect(playerView.myBadgeCoversThisEvent).toBe(false);
+  expect(
+    (await player.query(api.tournaments.lifecycle.getPublicTournament, {
+      publicCode,
+    }))!.badgeGate,
+  ).toBe("wrong_day");
+  expect(
+    (await t.query(api.tournaments.lifecycle.getPublicTournament, {
+      publicCode,
+    }))!.badgeGate,
+  ).toBe("missing");
 
   await insertPlayerUser(t, 2);
   const weekender = t.withIdentity(playerIdentity(2));
@@ -801,8 +806,8 @@ test("the badge gate requires the pass's admission window to cover the child eve
   expect(
     (await weekender.query(api.tournaments.lifecycle.getPublicTournament, {
       publicCode,
-    }))!.convention!.myBadgeCoversThisEvent,
-  ).toBe(true);
+    }))!.badgeGate,
+  ).toBeNull();
 });
 
 test("a ticket type with registrations cannot be deleted; an unused one can", async () => {

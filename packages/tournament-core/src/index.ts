@@ -50,11 +50,7 @@ export {
   matchResultKindLabel,
   standingStatusLabel,
 } from "./format";
-export {
-  badgeGateFor,
-  deriveJoinAction,
-  deriveRegistrationAction,
-} from "./join-action";
+export { deriveJoinAction, deriveRegistrationAction } from "./join-action";
 export type {
   BadgeGate,
   JoinAction,

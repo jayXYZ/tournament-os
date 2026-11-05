@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  badgeGateFor,
-  deriveJoinAction,
-  deriveRegistrationAction,
-} from "./join-action.ts";
+import { deriveJoinAction, deriveRegistrationAction } from "./join-action.ts";
 import type {
   JoinAction,
   JoinActionInput,
@@ -12,7 +8,6 @@ import type {
   RegistrationActionInput,
   SeatAction,
 } from "./join-action.ts";
-import type { PlayerTournamentEvent } from "./player-access.ts";
 
 type Setup = "free" | "approval" | "paid" | "paidApproval";
 
@@ -416,45 +411,6 @@ describe("deriveJoinAction", () => {
         ).toEqual({ kind: "closed" });
       },
     );
-  });
-});
-
-describe("badgeGateFor", () => {
-  const convention = (
-    overrides: Partial<NonNullable<PlayerTournamentEvent["convention"]>>,
-  ): PlayerTournamentEvent["convention"] => ({
-    name: "Summer Con",
-    publicCode: "SUMCON",
-    badgeRequiredForChildEvents: true,
-    myBadgeStatus: "confirmed",
-    myBadgeCompsThisEvent: false,
-    myBadgeCoversThisEvent: true,
-    ...overrides,
-  });
-
-  it.each<
-    [
-      string,
-      PlayerTournamentEvent["convention"],
-      ReturnType<typeof badgeGateFor>,
-    ]
-  >([
-    ["a standalone event", null, null],
-    [
-      "a convention that doesn't require badges",
-      convention({ badgeRequiredForChildEvents: false, myBadgeStatus: null }),
-      null,
-    ],
-    ["no badge", convention({ myBadgeStatus: null }), "missing"],
-    ["a pending badge", convention({ myBadgeStatus: "pending" }), "missing"],
-    [
-      "a badge for another day",
-      convention({ myBadgeCoversThisEvent: false }),
-      "wrong_day",
-    ],
-    ["a badge that covers the event", convention({}), null],
-  ])("%s", (_name, input, expected) => {
-    expect(badgeGateFor(input)).toBe(expected);
   });
 });
 

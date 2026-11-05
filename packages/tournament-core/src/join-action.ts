@@ -139,23 +139,13 @@ type EntryOrderPurpose = EntryOrder["purpose"];
 type CancelOutcome = EntryOrder["cancelOutcome"];
 type Participation = NonNullable<PlayerRegistration["participationStatus"]>;
 
-type ConventionSummary = PlayerTournamentEvent["convention"];
-
 // Why a badge-gated child event refuses the viewer's self-serve entry
 // (model/conventions.ts resolveChildEventAdmission): no confirmed badge, or
 // a pass that does not admit the event's day. Null when nothing stands in
-// the way.
-export type BadgeGate = "missing" | "wrong_day" | null;
-
-export function badgeGateFor(convention: ConventionSummary): BadgeGate {
-  if (convention === null || !convention.badgeRequiredForChildEvents) {
-    return null;
-  }
-  if (convention.myBadgeStatus !== "confirmed") {
-    return "missing";
-  }
-  return convention.myBadgeCoversThisEvent ? null : "wrong_day";
-}
+// the way. getPublicTournament computes it server-side, so it holds even
+// when the viewer may not see the parent convention (and the page shows no
+// convention summary).
+export type BadgeGate = PlayerTournamentEvent["badgeGate"];
 
 export type RegistrationActionInput = {
   tournament: Pick<
@@ -179,8 +169,10 @@ export type RegistrationActionInput = {
     | undefined;
   // getMyRefundFlag: undefined while it loads.
   refundFlag: { repeatDropFeesKept: boolean } | null | undefined;
+  // getPublicTournament's badgeGate.
   badgeGate: BadgeGate;
-  // getPublicTournament's convention.myBadgeCompsThisEvent.
+  // getPublicTournament's convention.myBadgeCompsThisEvent, false when it
+  // has no convention summary.
   badgeCompsThisEvent: boolean;
   spotsLeft: number;
 };
