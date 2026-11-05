@@ -8,9 +8,11 @@ moved the order query and clock hooks into PR 2a and added the PR 4
 cancel/dismiss handling and the PR 2b camera lifecycle. Their verdicts,
 findings, and suggested phase order are folded in below.
 
-Status: PR 0, PR 1, PR 2a, and PR 3 are built (PR 3 on
-`qr/web-panel-derivation`, stacked on `qr/verify-join`). PR 2b (the scanner)
-is next.
+Status: PR 0, PR 1, PR 2a, PR 3, and PR 2b are built (PR 3 on
+`qr/web-panel-derivation`, stacked on `qr/verify-join`; PR 2b on
+`qr/native-scanner`, stacked on `qr/web-panel-derivation`). PR 2b has run
+only on a simulator; its camera, torch, haptics, and scan lock still need
+the physical-device pass below.
 
 ## Goal
 
@@ -475,6 +477,47 @@ full | closed | badgeBlocked`.
 ## PR 2b: native scanner
 
 Needs a dev-client rebuild and physical devices (expo-camera is device-only).
+
+**As built** (`qr/native-scanner`), where it differs from the steps below:
+
+- The scanner is a full-screen card that slides up from the bottom
+  (`animation: "slide_from_bottom"`, back gesture off, closed by its own
+  button), not a `fullScreenModal`. The native stack presents every screen
+  pushed after a modal as a modal too (`getModalRouteKeys`), so the join
+  screen came up as a page sheet with no back arrow, and an explicit
+  `card` presentation would have pushed it underneath the modal. As a card,
+  the join screen pushes above the scanner with a "Scan" back arrow, as it
+  does above home.
+- The scan decision is a pure function, `scanIntake` in
+  `@paper-pairings/shared/scan-intake`, with vitest tests. The camera and
+  "Type a code instead" both go through it, so typed text is parsed by
+  `parseAppLink` like a scan: text that is neither a join link nor a 6- or
+  10-character code gets the "Not a Paper Pairings code" toast instead of a
+  server lookup. The server's normalizer still decides the code.
+- The repeat window slides: the same data is ignored until it has been out
+  of view for 1.5 s, so a foreign QR code held in view toasts once. Re-arming
+  restarts the window for the last read, so a phone still pointed at the
+  poster that opened the join screen doesn't push straight back into it.
+  Typed text respects the lock but not the window.
+- Focus comes from expo-router's own `useIsFocused` export, so
+  `@react-navigation/native` stays out of the native app's dependencies.
+- The torch goes off whenever the camera does: on blur, and also when the
+  app leaves the foreground, so it never comes back on by itself.
+- The haptic fires on a camera scan only, not on a typed code.
+- The permission is re-read whenever the app returns to the foreground, so
+  camera access granted in Settings takes effect on return. If the camera
+  fails to start (`onMountError`), the viewfinder says so and points to
+  typing.
+- Android's Scan icon is expo-symbols' Material `qr_code_scanner` (SDK 56
+  renders Material Symbols on Android); the text fallback covers web.
+- The Scan button is on the signed-in home only. A signed-out player
+  reaches the join screen through a link or the phone's camera app.
+- `expo install` through the pnpm filter re-resolved unrelated peer
+  suffixes in the lockfile, so the committed lockfile comes from a root
+  `pnpm install` over the two added dependencies, a pure addition.
+- The Maestro suite gained four scanner flows (18 to 21), a never-registered
+  "newcomer" test user for home's empty state, and a `CAMERA_PERMISSION`
+  variable on every launch.
 
 1. **Install:**
    `pnpm --filter @paper-pairings/native exec expo install expo-camera expo-haptics`.

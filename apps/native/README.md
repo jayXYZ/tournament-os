@@ -119,10 +119,10 @@ one. A release build (`__DEV__` false) renders a refusal and does nothing.
 
 ## Device E2E (Maestro)
 
-The join screen's deep-link matrix runs as [Maestro](https://maestro.dev)
-flows on an iOS simulator, with no camera: `e2e/flows/` holds one flow per
-scenario (`docs/plans/qr-join.md`, "Verification") and `e2e/run.mjs` drives
-them.
+The join screen's deep-link matrix and the scanner's simulator-reachable
+paths run as [Maestro](https://maestro.dev) flows on an iOS simulator, with
+no camera: `e2e/flows/` holds one flow per scenario
+(`docs/plans/qr-join.md`, "Verification") and `e2e/run.mjs` drives them.
 
 ```sh
 pnpm dev:native                                  # Metro, in its own terminal
@@ -132,7 +132,9 @@ pnpm --filter @paper-pairings/native e2e:ios 05-comped.yaml 14-signed-out-then-s
 
 Each run:
 
-1. finds or creates the Clerk user `e2e-native-player@example.com`;
+1. finds or creates the Clerk users `e2e-native-player@example.com` and
+   `e2e-native-newcomer@example.com` (never registered for anything, so the
+   scanner flows can reach home's empty state);
 2. seeds a fresh organization and its events on the dev deployment named by
    `packages/backend/.env.local` (it refuses anything but a `dev:`
    deployment), through the public mutations called with
@@ -141,13 +143,18 @@ Each run:
    off a Clerk development instance;
 3. serves single-use sign-in tickets on a loopback port for the flows'
    sign-in step, so `CLERK_SECRET_KEY` never reaches Maestro;
-4. runs `maestro test` against the booted simulator.
+4. runs `maestro test` against the booted simulator, with the camera
+   permission allowed on every launch unless a flow sets
+   `CAMERA_PERMISSION` (`deny` or `unset`; `flows/subflows/launch.yaml`).
 
 Prerequisites:
 
 - Xcode with a booted iPhone simulator (`xcrun simctl boot <udid>`; pick one
   with `E2E_DEVICE=<udid>` when several are booted) and the dev client
-  installed on it (`pnpm --filter @paper-pairings/native ios`).
+  installed on it (`pnpm --filter @paper-pairings/native ios`). The scanner
+  added `expo-camera` and `expo-haptics`, so a dev client built before them
+  needs a rebuild (`expo prebuild --clean --platform ios`, then the same
+  command).
 - Metro running on `http://127.0.0.1:8081` (override with `E2E_METRO_URL`).
   The paid flows read `EXPO_PUBLIC_WEB_ORIGIN` the way Metro does (shell,
   then `.env.local`); start Metro and the runner with the same value.
@@ -163,9 +170,11 @@ Prerequisites:
 Runs accumulate organizations named `E2E Native Join <run id>` in the dev
 deployment; `pnpm db:wipe` clears them. Seeded paid events cannot take
 payment (their Stripe account is a stand-in), so the flows stop at the
-join screen's hand-off. Android, the camera scanner, haptics, the torch, and
-the Stripe round trip are not covered; they need an emulator or physical
-devices. Results are recorded in
+join screen's hand-off. The scanner flows cover its entry points, the
+permission explainer and refused state, and typed codes; the simulator has
+no camera, so its preview is black. Android, scanning a real QR code, the
+scan lock and re-arm, haptics, the torch, and the Stripe round trip are not
+covered; they need an emulator or physical devices. Results are recorded in
 [delivery status](../../docs/delivery-status.md).
 
 ## Monorepo notes
@@ -184,8 +193,10 @@ standings, match history, and decklists remain open in
 [roadmap section 8](../../TODO.md#8-event-day-outputs-and-client-parity).
 
 Free/approval joining at `/join/<code>` and a web payment handoff are built
-on `feat/qr-codes`, not merged into the audited `main`. The scanner, native
-payment return flow, and universal links remain planned. Do not treat those
+on `feat/qr-codes`, not merged into the audited `main`. The QR scanner
+(`/scan`, opened from home) is built on `qr/native-scanner`, stacked above
+it and not merged either; it has run only on a simulator, never on a phone.
+The native payment return flow and universal links remain planned. Do not treat those
 branch routes or environment variables as available in this checkout.
 
 The native build script and CI export iOS and Android bundles only. The web

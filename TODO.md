@@ -708,7 +708,15 @@ push, analytics, and monitoring should be independent consumers.
         scanner lands), and the client clock and `useStableQuery` moved into
         core
   - [ ] Add the native QR scanner (`expo-camera`; needs a dev-client
-        rebuild and physical devices)
+        rebuild and physical devices). Built on `qr/native-scanner` (not
+        merged): `/scan`, opened from home's header and its empty state,
+        with the viewfinder, torch, camera permission states, haptics, and
+        "Type a code instead", all through one pure intake
+        (`@paper-pairings/shared/scan-intake`) that never opens a foreign
+        URL. Its simulator-reachable paths passed in the Maestro suite at
+        `ba289b1` against the personal dev deployment, 2026-11-04
+        ([record](docs/delivery-status.md)); the camera itself is
+        unverified until the physical runs below. Unchecked until merged
   - [ ] Offer the targeted Claim from the join panel: when a Guest under the
         viewer's email holds the seat but the viewer's own row is absent and
         the event is full, closed, or badge-gated, both panels show the gate
@@ -743,8 +751,18 @@ push, analytics, and monitoring should be independent consumers.
           deployment, 2026-11-04 ([record](docs/delivery-status.md));
           unchecked until merged
     - [ ] Android emulator run (the recorded machine has no Android SDK)
-    - [ ] Physical iPhone and Android runs, adding the scanner, torch,
-          haptics, and camera permission (PR 2b) and the payment round trip
+    - [ ] iOS simulator scanner flows (PR 2b): the entry points, the
+          permission explainer and refused-state copy, and typed codes
+          (a foreign link's toast, a Public Code, a dashed invite, back to
+          the scanner) passed with the 17 join flows, 21/21 on an iPhone 17
+          Pro simulator (iOS 26.5) at `ba289b1` on `qr/native-scanner`,
+          2026-11-04 ([record](docs/delivery-status.md)); unchecked until
+          merged
+    - [ ] Physical iPhone and Android runs, adding what a simulator can't
+          reach: scanning a real Join QR and a foreign QR code, the scan
+          lock and re-arm, the camera and torch going off under the join
+          screen, the torch, haptics, and granting camera access in
+          Settings after a refusal (PR 2b), and the payment round trip
           (PR 4)
     - [ ] Run the suite in CI or EAS Workflows
 - [ ] Add real safe-area support to the web app chrome; ship all parts together
