@@ -7,6 +7,12 @@ appId: com.paperpairings.app
 ---
 - launchApp:
     stopApp: true
+    # Maestro allows every permission unless told otherwise; the camera
+    # follows CAMERA_PERMISSION (allow, deny, or unset), which run.mjs sets
+    # to allow and the scanner's permission flow overrides.
+    permissions:
+      all: allow
+      camera: ${CAMERA_PERMISSION}
 - extendedWaitUntil:
     visible: "Your tournaments|Sign in to follow your matches and standings live\\."
     timeout: 20000

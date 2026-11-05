@@ -1,12 +1,12 @@
 #!/usr/bin/env node
-// Runs the native join E2E (Maestro flows in ./flows) on a booted iOS
-// simulator: seeds one fresh set of events on the personal dev Convex
-// deployment, serves sign-in tickets for the test player, and hands both to
-// `maestro test`. Prerequisites and usage: apps/native/README.md, "Device
-// E2E (Maestro)".
+// Runs the native join and scanner E2E (Maestro flows in ./flows) on a
+// booted iOS simulator: seeds one fresh set of events on the personal dev
+// Convex deployment, serves sign-in tickets for the test player and the
+// newcomer, and hands both to `maestro test`. Prerequisites and usage:
+// apps/native/README.md, "Device E2E (Maestro)".
 //
 //   pnpm --filter @paper-pairings/native e2e:ios            # every flow
-//   pnpm --filter @paper-pairings/native e2e:ios 05-paid.yaml
+//   pnpm --filter @paper-pairings/native e2e:ios 03-paid.yaml
 //
 // Secrets stay in this process: CLERK_SECRET_KEY mints tickets here and only
 // single-use, five-minute tickets reach Maestro. Invite codes are passed to
@@ -32,6 +32,10 @@ const convexBin = path.join(repoRoot, "node_modules/.bin/convex");
 // The dev client's own scheme, `exp+<slug>` (app.config.ts slug).
 const DEV_CLIENT_SCHEME = "exp+paper-pairings-native";
 const PLAYER_EMAIL = "e2e-native-player@example.com";
+// A second player who is never registered for anything, so home shows its
+// empty state (the scanner's call to action there). The main player can't:
+// every run registers them for events that stay upcoming.
+const NEWCOMER_EMAIL = "e2e-native-newcomer@example.com";
 const DAY = 24 * 60 * 60 * 1000;
 
 function readEnvFile(file) {
@@ -152,33 +156,40 @@ async function clerk(method, pathname, body) {
   return await response.json();
 }
 
-async function findOrCreatePlayer() {
+async function findOrCreateUser(email, lastName) {
   const found = await clerk(
     "GET",
-    `/users?email_address=${encodeURIComponent(PLAYER_EMAIL)}`,
+    `/users?email_address=${encodeURIComponent(email)}`,
   );
   if (found.length > 0) {
     return found[0];
   }
   return await clerk("POST", "/users", {
-    email_address: [PLAYER_EMAIL],
+    email_address: [email],
     first_name: "E2E",
-    last_name: "Native Player",
+    last_name: lastName,
     skip_password_requirement: true,
   });
 }
 
 // One fresh ticket per request, for the flows' sign-in subflow
-// (flows/subflows/mint-ticket.js). Bound to loopback; Maestro's script
+// (flows/subflows/mint-ticket.js): `/ticket` for the player,
+// `/ticket/newcomer` for the newcomer. Bound to loopback; Maestro's script
 // engine runs on this machine, not in the simulator.
-async function startTicketServer(playerId) {
+async function startTicketServer(userIds) {
   const server = http.createServer((request, response) => {
-    if (request.method !== "POST" || request.url !== "/ticket") {
+    const userId =
+      request.method === "POST"
+        ? { "/ticket": userIds.player, "/ticket/newcomer": userIds.newcomer }[
+            request.url
+          ]
+        : undefined;
+    if (!userId) {
       response.writeHead(404).end();
       return;
     }
     clerk("POST", "/sign_in_tokens", {
-      user_id: playerId,
+      user_id: userId,
       expires_in_seconds: 300,
     }).then(
       ({ token }) => {
@@ -560,14 +571,22 @@ async function main() {
   const device = await bootedSimulator();
 
   console.log(`Seeding Convex deployment ${deployment}…`);
-  const player = await findOrCreatePlayer();
+  const player = await findOrCreateUser(PLAYER_EMAIL, "Native Player");
+  const newcomer = await findOrCreateUser(NEWCOMER_EMAIL, "Native Newcomer");
   const env = await seed(player);
-  const ticketServer = await startTicketServer(player.id);
+  const ticketServer = await startTicketServer({
+    player: player.id,
+    newcomer: newcomer.id,
+  });
   const { port } = ticketServer.address();
 
   const maestroEnv = {
     ...env,
     TICKET_URL: `http://127.0.0.1:${port}/ticket`,
+    NEWCOMER_TICKET_URL: `http://127.0.0.1:${port}/ticket/newcomer`,
+    // The camera permission every launch sets (flows/subflows/launch.yaml);
+    // the scanner's permission flow overrides it.
+    CAMERA_PERMISSION: "allow",
     WEB_ORIGIN: webOrigin,
     DEV_CLIENT_URL: `${DEV_CLIENT_SCHEME}://expo-development-client/?url=${encodeURIComponent(metroUrl)}`,
   };
