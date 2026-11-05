@@ -20,14 +20,26 @@ function requireDevelopmentDeployment() {
       "devSeed runs only on a development deployment (Clerk development instance)",
     );
   }
+  // Checkout charges the platform account, not the stand-in (see
+  // markOrganizationPayoutsReady), so a live key would take real money for
+  // a seeded paid event. Test-mode keys, or none, only.
+  const stripeKey = env.STRIPE_SECRET_KEY ?? "";
+  if (stripeKey.startsWith("sk_live_") || stripeKey.startsWith("rk_live_")) {
+    throw new Error(
+      "devSeed refuses a deployment with a live Stripe key (STRIPE_SECRET_KEY)",
+    );
+  }
 }
 
 // Paid events and paid ticket types require the organization's Stripe
 // account to be payouts-ready (model/payments.ts
 // requirePayoutsReadyOrganization), which only Connect onboarding produces.
 // This records a stand-in account so the public setup mutations accept a
-// fee. Checkout against it fails at Stripe, so seeded paid events can show
-// their join states but cannot take payment.
+// fee. Checkout does not involve it: the charge lands on the platform
+// account (separate charges and transfers, stripe/client.ts
+// createCheckoutSession), so with the deployment's test-mode key a seeded
+// paid event takes a test payment like any other. What fails is the payout,
+// whose transfer names the stand-in's made-up account id.
 export const markOrganizationPayoutsReady = internalMutation({
   args: { organizationId: v.id("organizations") },
   handler: async (ctx, args) => {

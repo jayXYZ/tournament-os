@@ -80,3 +80,25 @@ test("any other deployment refuses the seed", async () => {
   );
   expect(account).toBeNull();
 });
+
+// Checkout charges the platform account, never the stand-in (the stand-in
+// only fails at payout), so a live key would take real money for a seeded
+// paid event.
+test.each(["sk_live_example", "rk_live_example"])(
+  "a deployment whose Stripe key is live (%s) refuses the seed",
+  async (key) => {
+    vi.stubEnv(
+      "CLERK_JWT_ISSUER_DOMAIN",
+      "https://example-slug.clerk.accounts.dev",
+    );
+    vi.stubEnv("STRIPE_SECRET_KEY", key);
+    const t = createConvexTest();
+    const { organizationId } = await seedOrganizer(t);
+
+    await expect(
+      t.mutation(internal.devSeed.markOrganizationPayoutsReady, {
+        organizationId,
+      }),
+    ).rejects.toThrow(/live Stripe key/);
+  },
+);

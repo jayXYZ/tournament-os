@@ -140,7 +140,7 @@ Each run:
    deployment), through the public mutations called with
    `convex run --identity`, plus `devSeed:markOrganizationPayoutsReady`, a
    stand-in Stripe account that paid events need and that refuses to run
-   off a Clerk development instance;
+   off a Clerk development instance or with a live Stripe key;
 3. serves single-use sign-in tickets on a loopback port for the flows'
    sign-in step, so `CLERK_SECRET_KEY` never reaches Maestro;
 4. runs `maestro test` against the booted simulator, with the camera
@@ -168,9 +168,12 @@ Prerequisites:
   pushed (`pnpm --filter @paper-pairings/backend exec convex dev --once`).
 
 Runs accumulate organizations named `E2E Native Join <run id>` in the dev
-deployment; `pnpm db:wipe` clears them. Seeded paid events cannot take
-payment (their Stripe account is a stand-in), so the flows stop at the
-join screen's hand-off. The scanner flows cover its entry points, the
+deployment; `pnpm db:wipe` clears them. Seeded paid events use a stand-in
+Stripe account (`devSeed:markOrganizationPayoutsReady`). Checkout charges
+the platform account, so with the deployment's test-mode key they can take
+a test payment; only a payout to the stand-in fails, and the seed refuses a
+deployment with a live key. The flows stop at the join screen's hand-off
+regardless. The scanner flows cover its entry points, the
 permission explainer and refused state, and typed codes; the simulator has
 no camera, so its preview is black. Android, scanning a real QR code, the
 scan lock and re-arm, haptics, the torch, and the Stripe round trip are not
