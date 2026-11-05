@@ -708,7 +708,10 @@ describe("deriveRegistrationAction", () => {
       }
     }
 
-    // The server reads a missing status as active (model/participation.ts).
+    // As the server's standings and tallies read it (model/participation.ts).
+    // Its cancel rule needs an explicit status, so the server would refuse
+    // this cancel; every confirmation writes the status, so no stored row
+    // reaches it.
     it("a missing participation status reads as active", () => {
       expect(deriveFull("free", { registration: row("confirmed") })).toEqual({
         kind: "registered",
@@ -983,10 +986,10 @@ describe("deriveRegistrationAction", () => {
       });
     });
 
-    // The defensive fall-through (docs/plans/qr-join.md PR 3): the backend
-    // sweep withdraws the pending entry behind every order it closes, so
-    // this is no longer stored. A row the organizer is still reviewing
-    // carries awaitingReview; this one wouldn't, and still reads as pending.
+    // No payable order: the newest order belongs to an earlier attempt. A
+    // live application under a refunded order is one real case
+    // (paymentsRefunds.convex.spec.ts); every such row reads as pending
+    // review.
     it.each(
       paidSetups.flatMap((setup) =>
         (["expired", "canceled", "paid", "refunded"] as const).map(

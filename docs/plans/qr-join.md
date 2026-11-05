@@ -644,11 +644,14 @@ below:
     the audit line for direct rows, approved-but-unpaid rows, and both
     no-session cases; `conventionPayments.convex.spec.ts` pins the badge
     twin.
-  - The client fall-through stays as a defensive default. If PR 3's
-    characterization pass wants it pinned, `getMyRegistration` returns the
-    raw row, so `PlayerRegistration` carries `awaitingReview`: a pending row
-    without it is never under review and can derive `closed` instead of
-    `pendingReview`.
+  - The client fall-through still reads as `pendingReview`, and is not
+    merely defensive: the sweep's invariant covers the current payment
+    attempt, not every pending row with a terminal order.
+    `getMyEntryOrder` returns the registration's newest order, so a player
+    who paid, cancelled for a refund, and re-applied holds a live
+    application under a `refunded` order
+    (`paymentsRefunds.convex.spec.ts`). The sweep runs only on event start
+    or cancel and convention lifecycle changes. (Review fix, `qr/review-fixes`.)
 
 ## PR 4: native payment
 

@@ -48,9 +48,13 @@ export type RegistrationAction =
   // registration is open (cancelMyRegistration).
   | { kind: "pendingReview"; canWithdraw: boolean }
   | { kind: "waitlisted"; canWithdraw: boolean }
-  // A confirmed seat. `participation` is where the player stands since (a
-  // missing status reads as active, as the server reads it); `next` is what
-  // the seat allows now.
+  // A confirmed seat. `participation` is where the player stands since;
+  // `next` is what the seat allows now. A missing status reads as active,
+  // as the server's standings and tallies read it (model/participation.ts).
+  // The server's cancel rule does not: registrationCancelEffect needs an
+  // explicit "active" or "dropped", so on such a row the cancel offered
+  // here would be refused. Unreachable today: every confirmation writes the
+  // status.
   | { kind: "registered"; participation: Participation; next: SeatAction }
   | { kind: "rejected" }
   | { kind: "full" }
@@ -314,10 +318,15 @@ function deriveForViewer(
         }
         return { kind: "completePayment", purpose: order.purpose, blocked };
       }
-      // A defensive default: the backend sweep withdraws the pending entry
-      // behind every order it closes (docs/plans/qr-join.md PR 3), so a
-      // pending row on a paid event with an unpayable order is no longer
-      // stored.
+      // No payable order. getMyEntryOrder returns the registration's
+      // newest order, whatever attempt it belonged to, so a terminal one
+      // here can sit under a live application: a player who paid,
+      // cancelled for a refund, and re-applied holds a pending application
+      // under a `refunded` order (paymentsRefunds.convex.spec.ts). The
+      // sweep that withdraws a pending entry behind the order it closes
+      // (payments/refunds.ts closeOpenOrdersSweep) covers only the current
+      // payment attempt, and runs only when the event starts or is
+      // cancelled, or its convention's lifecycle moves on.
       return { kind: "pendingReview", canWithdraw: open };
     }
     case "waitlisted":

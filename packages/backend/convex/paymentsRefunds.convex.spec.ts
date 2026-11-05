@@ -353,6 +353,46 @@ test("first player cancel refunds in full with the organizer absorbing the fee; 
   );
 });
 
+// getMyEntryOrder reads the registration's newest order, whatever attempt
+// it belonged to: a player who paid, cancelled for a refund, and re-applied
+// once the event moved to approval mode holds a live application whose
+// order is the old, refunded one. The join derivation's pending
+// fall-through (deriveRegistrationAction) renders it as pending review.
+test("a re-application after a refunded entry reads the refunded order while under review", async () => {
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const tournamentId = await seedPaidTournament(t, organizationId);
+  const asPlayer = t.withIdentity(playerOne);
+
+  const orderId = await payForEntry(t, tournamentId, "one");
+  await asPlayer.mutation(api.tournaments.registrations.cancelMyRegistration, {
+    tournamentId,
+  });
+  await runQueuedRefund(t, orderId);
+
+  await t
+    .withIdentity(organizerIdentity)
+    .mutation(api.tournaments.lifecycle.updateTournamentSetup, {
+      tournamentId,
+      registrationRequiresApproval: true,
+    });
+  await asPlayer.mutation(api.tournaments.registrations.registerSelf, {
+    tournamentId,
+  });
+
+  expect(
+    await asPlayer.query(api.tournaments.registrations.getMyRegistration, {
+      tournamentId,
+    }),
+  ).toMatchObject({ entryStatus: "pending", awaitingReview: true });
+  expect(
+    await asPlayer.query(api.payments.queries.getMyEntryOrder, {
+      tournamentId,
+      now: Date.now(),
+    }),
+  ).toMatchObject({ status: "refunded", purpose: "registration" });
+});
+
 test("organizer removal always refunds in full and never flags the player", async () => {
   const t = createConvexTest();
   const { organizationId } = await seedOrganizer(t);

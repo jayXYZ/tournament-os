@@ -564,7 +564,8 @@ const rows: Array<[string, Scenario, Array<string>]> = [
   ],
   [
     // The schema leaves participationStatus optional; mutations set it on
-    // every confirmation, and the server reads a missing one as active.
+    // every confirmation. The panel reads a missing one as active, as the
+    // server's standings do; the server's cancel rule would refuse it.
     'confirmed with no participation status',
     { registration: { entryStatus: 'confirmed' } },
     [registered, cancel],
@@ -728,8 +729,8 @@ const rows: Array<[string, Scenario, Array<string>]> = [
     [...missingBadgeNotice, directDueBadge, missingBadgeButton, withdraw],
   ],
   [
-    // The defensive fall-through: the backend sweep withdraws a pending row
-    // whose order it closes, so this is no longer stored (the plan's PR 3).
+    // The newest order belongs to an earlier attempt: a live application
+    // under a refunded order is one real case (paymentsRefunds.convex.spec.ts).
     'a pending entry whose order can no longer be paid',
     {
       registration: pending(),
