@@ -137,12 +137,17 @@ Each run:
    scanner flows can reach home's empty state);
 2. seeds a fresh organization and its events on the dev deployment named by
    `packages/backend/.env.local` (it refuses anything but a `dev:`
-   deployment), through the public mutations called with
+   deployment, pins the Convex CLI to it over any deploy key in the shell
+   or env files, and refuses one whose Clerk issuer is not a development
+   instance), through the public mutations called with
    `convex run --identity`, plus `devSeed:markOrganizationPayoutsReady`, a
    stand-in Stripe account that paid events need and that refuses to run
    off a Clerk development instance or with a live Stripe key;
 3. serves single-use sign-in tickets on a loopback port for the flows'
-   sign-in step, so `CLERK_SECRET_KEY` never reaches Maestro;
+   sign-in step. `CLERK_SECRET_KEY`, from `apps/web/.env.local` or the
+   shell, stays in the runner: Maestro, the Convex CLI, and `xcrun` run
+   with an environment stripped of it and of every other variable whose
+   name reads as a credential;
 4. runs `maestro test` against the booted simulator, with the camera
    permission allowed on every launch unless a flow sets
    `CAMERA_PERMISSION` (`deny` or `unset`; `flows/subflows/launch.yaml`).

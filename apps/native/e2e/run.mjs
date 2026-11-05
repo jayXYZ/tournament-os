@@ -8,9 +8,12 @@
 //   pnpm --filter @paper-pairings/native e2e:ios            # every flow
 //   pnpm --filter @paper-pairings/native e2e:ios 03-paid.yaml
 //
-// Secrets stay in this process: CLERK_SECRET_KEY mints tickets here and only
-// single-use, five-minute tickets reach Maestro. Invite codes are passed to
-// Maestro but never printed.
+// Secrets stay in this process: CLERK_SECRET_KEY mints tickets here, only
+// single-use, five-minute tickets reach Maestro, and every child process gets
+// an environment without credential-named variables (scrubbedEnv). Invite
+// codes are passed to Maestro as flow variables. This script never prints
+// them, but Maestro's own output and saved logs may show the links the
+// flows open.
 import { execFile, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
