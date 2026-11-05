@@ -363,6 +363,7 @@ function ActionSection({
             disabled
             onPress={() => {}}
           />
+          {action.canWithdraw ? withdrawButton : null}
         </View>
       );
     case "closed":

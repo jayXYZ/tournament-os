@@ -36,17 +36,11 @@ export type RegistrationAction =
   // A pending entry with a payable order: an approved application
   // (`post_approval`) or the viewer's own unfinished checkout
   // (`registration`). Payment takes the seat. `blocked` says why the viewer
-  // can't pay now, or null when they can:
-  // - "closed": registration closed before they paid, so nothing is left to
-  //   do.
-  // - a badge gate reason: the badge stopped admitting the event after the
-  //   entry existed (a cancelled badge, a rescheduled event). The server
-  //   still lets them withdraw.
-  // Withdrawal, like payment, needs registration open.
+  // can't pay now, or null when they can (PaymentBlock).
   | {
       kind: "completePayment";
       purpose: EntryOrderPurpose;
-      blocked: "closed" | Exclude<BadgeGate, null> | null;
+      blocked: PaymentBlock;
     }
   // An application waiting on the organizer. `canWithdraw` while
   // registration is open (cancelMyRegistration).
@@ -61,6 +55,19 @@ export type RegistrationAction =
   | { kind: "closed" }
   // A badge-gated convention child event the viewer's badge doesn't admit.
   | { kind: "badgeBlocked"; reason: Exclude<BadgeGate, null> };
+
+// Why a pending entry's payable order can't be paid now, or null when it
+// can. One reason is reported, in this order:
+// - "closed": registration closed before they paid, so nothing is left to
+//   do, withdrawal included.
+// - "full": the event filled before they paid. Checkout re-checks capacity
+//   before resuming the player's own direct checkout (payments/checkout.ts),
+//   but not before an approved application's payment, which the approval
+//   already checked. A badge would not help, so this outranks the gate.
+// - a badge gate reason: the badge stopped admitting the event after the
+//   entry existed (a cancelled badge, a rescheduled event).
+// The server still lets the viewer withdraw while registration is open.
+export type PaymentBlock = "closed" | "full" | Exclude<BadgeGate, null> | null;
 
 // What a confirmed seat allows next.
 export type SeatAction =
@@ -81,9 +88,9 @@ export type SeatAction =
 
 // The one primary action the native join screen offers (docs/plans/qr-join.md
 // PR 2a), or the status that stands in for it: RegistrationAction narrowed to
-// what that screen needs. A pending entry it can't pay for reads as
-// `badgeBlocked` (still withdrawable) or `closed`; every confirmed seat reads
-// as `registered`.
+// what that screen needs. A pending entry it can't pay for reads as `full`
+// or `badgeBlocked` (both still withdrawable) or `closed`; every confirmed
+// seat reads as `registered`.
 export type JoinAction =
   // Something the decision depends on is still loading.
   | { kind: "loading" }
@@ -106,7 +113,9 @@ export type JoinAction =
   // A confirmed seat, whatever the player's participation since.
   | { kind: "registered" }
   | { kind: "rejected" }
-  | { kind: "full" }
+  // `canWithdraw` when the viewer already holds a pending entry the full
+  // event now stops them from paying for (PaymentBlock "full").
+  | { kind: "full"; canWithdraw: boolean }
   | { kind: "closed" }
   // A badge-gated convention child event the viewer's badge doesn't admit.
   // `canWithdraw` when the viewer already holds a pending entry (an approved
@@ -214,12 +223,22 @@ export function deriveJoinAction({
     case "pay":
       return { kind: "pay" };
     case "completePayment":
-      if (action.blocked === null) {
-        return { kind: "completePayment", purpose: action.purpose };
+      switch (action.blocked) {
+        case null:
+          return { kind: "completePayment", purpose: action.purpose };
+        case "closed":
+          return { kind: "closed" };
+        case "full":
+          return { kind: "full", canWithdraw: true };
+        default:
+          return {
+            kind: "badgeBlocked",
+            reason: action.blocked,
+            canWithdraw: true,
+          };
       }
-      return action.blocked === "closed"
-        ? { kind: "closed" }
-        : { kind: "badgeBlocked", reason: action.blocked, canWithdraw: true };
+    case "full":
+      return { kind: "full", canWithdraw: false };
     case "badgeBlocked":
       return {
         kind: "badgeBlocked",
@@ -287,7 +306,11 @@ function deriveForViewer(
         return {
           kind: "completePayment",
           purpose: order.purpose,
-          blocked: !open ? "closed" : badgeGate,
+          blocked: !open
+            ? "closed"
+            : order.purpose === "registration" && spotsLeft === 0
+              ? "full"
+              : badgeGate,
         };
       }
       // A defensive default: the backend sweep withdraws the pending entry

@@ -653,6 +653,29 @@ const rows: Array<[string, Scenario, Array<string>]> = [
     [directDueBadge, closedNote],
   ],
   [
+    // Checkout re-checks capacity before resuming a direct checkout.
+    'an unfinished direct checkout on a full event',
+    {
+      registration: pending(),
+      paid: true,
+      order: order('awaiting_payment', 'registration'),
+      spotsLeft: 0,
+    },
+    [directDueBadge, 'button(disabled): Tournament is full', withdraw],
+  ],
+  [
+    // The approval already checked capacity, so Checkout doesn't.
+    'an approved application owing payment on a full event',
+    {
+      registration: pending(),
+      approval: true,
+      paid: true,
+      order: order('requires_payment', 'post_approval'),
+      spotsLeft: 0,
+    },
+    [approvedBadge, 'button: Complete payment — $16.52', withdraw],
+  ],
+  [
     'an approved application owing payment behind a wrong-day badge',
     {
       registration: pending(),

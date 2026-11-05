@@ -328,6 +328,11 @@ function RegistrationPanel({
         : 'Convention badge required'}
     </Button>
   )
+  const fullButton = (
+    <Button type="button" variant="outline" disabled className="w-fit">
+      Tournament is full
+    </Button>
+  )
   const spotsLeftText =
     spotsLeft === 1 ? '1 spot left' : `${spotsLeft} spots left`
   const spotsLeftNote = (
@@ -480,7 +485,9 @@ function RegistrationPanel({
 
     // A pending entry with a payable order is past review: an approved
     // application awaiting its payment, or the player's own unfinished
-    // direct checkout. Payment takes the seat.
+    // direct checkout. Payment takes the seat. While something blocks the
+    // payment (PaymentBlock), the entry stays withdrawable until
+    // registration closes.
     case 'completePayment':
       return (
         <div className="flex flex-wrap items-center gap-3">
@@ -500,7 +507,9 @@ function RegistrationPanel({
                 ? `Complete payment — ${totalPrice}`
                 : 'Complete payment'}
             </Button>
-          ) : action.blocked === 'closed' ? null : (
+          ) : action.blocked === 'closed' ? null : action.blocked === 'full' ? (
+            fullButton
+          ) : (
             badgeGateButton(action.blocked)
           )}
           {action.blocked === 'closed' ? closedNote : withdrawButton}
@@ -531,11 +540,7 @@ function RegistrationPanel({
       return closedNote
 
     case 'full':
-      return (
-        <Button type="button" variant="outline" disabled className="w-fit">
-          Tournament is full
-        </Button>
-      )
+      return fullButton
 
     // The notice above the panel links to the convention page.
     case 'badgeBlocked':

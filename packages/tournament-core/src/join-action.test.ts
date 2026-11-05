@@ -217,10 +217,10 @@ const matrix: Array<[string, Scenario, Record<Setup, JoinAction>]> = [
     "a full event",
     { spotsLeft: 0 },
     {
-      free: { kind: "full" },
-      approval: { kind: "full" },
-      paid: { kind: "full" },
-      paidApproval: { kind: "full" },
+      free: { kind: "full", canWithdraw: false },
+      approval: { kind: "full", canWithdraw: false },
+      paid: { kind: "full", canWithdraw: false },
+      paidApproval: { kind: "full", canWithdraw: false },
     },
   ],
   [
@@ -291,10 +291,10 @@ const matrix: Array<[string, Scenario, Record<Setup, JoinAction>]> = [
     "a comped viewer on a full event",
     { badgeCompsThisEvent: true, spotsLeft: 0 },
     {
-      free: { kind: "full" },
-      approval: { kind: "full" },
-      paid: { kind: "full" },
-      paidApproval: { kind: "full" },
+      free: { kind: "full", canWithdraw: false },
+      approval: { kind: "full", canWithdraw: false },
+      paid: { kind: "full", canWithdraw: false },
+      paidApproval: { kind: "full", canWithdraw: false },
     },
   ],
 ];
@@ -379,6 +379,28 @@ describe("deriveJoinAction", () => {
           reason: "missing",
           canWithdraw: true,
         });
+      },
+    );
+
+    // Checkout refuses to resume the player's own direct checkout on a full
+    // event; the entry is still theirs to withdraw.
+    it.each(paidSetups)(
+      "%s: an unfinished direct checkout on a full event is full but can be withdrawn",
+      (setup) => {
+        expect(
+          derive(setup, {
+            registration: row("pending"),
+            order: { status: "awaiting_payment", purpose: "registration" },
+            spotsLeft: 0,
+          }),
+        ).toEqual({ kind: "full", canWithdraw: true });
+        expect(
+          derive(setup, {
+            registration: row("pending"),
+            order: { status: "requires_payment", purpose: "post_approval" },
+            spotsLeft: 0,
+          }),
+        ).toEqual({ kind: "completePayment", purpose: "post_approval" });
       },
     );
 
@@ -864,6 +886,9 @@ describe("deriveRegistrationAction", () => {
           },
         );
 
+        // Checkout re-checks capacity before resuming the player's own
+        // direct checkout (payments/checkout.ts), but not before an
+        // approved application's payment: the approval already checked it.
         it.each(paidSetups)("%s: on a full event", (setup) => {
           expect(
             deriveFull(setup, {
@@ -874,9 +899,41 @@ describe("deriveRegistrationAction", () => {
           ).toEqual({
             kind: "completePayment",
             purpose: order.purpose,
-            blocked: null,
+            blocked: order.purpose === "registration" ? "full" : null,
           });
         });
+
+        // Closed outranks full, and full outranks the badge gate: a badge
+        // would not help on a full event.
+        it.each(paidSetups)(
+          "%s: on a full event behind the badge gate",
+          (setup) => {
+            expect(
+              deriveFull(setup, {
+                registration: row("pending"),
+                order,
+                spotsLeft: 0,
+                badgeGate: "missing",
+              }),
+            ).toEqual({
+              kind: "completePayment",
+              purpose: order.purpose,
+              blocked: order.purpose === "registration" ? "full" : "missing",
+            });
+            expect(
+              deriveFull(setup, {
+                registration: row("pending"),
+                order,
+                spotsLeft: 0,
+                lifecycle: "in_progress",
+              }),
+            ).toEqual({
+              kind: "completePayment",
+              purpose: order.purpose,
+              blocked: "closed",
+            });
+          },
+        );
       });
     }
 
