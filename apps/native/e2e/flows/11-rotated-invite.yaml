@@ -1,0 +1,18 @@
+appId: com.paperpairings.app
+name: Rotated invite, old and new codes
+---
+- runFlow: subflows/signed-in.yaml
+- runFlow:
+    file: subflows/open-link.yaml
+    env:
+      LINK: paperpairings://join/${INVITE_ROTATED_OLD}
+- runFlow: subflows/code-not-found.yaml
+- runFlow: subflows/go-home.yaml
+- runFlow:
+    file: subflows/open-link.yaml
+    env:
+      LINK: paperpairings://join/${INVITE_ROTATED_NEW}
+- extendedWaitUntil:
+    visible: "Register for this event"
+    timeout: 30000
+- assertVisible: "E2E Rotated Invite Event"

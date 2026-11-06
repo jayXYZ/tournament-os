@@ -3,6 +3,7 @@ import {
   mutationErrorMessage,
   useMyBadge,
   useMyBadgeRefundFlag,
+  useStableQuery,
   useViewerAuthGate,
 } from '@paper-pairings/core'
 import {
@@ -34,7 +35,6 @@ import {
 import { useBusyAction } from '@/hooks/use-busy-action'
 import { useClientClock } from '@/hooks/use-client-clock'
 import { useMyBadgeOrder } from '@/hooks/use-my-order'
-import { useStableQuery } from '@/hooks/use-stable-query'
 import { useAppAuth } from '@/lib/use-app-auth'
 import {
   UNVERIFIED_VIEWER_DESCRIPTION,

@@ -1,0 +1,7 @@
+appId: com.paperpairings.app
+---
+- extendedWaitUntil:
+    visible: "Code not found"
+    timeout: 30000
+- assertVisible: "This code doesn’t open an event\\. Check it with the organizer\\."
+- assertNotVisible: "Register for this event"

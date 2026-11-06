@@ -44,6 +44,12 @@ const navigationTheme = {
   },
 };
 
+// Puts home under any deep-linked screen (a scanned /join link, say), so it
+// opens with a back arrow instead of as the only screen in the stack.
+export const unstable_settings = {
+  anchor: "index",
+};
+
 const envPublishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
 if (!envPublishableKey) {
@@ -89,10 +95,36 @@ function RootLayout() {
           >
             <Stack.Screen name="index" />
             <Stack.Screen
-              name="tournament/[code]"
+              name="tournaments/[code]"
               options={{
                 headerShown: true,
                 title: "Tournament",
+                headerStyle: { backgroundColor: palette.background },
+                headerTintColor: palette.foreground,
+              }}
+            />
+            {/* Full screen over home, sliding up like a modal, and closed
+                only by its own button. It is a card rather than a
+                `fullScreenModal` because the native stack presents every
+                screen pushed after a modal as a modal too: the join screen
+                a code opens would come up as a sheet with no back arrow.
+                As a card, the join screen pushes above the scanner the way
+                it does above home, and its back arrow returns to the
+                scanner. */}
+            <Stack.Screen
+              name="scan"
+              options={{
+                // The join screen's back button reads it.
+                title: "Scan",
+                animation: "slide_from_bottom",
+                gestureEnabled: false,
+              }}
+            />
+            <Stack.Screen
+              name="join/[code]"
+              options={{
+                headerShown: true,
+                title: "Join event",
                 headerStyle: { backgroundColor: palette.background },
                 headerTintColor: palette.foreground,
               }}

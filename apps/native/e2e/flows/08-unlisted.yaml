@@ -1,0 +1,12 @@
+appId: com.paperpairings.app
+name: Unlisted event's public code
+---
+- runFlow: subflows/signed-in.yaml
+- runFlow:
+    file: subflows/open-link.yaml
+    env:
+      LINK: paperpairings://join/${CODE_UNLISTED}
+- extendedWaitUntil:
+    visible: "Register for this event"
+    timeout: 30000
+- assertVisible: "E2E Unlisted Event"

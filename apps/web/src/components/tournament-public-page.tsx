@@ -1,6 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
 import {
+  deriveRegistrationAction,
   mutationErrorMessage,
   useMyRefundFlag,
   useMyRegistration,
@@ -10,12 +11,14 @@ import { useAction, useMutation, useQuery } from 'convex/react'
 import { Building2, CalendarDays, LogIn, Swords, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@paper-pairings/backend/convex/_generated/api'
+import type { BadgeGate } from '@paper-pairings/core'
 import type { FunctionReturnType } from 'convex/server'
 import type { Doc } from '@paper-pairings/backend/convex/_generated/dataModel'
 import { DetailLine } from '@/components/shared/detail-line'
 import { LoadingCard } from '@/components/shared/loading-card'
 import { MarkdownContent } from '@/components/shared/markdown-content'
 import { PageNotFound } from '@/components/shared/page-not-found'
+import { SignInToViewEvent } from '@/components/shared/sign-in-to-view'
 import { cancelOutcomeNote } from '@/components/shared/payment-return'
 import { RoundTimerIndicator } from '@/components/shared/round-timer-indicator'
 import { SiteShell, SiteShellBackLink } from '@/components/shared/site-shell'
@@ -76,12 +79,6 @@ type ConventionSummary = NonNullable<
   >['convention']
 >
 
-// Why a badge-gated child event refuses the viewer's self-serve entry
-// (model/conventions.ts resolveChildEventAdmission): no confirmed badge, or
-// a pass that does not admit the event's day. Null when nothing stands in
-// the way.
-type BadgeGate = 'missing' | 'wrong_day' | null
-
 export function TournamentPublicPageContent({
   publicCode,
   inviteCode,
@@ -93,12 +90,21 @@ export function TournamentPublicPageContent({
     publicCode,
     inviteCode,
   })
+  // A private event answers null to a viewer it doesn't admit, and to its
+  // own players until Convex has verified them, so a null waits on the auth
+  // gate (as the player access ladder does), and a signed-out viewer is
+  // offered sign-in rather than told the event doesn't exist. The native
+  // app's "Complete payment" hand-off lands here without a session.
+  const { user, loading } = useAppAuth()
+  const viewer = useViewerAuthGate({ user, loading })
 
-  return event === undefined ? (
+  return event === undefined || (event === null && viewer === 'pending') ? (
     <LoadingCard
       title="Loading tournament"
       description="Fetching event details."
     />
+  ) : event === null && viewer === 'signedOut' ? (
+    <SignInToViewEvent className="min-h-80 border bg-card" />
   ) : event === null ? (
     <PageNotFound
       title="Tournament not found"
@@ -110,6 +116,7 @@ export function TournamentPublicPageContent({
       organizationName={event.organizationName}
       registeredCount={event.registeredCount}
       convention={event.convention}
+      badgeGate={event.badgeGate}
       inviteCode={inviteCode}
     />
   )
@@ -120,26 +127,24 @@ function TournamentDetails({
   organizationName,
   registeredCount,
   convention,
+  badgeGate,
   inviteCode,
 }: {
   tournament: Tournament
   organizationName: string | null
   registeredCount: number
+  // Null for a standalone event, and for a convention the viewer may not
+  // open (getPublicTournament): its name and code must not leak here.
   convention: ConventionSummary | null
+  // The server's badge-gate verdict, independent of whether the convention
+  // summary is shown. The notice and the registration panel both read it,
+  // so they can never disagree: registerSelf and beginEntryCheckout both
+  // reject a gated viewer, so the panel must not offer a button that
+  // reaches them.
+  badgeGate: BadgeGate
   inviteCode?: string
 }) {
   const spotsLeft = Math.max(tournament.playerCapacity - registeredCount, 0)
-  // Resolved once here so the notice and the registration panel can never
-  // disagree: registerSelf and beginEntryCheckout both reject a gated
-  // viewer, so the panel must not offer a button that reaches them.
-  const badgeGate: BadgeGate =
-    convention === null || !convention.badgeRequiredForChildEvents
-      ? null
-      : convention.myBadgeStatus !== 'confirmed'
-        ? 'missing'
-        : convention.myBadgeCoversThisEvent
-          ? null
-          : 'wrong_day'
 
   return (
     <article className="flex flex-col gap-4">
@@ -163,7 +168,7 @@ function TournamentDetails({
               {' · part of '}
               <Link
                 to="/conventions/$conventionId"
-                params={{ conventionId: String(convention.publicCode) }}
+                params={{ conventionId: convention.publicCode }}
                 className="underline underline-offset-4"
               >
                 {convention.name}
@@ -200,16 +205,22 @@ function TournamentDetails({
           ) : null}
         </div>
         <Separator />
-        {convention &&
-        badgeGate !== null &&
-        tournament.lifecycle === 'registration' ? (
+        {badgeGate !== null && tournament.lifecycle === 'registration' ? (
           <p className="rounded-md border bg-muted/50 px-4 py-3 text-sm text-muted-foreground">
-            {badgeGate === 'missing' ? (
+            {convention === null ? (
+              // A parent the viewer may not open: say what stands in the
+              // way without naming or linking it.
+              badgeGate === 'missing' ? (
+                'This event requires a confirmed convention badge.'
+              ) : (
+                "Your convention badge does not cover this event's date."
+              )
+            ) : badgeGate === 'missing' ? (
               <>
                 This event requires a confirmed {convention.name} badge —{' '}
                 <Link
                   to="/conventions/$conventionId"
-                  params={{ conventionId: String(convention.publicCode) }}
+                  params={{ conventionId: convention.publicCode }}
                   className="underline underline-offset-4"
                 >
                   register for the convention
@@ -222,7 +233,7 @@ function TournamentDetails({
                 date —{' '}
                 <Link
                   to="/conventions/$conventionId"
-                  params={{ conventionId: String(convention.publicCode) }}
+                  params={{ conventionId: convention.publicCode }}
                   className="underline underline-offset-4"
                 >
                   upgrade your badge
@@ -275,9 +286,9 @@ function RegistrationPanel({
   // direct registration instead of Checkout.
   badgeCompsThisEvent: boolean
   // Why the badge gate refuses this viewer (see TournamentDetails), or null
-  // when it doesn't. Every button below that reaches registerSelf or the
-  // checkout is withheld while it is set; the notice above the panel says
-  // what to do about it.
+  // when it doesn't. The derivation withholds every button that reaches
+  // registerSelf or the checkout while it is set; the notice above the panel
+  // says what to do about it.
   badgeGate: BadgeGate
 }) {
   const { user, loading, refreshAuth } = useAppAuth()
@@ -306,69 +317,48 @@ function RegistrationPanel({
   const [checkoutPending, setCheckoutPending] = useState(false)
   const pending = busy || checkoutPending
 
-  const runAction = (action: () => Promise<unknown>, successMessage: string) =>
+  // The one decision of what to offer, shared with the native join screen
+  // (@paper-pairings/core deriveRegistrationAction). This component only
+  // renders it.
+  const action = deriveRegistrationAction({
+    tournament,
+    viewer,
+    registration,
+    order: myOrder,
+    refundFlag,
+    badgeGate,
+    badgeCompsThisEvent,
+    spotsLeft,
+  })
+
+  const runAction = (work: () => Promise<unknown>, successMessage: string) =>
     run(async () => {
-      await action()
+      await work()
       toast.success(successMessage)
     }, 'Something went wrong')
 
-  const checkingButton = (
-    <Button type="button" variant="outline" disabled className="w-fit">
-      <Spinner />
-      Checking your registration
-    </Button>
-  )
   const closedNote = (
     <p className="text-sm text-muted-foreground">
       Registration is closed for this event.
     </p>
   )
-  const lockedNote = (
-    <p className="text-sm text-muted-foreground">
-      The event has started, so registration changes are locked.
-    </p>
-  )
-  const badgeGateButton = (
+  const badgeGateButton = (reason: Exclude<BadgeGate, null>) => (
     <Button type="button" variant="outline" disabled className="w-fit">
-      {badgeGate === 'wrong_day'
+      {reason === 'wrong_day'
         ? 'Your badge does not cover this date'
         : 'Convention badge required'}
     </Button>
   )
-  const spotsLeftNote = (
-    <p className="text-sm text-muted-foreground">
-      {spotsLeft === 1 ? '1 spot left' : `${spotsLeft} spots left`}
-    </p>
-  )
-  const controllerLink = (
-    <Button asChild type="button">
-      <Link
-        to="/tournaments/$tournamentId/play"
-        params={{ tournamentId: String(tournament.publicCode) }}
-      >
-        <Swords data-icon="inline-start" />
-        Open my player view
-      </Link>
+  const fullButton = (
+    <Button type="button" variant="outline" disabled className="w-fit">
+      Tournament is full
     </Button>
   )
-  const controllerLinkWithNote = (
-    <>
-      {controllerLink}
-      <p className="text-sm text-muted-foreground">
-        You can still follow standings and your match history.
-      </p>
-    </>
+  const spotsLeftText =
+    spotsLeft === 1 ? '1 spot left' : `${spotsLeft} spots left`
+  const spotsLeftNote = (
+    <p className="text-sm text-muted-foreground">{spotsLeftText}</p>
   )
-  // On a paid event, tells the player what happened to their money when they
-  // release a seat (refund issued, or fees kept under the repeat-drop rule).
-  const cancelNote = myOrder?.cancelOutcome ? (
-    <p className="w-full text-sm text-muted-foreground">
-      {cancelOutcomeNote(
-        myOrder.cancelOutcome,
-        'Cancelling refunds the entry cost only — fees are not refunded on a repeat drop.',
-      )}
-    </p>
-  ) : null
   const cancelButton = (label: string, successMessage: string) => (
     <Button
       type="button"
@@ -384,6 +374,10 @@ function RegistrationPanel({
       {pending ? <Spinner /> : null}
       {label}
     </Button>
+  )
+  const withdrawButton = cancelButton(
+    'Withdraw registration',
+    'Your registration has been withdrawn.',
   )
 
   const startCheckout = async () => {
@@ -412,153 +406,118 @@ function RegistrationPanel({
 
   const totalPrice = feePreview ? formatCents(feePreview.totalCents) : null
 
-  // One definition of the cancel-registration controls, shared by the active
-  // and dropped/disqualified branches so the two player states cannot drift.
-  const cancelControls = (
-    <>
-      {cancelButton(
-        'Cancel registration',
-        'Your registration has been cancelled.',
-      )}
-      {cancelNote}
-    </>
-  )
-
-  if (viewer === 'pending') {
-    return checkingButton
-  }
-
-  // Clerk has a user Convex could not verify (see ViewerAuthGate). Shown
-  // whatever the lifecycle: the viewer may well be registered, and only a
-  // verified identity can show them that.
-  if (viewer === 'unverified') {
-    return (
-      <div className="flex flex-col gap-3">
-        <p className="text-sm text-muted-foreground">
-          {UNVERIFIED_VIEWER_DESCRIPTION}
-        </p>
-        <UnverifiedViewerActions />
-      </div>
-    )
-  }
-
-  if (viewer === 'signedOut') {
-    if (tournament.lifecycle !== 'registration') {
-      return closedNote
-    }
-    return (
-      <div className="flex flex-wrap items-center gap-3">
-        <Button
-          type="button"
-          onClick={() => void refreshAuth({ ensureSignedIn: true })}
-        >
-          <LogIn data-icon="inline-start" />
-          Sign in to register
+  switch (action.kind) {
+    case 'loading':
+      return (
+        <Button type="button" variant="outline" disabled className="w-fit">
+          <Spinner />
+          Checking your registration
         </Button>
-        {spotsLeftNote}
-      </div>
-    )
-  }
+      )
 
-  if (registration === undefined) {
-    return checkingButton
-  }
+    // Clerk has a user Convex could not verify (see ViewerAuthGate). The
+    // viewer may well be registered, and only a verified identity can show
+    // them that.
+    case 'unverified':
+      return (
+        <div className="flex flex-col gap-3">
+          <p className="text-sm text-muted-foreground">
+            {UNVERIFIED_VIEWER_DESCRIPTION}
+          </p>
+          <UnverifiedViewerActions />
+        </div>
+      )
 
-  if (
-    registration?.entryStatus === 'confirmed' &&
-    registration.participationStatus === 'active'
-  ) {
-    return (
-      <div className="flex flex-wrap items-center gap-3">
-        <Badge>You&apos;re registered</Badge>
-        {tournament.lifecycle === 'registration'
-          ? cancelControls
-          : tournament.lifecycle === 'in_progress'
-            ? controllerLink
-            : lockedNote}
-      </div>
-    )
-  }
+    case 'signIn':
+      return (
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            type="button"
+            onClick={() => void refreshAuth({ ensureSignedIn: true })}
+          >
+            <LogIn data-icon="inline-start" />
+            Sign in to register
+          </Button>
+          {spotsLeftNote}
+        </div>
+      )
 
-  // A dropped player still holds their confirmed seat (a mid-play drop, or
-  // one preserved by a round-one rewind back into registration); a
-  // disqualified player holds theirs too, so this branch covers both.
-  // Before play the only self-service action the server accepts is cancelling
-  // to release the seat; rejoining is an organizer-side reinstatement. While
-  // the event runs, the player controller still admits every confirmed seat,
-  // so keep its entry point available for standings and match history.
-  if (
-    registration?.entryStatus === 'confirmed' &&
-    (registration.participationStatus === 'dropped' ||
-      registration.participationStatus === 'disqualified')
-  ) {
-    return (
-      <div className="flex flex-wrap items-center gap-3">
-        <Badge variant="secondary">
-          {registration.participationStatus === 'disqualified'
-            ? 'You were disqualified from this event'
-            : 'You dropped from this event'}
-        </Badge>
-        {tournament.lifecycle === 'registration'
-          ? cancelControls
-          : tournament.lifecycle === 'in_progress'
-            ? controllerLinkWithNote
-            : lockedNote}
-      </div>
-    )
-  }
-
-  // An eliminated player is out of contention but keeps their confirmed seat,
-  // and the player controller still admits them, so while the event runs it
-  // stays their route to live standings and their match history.
-  if (
-    registration?.entryStatus === 'confirmed' &&
-    registration.participationStatus === 'eliminated'
-  ) {
-    return (
-      <div className="flex flex-wrap items-center gap-3">
-        <Badge variant="secondary">
-          You&apos;ve been eliminated from this event
-        </Badge>
-        {tournament.lifecycle === 'in_progress'
-          ? controllerLinkWithNote
-          : lockedNote}
-      </div>
-    )
-  }
-
-  // An application under organizer review holds no seat yet, so the only
-  // self-service action is withdrawing it. These rows must never fall
-  // through to the register button below — a second submission would
-  // duplicate the live application (registerSelf refuses it server-side
-  // too).
-  if (
-    registration?.entryStatus === 'pending' ||
-    registration?.entryStatus === 'waitlisted'
-  ) {
-    // On a paid event a "pending" entry with a payable order is past review:
-    // it is either an approved application awaiting its payment, or the
-    // player's own unfinished direct checkout. Payment takes the seat.
-    const paymentDue =
-      registration.entryStatus === 'pending' &&
-      isPaid &&
-      (myOrder?.status === 'requires_payment' ||
-        myOrder?.status === 'awaiting_payment')
-    return (
-      <div className="flex flex-wrap items-center gap-3">
-        <Badge variant="outline">
-          {registration.entryStatus === 'waitlisted'
-            ? "You're on the waitlist"
-            : paymentDue
-              ? myOrder.purpose === 'post_approval'
-                ? 'Application approved — payment required'
-                : 'Payment required to finish registering'
-              : 'Registration pending organizer approval'}
-        </Badge>
-        {paymentDue && tournament.lifecycle === 'registration' ? (
-          badgeGate !== null ? (
-            badgeGateButton
+    // A confirmed seat, whatever the player's participation since: a
+    // dropped or disqualified player still holds it, and an eliminated one
+    // is out of contention but keeps it too.
+    case 'registered': {
+      const { participation, next } = action
+      return (
+        <div className="flex flex-wrap items-center gap-3">
+          {participation === 'active' ? (
+            <Badge>You&apos;re registered</Badge>
           ) : (
+            <Badge variant="secondary">
+              {participation === 'disqualified'
+                ? 'You were disqualified from this event'
+                : participation === 'dropped'
+                  ? 'You dropped from this event'
+                  : "You've been eliminated from this event"}
+            </Badge>
+          )}
+          {next.kind === 'cancel' ? (
+            <>
+              {cancelButton(
+                'Cancel registration',
+                'Your registration has been cancelled.',
+              )}
+              {/* On a paid event, what happens to the player's money when
+                  they release the seat (refund issued, or fees kept under
+                  the repeat-drop rule). */}
+              {next.cancelOutcome ? (
+                <p className="w-full text-sm text-muted-foreground">
+                  {cancelOutcomeNote(
+                    next.cancelOutcome,
+                    'Cancelling refunds the entry cost only — fees are not refunded on a repeat drop.',
+                  )}
+                </p>
+              ) : null}
+            </>
+          ) : next.kind === 'openPlayerView' ? (
+            <>
+              <Button asChild type="button">
+                <Link
+                  to="/tournaments/$tournamentId/play"
+                  params={{ tournamentId: tournament.publicCode }}
+                >
+                  <Swords data-icon="inline-start" />
+                  Open my player view
+                </Link>
+              </Button>
+              {participation === 'active' ? null : (
+                <p className="text-sm text-muted-foreground">
+                  You can still follow standings and your match history.
+                </p>
+              )}
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              The event has started, so registration changes are locked.
+            </p>
+          )}
+        </div>
+      )
+    }
+
+    // A pending entry with a payable order is past review: an approved
+    // application awaiting its payment, or the player's own unfinished
+    // direct checkout. Payment takes the seat. While something blocks the
+    // payment (PaymentBlock), the entry stays withdrawable until
+    // registration closes.
+    case 'completePayment':
+      return (
+        <div className="flex flex-wrap items-center gap-3">
+          <Badge variant="outline">
+            {action.purpose === 'post_approval'
+              ? 'Application approved — payment required'
+              : 'Payment required to finish registering'}
+          </Badge>
+          {action.blocked === null ? (
             <Button
               type="button"
               disabled={pending}
@@ -569,114 +528,128 @@ function RegistrationPanel({
                 ? `Complete payment — ${totalPrice}`
                 : 'Complete payment'}
             </Button>
-          )
-        ) : null}
-        {tournament.lifecycle === 'registration'
-          ? cancelButton(
-              'Withdraw registration',
-              'Your registration has been withdrawn.',
-            )
-          : closedNote}
-      </div>
-    )
-  }
+          ) : action.blocked === 'closed' ? null : action.blocked === 'full' ? (
+            fullButton
+          ) : (
+            badgeGateButton(action.blocked)
+          )}
+          {action.blocked === 'closed' ? closedNote : withdrawButton}
+        </div>
+      )
 
-  // A rejection is an organizer decision; the way back is organizer
-  // approval, never self-service, so no action is offered.
-  if (registration?.entryStatus === 'rejected') {
-    return <Badge variant="destructive">Your registration was declined</Badge>
-  }
+    // An application under organizer review, or a waitlisted entry, holds
+    // no seat yet, so the only self-service action is withdrawing it.
+    case 'pendingReview':
+    case 'waitlisted':
+      return (
+        <div className="flex flex-wrap items-center gap-3">
+          <Badge variant="outline">
+            {action.kind === 'waitlisted'
+              ? "You're on the waitlist"
+              : 'Registration pending organizer approval'}
+          </Badge>
+          {action.canWithdraw ? withdrawButton : closedNote}
+        </div>
+      )
 
-  if (tournament.lifecycle !== 'registration') {
-    return closedNote
-  }
+    // An organizer decision; the way back is organizer approval, never
+    // self-service, so no action is offered.
+    case 'rejected':
+      return <Badge variant="destructive">Your registration was declined</Badge>
 
-  if (spotsLeft === 0) {
-    return (
-      <Button type="button" variant="outline" disabled className="w-fit">
-        Tournament is full
-      </Button>
-    )
-  }
+    case 'closed':
+      return closedNote
 
-  // A badge-gated child event: the server refuses both direct registration
-  // and the checkout without a confirmed, date-covering badge, so offer
-  // neither. The notice above links to the convention page.
-  if (badgeGate !== null) {
-    return (
-      <div className="flex flex-wrap items-center gap-3">
-        {badgeGateButton}
-        {spotsLeftNote}
-      </div>
-    )
-  }
+    case 'full':
+      return fullButton
 
-  // Paid direct registration goes through Stripe Checkout: the seat is taken
-  // by the payment webhook, never by a mutation from this page. Approval-mode
-  // paid events still file the free application here — payment is requested
-  // when the organizer approves. A viewer whose convention pass comps this
-  // event skips Checkout entirely (the server refuses a comped checkout) and
-  // registers directly through the free button below.
-  if (
-    isPaid &&
-    !tournament.registrationRequiresApproval &&
-    !badgeCompsThisEvent
-  ) {
-    return (
-      <div className="flex flex-wrap items-center gap-3">
-        <Button
-          type="button"
-          disabled={pending}
-          onClick={() => void startCheckout()}
-        >
-          {pending ? <Spinner /> : null}
-          {totalPrice ? `Register — ${totalPrice}` : 'Register for this event'}
-        </Button>
-        <p className="text-sm text-muted-foreground">
-          {spotsLeft === 1 ? '1 spot left' : `${spotsLeft} spots left`}
-          {feePreview
-            ? ` · ${formatCents(feePreview.entryFeeCents)} entry + ${formatCents(
-                feePreview.platformFeeCents + feePreview.processingFeeCents,
-              )} fees`
-            : null}
-        </p>
-        {refundFlag?.repeatDropFeesKept ? (
-          <p className="w-full text-sm text-muted-foreground">
-            You previously received a refund for this event — if you cancel
-            again after paying, only the entry cost is refunded.
+    // The notice above the panel says what to do, linking the convention
+    // page when the viewer may open it.
+    case 'badgeBlocked':
+      return (
+        <div className="flex flex-wrap items-center gap-3">
+          {badgeGateButton(action.reason)}
+          {spotsLeftNote}
+        </div>
+      )
+
+    // Paid direct registration goes through Stripe Checkout: the seat is
+    // taken by the payment webhook, never by a mutation from this page.
+    case 'pay':
+      return (
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            type="button"
+            disabled={pending}
+            onClick={() => void startCheckout()}
+          >
+            {pending ? <Spinner /> : null}
+            {totalPrice
+              ? `Register — ${totalPrice}`
+              : 'Register for this event'}
+          </Button>
+          <p className="text-sm text-muted-foreground">
+            {spotsLeftText}
+            {feePreview
+              ? ` · ${formatCents(feePreview.entryFeeCents)} entry + ${formatCents(
+                  feePreview.platformFeeCents + feePreview.processingFeeCents,
+                )} fees`
+              : null}
           </p>
-        ) : null}
-      </div>
-    )
-  }
+          {action.repeatDropFeesKept ? (
+            <p className="w-full text-sm text-muted-foreground">
+              You previously received a refund for this event — if you cancel
+              again after paying, only the entry cost is refunded.
+            </p>
+          ) : null}
+        </div>
+      )
 
-  return (
-    <div className="flex flex-wrap items-center gap-3">
-      <Button
-        type="button"
-        disabled={pending}
-        onClick={() =>
-          void runAction(
-            () => registerSelf({ tournamentId: tournament._id, inviteCode }),
-            tournament.registrationRequiresApproval
-              ? 'Registration submitted for organizer approval.'
-              : "You're registered. See you at the event!",
-          )
-        }
-      >
-        {pending ? <Spinner /> : null}
-        {tournament.registrationRequiresApproval
-          ? 'Request to register'
-          : 'Register for this event'}
-      </Button>
-      <p className="text-sm text-muted-foreground">
-        {spotsLeft === 1 ? '1 spot left' : `${spotsLeft} spots left`}
-        {isPaid && badgeCompsThisEvent
-          ? ' · included with your convention badge'
-          : isPaid && feePreview
-            ? ` · ${formatCents(feePreview.totalCents)} due after approval`
+    // registerSelf takes the seat, or files the application in approval
+    // mode; a paid application is asked for payment once approved. A comped
+    // viewer registers here too, never through Checkout.
+    case 'register':
+    case 'requestToRegister': {
+      const application = action.kind === 'requestToRegister'
+      return (
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            type="button"
+            disabled={pending}
+            onClick={() =>
+              void runAction(
+                () =>
+                  registerSelf({ tournamentId: tournament._id, inviteCode }),
+                application
+                  ? 'Registration submitted for organizer approval.'
+                  : "You're registered. See you at the event!",
+              )
+            }
+          >
+            {pending ? <Spinner /> : null}
+            {application ? 'Request to register' : 'Register for this event'}
+          </Button>
+          <p className="text-sm text-muted-foreground">
+            {spotsLeftText}
+            {action.comped
+              ? ' · included with your convention badge'
+              : isPaid && feePreview
+                ? ` · ${formatCents(feePreview.totalCents)} due after approval`
+                : null}
+          </p>
+          {/* The viewer already holds the pending entry this seats (its
+              badge now comps the payment it owed); releasing it is the
+              other way out. */}
+          {action.kind === 'register' && action.canWithdraw
+            ? withdrawButton
             : null}
-      </p>
-    </div>
-  )
+        </div>
+      )
+    }
+
+    default:
+      throw new Error(
+        `Unhandled registration action: ${JSON.stringify(action satisfies never)}`,
+      )
+  }
 }

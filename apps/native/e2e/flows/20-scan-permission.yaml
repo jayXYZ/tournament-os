@@ -1,0 +1,42 @@
+appId: com.paperpairings.app
+name: Scanner camera permission, before asking and once refused
+---
+# Not asked yet: the explainer, then the system prompt.
+- runFlow:
+    file: subflows/signed-in.yaml
+    env:
+      CAMERA_PERMISSION: unset
+- tapOn: "Scan a QR code"
+- extendedWaitUntil:
+    visible: "Scan an event’s QR code"
+    timeout: 20000
+- assertVisible: "Paper Pairings uses the camera to read tournament QR codes\\."
+- assertVisible: "Type a code instead"
+- assertNotVisible: "Point the camera at the event’s QR code"
+- tapOn: "Allow camera"
+- extendedWaitUntil:
+    visible: "Paper Pairings uses the camera to scan tournament QR codes\\."
+    timeout: 10000
+- tapOn: "Don’t Allow"
+- extendedWaitUntil:
+    visible: "Camera access is off"
+    timeout: 10000
+- assertVisible: "To scan QR codes, turn on camera access for Paper Pairings in Settings\\."
+- assertVisible: "Open Settings"
+# Refused before this launch: straight to Settings, with typing still there.
+- runFlow:
+    file: subflows/launch.yaml
+    env:
+      CAMERA_PERMISSION: deny
+- extendedWaitUntil:
+    visible: "Your tournaments"
+    timeout: 60000
+- tapOn: "Scan a QR code"
+- extendedWaitUntil:
+    visible: "Camera access is off"
+    timeout: 20000
+- assertVisible: "To scan QR codes, turn on camera access for Paper Pairings in Settings\\."
+- assertVisible: "Open Settings"
+- assertVisible: "Type a code instead"
+- assertNotVisible: "Allow camera"
+- assertNotVisible: "Turn on flashlight"

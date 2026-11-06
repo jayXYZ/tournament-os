@@ -1,0 +1,8 @@
+# Every signed-in flow's start: a fresh launch, then the test player.
+appId: com.paperpairings.app
+---
+- runFlow: launch.yaml
+- runFlow: sign-in.yaml
+- extendedWaitUntil:
+    visible: "Your tournaments"
+    timeout: 60000

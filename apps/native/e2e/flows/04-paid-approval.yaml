@@ -1,0 +1,17 @@
+appId: com.paperpairings.app
+name: Paid approval event asks for an application first
+---
+- runFlow: subflows/signed-in.yaml
+- runFlow:
+    file: subflows/open-link.yaml
+    env:
+      LINK: paperpairings://join/${CODE_PAID_APPROVAL}
+- extendedWaitUntil:
+    visible: "Request to register"
+    timeout: 30000
+- assertVisible: "E2E Paid Approval Event"
+- assertVisible: "The organizer approves each registration\\."
+- extendedWaitUntil:
+    visible: "8 spots left · \\$[0-9.,]+ due after approval"
+    timeout: 30000
+- assertNotVisible: "Pay \\$[0-9.,]+ on the web"

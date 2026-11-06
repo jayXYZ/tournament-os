@@ -125,7 +125,7 @@ function ChildEventRow({
   tournament: {
     _id: Id<'tournaments'>
     name: string
-    publicCode: number
+    publicCode: string
     startDate: number
     lifecycle:
       | 'setup'
@@ -149,7 +149,7 @@ function ChildEventRow({
       <TableCell>
         <Link
           to="/admin/tournaments/$tournamentId"
-          params={{ tournamentId: String(tournament.publicCode) }}
+          params={{ tournamentId: tournament.publicCode }}
           className="font-medium underline-offset-4 hover:underline"
         >
           {tournament.name}

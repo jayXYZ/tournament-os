@@ -2,7 +2,12 @@ import type { TournamentFormat } from "@paper-pairings/shared/tournament-creatio
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { tournamentLifecycles } from "../validators";
-import { requireActiveMembership, requireCurrentUser } from "./access";
+import {
+  currentUserOrNull,
+  getActiveMembership,
+  requireActiveMembership,
+  requireCurrentUser,
+} from "./access";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "./batching";
 import { userError } from "./errors";
 import {
@@ -10,11 +15,9 @@ import {
   type TournamentPhaseInput,
   writePhases,
 } from "./phases";
-import { nextPublicCode } from "./publicCodes";
+import { inviteCodeGrantsAccess } from "./invites";
+import { mintUniquePublicCode } from "./publicCodes";
 import { MAX_TOURNAMENT_PLAYERS, registrationForUser } from "./registrations";
-
-export const TOURNAMENT_PUBLIC_CODE_COUNTER_KEY = "tournamentPublicCode";
-export const FIRST_TOURNAMENT_PUBLIC_CODE = 100_001;
 
 export type TournamentAccess = {
   tournament: Doc<"tournaments">;
@@ -275,7 +278,7 @@ export async function createTournament(
 ) {
   const { user } = await requireActiveMembership(ctx, args.organizationId);
   const now = Date.now();
-  const publicCode = await nextTournamentPublicCode(ctx, now);
+  const publicCode = await mintUniquePublicCode(ctx, "tournaments");
   const tournamentId = await ctx.db.insert("tournaments", {
     name: cleanName(args.name, "Tournament name"),
     publicCode,
@@ -297,18 +300,6 @@ export async function createTournament(
 
   const phaseIds = await writePhases(ctx, tournamentId, args.phases, now);
   return { tournamentId, phaseIds };
-}
-
-export async function nextTournamentPublicCode(
-  ctx: MutationCtx,
-  now = Date.now(),
-) {
-  return await nextPublicCode(
-    ctx,
-    TOURNAMENT_PUBLIC_CODE_COUNTER_KEY,
-    FIRST_TOURNAMENT_PUBLIC_CODE,
-    now,
-  );
 }
 
 export function requireSetupEditable(tournament: Doc<"tournaments">) {
@@ -372,6 +363,46 @@ export async function requireTournamentDeletable(
       "A tournament with enrolled players cannot be deleted — cancel it instead, which keeps its history for its players",
     );
   }
+}
+
+// Whether the caller may open a tournament's public page. Setup events stay
+// hidden from everyone except the organizing team, even if test data or an
+// organizer-created row already registered a player. After publication,
+// going private only removes public access: registered players must still
+// resolve the code or a live visibility change would lock them out of
+// pairings and result reporting — and the event's invite code opens the page
+// too (never a setup event; inviteCodeGrantsAccess excludes that lifecycle),
+// so an invited player can read what they are joining before they register.
+// getPublicTournament and resolveJoinCode share this rule, so the join URL
+// says no more about which events exist than the event page does.
+export async function canViewTournament(
+  ctx: QueryCtx,
+  tournament: Doc<"tournaments">,
+  inviteCode: string | undefined,
+) {
+  if (
+    isPubliclyViewable(tournament) ||
+    (await inviteCodeGrantsAccess(ctx, tournament, inviteCode))
+  ) {
+    return true;
+  }
+  const user = await currentUserOrNull(ctx);
+  if (!user) {
+    return false;
+  }
+  if (await getActiveMembership(ctx, tournament.organizationId, user._id)) {
+    return true;
+  }
+  if (tournament.lifecycle === "setup") {
+    return false;
+  }
+  // Any registration row resolves the code, not only a confirmed one.
+  // Cancelling now leaves a "cancelled" row behind instead of deleting it, so
+  // gating on "confirmed" would swap the page a player is standing on for
+  // "Tournament not found" the moment they cancel — and registerSelf accepts
+  // that same row as the invitation back in, which they could never act on
+  // from a page they can no longer open.
+  return (await registrationForUser(ctx, tournament._id, user._id)) !== null;
 }
 
 export function requireTestTournament(tournament: Doc<"tournaments">) {

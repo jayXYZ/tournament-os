@@ -1,14 +1,18 @@
 export {
+  useCancelMyRegistration,
   useDropSelf,
+  useFeePreview,
   useLatestStandings,
   useMyBadge,
   useMyBadgeRefundFlag,
   useMyCurrentMatch,
   useMyDecklist,
+  useMyEntryOrder,
   useMyMatchHistory,
   useMyRefundFlag,
   useMyRegistration,
   useMyTournaments,
+  useRegisterSelf,
   useReportResult,
 } from "./hooks";
 export {
@@ -33,6 +37,12 @@ export {
   useEnsureUserRow,
 } from "./ensure-user-row";
 export {
+  CLIENT_CLOCK_RESOLUTION_MS,
+  roundedClock,
+  useClientClock,
+} from "./client-clock";
+export type { ClientClockOptions, SubscribeToWake } from "./client-clock";
+export {
   displayPlayerName,
   formatGameScoreline,
   formatPercent,
@@ -40,6 +50,18 @@ export {
   matchResultKindLabel,
   standingStatusLabel,
 } from "./format";
+export { deriveJoinAction, deriveRegistrationAction } from "./join-action";
+export type {
+  BadgeGate,
+  JoinAction,
+  JoinActionInput,
+  PaymentBlock,
+  RegistrationAction,
+  RegistrationActionInput,
+  SeatAction,
+} from "./join-action";
+export { useJoinCode } from "./join-code";
+export type { JoinCodeResolution } from "./join-code";
 export { mutationErrorMessage, userErrorMessage } from "./mutation-error";
 export { usePlayerTournamentAccess } from "./player-access";
 export type {
@@ -61,6 +83,7 @@ export type {
   PlayerBadge,
 } from "./player-view";
 export { useRoundTimer } from "./use-round-timer";
+export { useStableQuery } from "./use-stable-query";
 export type {
   LatestStandings,
   MyActiveMatch,

@@ -43,7 +43,11 @@ pnpm dev:native
 ```
 
 Re-run `expo run:ios` only when native dependencies or config plugins change
-(e.g. adding a new Expo module).
+(e.g. adding a new Expo module). `ios/` is generated and gitignored; if
+`pod install` reports version mismatches after a dependency bump, regenerate
+it with `pnpm --filter @paper-pairings/native exec expo prebuild --platform ios --clean`.
+Xcode 27 refuses pod targets below iOS 15, so `app.config.ts` lifts them to
+15.1 in the generated Podfile.
 
 ## Setup
 
@@ -68,14 +72,24 @@ src/
     _layout.tsx          # Clerk + Convex providers, root Stack
     index.tsx            # Auth gate: <AuthView> modal when signed out,
                          #   <UserButton> + the player's active tournaments when in
-    tournament/[code].tsx # The match page, keyed by the tournament's public
-                          #   code (shared core hooks): the report scoreboard
-                          #   while the viewer's match is reportable, the
-                          #   result card after
+    tournaments/[code].tsx # The event page, keyed by the tournament's public
+                           #   code (shared core hooks): the join panel until
+                           #   the viewer holds a seat, then the report
+                           #   scoreboard while their match is reportable and
+                           #   the result card after
+    join/[code].tsx        # /join/<code> from a scanned QR, shared link, or
+                           #   typed code: resolves either code kind and shows
+                           #   the join panel
+    dev/[action].tsx       # __DEV__-only session links for test runs
+                           #   (see "Headless sign-in for test runs")
   components/
     report-result-scoreboard.tsx # Game-win counts stepped by tapping the
                                  #   upper/lower half of each numeral, draws
                                  #   behind a prompt, hold to submit
+    join-event-view.tsx  # The join panel: event summary and the one action
+                         #   deriveJoinAction (core) picks, or its status
+    unverified-viewer-shell.tsx # Whole-screen recovery for the auth gate's
+                         #   unverified state, shared by the player screens
     hold-button.tsx      # Native port of the web HoldButton (800ms sweep)
     round-timer-pill.tsx # App-bar timer pill, unmounted until the custom
                          #   header lands (iOS 26 glass wraps header items)
@@ -85,6 +99,92 @@ src/
     palette.ts           # Dark-theme tokens mirrored from the web app.css
     typography.ts        # Scoreboard numeral face (Geist), loaded without gating start
 ```
+
+## Headless sign-in for test runs
+
+Sign-in is Google OAuth through Clerk's native `AuthView`, which a test runner
+cannot drive. Development builds accept two session links instead
+(`src/app/dev/[action].tsx`):
+
+- `paperpairings://dev/sign-in?ticket=<ticket>` ends any current session,
+  redeems a Clerk sign-in ticket (`signIn.create({ strategy: "ticket" })`,
+  then `setActive`), and returns to the screen it opened over, or home.
+- `paperpairings://dev/sign-out` ends the session the same way.
+
+Mint a ticket with the Clerk Backend API and `CLERK_SECRET_KEY` from
+`apps/web/.env.local` (development instance only), as the web `verify` skill
+does: `POST https://api.clerk.com/v1/sign_in_tokens` with `{ "user_id": … }`.
+Tickets are single-use credentials: the route never logs, stores, or shows
+one. A release build (`__DEV__` false) renders a refusal and does nothing.
+
+## Device E2E (Maestro)
+
+The join screen's deep-link matrix and the scanner's simulator-reachable
+paths run as [Maestro](https://maestro.dev) flows on an iOS simulator, with
+no camera: `e2e/flows/` holds one flow per scenario
+(`docs/plans/qr-join.md`, "Verification") and `e2e/run.mjs` drives them.
+
+```sh
+pnpm dev:native                                  # Metro, in its own terminal
+pnpm --filter @paper-pairings/native e2e:ios     # every flow
+pnpm --filter @paper-pairings/native e2e:ios 05-comped.yaml 14-signed-out-then-sign-in.yaml
+```
+
+Each run:
+
+1. finds or creates the Clerk users `e2e-native-player@example.com` and
+   `e2e-native-newcomer@example.com` (never registered for anything, so the
+   scanner flows can reach home's empty state);
+2. seeds a fresh organization and its events on the dev deployment named by
+   `packages/backend/.env.local` (it refuses anything but a `dev:`
+   deployment, pins the Convex CLI to it over any deploy key in the shell
+   or env files, and refuses one whose Clerk issuer is not a development
+   instance), through the public mutations called with
+   `convex run --identity`, plus `devSeed:markOrganizationPayoutsReady`, a
+   stand-in Stripe account that paid events need and that refuses to run
+   off a Clerk development instance or with a live Stripe key;
+3. serves single-use sign-in tickets on a loopback port for the flows'
+   sign-in step. `CLERK_SECRET_KEY`, from `apps/web/.env.local` or the
+   shell, stays in the runner: Maestro and `xcrun` run with an environment
+   stripped of it and of every other variable whose name reads as a
+   credential, and of those the Convex CLI keeps only its own `CONVEX_*`
+   variables (minus the deployment selectors, which the runner pins);
+4. runs `maestro test` against the booted simulator, with the camera
+   permission allowed on every launch unless a flow sets
+   `CAMERA_PERMISSION` (`deny` or `unset`; `flows/subflows/launch.yaml`).
+
+Prerequisites:
+
+- Xcode with a booted iPhone simulator (`xcrun simctl boot <udid>`; pick one
+  with `E2E_DEVICE=<udid>` when several are booted) and the dev client
+  installed on it (`pnpm --filter @paper-pairings/native ios`). The scanner
+  added `expo-camera` and `expo-haptics`, so a dev client built before them
+  needs a rebuild (`expo prebuild --clean --platform ios`, then the same
+  command).
+- Metro running on `http://127.0.0.1:8081` (override with `E2E_METRO_URL`).
+  The paid flows read `EXPO_PUBLIC_WEB_ORIGIN` the way Metro does (shell,
+  then `.env.local`); start Metro and the runner with the same value.
+- Maestro, installed per user, never into the repo:
+  `curl -Ls "https://get.maestro.mobile.dev" | bash` (puts it under
+  `~/.maestro`; set `MAESTRO_BIN` to use another). Maestro needs Java 17+;
+  without a system JDK, unpack one under `~/.maestro/jdk/` and the runner
+  sets `JAVA_HOME` from it.
+- `apps/web/.env.local` with the development `CLERK_SECRET_KEY`, and a
+  logged-in Convex CLI for the dev deployment, with this branch's functions
+  pushed (`pnpm --filter @paper-pairings/backend exec convex dev --once`).
+
+Runs accumulate organizations named `E2E Native Join <run id>` in the dev
+deployment; `pnpm db:wipe` clears them. Seeded paid events use a stand-in
+Stripe account (`devSeed:markOrganizationPayoutsReady`). Checkout charges
+the platform account, so with the deployment's test-mode key they can take
+a test payment; only a payout to the stand-in fails, and the seed refuses a
+deployment with a live key. The flows stop at the join screen's hand-off
+regardless. The scanner flows cover its entry points, the
+permission explainer and refused state, and typed codes; the simulator has
+no camera, so its preview is black. Android, scanning a real QR code, the
+scan lock and re-arm, haptics, the torch, and the Stripe round trip are not
+covered; they need an emulator or physical devices. Results are recorded in
+[delivery status](../../docs/delivery-status.md).
 
 ## Monorepo notes
 
@@ -102,8 +202,10 @@ standings, match history, and decklists remain open in
 [roadmap section 8](../../TODO.md#8-event-day-outputs-and-client-parity).
 
 Free/approval joining at `/join/<code>` and a web payment handoff are built
-on `feat/qr-codes`, not merged into the audited `main`. The scanner, native
-payment return flow, and universal links remain planned. Do not treat those
+on `feat/qr-codes`, not merged into the audited `main`. The QR scanner
+(`/scan`, opened from home) is built on `qr/native-scanner`, stacked above
+it and not merged either; it has run only on a simulator, never on a phone.
+The native payment return flow and universal links remain planned. Do not treat those
 branch routes or environment variables as available in this checkout.
 
 The native build script and CI export iOS and Android bundles only. The web

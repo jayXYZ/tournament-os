@@ -45,6 +45,11 @@ const cancelled = {
   entryStatus: "cancelled",
 } as unknown as PlayerRegistration;
 
+const pending = {
+  _id: "r1",
+  entryStatus: "pending",
+} as unknown as PlayerRegistration;
+
 // One row per input: the app auth provider's state, Convex auth readiness,
 // whether a provider user has outwaited the token-validation grace on an
 // `unauthenticated` verdict, what the event lookup resolves to, and what the
@@ -58,6 +63,7 @@ function run(scenario: {
   graceElapsed?: boolean;
   event: PlayerTournamentEvent | null | undefined;
   registration?: PlayerRegistration | null | undefined;
+  inviteCode?: string;
 }) {
   mocks.useViewerAuthGate.mockImplementation((appAuth) =>
     viewerAuthGate(appAuth, scenario.convex, {
@@ -70,10 +76,15 @@ function run(scenario: {
       : undefined,
   );
   mocks.useQuery.mockReturnValue(scenario.event);
-  return usePlayerTournamentAccess("CODE01", {
-    user: scenario.provider === "signedIn" ? { email: "p@example.com" } : null,
-    loading: scenario.provider === "loading",
-  });
+  return usePlayerTournamentAccess(
+    "CODE01",
+    {
+      user:
+        scenario.provider === "signedIn" ? { email: "p@example.com" } : null,
+      loading: scenario.provider === "loading",
+    },
+    scenario.inviteCode,
+  );
 }
 
 beforeEach(() => {
@@ -216,7 +227,7 @@ describe("usePlayerTournamentAccess", () => {
   it("notRegistered when the server finds no registration row", () => {
     expect(
       run({ provider: "signedIn", convex: "ready", event, registration: null }),
-    ).toEqual({ state: "notRegistered", event });
+    ).toEqual({ state: "notRegistered", event, registration: null });
   });
 
   it("notRegistered for a cancelled registration — entryStatus must be confirmed", () => {
@@ -227,7 +238,18 @@ describe("usePlayerTournamentAccess", () => {
         event,
         registration: cancelled,
       }),
-    ).toEqual({ state: "notRegistered", event });
+    ).toEqual({ state: "notRegistered", event, registration: cancelled });
+  });
+
+  it("notRegistered keeps a pending row, so a join panel can say it is under review", () => {
+    expect(
+      run({
+        provider: "signedIn",
+        convex: "ready",
+        event,
+        registration: pending,
+      }),
+    ).toEqual({ state: "notRegistered", event, registration: pending });
   });
 
   it("ready with the event and confirmed registration", () => {
@@ -239,5 +261,18 @@ describe("usePlayerTournamentAccess", () => {
         registration: confirmed,
       }),
     ).toEqual({ state: "ready", event, registration: confirmed });
+  });
+
+  it("passes an invite code through to the event lookup", () => {
+    run({
+      provider: "signedOut",
+      convex: "unauthenticated",
+      event,
+      inviteCode: "AB12CD34EF",
+    });
+    expect(mocks.useQuery).toHaveBeenCalledWith(expect.anything(), {
+      publicCode: "CODE01",
+      inviteCode: "AB12CD34EF",
+    });
   });
 });

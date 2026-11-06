@@ -1,0 +1,14 @@
+appId: com.paperpairings.app
+name: Already registered
+---
+- runFlow: subflows/signed-in.yaml
+- runFlow:
+    file: subflows/open-link.yaml
+    env:
+      LINK: paperpairings://join/${CODE_REGISTERED}
+- extendedWaitUntil:
+    visible: "You’re registered"
+    timeout: 30000
+- assertVisible: "E2E Registered Event"
+- assertVisible: "Open the event"
+- assertNotVisible: "Register for this event"

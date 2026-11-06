@@ -10,7 +10,7 @@ import type { AuditActorRole } from "./auditLog";
 import { conventionAuditPlayerRef, logConventionAuditEvent } from "./auditLog";
 import { userError } from "./errors";
 import { ensureParticipantForUser, participantForUser } from "./participants";
-import { nextPublicCode } from "./publicCodes";
+import { mintUniquePublicCode } from "./publicCodes";
 import {
   adjustConfirmedRegistrationCount,
   hasCapacityAvailable,
@@ -32,26 +32,11 @@ import { cleanName, isPubliclyViewable, validStartDate } from "./tournaments";
 // (a badge has no competitive state, so the roster machinery does not
 // apply), the child-event gate, and the attach/detach rules.
 
-export const CONVENTION_PUBLIC_CODE_COUNTER_KEY = "conventionPublicCode";
-export const FIRST_CONVENTION_PUBLIC_CODE = 100_001;
-
 // Badge capacity ceiling. Deliberately independent of
 // MAX_TOURNAMENT_PLAYERS: that constant bounds per-tournament `.take()`s on
 // competitive reads, while badge rosters are always paginated, so a
 // convention can be much larger than any single event it hosts.
 export const MAX_CONVENTION_ATTENDEES = 10_000;
-
-export async function nextConventionPublicCode(
-  ctx: MutationCtx,
-  now = Date.now(),
-) {
-  return await nextPublicCode(
-    ctx,
-    CONVENTION_PUBLIC_CODE_COUNTER_KEY,
-    FIRST_CONVENTION_PUBLIC_CODE,
-    now,
-  );
-}
 
 export type ConventionAccess = {
   convention: Doc<"conventions">;
@@ -107,19 +92,41 @@ export async function canViewConvention(
   if (!user) {
     return false;
   }
-  const membership = await getActiveMembership(
-    ctx,
-    convention.organizationId,
-    user._id,
+  return await conventionVisibleTo(ctx, convention, user._id, () =>
+    badgeForUser(ctx, convention._id, user._id),
   );
-  if (membership) {
+}
+
+// canViewConvention's rule for a viewer already in hand, for the reads that
+// resolve the viewer's badge anyway: a public child event's page
+// (getPublicTournament) and the child-event gate's refusal
+// (resolveChildEventAdmission), neither of which may name a convention the
+// viewer could not open. `badge` is the viewer's badge row or a lookup for
+// it, read only when the rule gets that far.
+export async function conventionVisibleTo(
+  ctx: QueryCtx,
+  convention: Doc<"conventions">,
+  userId: Id<"users"> | null,
+  badge:
+    | Doc<"conventionRegistrations">
+    | null
+    | (() => Promise<Doc<"conventionRegistrations"> | null>),
+) {
+  if (isPubliclyViewable(convention)) {
+    return true;
+  }
+  if (userId === null) {
+    return false;
+  }
+  if (
+    (await getActiveMembership(ctx, convention.organizationId, userId)) !== null
+  ) {
     return true;
   }
   if (convention.lifecycle === "setup") {
     return false;
   }
-  const badge = await badgeForUser(ctx, convention._id, user._id);
-  return badge !== null;
+  return (typeof badge === "function" ? await badge() : badge) !== null;
 }
 
 export function requireConventionSetupEditable(convention: Doc<"conventions">) {
@@ -181,7 +188,7 @@ export async function createConvention(
 ) {
   const { user } = await requireActiveMembership(ctx, args.organizationId);
   const now = Date.now();
-  const publicCode = await nextConventionPublicCode(ctx, now);
+  const publicCode = await mintUniquePublicCode(ctx, "conventions");
   const { startDate, endDate } = validDateRange(args.startDate, args.endDate);
   const conventionId = await ctx.db.insert("conventions", {
     name: cleanName(args.name, "Convention name"),
@@ -537,18 +544,51 @@ export async function resolveChildEventAdmission(
     ? await ctx.db.get(confirmedBadge.ticketTypeId)
     : null;
   if (convention.badgeRequiredForChildEvents) {
-    if (!confirmedBadge) {
+    const missing = !confirmedBadge;
+    const wrongDay =
+      ticketType !== null &&
+      !ticketTypeAdmitsChildEventDate(tournament, ticketType);
+    if (missing || wrongDay) {
+      // A public child event can belong to a convention the viewer may
+      // not open (private, or not yet published): the refusal must not
+      // name it, as the event's page does not (getPublicTournament).
+      const name = (await conventionVisibleTo(ctx, convention, userId, badge))
+        ? convention.name
+        : null;
+      if (missing) {
+        throw userError(
+          name === null
+            ? "This event requires a convention badge — register for the convention first"
+            : `This event requires a ${name} badge — register for the convention first`,
+        );
+      }
       throw userError(
-        `This event requires a ${convention.name} badge — register for the convention first`,
-      );
-    }
-    if (ticketType && !ticketTypeAdmitsChildEventDate(tournament, ticketType)) {
-      throw userError(
-        `Your ${ticketType.name} does not cover this event's date — upgrade your ${convention.name} badge first`,
+        `Your ${ticketType!.name} does not cover this event's date — upgrade your ${name ?? "convention"} badge first`,
       );
     }
   }
   return { compedByBadge: ticketTypeCompsChildEvent(tournament, ticketType) };
+}
+
+// Why a badge-gated child event refuses the viewer's self-serve entry, as
+// resolveChildEventAdmission would: no confirmed badge, or a pass that does
+// not admit the event's day. Null when the convention requires no badge or
+// the viewer's admits the event. Independent of whether the viewer may see
+// the convention, so a hidden parent still gates its public child on the
+// page (getPublicTournament) without being named. `badge` is the viewer's
+// badge row; `coversThisEvent` is badgeChildEventAdmission's verdict on it.
+export function childEventBadgeGate(
+  convention: Pick<Doc<"conventions">, "badgeRequiredForChildEvents">,
+  badge: Pick<Doc<"conventionRegistrations">, "entryStatus"> | null,
+  coversThisEvent: boolean,
+): "missing" | "wrong_day" | null {
+  if (!convention.badgeRequiredForChildEvents) {
+    return null;
+  }
+  if (badge?.entryStatus !== "confirmed") {
+    return "missing";
+  }
+  return coversThisEvent ? null : "wrong_day";
 }
 
 // The comp and date-cover verdicts from a badge row already in hand —

@@ -1,0 +1,14 @@
+appId: com.paperpairings.app
+name: Approval mode while full
+---
+- runFlow: subflows/signed-in.yaml
+- runFlow:
+    file: subflows/open-link.yaml
+    env:
+      LINK: paperpairings://join/${CODE_APPROVAL_FULL}
+- extendedWaitUntil:
+    visible: "Tournament is full"
+    timeout: 30000
+- assertVisible: "E2E Approval Full Event"
+- assertVisible: "The organizer approves each registration\\."
+- assertNotVisible: "Request to register"

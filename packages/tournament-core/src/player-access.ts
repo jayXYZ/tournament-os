@@ -28,7 +28,14 @@ export type PlayerTournamentAccess =
   // server cannot show a private event, so the code is not yet known to be
   // wrong.
   | { state: "unverified"; event: PlayerTournamentEvent | null }
-  | { state: "notRegistered"; event: PlayerTournamentEvent }
+  // No confirmed seat. `registration` is the viewer's row when there is one
+  // (pending, waitlisted, rejected, or cancelled), so a join panel can tell
+  // those apart; null when the viewer has never registered.
+  | {
+      state: "notRegistered";
+      event: PlayerTournamentEvent;
+      registration: PlayerRegistration | null;
+    }
   | {
       state: "ready";
       event: PlayerTournamentEvent;
@@ -38,14 +45,18 @@ export type PlayerTournamentAccess =
 // The one copy of the access ladder shared by every player surface: public
 // code resolves the event, then a viewer the auth gate lets through with a
 // confirmed registration reaches `ready`. Screens render their real content
-// only in `ready` and give every other state its own shell.
+// only in `ready` and give every other state its own shell. `inviteCode`
+// (from a /join link to a private event) opens the event for a viewer who
+// isn't registered yet; it grants nothing on an event they can already see.
 export function usePlayerTournamentAccess(
   publicCode: string,
   appAuth: AppAuthSnapshot,
+  inviteCode?: string,
 ): PlayerTournamentAccess {
   const gate = useViewerAuthGate(appAuth);
   const event = useQuery(api.tournaments.lifecycle.getPublicTournament, {
     publicCode,
+    inviteCode,
   });
   const registration = useMyRegistration(event?.tournament._id ?? null);
 
@@ -86,7 +97,7 @@ export function usePlayerTournamentAccess(
   // ones — while the player queries reject entries that are not confirmed,
   // so gate on entryStatus to match the server's requireRegisteredPlayer.
   if (registration === null || registration.entryStatus !== "confirmed") {
-    return { state: "notRegistered", event };
+    return { state: "notRegistered", event, registration };
   }
   return { state: "ready", event, registration };
 }

@@ -1,0 +1,46 @@
+appId: com.paperpairings.app
+name: Typed codes on the scanner, a link from elsewhere, and back to the scanner
+---
+- runFlow: subflows/signed-in.yaml
+- tapOn: "Scan a QR code"
+- tapOn: "Type a code instead"
+# A link that isn't ours, even with a code-shaped last segment: a toast, and
+# the scanner stays put.
+- tapOn:
+    id: "scan-code-input"
+- inputText: "https://example.com/menu/7KQ2MX"
+- tapOn: "Continue"
+- extendedWaitUntil:
+    visible: "Not a Paper Pairings code"
+    timeout: 10000
+- assertNotVisible: "Join event"
+- assertVisible: "Continue"
+# The text stays for fixing; closing the field clears it. Then the free
+# event's Public Code, typed in lowercase.
+- assertVisible: "https://example.com/menu/7KQ2MX"
+- tapOn: "Scan instead"
+- tapOn: "Type a code instead"
+- assertNotVisible: "https://example.com/menu/7KQ2MX"
+- tapOn:
+    id: "scan-code-input"
+- inputText: ${CODE_FREE_TYPED}
+- tapOn: "Continue"
+- extendedWaitUntil:
+    visible: "Register for this event"
+    timeout: 30000
+- assertVisible: "E2E Free Event"
+# Back to a scanner that still takes a code: the private event's invite,
+# typed with the dash it prints with.
+- tapOn: "Scan"
+- extendedWaitUntil:
+    visible: "Continue"
+    timeout: 20000
+- assertNotVisible: "Register for this event"
+- tapOn:
+    id: "scan-code-input"
+- inputText: ${INVITE_PRIVATE.slice(0, 5) + "-" + INVITE_PRIVATE.slice(5)}
+- tapOn: "Continue"
+- extendedWaitUntil:
+    visible: "Register for this event"
+    timeout: 30000
+- assertVisible: "E2E Private Event"

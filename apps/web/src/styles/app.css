@@ -547,3 +547,13 @@
   height: 0;
   pointer-events: none;
 }
+
+/* Printing a join QR code (organizer-workspace/tournament-manager/
+   join-qr-dialog.tsx): the open dialog portals a print sheet into <body>,
+   and while that sheet exists it is the only thing on the page, so neither
+   the app behind the dialog nor the dialog itself reaches the paper. */
+@media print {
+  body:has(> [data-print-sheet]) > :not([data-print-sheet]) {
+    display: none !important;
+  }
+}

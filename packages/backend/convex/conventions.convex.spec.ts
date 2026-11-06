@@ -4,10 +4,12 @@ import { expect, test } from "vitest";
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import {
+  PUBLIC_CODE_SHAPE,
   organizerIdentity,
   playerIdentity,
   seedOrganizer,
 } from "./specHelpers";
+import { childEventBadgeGate } from "./model/conventions";
 import { createConvexTest } from "./specHelpers.runtime";
 import type { TestConvex } from "convex-test";
 import type schema from "./schema";
@@ -75,15 +77,17 @@ test("a convention is created in setup with its own public code and publishes in
   expect(convention).toMatchObject({
     lifecycle: "setup",
     visibility: "public",
-    publicCode: 100_001,
+    publicCode: expect.stringMatching(PUBLIC_CODE_SHAPE),
     confirmedRegistrationCount: 0,
     badgeRequiredForChildEvents: false,
   });
 
+  const publicCode = convention!.publicCode;
+
   // Hidden from the public while in setup, even by code.
   expect(
     await t.query(api.conventions.lifecycle.getPublicConvention, {
-      publicCode: "100001",
+      publicCode,
     }),
   ).toBeNull();
 
@@ -93,7 +97,7 @@ test("a convention is created in setup with its own public code and publishes in
   });
   const published = await t.query(
     api.conventions.lifecycle.getPublicConvention,
-    { publicCode: "100001" },
+    { publicCode },
   );
   expect(published?.convention.lifecycle).toBe("registration");
   expect(published?.organizationName).toBe("Test Org");
@@ -446,9 +450,8 @@ test("a private parent convention never leaks through its public child's page", 
   await organizer.mutation(api.tournaments.lifecycle.publishTournament, {
     tournamentId,
   });
-  const publicCode = String(
-    (await t.run(async (ctx) => ctx.db.get(tournamentId)))!.publicCode,
-  );
+  const publicCode = (await t.run(async (ctx) => ctx.db.get(tournamentId)))!
+    .publicCode;
 
   // Public parent: the child page names it.
   const before = await t.query(api.tournaments.lifecycle.getPublicTournament, {
@@ -479,3 +482,103 @@ test("a private parent convention never leaks through its public child's page", 
   );
   expect(asOrganizer?.convention?.name).toBe("Winter Gathering");
 });
+
+// The page's badge gate (getPublicTournament badgeGate), as
+// resolveChildEventAdmission would refuse.
+test.each([
+  ["a convention that doesn't require badges", false, null, true, null],
+  ["no badge", true, null, false, "missing"],
+  ["a pending badge", true, "pending", false, "missing"],
+  ["a cancelled badge", true, "cancelled", false, "missing"],
+  ["a badge for another day", true, "confirmed", false, "wrong_day"],
+  ["a badge that covers the event", true, "confirmed", true, null],
+] as const)(
+  "childEventBadgeGate: %s",
+  (_name, required, entryStatus, coversThisEvent, expected) => {
+    expect(
+      childEventBadgeGate(
+        { badgeRequiredForChildEvents: required },
+        entryStatus === null ? null : { entryStatus },
+        coversThisEvent,
+      ),
+    ).toBe(expected);
+  },
+);
+
+// A hidden parent still gates its public child: the page says a badge is
+// required (badgeGate) without naming the convention, and registerSelf's
+// refusal doesn't name it either.
+test.each([
+  ["an unpublished", false],
+  ["a private", true],
+] as const)(
+  "%s badge-gated parent gates its public child without naming itself",
+  async (_name, published) => {
+    const t = createConvexTest();
+    const { organizationId } = await seedOrganizer(t);
+    const conventionId = await seedConvention(t, organizationId, {
+      publish: published,
+    });
+    const tournamentId = await seedStandaloneTournament(t, organizationId);
+    const organizer = t.withIdentity(organizerIdentity);
+    await organizer.mutation(api.conventions.events.attachTournament, {
+      conventionId,
+      tournamentId,
+    });
+    await organizer.mutation(api.conventions.lifecycle.updateConventionSetup, {
+      conventionId,
+      badgeRequiredForChildEvents: true,
+    });
+    if (published) {
+      await organizer.mutation(
+        api.conventions.lifecycle.updateConventionVisibility,
+        { conventionId, visibility: "private" },
+      );
+    }
+    await organizer.mutation(api.tournaments.lifecycle.publishTournament, {
+      tournamentId,
+    });
+    const publicCode = (await t.run(async (ctx) => ctx.db.get(tournamentId)))!
+      .publicCode;
+    await t.run(async (ctx) => {
+      await ctx.db.insert("users", {
+        tokenIdentifier: playerIdentity(1).tokenIdentifier,
+        publicCode: 101,
+        email: playerIdentity(1).email,
+        name: playerIdentity(1).name,
+        updatedAt: Date.now(),
+      });
+    });
+    const player = t.withIdentity(playerIdentity(1));
+
+    const asPlayer = await player.query(
+      api.tournaments.lifecycle.getPublicTournament,
+      { publicCode },
+    );
+    expect(asPlayer?.convention).toBeNull();
+    expect(asPlayer?.badgeGate).toBe("missing");
+    const anonymous = await t.query(
+      api.tournaments.lifecycle.getPublicTournament,
+      { publicCode },
+    );
+    expect(anonymous?.convention).toBeNull();
+    expect(anonymous?.badgeGate).toBe("missing");
+
+    const refusal = await player
+      .mutation(api.tournaments.registrations.registerSelf, { tournamentId })
+      .then(
+        () => null,
+        (error: Error) => error.message,
+      );
+    expect(refusal).toMatch(/requires a convention badge/);
+    expect(refusal).not.toContain("Winter Gathering");
+
+    // The organizing team sees the parent, and the gate names it.
+    const asOrganizer = await organizer.query(
+      api.tournaments.lifecycle.getPublicTournament,
+      { publicCode },
+    );
+    expect(asOrganizer?.convention?.name).toBe("Winter Gathering");
+    expect(asOrganizer?.badgeGate).toBe("missing");
+  },
+);

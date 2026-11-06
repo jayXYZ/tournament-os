@@ -1,0 +1,9 @@
+appId: com.paperpairings.app
+---
+- runFlow:
+    file: open-link.yaml
+    env:
+      LINK: paperpairings://dev/sign-out
+- extendedWaitUntil:
+    visible: "Sign in to follow your matches and standings live\\."
+    timeout: 30000

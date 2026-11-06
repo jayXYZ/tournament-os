@@ -1,0 +1,9 @@
+appId: com.paperpairings.app
+name: Disabled invite
+---
+- runFlow: subflows/signed-in.yaml
+- runFlow:
+    file: subflows/open-link.yaml
+    env:
+      LINK: paperpairings://join/${INVITE_DISABLED}
+- runFlow: subflows/code-not-found.yaml

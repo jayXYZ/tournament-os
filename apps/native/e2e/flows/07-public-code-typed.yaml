@@ -1,0 +1,12 @@
+appId: com.paperpairings.app
+name: Public code as typed (lowercase) resolves
+---
+- runFlow: subflows/signed-in.yaml
+- runFlow:
+    file: subflows/open-link.yaml
+    env:
+      LINK: paperpairings://join/${CODE_FREE_TYPED}
+- extendedWaitUntil:
+    visible: "Register for this event"
+    timeout: 30000
+- assertVisible: "E2E Free Event"
