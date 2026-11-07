@@ -3,11 +3,14 @@ import { useState } from 'react'
 import {
   deriveRegistrationAction,
   mutationErrorMessage,
+  useCancelMyRegistration,
+  useFeePreview,
   useMyRefundFlag,
   useMyRegistration,
+  useRegisterSelf,
   useViewerAuthGate,
 } from '@paper-pairings/core'
-import { useAction, useMutation, useQuery } from 'convex/react'
+import { useAction, useQuery } from 'convex/react'
 import { Building2, CalendarDays, LogIn, Swords, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@paper-pairings/backend/convex/_generated/api'
@@ -32,6 +35,7 @@ import { useAppAuth } from '@/lib/use-app-auth'
 import {
   UNVERIFIED_VIEWER_DESCRIPTION,
   UnverifiedViewerActions,
+  UnverifiedViewerEmpty,
 } from '@/components/shared/viewer-unverified'
 
 import { Badge } from '@/components/ui/badge'
@@ -92,9 +96,12 @@ export function TournamentPublicPageContent({
   })
   // A private event answers null to a viewer it doesn't admit, and to its
   // own players until Convex has verified them, so a null waits on the auth
-  // gate (as the player access ladder does), and a signed-out viewer is
-  // offered sign-in rather than told the event doesn't exist. The native
-  // app's "Complete payment" hand-off lands here without a session.
+  // gate (as the player access ladder does): a signed-out viewer is offered
+  // sign-in rather than told the event doesn't exist, and a viewer Convex
+  // could not verify is offered the gate's recovery, since a restarted
+  // handshake may still turn the null into the event (useJoinCode reads the
+  // same null the same way). The native app's "Complete payment" hand-off
+  // lands here without a session.
   const { user, loading } = useAppAuth()
   const viewer = useViewerAuthGate({ user, loading })
 
@@ -105,6 +112,8 @@ export function TournamentPublicPageContent({
     />
   ) : event === null && viewer === 'signedOut' ? (
     <SignInToViewEvent className="min-h-80 border bg-card" />
+  ) : event === null && viewer === 'unverified' ? (
+    <UnverifiedViewerEmpty className="min-h-80 border bg-card" />
   ) : event === null ? (
     <PageNotFound
       title="Tournament not found"
@@ -297,18 +306,14 @@ function RegistrationPanel({
   // an already-registered player never sees a flash of the register button.
   // The order and refund flag wait the same way.
   const registration = useMyRegistration(tournament._id)
-  const registerSelf = useMutation(api.tournaments.registrations.registerSelf)
-  const cancelRegistration = useMutation(
-    api.tournaments.registrations.cancelMyRegistration,
-  )
+  const registerSelf = useRegisterSelf()
+  const cancelRegistration = useCancelMyRegistration()
   const createEntryCheckout = useAction(
     api.payments.checkout.createEntryCheckout,
   )
   const isPaid = (tournament.entryFeeCents ?? 0) > 0
-  const feePreview = useQuery(
-    api.payments.queries.getFeePreview,
-    isPaid ? { entryFeeCents: tournament.entryFeeCents! } : 'skip',
-  )
+  // Skipped on a free event (a null or zero fee), as the order is.
+  const feePreview = useFeePreview(tournament.entryFeeCents ?? null)
   const myOrder = useMyEntryOrder(isPaid ? tournament._id : null)
   const refundFlag = useMyRefundFlag(isPaid ? tournament._id : null)
   const { busy, run } = useBusyAction()

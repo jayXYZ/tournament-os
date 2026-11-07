@@ -682,8 +682,11 @@ describe("deriveRegistrationAction", () => {
         completed: locked,
         cancelled: locked,
       },
+      // The server's cancel rule (registrationDropEffect) takes only an
+      // active or dropped seat, so a disqualified one gets no cancel offer
+      // it would refuse.
       disqualified: {
-        registration: cancel,
+        registration: locked,
         in_progress: playerView,
         completed: locked,
         cancelled: locked,

@@ -112,6 +112,23 @@ test("re-reads the clock when the wake source fires after a stalled timer", () =
   expect(latest).toBe(BOUNDARY + 5 * MINUTE);
 });
 
+test("a disabled clock neither ticks nor listens for wake until enabled", () => {
+  mount({ enabled: false });
+  expect(latest).toBe(BOUNDARY);
+  expect(wakeListeners.size).toBe(0);
+  const rendersAfterMount = renders;
+
+  // Five boundaries pass: no re-render, no new value.
+  advance(5 * MINUTE);
+  expect(latest).toBe(BOUNDARY);
+  expect(renders).toBe(rendersAfterMount);
+
+  // Enabling reads the real time at once and starts listening.
+  mount({ enabled: true });
+  expect(latest).toBe(BOUNDARY + 5 * MINUTE);
+  expect(wakeListeners.size).toBe(1);
+});
+
 test("unsubscribes from the wake source on unmount", () => {
   mount();
   expect(wakeListeners.size).toBe(1);

@@ -56,11 +56,18 @@ function readEnvFile(file) {
   return values;
 }
 
-// A variable name that reads as a credential. Maestro and xcrun get the
+// A variable name that reads as a credential: SECRET, TOKEN, PASSWORD or
+// CREDENTIAL anywhere in it; KEY as its last segment or a segment of its own
+// (DEPLOY_KEY, APIKEY, AWS_ACCESS_KEY_ID — not KEYBOARD); PAT or AUTH as
+// its last segment (GH_PAT, NPM_CONFIG__AUTH). Maestro and xcrun get the
 // parent's environment without these, and the Convex CLI without all but its
 // own CONVEX_* ones (convexEnv below), so a CLERK_SECRET_KEY or deploy key
-// exported in the shell stays in this process (scrubbedEnv).
-const CREDENTIAL_NAME = /SECRET|TOKEN|PASSWORD|CREDENTIAL|KEY$/i;
+// exported in the shell stays in this process (scrubbedEnv). A credential
+// whose variable name says nothing of it — a connection URL with the
+// password inside — is not caught: keep such variables out of the shell
+// that runs this.
+const CREDENTIAL_NAME =
+  /SECRET|TOKEN|PASSWORD|PASSWD|CREDENTIAL|KEY$|(^|_)KEY_|(^|_)(PAT|AUTH)$/i;
 
 // This process's environment minus every variable `drop` names.
 function scrubbedEnv(drop) {

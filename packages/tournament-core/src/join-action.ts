@@ -72,10 +72,13 @@ export type RegistrationAction =
 // - "full": the event filled before they paid. Checkout re-checks capacity
 //   in direct mode (payments/checkout.ts), by the event's approval setting
 //   as it stands now rather than the order's purpose: an approval switched
-//   off since re-checks, one switched on since does not. Approval mode
-//   skips it, since the approval already checked. registerSelf checks it
-//   before seating an entry the viewer's badge now comps, whatever the
-//   order. A badge would not help, so this outranks the gate.
+//   off since re-checks, one switched on since does not. Approval mode lets
+//   the payment begin (the approval checked capacity when it was given) and
+//   leaves the seat decision to the webhook, which refunds a payment that
+//   lands on a full event (payments/webhooks.ts isEntrySeatable) — so a
+//   full event seats no one, paid or comped. registerSelf makes that same
+//   decision up front before seating an entry the viewer's badge now comps,
+//   whatever the order. A badge would not help, so this outranks the gate.
 // - a badge gate reason: the badge stopped admitting the event after the
 //   entry existed (a cancelled badge, a rescheduled event).
 // The server still lets the viewer withdraw while registration is open.
@@ -83,8 +86,11 @@ export type PaymentBlock = "closed" | "full" | Exclude<BadgeGate, null> | null;
 
 // What a confirmed seat allows next.
 export type SeatAction =
-  // Registration is open: releasing the seat is the one self-service change
-  // (rejoining after a drop is an organizer reinstatement).
+  // Registration is open and the seat is active or dropped: releasing it is
+  // the one self-service change (rejoining after a drop is an organizer
+  // reinstatement). The server's cancel rule takes exactly those two
+  // statuses (model/registrations.ts registrationDropEffect), so no other
+  // seat is offered a cancel it would refuse.
   // `cancelOutcome`: what cancelling does with a paid order's money
   // (getMyEntryOrder); null on a free event, while the order loads, or when
   // there is nothing to refund.
@@ -94,8 +100,9 @@ export type SeatAction =
   // standings and match history.
   | { kind: "openPlayerView" }
   // Registration changes are over: the event finished or was cancelled.
-  // An eliminated seat outside play lands here too, since elimination only
-  // happens in play.
+  // An eliminated or disqualified seat outside play lands here too: both
+  // only happen in play, and a round-one rewind that reopens registration
+  // keeps them as they are.
   | { kind: "locked" };
 
 // The one primary action the native join screen offers (docs/plans/qr-join.md
@@ -289,7 +296,8 @@ function deriveForViewer(
         next:
           tournament.lifecycle === "in_progress"
             ? { kind: "openPlayerView" }
-            : open && participation !== "eliminated"
+            : open &&
+                (participation === "active" || participation === "dropped")
               ? { kind: "cancel", cancelOutcome: order?.cancelOutcome ?? null }
               : { kind: "locked" },
       };

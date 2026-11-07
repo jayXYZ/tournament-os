@@ -533,8 +533,10 @@ const rows: Array<[string, Scenario, Array<string>]> = [
   ],
   [
     'disqualified while registration is open',
+    // No cancel offer: the server's cancel rule (registrationDropEffect)
+    // takes only an active or dropped seat.
     { registration: confirmed('disqualified') },
-    [disqualified, cancel],
+    [disqualified, lockedNote],
   ],
   [
     'disqualified while the event runs',
@@ -998,6 +1000,17 @@ describe('an event the lookup answers null', () => {
     renderNull('ready')
     expect(text()).toContain('Tournament not found')
     expect(text()).not.toContain('Sign in')
+  })
+
+  // A private event the viewer holds a row in resolves only for a verified
+  // identity, so the null is not yet known to be a bad code: offer the
+  // gate's recovery, as the /join route does, never "not found".
+  test('an unverified viewer is offered the handshake restart', async () => {
+    renderNull('unverified')
+    expect(text()).toContain("We couldn't verify your account")
+    expect(text()).not.toContain('Tournament not found')
+    await click('Try again')
+    expect(state.restartAuth).toHaveBeenCalled()
   })
 
   // The null may still turn into the event once Convex verifies the viewer.

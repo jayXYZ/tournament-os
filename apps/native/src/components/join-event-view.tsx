@@ -68,12 +68,13 @@ export function JoinEventView({
   const spotsLeft = Math.max(tournament.playerCapacity - registeredCount, 0);
 
   // Rounded up, as on the web: the order's cancel outcome reads as a
-  // promise, so its clock never runs behind the server's.
-  const now = useClientClock({ round: "up" });
-  const order = useMyEntryOrder(
-    isPaid && signedIn ? tournament._id : null,
-    now,
-  );
+  // promise, so its clock never runs behind the server's. The order is the
+  // clock's only reader here, so where it is skipped (a free event, a
+  // signed-out viewer) the clock stands still rather than re-rendering the
+  // whole view once a minute.
+  const wantsOrder = isPaid && signedIn;
+  const now = useClientClock({ round: "up", enabled: wantsOrder });
+  const order = useMyEntryOrder(wantsOrder ? tournament._id : null, now);
   const feePreview = useFeePreview(isPaid ? tournament.entryFeeCents! : null);
   const registerSelf = useRegisterSelf();
   const cancelRegistration = useCancelMyRegistration();

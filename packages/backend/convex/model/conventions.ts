@@ -539,44 +539,43 @@ export async function resolveChildEventAdmission(
     return { compedByBadge: false };
   }
   const badge = await badgeForUser(ctx, convention._id, userId);
-  const confirmedBadge = badge?.entryStatus === "confirmed" ? badge : null;
-  const ticketType = confirmedBadge
-    ? await ctx.db.get(confirmedBadge.ticketTypeId)
-    : null;
-  if (convention.badgeRequiredForChildEvents) {
-    const missing = !confirmedBadge;
-    const wrongDay =
-      ticketType !== null &&
-      !ticketTypeAdmitsChildEventDate(tournament, ticketType);
-    if (missing || wrongDay) {
-      // A public child event can belong to a convention the viewer may
-      // not open (private, or not yet published): the refusal must not
-      // name it, as the event's page does not (getPublicTournament).
-      const name = (await conventionVisibleTo(ctx, convention, userId, badge))
-        ? convention.name
-        : null;
-      if (missing) {
-        throw userError(
-          name === null
-            ? "This event requires a convention badge — register for the convention first"
-            : `This event requires a ${name} badge — register for the convention first`,
-        );
-      }
+  const admission = await badgeChildEventAdmission(ctx, tournament, badge);
+  const gate = childEventBadgeGate(
+    convention,
+    badge,
+    admission.coversThisEvent,
+  );
+  if (gate !== null) {
+    // A public child event can belong to a convention the viewer may not
+    // open (private, or not yet published): the refusal must not name it,
+    // as the event's page does not (getPublicTournament).
+    const name = (await conventionVisibleTo(ctx, convention, userId, badge))
+      ? convention.name
+      : null;
+    if (gate === "missing") {
       throw userError(
-        `Your ${ticketType!.name} does not cover this event's date — upgrade your ${name ?? "convention"} badge first`,
+        name === null
+          ? "This event requires a convention badge — register for the convention first"
+          : `This event requires a ${name} badge — register for the convention first`,
       );
     }
+    // "wrong_day" is only ever reported against a pass in hand.
+    throw userError(
+      `Your ${admission.ticketType!.name} does not cover this event's date — upgrade your ${name ?? "convention"} badge first`,
+    );
   }
-  return { compedByBadge: ticketTypeCompsChildEvent(tournament, ticketType) };
+  return { compedByBadge: admission.compsThisEvent };
 }
 
-// Why a badge-gated child event refuses the viewer's self-serve entry, as
-// resolveChildEventAdmission would: no confirmed badge, or a pass that does
-// not admit the event's day. Null when the convention requires no badge or
-// the viewer's admits the event. Independent of whether the viewer may see
-// the convention, so a hidden parent still gates its public child on the
-// page (getPublicTournament) without being named. `badge` is the viewer's
-// badge row; `coversThisEvent` is badgeChildEventAdmission's verdict on it.
+// The one gate rule: why a badge-gated child event refuses the viewer's
+// self-serve entry — no confirmed badge, or a pass that does not admit the
+// event's day — or null when the convention requires no badge or the
+// viewer's admits the event. resolveChildEventAdmission throws on it, and
+// getPublicTournament ships it as the page's warning, so the two can never
+// disagree. Independent of whether the viewer may see the convention, so a
+// hidden parent still gates its public child on the page without being
+// named. `badge` is the viewer's badge row; `coversThisEvent` is
+// badgeChildEventAdmission's verdict on it.
 export function childEventBadgeGate(
   convention: Pick<Doc<"conventions">, "badgeRequiredForChildEvents">,
   badge: Pick<Doc<"conventionRegistrations">, "entryStatus"> | null,
@@ -591,26 +590,32 @@ export function childEventBadgeGate(
   return coversThisEvent ? null : "wrong_day";
 }
 
-// The comp and date-cover verdicts from a badge row already in hand —
-// getPublicTournament resolves the viewer's badge for display anyway, so it
-// must not re-walk user → participant → badge, and both answers come from
-// the same ticket-type row.
+// The comp and date-cover verdicts from a badge row already in hand, with
+// the pass they were read from (the gate's refusal names it). Both answers
+// come from the same ticket-type row, and getPublicTournament resolves the
+// viewer's badge for display anyway, so it must not re-walk user →
+// participant → badge to get them.
 export async function badgeChildEventAdmission(
   ctx: QueryCtx,
   tournament: Doc<"tournaments">,
   badge: Doc<"conventionRegistrations"> | null,
-): Promise<{ compsThisEvent: boolean; coversThisEvent: boolean }> {
+): Promise<{
+  compsThisEvent: boolean;
+  coversThisEvent: boolean;
+  ticketType: Doc<"conventionTicketTypes"> | null;
+}> {
   if (badge?.entryStatus !== "confirmed") {
-    return { compsThisEvent: false, coversThisEvent: false };
+    return { compsThisEvent: false, coversThisEvent: false, ticketType: null };
   }
   const ticketType = await ctx.db.get(badge.ticketTypeId);
   return {
     compsThisEvent: ticketTypeCompsChildEvent(tournament, ticketType),
-    // Mirrors the gate in resolveChildEventAdmission, which does not refuse
-    // when the ticket-type row is gone.
+    // A confirmed badge whose ticket-type row is gone is not refused for its
+    // day: there is no admission window left to fall outside of.
     coversThisEvent:
       ticketType === null ||
       ticketTypeAdmitsChildEventDate(tournament, ticketType),
+    ticketType,
   };
 }
 

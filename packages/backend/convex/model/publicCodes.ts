@@ -28,16 +28,10 @@ export async function mintUniquePublicCode(
   table: "tournaments" | "conventions",
 ): Promise<string> {
   return await mintUniqueCode(PUBLIC_CODE_LENGTH, async (code) => {
-    const taken =
-      table === "tournaments"
-        ? await ctx.db
-            .query("tournaments")
-            .withIndex("by_publicCode", (q) => q.eq("publicCode", code))
-            .first()
-        : await ctx.db
-            .query("conventions")
-            .withIndex("by_publicCode", (q) => q.eq("publicCode", code))
-            .first();
+    const taken = await ctx.db
+      .query(table)
+      .withIndex("by_publicCode", (q) => q.eq("publicCode", code))
+      .first();
     return taken !== null;
   });
 }

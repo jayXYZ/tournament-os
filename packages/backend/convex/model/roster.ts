@@ -856,10 +856,12 @@ export async function registerEntry(
 }
 
 // registerEntry's comp arm for a pending entry with a payable order (see
-// there). Capacity is checked as for any seat taken here; a payment that
-// still lands on the closed order is a late success and refunds
-// (payments/webhooks.ts), never seating the entry twice. The audit line is
-// the comped registration's, as on a fresh comped entry.
+// there). Capacity is checked as for any seat taken here — the decision the
+// Checkout webhook makes when a payment lands (isEntrySeatable), made before
+// anything is paid; a payment that still lands on the closed order is a
+// late success and refunds (payments/webhooks.ts), never seating the entry
+// twice. The audit line is the comped registration's, as on a fresh comped
+// entry.
 async function seatCompedEntryOwingPayment(
   ctx: MutationCtx,
   {

@@ -1,7 +1,14 @@
 import { useRestartConvexAuth } from '@paper-pairings/core'
-import { LogOut, RotateCw } from 'lucide-react'
+import { LogOut, RotateCw, ShieldAlert } from 'lucide-react'
 import { useAppAuth } from '@/lib/use-app-auth'
 import { Button } from '@/components/ui/button'
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/components/ui/empty'
 import { cn } from '@/lib/utils'
 
 // The viewer auth gate's `unverified` state, worded and actioned once for
@@ -38,5 +45,25 @@ export function UnverifiedViewerActions({ className }: { className?: string }) {
         Sign out
       </Button>
     </div>
+  )
+}
+
+// The same state as a whole surface, for a page whose lookup answered null
+// to a viewer Convex could not verify: a private event they hold a row in
+// resolves only for a verified identity, so the null is not yet known to be
+// a bad code (the event page, the /join route; useJoinCode and
+// usePlayerTournamentAccess read the gate the same way).
+export function UnverifiedViewerEmpty({ className }: { className?: string }) {
+  return (
+    <Empty className={className}>
+      <EmptyHeader>
+        <EmptyMedia variant="icon">
+          <ShieldAlert aria-hidden="true" />
+        </EmptyMedia>
+        <EmptyTitle>{UNVERIFIED_VIEWER_TITLE}</EmptyTitle>
+        <EmptyDescription>{UNVERIFIED_VIEWER_DESCRIPTION}</EmptyDescription>
+      </EmptyHeader>
+      <UnverifiedViewerActions />
+    </Empty>
   )
 }

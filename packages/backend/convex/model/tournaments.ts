@@ -16,7 +16,7 @@ import {
   writePhases,
 } from "./phases";
 import { inviteCodeGrantsAccess } from "./invites";
-import { mintUniquePublicCode } from "./publicCodes";
+import { mintUniquePublicCode, parsePublicCode } from "./publicCodes";
 import { MAX_TOURNAMENT_PLAYERS, registrationForUser } from "./registrations";
 
 export type TournamentAccess = {
@@ -365,6 +365,24 @@ export async function requireTournamentDeletable(
   }
 }
 
+// The tournament a raw public-code string resolves to, or null for a
+// malformed or unknown code. The event page (getPublicTournament), the join
+// URL (resolveJoinCode), and the admin routes (getManagedTournament) all open
+// an event from its code this way.
+export async function tournamentByPublicCode(
+  ctx: QueryCtx,
+  rawPublicCode: string,
+) {
+  const publicCode = parsePublicCode(rawPublicCode);
+  if (publicCode === null) {
+    return null;
+  }
+  return await ctx.db
+    .query("tournaments")
+    .withIndex("by_publicCode", (q) => q.eq("publicCode", publicCode))
+    .unique();
+}
+
 // Whether the caller may open a tournament's public page. Setup events stay
 // hidden from everyone except the organizing team, even if test data or an
 // organizer-created row already registered a player. After publication,
@@ -375,26 +393,33 @@ export async function requireTournamentDeletable(
 // so an invited player can read what they are joining before they register.
 // getPublicTournament and resolveJoinCode share this rule, so the join URL
 // says no more about which events exist than the event page does.
-export async function canViewTournament(
+//
+// `viewer` is the signed-in user the rule read on the way, so a caller that
+// needs the viewer anyway (the page's badge lookups) does not read the user
+// row twice. It is null when the rule admitted the caller without consulting
+// it (a public event, the invite code) as well as when nobody is signed in;
+// a caller that needs the viewer then resolves it itself, which costs a
+// signed-out caller nothing.
+export async function tournamentViewAccess(
   ctx: QueryCtx,
   tournament: Doc<"tournaments">,
   inviteCode: string | undefined,
-) {
+): Promise<{ allowed: boolean; viewer: Doc<"users"> | null }> {
   if (
     isPubliclyViewable(tournament) ||
     (await inviteCodeGrantsAccess(ctx, tournament, inviteCode))
   ) {
-    return true;
+    return { allowed: true, viewer: null };
   }
-  const user = await currentUserOrNull(ctx);
-  if (!user) {
-    return false;
+  const viewer = await currentUserOrNull(ctx);
+  if (!viewer) {
+    return { allowed: false, viewer: null };
   }
-  if (await getActiveMembership(ctx, tournament.organizationId, user._id)) {
-    return true;
+  if (await getActiveMembership(ctx, tournament.organizationId, viewer._id)) {
+    return { allowed: true, viewer };
   }
   if (tournament.lifecycle === "setup") {
-    return false;
+    return { allowed: false, viewer };
   }
   // Any registration row resolves the code, not only a confirmed one.
   // Cancelling now leaves a "cancelled" row behind instead of deleting it, so
@@ -402,7 +427,21 @@ export async function canViewTournament(
   // "Tournament not found" the moment they cancel — and registerSelf accepts
   // that same row as the invitation back in, which they could never act on
   // from a page they can no longer open.
-  return (await registrationForUser(ctx, tournament._id, user._id)) !== null;
+  return {
+    allowed:
+      (await registrationForUser(ctx, tournament._id, viewer._id)) !== null,
+    viewer,
+  };
+}
+
+// tournamentViewAccess's verdict alone, for the callers that need nothing
+// else of the viewer.
+export async function canViewTournament(
+  ctx: QueryCtx,
+  tournament: Doc<"tournaments">,
+  inviteCode: string | undefined,
+) {
+  return (await tournamentViewAccess(ctx, tournament, inviteCode)).allowed;
 }
 
 export function requireTestTournament(tournament: Doc<"tournaments">) {

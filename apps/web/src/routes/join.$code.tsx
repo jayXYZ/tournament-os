@@ -1,15 +1,11 @@
 import { Link, Navigate, createFileRoute } from '@tanstack/react-router'
 import { useJoinCode } from '@paper-pairings/core'
-import { SearchX, ShieldAlert } from 'lucide-react'
+import { SearchX } from 'lucide-react'
 import { useAppAuth } from '@/lib/use-app-auth'
 import { SiteShell } from '@/components/shared/site-shell'
 import { LoadingCard } from '@/components/shared/loading-card'
 import { SignInToViewEvent } from '@/components/shared/sign-in-to-view'
-import {
-  UNVERIFIED_VIEWER_DESCRIPTION,
-  UNVERIFIED_VIEWER_TITLE,
-  UnverifiedViewerActions,
-} from '@/components/shared/viewer-unverified'
+import { UnverifiedViewerEmpty } from '@/components/shared/viewer-unverified'
 import { Button } from '@/components/ui/button'
 import {
   Empty,
@@ -54,16 +50,7 @@ function RouteComponent() {
       {resolution.state === 'loading' ? (
         <LoadingCard title="Opening event" description="Looking up the code." />
       ) : resolution.state === 'unverified' ? (
-        <Empty className="min-h-80">
-          <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <ShieldAlert aria-hidden="true" />
-            </EmptyMedia>
-            <EmptyTitle>{UNVERIFIED_VIEWER_TITLE}</EmptyTitle>
-            <EmptyDescription>{UNVERIFIED_VIEWER_DESCRIPTION}</EmptyDescription>
-          </EmptyHeader>
-          <UnverifiedViewerActions />
-        </Empty>
+        <UnverifiedViewerEmpty className="min-h-80" />
       ) : resolution.state === 'signInToView' ? (
         <SignInToViewEvent className="min-h-80" />
       ) : (

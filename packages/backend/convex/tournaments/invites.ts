@@ -6,10 +6,10 @@ import {
   mintUniqueInviteCode,
   normalizeInviteCode,
 } from "../model/invites";
-import { parsePublicCode } from "../model/publicCodes";
 import {
   canViewTournament,
   requireOrganizerAccess,
+  tournamentByPublicCode,
 } from "../model/tournaments";
 
 // The tournament's live invite code, for the organizer settings surface.
@@ -50,22 +50,19 @@ export const resolveJoinCode = query({
     ctx,
     args,
   ): Promise<{ publicCode: string; inviteCode?: string } | null> => {
-    const publicCode = parsePublicCode(args.code);
-    if (publicCode !== null) {
-      const tournament = await ctx.db
-        .query("tournaments")
-        .withIndex("by_publicCode", (q) => q.eq("publicCode", publicCode))
-        .unique();
+    const byPublicCode = await tournamentByPublicCode(ctx, args.code);
+    if (byPublicCode !== null) {
       if (
-        !tournament ||
-        tournament.lifecycle === "setup" ||
-        !(await canViewTournament(ctx, tournament, undefined))
+        byPublicCode.lifecycle === "setup" ||
+        !(await canViewTournament(ctx, byPublicCode, undefined))
       ) {
         return null;
       }
-      return { publicCode };
+      return { publicCode: byPublicCode.publicCode };
     }
 
+    // Not an event's public code (a different length, or no event holds
+    // it): try it as an invite code.
     const inviteCode = normalizeInviteCode(args.code);
     if (inviteCode === null) {
       return null;

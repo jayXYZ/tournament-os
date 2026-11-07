@@ -14,6 +14,12 @@ export type ClientClockOptions = {
   // generous than the one a mutation run right now would reach — the
   // choice for anything that reads as a promise, like a refund outcome.
   round?: "down" | "up";
+  // False keeps the clock still — no ticks, no wake re-reads — so a surface
+  // whose only time-dependent query is skipped (a free event's join screen,
+  // a signed-out viewer's) does not re-render once a minute for nothing.
+  // The value is then whatever was last read; the clock reads the time
+  // afresh the moment it is enabled. Default true.
+  enabled?: boolean;
 };
 
 // The platform's "the app is in front again" signal: calls `refresh` each
@@ -48,6 +54,7 @@ export function roundedClock(
 export function useClientClock({
   resolutionMs = CLIENT_CLOCK_RESOLUTION_MS,
   round = "down",
+  enabled = true,
   subscribeToWake,
 }: ClientClockOptions & { subscribeToWake: SubscribeToWake }) {
   const [now, setNow] = useState(() =>
@@ -55,6 +62,9 @@ export function useClientClock({
   );
 
   useEffect(() => {
+    if (!enabled) {
+      return;
+    }
     let timeout: ReturnType<typeof setTimeout> | undefined;
     const tick = () => {
       const at = Date.now();
@@ -73,7 +83,7 @@ export function useClientClock({
       clearTimeout(timeout);
       unsubscribe();
     };
-  }, [resolutionMs, round, subscribeToWake]);
+  }, [enabled, resolutionMs, round, subscribeToWake]);
 
   return now;
 }

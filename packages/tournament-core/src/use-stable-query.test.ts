@@ -15,7 +15,7 @@ vi.mock("convex/react", () => ({
 
 const { useStableQuery } = await import("./use-stable-query.ts");
 
-type ProbeArgs = { now: number } | "skip";
+type ProbeArgs = Record<string, unknown> | "skip";
 
 let latest: unknown;
 function Probe({ args }: { args: ProbeArgs }) {
@@ -65,6 +65,25 @@ test("holds the last result while a changed argument reloads", () => {
   results.set(JSON.stringify({ now: 2 }), ["second"]);
   render({ now: 2 });
   expect(latest).toEqual(["second"]);
+});
+
+test("a change to any argument but the clock drops the held result", () => {
+  results.set(JSON.stringify({ tournamentId: "a", now: 1 }), ["a's order"]);
+  render({ tournamentId: "a", now: 1 });
+  expect(latest).toEqual(["a's order"]);
+
+  // The route's params change in place: the previous event's result must
+  // not stand in for the new one's while it loads.
+  render({ tournamentId: "b", now: 1 });
+  expect(latest).toBeUndefined();
+
+  results.set(JSON.stringify({ tournamentId: "b", now: 1 }), ["b's order"]);
+  render({ tournamentId: "b", now: 1 });
+  expect(latest).toEqual(["b's order"]);
+
+  // The same identity spelled in another key order is no change.
+  render({ now: 2, tournamentId: "b" });
+  expect(latest).toEqual(["b's order"]);
 });
 
 test("a skip clears the held result", () => {

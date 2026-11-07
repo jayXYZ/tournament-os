@@ -243,10 +243,10 @@ Not covered, and still open in [the roadmap](../TODO.md) section 8:
   icon and the Android permission flow are unverified.
 - The suite runs by hand; it is not in CI or EAS Workflows.
 
-## Review fixes on `qr/review-fixes`, 2026-11-05
+## Review fixes on `qr/review-fixes`, 2026-11-05 and 2026-11-07
 
-Not a release check: no simulator or device was exercised, and the one browser
-run is the invite-links spec noted below, against the personal dev deployment.
+Not a release check: no simulator or device was exercised, and the browser
+runs are the specs noted below, against the personal dev deployment.
 `qr/review-fixes` stacks on `qr/native-scanner` at `146637d` (not
 merged) and fixes the findings of a review of the QR join stack. The
 derivation, join-route, scanner, dev-seed, and backend fixes are covered by
@@ -277,6 +277,42 @@ passes on the branch. What changed that a device run should re-check:
   the Clerk issuer before seeding, and keeps credential-named variables out
   of Maestro and xcrun (the Convex CLI keeps only its own `CONVEX_*`
   variables). The dev seed refuses a live Stripe key.
+
+A second review round, 2026-11-07, fixed ten more findings in one commit
+after `ada3aac`. An eleventh — that the badge comp of an entry owing payment
+checks capacity on an approval-mode event — was not a defect: the Checkout
+webhook makes the same seat decision when a payment lands, so a full event
+seats no one either way; the comments now say so. The core, web, and backend
+fixes are covered by unit tests, component tests, or convex-test specs; the
+native join view's clock change rests on typecheck and the shared clock's
+tests; the runner's wider credential-name rule rests on `node --check` and a
+throwaway script against sample names. `pnpm check` passes. What changed
+that a device run should re-check:
+
+- The web event page offers a viewer Convex could not verify the handshake
+  restart and sign-out (the shell the `/join` route already showed) instead
+  of "Tournament not found".
+- A disqualified seat gets no "Cancel registration" button while registration
+  is open, since the server refuses that cancel; eliminated and disqualified
+  seats both read as locked there.
+- An order held across the clock's ticks is dropped when the event changes
+  under a mounted panel (a route updating its params in place), so one
+  event's order never picks another's button while it loads.
+- The native join view and the web order hooks keep the client clock still
+  while the order query is skipped (a free event, a signed-out viewer), so
+  those surfaces no longer re-render once a minute.
+- The Maestro runner also scrubs names with `KEY` as an inner segment
+  (`AWS_ACCESS_KEY_ID`), `PASSWD`, and a trailing `PAT` or `AUTH` segment. A
+  credential inside a URL-valued variable is still not caught by name.
+- Backend, no behavior change intended: the event page, the join URL, and the
+  admin code lookup share one code-to-tournament helper; the child-event
+  badge gate has one rule behind the mutation's refusal and the page's
+  warning; the page reuses the viewer its access rule resolved.
+
+The invite-links and enrollment-claim Playwright specs passed (four tests
+with the auth setup, 53 s) in Chromium against the personal dev deployment
+with this round's backend pushed, 2026-11-07. The other browser specs were
+not run.
 
 ## Recording the next verification
 
