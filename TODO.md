@@ -753,27 +753,32 @@ push, analytics, and monitoring should be independent consumers.
         PR #51: `apps/native/e2e/` runs the PR 2a deep-link matrix and the
         scanner's simulator-reachable paths, seeded on the dev deployment
         and signed in through a dev-only ticket link
-    - [ ] iOS simulator deep-link matrix: passed 17/17 on an iPhone 17 Pro
+    - [x] iOS simulator deep-link matrix: passed 17/17 on an iPhone 17 Pro
           simulator (iOS 26.5) at `2b3d36a` against the personal dev
-          deployment, 2026-11-04 ([record](docs/delivery-status.md));
-          unchecked until merged
+          deployment, 2026-11-04, and again at PR #51's final head
+          `5a6cf8e`, 2026-11-08, across a full run and reruns of the flows
+          the sign-in failure below took ([record](docs/delivery-status.md))
     - [ ] Android emulator run (the recorded machine has no Android SDK)
     - [ ] Diagnose the intermittent sign-in failure: after the dev-only
           ticket link, home sometimes stays on the auth gate's unverified
-          state ("We couldn't verify your account") through the flow's
-          60-second wait. Seen 3 times in about 100 flow runs across the
-          2026-11-04 web panel and scanner records, in a different flow each
-          time, and each passed on rerun ([record](docs/delivery-status.md)).
-          Possibly a token race between Clerk's `setActive` and Convex
-          validating the new session's token; the link is handled in
+          state ("We couldn't verify your account"), or signed out under a
+          "[ClerkProvider] Failed to sync native client state: No session
+          was found" toast naming the session the link just ended, through
+          the flow's 60-second wait. Seen 3 times in about 100 flow runs
+          across the 2026-11-04 records and 3 times in 25 on 2026-11-08, in
+          a different flow each time, and each passed on rerun
+          ([record](docs/delivery-status.md)). The Clerk provider's native
+          state sync racing the link's sign-out and ticket sign-in, or a
+          token race between Clerk's `setActive` and Convex validating the
+          new session's token; the link is handled in
           `apps/native/src/app/dev/[action].tsx`
     - [ ] iOS simulator scanner flows (PR 2b): the entry points, the
           permission explainer and refused-state copy, and typed codes
           (a foreign link's toast, a Public Code, a dashed invite, back to
           the scanner) passed with the 17 join flows, 21/21 on an iPhone 17
           Pro simulator (iOS 26.5) at `ba289b1` on `qr/native-scanner`,
-          2026-11-04 ([record](docs/delivery-status.md)); unchecked until
-          merged
+          2026-11-04, and again at PR #51's final head `5a6cf8e`, 2026-11-08
+          ([record](docs/delivery-status.md))
     - [ ] Physical iPhone and Android runs, adding what a simulator can't
           reach: scanning a real Join QR and a foreign QR code, the scan
           lock and re-arm, the camera and torch going off under the join

@@ -314,6 +314,81 @@ with the auth setup, 53 s) in Chromium against the personal dev deployment
 with this round's backend pushed, 2026-11-07. The other browser specs were
 not run.
 
+A third review round, 2026-11-08, reviewed the whole stack as PR #51 in six
+path slices (backend; core and shared; web; native; the E2E harness; docs)
+and fixed its findings in `5a6cf8e`. Behavior changes: Checkout refuses a
+payment at capacity in approval mode too (an approved player on a full
+event was charged and refunded by the webhook), and the derivation blocks
+"Complete payment" as full in every mode; a confirmed seat whose newest
+order closed unpaid mirrors no payment status, so a badge comp of an entry
+owing payment no longer reads "Unpaid" on the roster; the dev seed allows
+only test-mode Stripe keys; the web badge-gate notice waits for the viewer
+auth gate and the locked seat's copy follows the lifecycle; a release build
+sends a dev session link home; the scanner opens through `navigate`; the
+runner requires the app's `EXPO_PUBLIC_CONVEX_URL` to name the seeded
+deployment, forwards signals to Maestro, and serves tickets on a per-run
+secret path. Covered by convex-test specs, core and web component tests,
+`pnpm check`, the invite-links and enrollment-claim browser specs (four
+tests with the auth setup, 56 s, 2026-11-08, this round's backend pushed),
+and the Maestro run recorded next.
+
+## Native Maestro suite at the final review-fix head, 2026-11-08
+
+Scope: every Maestro flow in `apps/native/e2e/` (the 17 join-matrix flows
+and the 4 scanner flows), run once at the head PR #51 merges, after the
+third review round. The runner changed in that round (the app-deployment
+check, signal forwarding, the secret ticket path), so this is also its
+first execution since the review fixes began. A personal development
+environment, not a release candidate.
+
+- Tested SHA: `5a6cf8e` on `qr/review-fixes` (PR #51). Backend functions
+  were pushed from that tree with `convex dev --once`.
+- Backend: Convex development deployment `dev:perceptive-guanaco-394`,
+  Clerk development instance. Payments: none; the paid flows stop at the
+  hand-off.
+- Build: the 2026-11-04 Debug dev client (`com.paperpairings.app`, Expo SDK
+  56, expo-camera 56.0.8, expo-haptics 56.0.3), reinstalled on the
+  simulator as built; the round changed no native module. JS from Metro at
+  the tested SHA. `EXPO_PUBLIC_WEB_ORIGIN` unset.
+- Device: iPhone 17 Pro simulator, iOS 26.5. Maestro 2.12.1 (Temurin JDK
+  17.0.21). The runner's new gate confirmed `EXPO_PUBLIC_CONVEX_URL` named
+  the seeded deployment before seeding.
+
+| Run                                                   | Result                                                                                                                                           |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Every flow                                            | 18/21 in 13m (seed run `29478785`); `18-scan-from-header` and `02-approval` failed in their sign-in setup, `21-scan-typed` at one text assertion |
+| `18-scan-from-header`, `02-approval`, `21-scan-typed` | 2/3 (seed run `01037c6e`); `21-scan-typed` failed in its sign-in setup                                                                           |
+| `21-scan-typed` alone                                 | Passed (seed run `926f0327`), the text assertion included                                                                                        |
+
+Every flow passed at this SHA: 21 of 21 across the three runs, 25 flow runs
+in all.
+
+The three sign-in failures are the intermittent failure the earlier records
+describe, with a new face: home stayed signed out ("Sign in to follow your
+matches and standings live.") through the 60-second wait, under a toast
+reading "[ClerkProvider] Failed to sync native client state: No session was
+found with id sess\_…". Metro's log carried the same error each time, naming
+the session the dev link had just ended, so the Clerk provider's native
+state sync raced the dev link's sign-out and ticket sign-in. Two hit the
+first two flows of the full run (the first launch of a reinstalled dev
+client over the 2026-11-04 install's data), one the third flow of the
+rerun: 3 of 25 flow runs, against 3 of about 100 in the earlier records,
+and each passed on rerun. Not diagnosed; it is in the shared sign-in setup
+(`apps/native/src/app/dev/[action].tsx` and the Clerk provider), not in any
+flow's own steps.
+
+The text assertion that failed once: after typing
+`https://example.com/menu/7KQ2MX` and "Continue", `21-scan-typed` asserts
+the text is still in the field for fixing. The screenshot shows the field
+scrolled two characters left (`tps://example.com/menu/7KQ2MX`) with the
+keyboard up; the same assertion passed on both reruns and on 2026-11-04.
+Treated as a driver flake on a horizontally scrolled text field; not
+changed.
+
+Still not covered: anything needing a camera or a physical device, Android,
+the native payment return, and CI (the suite runs by hand). See the
+2026-11-04 scanner record and [the roadmap](../TODO.md) section 8.
+
 ## Recording the next verification
 
 For each deployment exercise, append a dated record with:
