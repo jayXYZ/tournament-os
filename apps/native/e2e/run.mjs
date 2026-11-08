@@ -112,19 +112,25 @@ if (!deployment?.startsWith("dev:")) {
 }
 // The app must talk to the deployment the runner seeds, or a flow that
 // expects "Code not found" passes against the wrong deployment for the wrong
-// reason. Metro inlines EXPO_PUBLIC_CONVEX_URL from the shell or
-// apps/native/.env.local; a dev deployment `dev:<name>` is served from
-// `<name>.convex.cloud`.
-const deploymentHost = `${deployment.slice("dev:".length)}.convex.cloud`;
+// reason. The deployment's URL is the one the Convex CLI wrote beside the
+// selector (VITE_CONVEX_URL in packages/backend/.env.local), falling back
+// to the default-region form `<name>.convex.cloud`; Metro inlines
+// EXPO_PUBLIC_CONVEX_URL from the shell or apps/native/.env.local, and
+// this reads the same two places. A Metro started from a shell that
+// exports a different URL is not caught: keep the URL in .env.local only.
+function hostOf(url) {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return undefined;
+  }
+}
+const deploymentHost =
+  hostOf(backendEnv.VITE_CONVEX_URL ?? "") ??
+  `${deployment.slice("dev:".length)}.convex.cloud`;
 const appConvexUrl =
   process.env.EXPO_PUBLIC_CONVEX_URL ?? nativeEnv.EXPO_PUBLIC_CONVEX_URL ?? "";
-let appConvexHost;
-try {
-  appConvexHost = new URL(appConvexUrl).hostname;
-} catch {
-  appConvexHost = undefined;
-}
-if (appConvexHost !== deploymentHost) {
+if (hostOf(appConvexUrl) !== deploymentHost) {
   fail(
     `EXPO_PUBLIC_CONVEX_URL (apps/native/.env.local) must point at https://${deploymentHost}, the deployment this run seeds; it is ${appConvexUrl || "unset"}.`,
   );
@@ -253,11 +259,11 @@ async function startTicketServer(userIds) {
     [`/${secret}/ticket`]: userIds.player,
     [`/${secret}/ticket/newcomer`]: userIds.newcomer,
   };
+  // The host a request must name, fixed once the listener has its port.
+  let expectedHost;
   const server = http.createServer((request, response) => {
-    const addressedHere =
-      request.headers.host === `127.0.0.1:${server.address().port}`;
     const userId =
-      request.method === "POST" && addressedHere
+      request.method === "POST" && request.headers.host === expectedHost
         ? paths[request.url]
         : undefined;
     if (!userId) {
@@ -279,6 +285,7 @@ async function startTicketServer(userIds) {
     );
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  expectedHost = `127.0.0.1:${server.address().port}`;
   return { server, secret };
 }
 
@@ -682,12 +689,14 @@ async function main() {
   // A signal to this process alone (a wrapper or CI step killing the
   // runner's pid, not the terminal's whole foreground group) would otherwise
   // leave Maestro driving the simulator against a ticket server that has
-  // gone: pass it on, then exit as the signal would have.
+  // gone: pass it on, then exit with the status a death by that signal
+  // reports (128 + its number). A terminal's Ctrl-C reaches both processes
+  // already; the second SIGINT lands on a JVM that is shutting down.
   let maestro;
   const stop = (signal) => {
     maestro?.kill(signal);
     ticketServer.close();
-    process.exit(1);
+    process.exit(128 + os.constants.signals[signal]);
   };
   for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
     process.on(signal, () => stop(signal));

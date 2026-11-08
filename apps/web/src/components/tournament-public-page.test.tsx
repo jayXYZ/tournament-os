@@ -518,7 +518,7 @@ const rows: Array<[string, Scenario, Array<string>]> = [
     [registered, cancel],
   ],
   [
-    // The notice above the panel reads the badge alone.
+    // The notice above the panel ignores the registration.
     'active on a badge-gated event without a badge',
     { registration: confirmed('active'), ...noBadge },
     [...missingBadgeNotice, registered, cancel],

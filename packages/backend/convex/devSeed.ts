@@ -23,8 +23,9 @@ function requireDevelopmentDeployment() {
   // Checkout charges the platform account, not the stand-in (see
   // markOrganizationPayoutsReady), so a live key would take real money for
   // a seeded paid event. Only a test-mode key, or none, is allowed — an
-  // allow-list, so a key of any other shape (a live one, or one pasted
-  // with stray whitespace) is refused rather than let through.
+  // allow-list, so a key of any other shape is refused rather than let
+  // through. Trimmed first, so a key pasted with stray whitespace counts
+  // as what it is, test or live.
   const stripeKey = (env.STRIPE_SECRET_KEY ?? "").trim();
   if (stripeKey !== "" && !/^(sk|rk)_test_/.test(stripeKey)) {
     throw new Error(

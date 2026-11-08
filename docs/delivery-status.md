@@ -25,7 +25,7 @@ and say what is unknown rather than treating it as a release check.
 | Work                                   | Implementation and merge evidence                                                                                                                                                                                                                                                                                                                                                                       | Deployment verification                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Existing invite links                  | On `main`, PR #18, `b795666`. Private-event invite grant, join redirect, regeneration and disabling.                                                                                                                                                                                                                                                                                                    | Backend specs and browser join coverage exist; no current-release deployment result recorded.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| Random event codes and web QR sharing  | In PR #51 (`qr/review-fixes` → `main`, the whole QR stack; its first layer is `feat/qr-codes` at `cd1be4e`) — cite the merge SHA when it lands. Random six-character event codes, one `/join/<code>` resolver for public codes and invite grants, and the organizer's QR dialog with download and print. `joinCodes.convex.spec.ts`, `inviteLinks.convex.spec.ts`, and the `invite-links` browser spec. | No deployment result recorded. Verify public, unlisted, private, rotated/disabled, and changed-visibility links against the release candidate. The personal dev DB was reset on 2026-11-04 for the string `publicCode` and required `seed`.                                                                                                                                                                                                                                                                                                                                                     |
+| Random event codes and web QR sharing  | In PR #51 (`qr/review-fixes` → `main`, the whole QR stack; its first layer is `feat/qr-codes` at `cd1be4e`) — cite the merge SHA when it lands. Random six-character event codes, one `/join/<code>` resolver for public codes and invite grants, and the organizer's QR dialog with download and print. `joinCodes.convex.spec.ts`, `inviteLinks.convex.spec.ts`, and the `invite-links` browser spec. | No release-candidate deployment result; the `invite-links` browser spec passed against the personal dev deployment (records below). Verify public, unlisted, private, rotated/disabled, and changed-visibility links against the release candidate. The personal dev DB was reset on 2026-11-04 for the string `publicCode` and required `seed`.                                                                                                                                                                                                                                                |
 | Native free/approval join              | In PR #51 (same PR): the `/join/<code>` screen, shared join-state hooks in `@paper-pairings/core`, withdrawal, and the web payment handoff behind `EXPO_PUBLIC_WEB_ORIGIN`.                                                                                                                                                                                                                             | iOS simulator only: the PR 2a deep-link matrix passed on 2026-11-04 at `2b3d36a` (`qr/verify-join`) against the personal dev deployment; see the record below. No Android or physical-device result; verify on physical iOS and Android. The web panel on the shared derivation is in the same PR (see the 2026-11-04 web panel record below). The QR scanner is in the same PR, simulator only: its camera, torch, haptics, and scan lock have no device result (see the 2026-11-04 scanner record below). Native payment return and universal links remain planned (`docs/plans/qr-join.md`). |
 | Organizer guest/email enrollment       | Merged in PR #50 at `7673dac`, with the follow-up fix `1d4423b`. Add-guest and enroll-by-email flows, event-local names, claim on sign-in and app open, checkout takeover of an enrolled seat, with backend specs, web dialog tests, and the `enrollment-claim` browser spec.                                                                                                                           | No deployment result recorded. Verify enrollment, claim at sign-in, and the checkout takeover of an enrolled seat against the release candidate.                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | Web design foundation                  | Merged PR #32, `8ca7c9d`; PR #33, `89050e3`; PR #34, `4cb170d`. Theme/branding, Overview, layout, table controls, and component styling.                                                                                                                                                                                                                                                                | Figma completion and source code establish design/implementation status. Full accessibility and responsive deployment audits remain open.                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
@@ -332,11 +332,11 @@ secret path. Covered by convex-test specs, core and web component tests,
 tests with the auth setup, 56 s, 2026-11-08, this round's backend pushed),
 and the Maestro run recorded next.
 
-## Native Maestro suite at the final review-fix head, 2026-11-08
+## Native Maestro suite after the third review round, 2026-11-08
 
 Scope: every Maestro flow in `apps/native/e2e/` (the 17 join-matrix flows
-and the 4 scanner flows), run once at the head PR #51 merges, after the
-third review round. The runner changed in that round (the app-deployment
+and the 4 scanner flows), run once at `5a6cf8e`, the third review round's
+fix commit on PR #51. The runner changed in that round (the app-deployment
 check, signal forwarding, the secret ticket path), so this is also its
 first execution since the review fixes began. A personal development
 environment, not a release candidate.
@@ -368,12 +368,13 @@ describe, with a new face: home stayed signed out ("Sign in to follow your
 matches and standings live.") through the 60-second wait, under a toast
 reading "[ClerkProvider] Failed to sync native client state: No session was
 found with id sess\_…". Metro's log carried the same error each time, naming
-the session the dev link had just ended, so the Clerk provider's native
-state sync raced the dev link's sign-out and ticket sign-in. Two hit the
-first two flows of the full run (the first launch of a reinstalled dev
-client over the 2026-11-04 install's data), one the third flow of the
-rerun: 3 of 25 flow runs, against 3 of about 100 in the earlier records,
-and each passed on rerun. Not diagnosed; it is in the shared sign-in setup
+the session the dev link had just ended — consistent with the Clerk
+provider's native state sync racing the dev link's sign-out and ticket
+sign-in, though not shown to be its cause. One hit the full run's first
+flow (the reinstalled dev client's first launch over the 2026-11-04
+install's data), one its third, and one the third flow of the rerun: 3 of
+25 flow runs, against 3 of about 100 in the earlier records, and each
+passed on rerun. Not diagnosed; it is in the shared sign-in setup
 (`apps/native/src/app/dev/[action].tsx` and the Clerk provider), not in any
 flow's own steps.
 
@@ -381,9 +382,10 @@ The text assertion that failed once: after typing
 `https://example.com/menu/7KQ2MX` and "Continue", `21-scan-typed` asserts
 the text is still in the field for fixing. The screenshot shows the field
 scrolled two characters left (`tps://example.com/menu/7KQ2MX`) with the
-keyboard up; the same assertion passed on both reruns and on 2026-11-04.
-Treated as a driver flake on a horizontally scrolled text field; not
-changed.
+keyboard up; the same assertion passed on the rerun that reached it
+(`926f0327`; the first rerun failed in its sign-in setup) and on
+2026-11-04. Treated as a driver flake on a horizontally scrolled text
+field; not changed.
 
 Still not covered: anything needing a camera or a physical device, Android,
 the native payment return, and CI (the suite runs by hand). See the

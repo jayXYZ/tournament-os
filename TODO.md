@@ -25,7 +25,9 @@ distinguish unverified account setup from a confirmed external block.
    shared derivation, the native scanner, and the review fixes are one PR,
    #51 (`qr/review-fixes` → `main`; the stack's first layer is
    `feat/qr-codes` at `cd1be4e`). Organizer guest/email enrollment is on
-   `main`. None has a recorded deployment result. The native join needs a physical device. The schema changes
+   `main`. None has a release-candidate deployment result; the browser specs
+   and the Maestro suite ran against the personal dev deployment
+   ([record](docs/delivery-status.md)). The native join needs a physical device. The schema changes
    landed with a dev DB reset, not a migration.
 3. Close event-day gaps: remove stale confirmation copy, provide an organizer
    deck-check view and printable pairings/standings, and finish native player
@@ -414,12 +416,18 @@ claimed by one.
         and composes with the search box. On paid events a Payment chip
         narrows both walks on `tournamentRegistrations.paymentStatus`, a
         mirror of the newest order's status that every order write keeps in
-        step (`syncRegistrationPaymentStatus`; the roster's Payment column
-        reads it too, never the orders table) — a search-index filter field,
-        and a row-budgeted post-filter on the list (reset the dev DB: the
-        mirror is written only on order writes, so a registration whose
-        order predates it shows no payment state and never matches the chip
-        until that order is next written). "Pending review" is the review
+        step, and that a row entering or leaving the confirmed state
+        re-derives (`syncRegistrationPaymentStatus`,
+        `syncRegistrationPaymentStatusFor`; the roster's Payment column
+        reads it too, never the orders table). A confirmed seat whose
+        newest order closed unpaid (canceled or expired) mirrors nothing,
+        since the seat was taken another way and owes nothing for that
+        order — a comped seat, an enrolled or restored entry whose checkout
+        lapsed. A search-index filter field, and a row-budgeted post-filter
+        on the list (reset the dev DB: a registration whose order predates
+        the mirror shows no payment state and never matches the chip until
+        that order is next written or the row crosses the confirmed
+        boundary). "Pending review" is the review
         queue (CONTEXT.md "Review Queue"): a pending row carries
         `awaitingReview` only until the organizer decides it, so an approved
         entry awaiting its payment on a paid event — or one filed by a
@@ -730,6 +738,13 @@ push, analytics, and monitoring should be independent consumers.
         viewer-scoped signal from the backend. Reachable only through an
         unclaimable Guest (a collision elsewhere after an email change), so
         deferred from the council review
+  - [ ] Give the join derivation the private-event grant: an organizing-team
+        member with no row who opens their own private event's public code
+        is offered Register, which `registerSelf` refuses ("Tournament is
+        not open for registration"). Needs `visibility` and an invite-grant
+        flag as derivation inputs so the panel reads "invite required"
+        instead. Organizer-only, and the server already refuses clearly, so
+        deferred from the third council review
   - [x] Move the web registration panel onto the shared join-state
         derivation, preserving coverage for each registration and payment
         state (the plan's PR 3). PR #51:
@@ -755,9 +770,10 @@ push, analytics, and monitoring should be independent consumers.
         and signed in through a dev-only ticket link
     - [x] iOS simulator deep-link matrix: passed 17/17 on an iPhone 17 Pro
           simulator (iOS 26.5) at `2b3d36a` against the personal dev
-          deployment, 2026-11-04, and again at PR #51's final head
-          `5a6cf8e`, 2026-11-08, across a full run and reruns of the flows
-          the sign-in failure below took ([record](docs/delivery-status.md))
+          deployment, 2026-11-04, and again at `5a6cf8e` (the third council
+          round's fixes, PR #51), 2026-11-08, across a full run and reruns of
+          the flows the sign-in failure below took
+          ([record](docs/delivery-status.md))
     - [ ] Android emulator run (the recorded machine has no Android SDK)
     - [ ] Diagnose the intermittent sign-in failure: after the dev-only
           ticket link, home sometimes stays on the auth gate's unverified
@@ -765,26 +781,43 @@ push, analytics, and monitoring should be independent consumers.
           "[ClerkProvider] Failed to sync native client state: No session
           was found" toast naming the session the link just ended, through
           the flow's 60-second wait. Seen 3 times in about 100 flow runs
-          across the 2026-11-04 records and 3 times in 25 on 2026-11-08, in
-          a different flow each time, and each passed on rerun
+          across the 2026-11-04 records and 3 times in 25 on 2026-11-08
+          (and again in the fourth round's scanner reruns), in a different
+          flow each time within a day — `21-scan-typed` on both days — and
+          each passed on rerun
           ([record](docs/delivery-status.md)). The Clerk provider's native
           state sync racing the link's sign-out and ticket sign-in, or a
           token race between Clerk's `setActive` and Convex validating the
           new session's token; the link is handled in
-          `apps/native/src/app/dev/[action].tsx`
-    - [ ] iOS simulator scanner flows (PR 2b): the entry points, the
+          `apps/native/src/app/dev/[action].tsx`. A third suspect is the
+          flows' own wait: `subflows/signed-in.yaml` waits for "Your
+          tournaments", which the previous session's home may already show
+          before the link screen is pushed, so a flow can run on during the
+          session switch; a marker the dev route leaves on home would close
+          that
+    - [x] iOS simulator scanner flows (PR 2b): the entry points, the
           permission explainer and refused-state copy, and typed codes
           (a foreign link's toast, a Public Code, a dashed invite, back to
           the scanner) passed with the 17 join flows, 21/21 on an iPhone 17
           Pro simulator (iOS 26.5) at `ba289b1` on `qr/native-scanner`,
-          2026-11-04, and again at PR #51's final head `5a6cf8e`, 2026-11-08
-          ([record](docs/delivery-status.md))
+          2026-11-04, and again at `5a6cf8e` (PR #51), 2026-11-08, across a
+          full run and reruns of the flows the sign-in failure took; the
+          scanner flows ran once more after the fourth round's scanner
+          change ([record](docs/delivery-status.md))
     - [ ] Physical iPhone and Android runs, adding what a simulator can't
           reach: scanning a real Join QR and a foreign QR code, the scan
           lock and re-arm, the camera and torch going off under the join
           screen, the torch, haptics, and granting camera access in
           Settings after a refusal (PR 2b), and the payment round trip
           (PR 4)
+    - [ ] Flows the suite still lacks: one that taps Register and asserts
+          the seated event (no flow completes a direct registration;
+          `10-private-invite` stops at the button, so a registration that
+          dropped its `inviteCode` would pass), the native signed-out "Sign
+          in to view this event" state for a private event's public code,
+          and "Open the event" from a join screen the scanner opened, then
+          back to home. Each needs a dedicated fixture or step and a
+          simulator run to validate; deferred from the third council review
     - [ ] Run the suite in CI or EAS Workflows
 - [ ] Add real safe-area support to the web app chrome; ship all parts together
   - [ ] Add `viewport-fit=cover` to the root viewport meta in `apps/web/src/routes/__root.tsx`

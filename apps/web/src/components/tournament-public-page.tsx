@@ -154,7 +154,7 @@ function TournamentDetails({
   // reaches them.
   badgeGate: BadgeGate
   inviteCode?: string
-  // The viewer auth gate the notice waits on (below), as the panel does.
+  // The viewer auth gate the notice waits on (below) and the panel reads.
   viewer: ViewerAuthGate
 }) {
   const spotsLeft = Math.max(tournament.playerCapacity - registeredCount, 0)
@@ -269,6 +269,7 @@ function TournamentDetails({
           inviteCode={inviteCode}
           badgeCompsThisEvent={convention?.myBadgeCompsThisEvent ?? false}
           badgeGate={badgeGate}
+          viewer={viewer}
         />
         {tournament.detailsMarkdown ? (
           <>
@@ -297,6 +298,7 @@ function RegistrationPanel({
   inviteCode,
   badgeCompsThisEvent,
   badgeGate,
+  viewer,
 }: {
   tournament: Tournament
   spotsLeft: number
@@ -310,9 +312,11 @@ function RegistrationPanel({
   // registerSelf or the checkout while it is set; the notice above the panel
   // says what to do about it.
   badgeGate: BadgeGate
+  // The one viewer auth gate the page resolves (TournamentDetails), shared
+  // with the badge-gate notice so the two can never disagree for a frame.
+  viewer: ViewerAuthGate
 }) {
-  const { user, loading, refreshAuth } = useAppAuth()
-  const viewer = useViewerAuthGate({ user, loading })
+  const { refreshAuth } = useAppAuth()
   // Held at `undefined` until Convex auth settles (see useMyRegistration), so
   // an already-registered player never sees a flash of the register button.
   // The order and refund flag wait the same way.

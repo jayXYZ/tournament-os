@@ -60,18 +60,6 @@ and functions read them through the typed `env` object from
 written by `pnpm dev:backend` when linking a dev deployment; it is machine-local
 state, not part of the contract.
 
-## Native E2E runner (`apps/native/e2e/run.mjs`)
-
-Developer-machine settings, all optional and read from the shell only: the
-runner takes its deployment from `packages/backend/.env.local`, its Clerk
-secret from `apps/web/.env.local` (a development-instance key), and requires
-`apps/native/.env.local`'s `EXPO_PUBLIC_CONVEX_URL` to point at that same
-deployment. `E2E_DEVICE` picks a booted simulator by UDID, `E2E_METRO_URL`
-overrides `http://127.0.0.1:8081`, `MAESTRO_BIN` names a Maestro binary other
-than `~/.maestro/bin/maestro`, and `JAVA_HOME` a JDK other than one under
-`~/.maestro/jdk/`. Usage and prerequisites: `apps/native/README.md`, "Device
-E2E (Maestro)".
-
 Production Vercel builds additionally need `CONVEX_DEPLOY_KEY` in the Vercel
 project so the build command in `apps/web/vercel.json` can run `convex deploy`.
 Confirm the Vercel root directory is `apps/web` and installation includes the
@@ -79,3 +67,21 @@ workspace root. Keep preview and production deployment credentials scoped to
 their intended targets. `pnpm start` serves the built web app via `srvx`;
 the committed command and a successful CI bundle do not establish that a
 Vercel deployment or its runtime environment works.
+
+## Native E2E runner (`apps/native/e2e/run.mjs`)
+
+Developer-machine settings, not part of any deployment's contract. The
+runner reads its deployment selector (`CONVEX_DEPLOYMENT`, which must be
+`dev:…`) and that deployment's URL (`VITE_CONVEX_URL`) from
+`packages/backend/.env.local`; `CLERK_SECRET_KEY` (a development-instance
+key) from the shell, then `apps/web/.env.local`; and `EXPO_PUBLIC_CONVEX_URL`
+and `EXPO_PUBLIC_WEB_ORIGIN` from the shell, then `apps/native/.env.local`.
+It refuses to run unless `EXPO_PUBLIC_CONVEX_URL` names the host of that
+`VITE_CONVEX_URL` (or `<name>.convex.cloud` when the URL is absent) — the
+deployment it is about to seed. A Metro started from a shell that exports a
+different URL is not caught, so keep the URL in `.env.local` only. Optional
+shell settings: `E2E_DEVICE` picks a booted simulator by UDID,
+`E2E_METRO_URL` overrides `http://127.0.0.1:8081`, `MAESTRO_BIN` names a
+Maestro binary other than `~/.maestro/bin/maestro`, and `JAVA_HOME` a JDK
+other than one under `~/.maestro/jdk/`. Usage and prerequisites:
+`apps/native/README.md`, "Device E2E (Maestro)".

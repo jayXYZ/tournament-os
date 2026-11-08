@@ -688,7 +688,10 @@ export default defineSchema({
     // write runs through it, so this never lags the orders table. Absent
     // until the row's first order, so always absent on free events, and
     // absent again on a confirmed seat whose newest order closed unpaid
-    // (a comped seat that closed the order it no longer owed). The
+    // (a comped seat that closed the order it no longer owed, an enrolled
+    // or restored entry whose checkout had lapsed) — re-derived whenever a
+    // row enters or leaves the confirmed state (model/participation.ts
+    // setRegistrationState) as well as on every order write. The
     // roster's Payment filter narrows the list and search walks on this
     // column instead of joining every row to its orders after the page is
     // cut, which is what would make a filtered page lie by omission: the

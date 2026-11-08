@@ -85,7 +85,7 @@ test("any other deployment refuses the seed", async () => {
 // only fails at payout), so a live key would take real money for a seeded
 // paid event. The guard is an allow-list: a test-mode key passes, and a key
 // of any other shape is refused.
-test.each(["sk_test_example", "rk_test_example"])(
+test.each(["sk_test_example", "rk_test_example", " sk_test_example "])(
   "a deployment whose Stripe key is test-mode (%s) accepts the seed",
   async (key) => {
     vi.stubEnv(

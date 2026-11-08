@@ -595,7 +595,7 @@ below:
 - The web's badge gate comes from `badgeGateFor`, so its local copy is gone.
 - Review fixes on `qr/review-fixes` (unit tests, component tests, and
   convex-test specs, plus the invite-links and enrollment-claim browser
-  specs; the Maestro suite ran once at the final head, see
+  specs; the Maestro suite ran at the third round's fix commit, see
   `docs/delivery-status.md`):
   - `blocked` is `PaymentBlock`: `closed`, then `full`, then the badge gate
     reason. `full` applies to any payable order on a full event, whatever
@@ -624,11 +624,12 @@ below:
   `apps/web/src/components/tournament-public-page.test.tsx`: 81 rendering
   rows (badges, buttons, links, and notes in order, the badge-gate notice
   included) and 16 action tests (which server call each button makes); 88
-  rows and 17 action tests after the review fixes on `qr/review-fixes`.
-  Core's `join-action.test.ts` pins the derivation in 265
-  `deriveRegistrationAction` cases and 96 `deriveJoinAction` cases at the
-  final review-fix head (the projection gained `full` with `canWithdraw` and
-  the comped `register`; counts from `vitest list`).
+  rows and 17 action tests after the review fixes on `qr/review-fixes`, 90
+  rows after the third round's badge-gate auth rows. Core's
+  `join-action.test.ts` pins the derivation in 265 `deriveRegistrationAction`
+  cases and 98 `deriveJoinAction` cases after the review rounds (the
+  projection gained `full` with `canWithdraw` and the comped `register`;
+  counts from `vitest list`).
 - Two rows exposed a disagreement between the old panel and the derivation.
   Both were fixed on the panel in their own commits before the refactor:
   - A pending entry on a paid event showed "Registration pending organizer

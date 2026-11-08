@@ -399,6 +399,23 @@ describe("deriveJoinAction", () => {
       },
     );
 
+    // A badge that comps the event cannot seat the entry past capacity
+    // either (registerSelf's comp arm checks it), so the comped viewer with
+    // a payable order on a full event is left Withdraw, not Register.
+    it.each(paidSetups)(
+      "%s: a comped viewer's payable order on a full event is full but can be withdrawn",
+      (setup) => {
+        expect(
+          derive(setup, {
+            registration: row("pending"),
+            order: { status: "awaiting_payment", purpose: "registration" },
+            badgeCompsThisEvent: true,
+            spotsLeft: 0,
+          }),
+        ).toEqual({ kind: "full", canWithdraw: true });
+      },
+    );
+
     it.each(paidSetups)(
       "%s: a payable order after registration closed has nothing left to do",
       (setup) => {

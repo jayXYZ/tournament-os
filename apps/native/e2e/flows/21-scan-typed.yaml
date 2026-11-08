@@ -4,6 +4,13 @@ name: Typed codes on the scanner, a link from elsewhere, and back to the scanner
 - runFlow: subflows/signed-in.yaml
 - tapOn: "Scan a QR code"
 - tapOn: "Type a code instead"
+# The field takes focus and the keyboard rises, and the panel moves up to
+# stay above it. A tap aimed at the field's pre-keyboard position lands on
+# the keyboard's top row once it has risen (mid-screen is the "T" key), and
+# the field then reads "Thttps://…" (seen in the driver's own hierarchy), so
+# the layout settles before the field is tapped — here and at each typing
+# step below.
+- waitForAnimationToEnd
 # A link that isn't ours, even with a code-shaped last segment: a toast, and
 # the scanner stays put.
 - tapOn:
@@ -20,6 +27,7 @@ name: Typed codes on the scanner, a link from elsewhere, and back to the scanner
 - assertVisible: "https://example.com/menu/7KQ2MX"
 - tapOn: "Scan instead"
 - tapOn: "Type a code instead"
+- waitForAnimationToEnd
 - assertNotVisible: "https://example.com/menu/7KQ2MX"
 - tapOn:
     id: "scan-code-input"
@@ -36,6 +44,7 @@ name: Typed codes on the scanner, a link from elsewhere, and back to the scanner
     visible: "Continue"
     timeout: 20000
 - assertNotVisible: "Register for this event"
+- waitForAnimationToEnd
 - tapOn:
     id: "scan-code-input"
 - inputText: ${INVITE_PRIVATE.slice(0, 5) + "-" + INVITE_PRIVATE.slice(5)}
