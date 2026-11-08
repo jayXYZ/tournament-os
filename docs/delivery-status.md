@@ -332,6 +332,21 @@ secret path. Covered by convex-test specs, core and web component tests,
 tests with the auth setup, 56 s, 2026-11-08, this round's backend pushed),
 and the Maestro run recorded next.
 
+A fourth round, 2026-11-08, re-reviewed the six slices with those fixes
+applied and fixed its findings in `39be9c9`: the payment-status mirror is
+re-derived when a row enters or leaves the confirmed state, not only on
+order writes, so an enrolled or restored seat over a cancelled checkout
+reads as owing nothing (spec added); the web registration panel reads the
+page's one viewer auth gate instead of running a second; the runner takes
+the deployment host from the backend's `VITE_CONVEX_URL`, fixes the ticket
+server's expected Host once, and exits with the forwarded signal's status;
+the typed-code Maestro flow waits for the keyboard layout to settle before
+tapping the field (see the scanner reruns below); a core row pins the
+comped viewer's payable order on a full event. Covered by `pnpm check`
+(backend 527, core 464, web 247, shared 108), the invite-links and
+enrollment-claim browser specs (four tests with the auth setup, 52 s,
+2026-11-08), and the scanner flows below.
+
 ## Native Maestro suite after the third review round, 2026-11-08
 
 Scope: every Maestro flow in `apps/native/e2e/` (the 17 join-matrix flows
@@ -378,14 +393,37 @@ passed on rerun. Not diagnosed; it is in the shared sign-in setup
 (`apps/native/src/app/dev/[action].tsx` and the Clerk provider), not in any
 flow's own steps.
 
-The text assertion that failed once: after typing
+The text assertion that failed once in the full run: after typing
 `https://example.com/menu/7KQ2MX` and "Continue", `21-scan-typed` asserts
-the text is still in the field for fixing. The screenshot shows the field
-scrolled two characters left (`tps://example.com/menu/7KQ2MX`) with the
-keyboard up; the same assertion passed on the rerun that reached it
-(`926f0327`; the first rerun failed in its sign-in setup) and on
-2026-11-04. Treated as a driver flake on a horizontally scrolled text
-field; not changed.
+the text is still in the field for fixing. It passed on the rerun that
+reached it (`926f0327`; the first rerun failed in its sign-in setup) and
+on 2026-11-04, then failed in four of five runs later in the day (the
+scanner reruns below). Diagnosed from a `maestro hierarchy` dump of the
+field in that state: it read `Thttps://example.com/menu/7KQ2MX`. Maestro
+taps the field at the position it had before the keyboard rose; the panel
+then moves up to stay above the keyboard, and the tap lands on the
+keyboard's top row, where mid-screen is the "T" key (the screenshots'
+field scrolled three characters, not two, for the same reason). The flow
+now waits for the layout to settle before each field tap
+(`waitForAnimationToEnd`), and passed. Not an app defect: the field held
+exactly what was typed.
+
+### Scanner flows after the fourth round, `39be9c9`
+
+The fourth round changed the scanner screen (keyboard avoidance pads on
+Android too; an inset offset was tried and dropped) and the runner (the
+host check, signal handling, the ticket server), so flows 18 to 21 ran
+again on that tree, with the same dev client, deployment, device, and
+Maestro as above and JS from Metro at the working tree that became
+`39be9c9`:
+
+| Run                                                  | Result                                                                                             |
+| ---------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Flows 18 to 21                                       | 3/4 (seed run `ea6d9207`); `21-scan-typed` failed in its sign-in setup, the Clerk sync toast again |
+| `21-scan-typed` alone, with the inset offset         | Failed at the URL text assertion, twice (`e6c203ee`, `79f25771`)                                   |
+| `21-scan-typed` alone, offset dropped                | Failed at the same assertion (`f114882e`), which cleared the offset as the cause                   |
+| `21-scan-typed` alone, a wait after the field tap    | Failed at the same assertion (`2c4c6f17`); a hierarchy dump then showed the stray "T"              |
+| `21-scan-typed` alone, the wait before the field tap | Passed, all three typing steps included (`b4250675`)                                               |
 
 Still not covered: anything needing a camera or a physical device, Android,
 the native payment return, and CI (the suite runs by hand). See the

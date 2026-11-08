@@ -801,9 +801,12 @@ push, analytics, and monitoring should be independent consumers.
           the scanner) passed with the 17 join flows, 21/21 on an iPhone 17
           Pro simulator (iOS 26.5) at `ba289b1` on `qr/native-scanner`,
           2026-11-04, and again at `5a6cf8e` (PR #51), 2026-11-08, across a
-          full run and reruns of the flows the sign-in failure took; the
-          scanner flows ran once more after the fourth round's scanner
-          change ([record](docs/delivery-status.md))
+          full run and reruns of the flows the sign-in failure took. After
+          the fourth round's scanner and runner changes (`39be9c9`) flows
+          18 to 20 passed again, and `21-scan-typed` passed once its flow
+          waited for the keyboard layout before tapping the field — the
+          tap had been landing on the keyboard and typing a stray "T"
+          ([record](docs/delivery-status.md))
     - [ ] Physical iPhone and Android runs, adding what a simulator can't
           reach: scanning a real Join QR and a foreign QR code, the scan
           lock and re-arm, the camera and torch going off under the join
