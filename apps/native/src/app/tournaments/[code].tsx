@@ -19,10 +19,11 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { Badge } from "@/components/badge";
+import { JoinEventView } from "@/components/join-event-view";
 import { ReportResultScoreboard } from "@/components/report-result-scoreboard";
 import { SignInButton } from "@/components/sign-in-button";
 import { Toast, useToast } from "@/components/toast";
-import { UnverifiedViewerActions } from "@/components/unverified-viewer-actions";
+import { UnverifiedViewerShell } from "@/components/unverified-viewer-shell";
 import { palette } from "@/lib/palette";
 import { useAppAuth } from "@/lib/use-app-auth";
 
@@ -92,32 +93,20 @@ export default function TournamentScreen() {
   // Clerk has a user Convex could not verify (see ViewerAuthGate): offer a
   // handshake restart and sign-out, not the sign-in sheet.
   if (access.state === "unverified") {
-    return (
-      <SafeAreaView style={styles.container} edges={["bottom"]}>
-        <View style={styles.signedOut}>
-          <Text style={styles.signedOutTitle}>
-            {"We couldn't verify your account"}
-          </Text>
-          <Text style={styles.muted}>
-            {
-              "You're signed in, but the server couldn't confirm your session. Try again, or sign out and sign back in."
-            }
-          </Text>
-          <UnverifiedViewerActions style={styles.signInButton} />
-        </View>
-      </SafeAreaView>
-    );
+    return <UnverifiedViewerShell />;
   }
 
+  // No confirmed seat: offer the join panel a /join link would, without an
+  // invite code (a private event only reaches this screen for viewers who
+  // hold a row). Once a registration takes a seat the ladder moves to
+  // `ready` and the match page replaces it.
   if (access.state === "notRegistered") {
     return (
-      <SafeAreaView style={styles.container} edges={["bottom"]}>
-        <View style={styles.content}>
-          <Text style={styles.muted}>
-            You are not registered for this tournament.
-          </Text>
-        </View>
-      </SafeAreaView>
+      <JoinEventView
+        event={access.event}
+        signedIn
+        registration={access.registration}
+      />
     );
   }
 

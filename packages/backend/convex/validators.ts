@@ -88,8 +88,12 @@ export const tournamentFormatValidator = v.union(
 );
 
 // Who can see the tournament. Independent of lifecycle: "public" events appear
-// in listings, "unlisted" events are reachable by link/code only, and
-// "private" events are visible only to organizers and registered players.
+// in listings, "unlisted" events stay out of the public listings and are
+// reached by their random public code, except that a convention's child
+// event still appears on its convention's page with that code
+// (conventions/events.ts listPublicChildEvents; CONTEXT.md "Public Code"),
+// and "private" events are visible only to organizers, registered players,
+// and Invite Link holders.
 export const tournamentVisibilityValidator = v.union(
   v.literal("public"),
   v.literal("unlisted"),

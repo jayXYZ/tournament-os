@@ -6,7 +6,11 @@ import {
   mintUniqueInviteCode,
   normalizeInviteCode,
 } from "../model/invites";
-import { requireOrganizerAccess } from "../model/tournaments";
+import {
+  canViewTournament,
+  requireOrganizerAccess,
+  tournamentByPublicCode,
+} from "../model/tournaments";
 
 // The tournament's live invite code, for the organizer settings surface.
 // This is the only query that returns the code: everything player-facing
@@ -21,22 +25,51 @@ export const getInviteLink = query({
   },
 });
 
-// Resolves an invite code to the event page it opens — the /join/<code> URL's
-// lookup. Returns only the routing identifiers, not event details: the event
-// page query (getPublicTournament, invite code in hand) is the one place
-// invite holders read the event from. Unknown, malformed, revoked, and
-// pre-publication codes all resolve to null identically, so the URL leaks
-// nothing about which codes exist.
-export const resolveInviteCode = query({
-  args: { inviteCode: v.string() },
-  handler: async (ctx, args) => {
-    const code = normalizeInviteCode(args.inviteCode);
-    if (code === null) {
+// Resolves the code in a /join/<code> URL — from a printed QR code, a shared
+// link, or a code typed by hand — to the event page it opens. The two kinds
+// differ in length (see model/codes.ts), so the raw text is tried as each:
+//
+// - A 6-character public code (CONTEXT.md "Public Code") resolves when the
+//   caller could open the event page anyway (canViewTournament, the rule
+//   getPublicTournament applies), so a public poster stops working the
+//   moment its event goes private, except for the players and organizers who
+//   could still open the page.
+// - A 10-character invite code (CONTEXT.md "Invite Link") resolves through
+//   its live invite row, and the normalized code goes back so the redirect
+//   carries the canonical form instead of whatever lookalike spelling
+//   arrived.
+//
+// Returns only the routing identifiers, not event details: the event page
+// query is the one place a visitor reads the event from. Unknown, malformed,
+// revoked, hidden, and pre-publication codes of either kind all resolve to
+// null identically, so the URL says nothing about which codes exist or which
+// kind a bad one was.
+export const resolveJoinCode = query({
+  args: { code: v.string() },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ publicCode: string; inviteCode?: string } | null> => {
+    const byPublicCode = await tournamentByPublicCode(ctx, args.code);
+    if (byPublicCode !== null) {
+      if (
+        byPublicCode.lifecycle === "setup" ||
+        !(await canViewTournament(ctx, byPublicCode, undefined))
+      ) {
+        return null;
+      }
+      return { publicCode: byPublicCode.publicCode };
+    }
+
+    // Not an event's public code (a different length, or no event holds
+    // it): try it as an invite code.
+    const inviteCode = normalizeInviteCode(args.code);
+    if (inviteCode === null) {
       return null;
     }
     const invite = await ctx.db
       .query("tournamentInvites")
-      .withIndex("by_code", (q) => q.eq("code", code))
+      .withIndex("by_code", (q) => q.eq("code", inviteCode))
       .unique();
     if (!invite) {
       return null;
@@ -45,9 +78,7 @@ export const resolveInviteCode = query({
     if (!tournament || tournament.lifecycle === "setup") {
       return null;
     }
-    // The normalized code goes back so the redirect carries the canonical
-    // form instead of whatever lookalike spelling arrived.
-    return { publicCode: String(tournament.publicCode), inviteCode: code };
+    return { publicCode: tournament.publicCode, inviteCode };
   },
 });
 
@@ -73,6 +104,31 @@ export const regenerateInviteLink = mutation({
         updatedAt: now,
       });
     }
+    return code;
+  },
+});
+
+// Creates the tournament's invite link if it has none, else answers the one
+// it has. The "Create invite link" buttons call this, not
+// regenerateInviteLink: two organizers creating at nearly the same moment
+// would otherwise have the second click silently rotate the first's link —
+// one perhaps already printed — and skip the confirmation rotation asks
+// for. Concurrent creates conflict on the invite row's index read, so the
+// loser re-runs and finds the winner's code.
+export const createInviteLink = mutation({
+  args: { tournamentId: v.id("tournaments") },
+  handler: async (ctx, args): Promise<string> => {
+    const { tournament } = await requireOrganizerAccess(ctx, args.tournamentId);
+    const existing = await inviteForTournament(ctx, tournament._id);
+    if (existing) {
+      return existing.code;
+    }
+    const code = await mintUniqueInviteCode(ctx);
+    await ctx.db.insert("tournamentInvites", {
+      tournamentId: tournament._id,
+      code,
+      updatedAt: Date.now(),
+    });
     return code;
   },
 });

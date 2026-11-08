@@ -1,0 +1,22 @@
+appId: com.paperpairings.app
+name: Scanner opens from the empty home's call to action
+---
+# The newcomer is never registered for anything, so home shows its empty
+# state (run.mjs).
+- runFlow: subflows/launch.yaml
+- runFlow:
+    file: subflows/sign-in.yaml
+    env:
+      TICKET_URL: ${NEWCOMER_TICKET_URL}
+- extendedWaitUntil:
+    visible: "No active tournaments"
+    timeout: 60000
+- tapOn: "Scan a QR code to join"
+- extendedWaitUntil:
+    visible: "Point the camera at the event’s QR code"
+    timeout: 20000
+- assertVisible: "Type a code instead"
+- tapOn: "Close"
+- extendedWaitUntil:
+    visible: "No active tournaments"
+    timeout: 20000

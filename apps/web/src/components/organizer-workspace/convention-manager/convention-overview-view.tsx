@@ -3,6 +3,7 @@ import { useQuery } from 'convex/react'
 import { ArrowRight, CalendarDays, Ticket, Trophy } from 'lucide-react'
 
 import { api } from '@paper-pairings/backend/convex/_generated/api'
+import { useStableQuery } from '@paper-pairings/core'
 import { useManagedConvention } from './convention-manager-context'
 import type { ReactNode } from 'react'
 import { formatConventionDateRange } from '@/components/conventions/convention-display'
@@ -21,7 +22,6 @@ import {
 } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useClientClock } from '@/hooks/use-client-clock'
-import { useStableQuery } from '@/hooks/use-stable-query'
 import { formatCents } from '@/lib/money'
 
 // One line summarizing the pass lineup (ADR 0004: pricing lives on ticket

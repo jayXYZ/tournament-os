@@ -176,6 +176,11 @@ export const beginEntryCheckout = internalMutation({
       if (blockedBecause !== null) {
         throw userError(blockedBecause);
       }
+      // The approval counted the seats as they stood then; seats taken
+      // since count too. A payment that landed on a full event could only
+      // be refunded by the webhook (isEntrySeatable), so refuse it before
+      // anything is paid — the decision direct mode makes below.
+      requireCapacityAvailable(tournament);
     } else {
       // Direct mode: file (or reuse) the pending row ourselves, exactly the
       // shape registerSelf gives an approval-mode application — no seat, no
@@ -201,7 +206,7 @@ export const beginEntryCheckout = internalMutation({
           ...registrationNameStamp(user),
           createdAt: now,
           tiebreakRandom: tiebreakRandom(
-            tournament.seed ?? tournament.publicCode,
+            tournament.seed,
             String(user.publicCode),
           ),
           updatedAt: now,
@@ -246,7 +251,7 @@ export const beginEntryCheckout = internalMutation({
       transferGroup: orderTransferGroup(order._id),
       totalCents: order.amountBreakdown.totalCents,
       productName: `${tournament.name} — entry`,
-      tournamentPublicCode: String(tournament.publicCode),
+      tournamentPublicCode: tournament.publicCode,
       // A previous session to expire before minting the replacement, so two
       // live sessions can never both pay for one order.
       existingSessionId,
@@ -387,7 +392,7 @@ export const beginBadgeCheckout = internalMutation({
       transferGroup: orderTransferGroup(order._id),
       totalCents: order.amountBreakdown.totalCents,
       productName: `${convention.name} — ${ticketType.name}`,
-      conventionPublicCode: String(convention.publicCode),
+      conventionPublicCode: convention.publicCode,
       existingSessionId,
     };
   },

@@ -31,7 +31,7 @@ test('organizer corrections: override a live result, rewind pairings, drop into 
   await advanceStep(page, 'Hold to generate pairings')
   await advanceStep(page, 'Hold to publish pairings')
   await page.goto(`${managerUrl}/pairings`)
-  await expect(page.getByText('Awaiting result')).toHaveCount(2)
+  await expect(page.getByLabel('Awaiting result')).toHaveCount(2)
 
   // Capture table 1's player names so the correction can assert on the
   // flipped winner rather than a scoreline both results share.
@@ -102,12 +102,16 @@ test('organizer corrections: override a live result, rewind pairings, drop into 
   await advanceStep(page, 'Hold to generate pairings')
   await advanceStep(page, 'Hold to publish pairings')
   await page.goto(`${managerUrl}/pairings`)
-  await expect(page.getByText('Bye', { exact: true })).toBeVisible()
+  // The bye row names it in the table column (and again as a badge beside
+  // the player), so pin the table cell.
+  await expect(
+    page.getByRole('cell', { name: 'Bye', exact: true }),
+  ).toBeVisible()
   await expect(
     page.getByRole('button', { name: 'Manage bye match' }),
   ).toBeVisible()
   // The bye auto-completes, leaving exactly one match to report.
-  await expect(page.getByText('Awaiting result')).toHaveCount(1)
+  await expect(page.getByLabel('Awaiting result')).toHaveCount(1)
 
   await enterResult(page, 0, 2, 1)
   await advanceStep(page, 'Hold to complete round and post standings')

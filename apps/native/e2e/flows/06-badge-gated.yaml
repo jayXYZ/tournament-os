@@ -1,0 +1,13 @@
+appId: com.paperpairings.app
+name: Badge-gated child event without a badge
+---
+- runFlow: subflows/signed-in.yaml
+- runFlow:
+    file: subflows/open-link.yaml
+    env:
+      LINK: paperpairings://join/${CODE_GATED}
+- extendedWaitUntil:
+    visible: "This event requires a confirmed E2E Badge Convention badge — register for the convention first\\."
+    timeout: 30000
+- assertVisible: "E2E Gated Event"
+- assertNotVisible: "Register for this event"

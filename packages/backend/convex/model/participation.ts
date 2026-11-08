@@ -2,6 +2,7 @@ import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "./batching";
 import type { CutoffPartition } from "./cutoffs";
+import { syncRegistrationPaymentStatusFor } from "./payments";
 import { MAX_TOURNAMENT_PLAYERS, activeRegistrations } from "./registrations";
 import {
   deleteStandingsForReopenedRound,
@@ -191,6 +192,9 @@ async function patchRegistrationRow(
   participationStatus: Doc<"tournamentRegistrations">["participationStatus"];
   updatedAt: number;
   tournamentId: Id<"tournaments">;
+  // Whether the row entered or left the confirmed state, which is what the
+  // payment-status mirror reads (setRegistrationState resyncs it then).
+  crossedConfirmed: boolean;
 }> {
   const existing = await ctx.db.get(registrationId);
   if (!existing) {
@@ -237,6 +241,9 @@ async function patchRegistrationRow(
     participationStatus,
     updatedAt,
     tournamentId: existing.tournamentId,
+    crossedConfirmed:
+      (existing.entryStatus === "confirmed") !==
+      (update.entryStatus === "confirmed"),
   };
 }
 
@@ -326,7 +333,7 @@ export async function setRegistrationState(
   update: RegistrationStateArgs,
 ) {
   const delta = new ParticipationCountDelta();
-  const { participationStatus, updatedAt, tournamentId } =
+  const { participationStatus, updatedAt, tournamentId, crossedConfirmed } =
     await patchRegistrationRow(ctx, registrationId, update, delta);
   await syncStatusOntoStandingsRow(
     ctx,
@@ -335,6 +342,13 @@ export async function setRegistrationState(
     await latestStandingsRowFor(ctx, registrationId),
   );
   await delta.apply(ctx, tournamentId);
+  // The payment-status mirror reads differently on a confirmed seat (a
+  // closed unpaid order owes nothing there), so a row entering or leaving
+  // the confirmed state re-derives it — an enrollment or free restore of a
+  // cancelled entry whose checkout lapsed writes no order of its own.
+  if (crossedConfirmed) {
+    await syncRegistrationPaymentStatusFor(ctx, registrationId);
+  }
 }
 
 function standingsRowsByPlayer(

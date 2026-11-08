@@ -1,6 +1,7 @@
 import { UserButton } from "@clerk/expo/native";
 import { useMyTournaments, useViewerAuthGate } from "@paper-pairings/core";
 import { useRouter } from "expo-router";
+import { SymbolView } from "expo-symbols";
 import {
   ActivityIndicator,
   FlatList,
@@ -13,6 +14,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { Badge } from "@/components/badge";
 import { BrandMark } from "@/components/brand-mark";
+import { Button } from "@/components/button";
 import { SignInButton } from "@/components/sign-in-button";
 import { UnverifiedViewerActions } from "@/components/unverified-viewer-actions";
 import { palette } from "@/lib/palette";
@@ -77,6 +79,9 @@ export default function HomeScreen() {
     );
   }
 
+  // navigate, not push: a fast double tap would stack a second scanner.
+  const openScanner = () => router.navigate("/scan");
+
   return (
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
       <View style={styles.header}>
@@ -87,6 +92,25 @@ export default function HomeScreen() {
             Active events you’re registered for
           </Text>
         </View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Scan a QR code"
+          hitSlop={8}
+          onPress={openScanner}
+          style={({ pressed }) => [
+            styles.scanButton,
+            pressed && styles.pressed,
+          ]}
+        >
+          {/* SF Symbols on iOS, Material Symbols on Android; the label
+              covers any platform with neither. */}
+          <SymbolView
+            name={{ ios: "qrcode.viewfinder", android: "qr_code_scanner" }}
+            size={22}
+            tintColor={palette.foreground}
+            fallback={<Text style={styles.scanFallback}>Scan</Text>}
+          />
+        </Pressable>
         <UserButton />
       </View>
 
@@ -105,6 +129,11 @@ export default function HomeScreen() {
               <Text style={styles.emptyBody}>
                 When you register for an event it’ll show up here.
               </Text>
+              <Button
+                label="Scan a QR code to join"
+                onPress={openScanner}
+                style={styles.emptyAction}
+              />
             </View>
           }
           renderItem={({ item }) => (
@@ -114,8 +143,8 @@ export default function HomeScreen() {
                 // Routes carry the public code, not the Convex id, so links
                 // are interchangeable with the web app's player pages.
                 router.push({
-                  pathname: "/tournament/[code]",
-                  params: { code: String(item.tournament.publicCode) },
+                  pathname: "/tournaments/[code]",
+                  params: { code: item.tournament.publicCode },
                 })
               }
             >
@@ -181,6 +210,21 @@ const styles = StyleSheet.create({
   headerText: {
     flex: 1,
   },
+  scanButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: palette.inputMuted,
+    borderWidth: 1,
+    borderColor: palette.border,
+  },
+  scanFallback: {
+    color: palette.foreground,
+    fontSize: 12,
+    fontWeight: "600",
+  },
   greeting: {
     color: palette.foreground,
     fontSize: 24,
@@ -228,4 +272,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: "center",
   },
+  emptyAction: { marginTop: 16, alignSelf: "stretch" },
 });

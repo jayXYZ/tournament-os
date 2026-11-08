@@ -1,0 +1,16 @@
+appId: com.paperpairings.app
+name: Badge holder registers for a paid event the badge includes
+---
+- runFlow: subflows/signed-in.yaml
+- runFlow:
+    file: subflows/open-link.yaml
+    env:
+      LINK: paperpairings://join/${CODE_COMPED}
+- extendedWaitUntil:
+    visible: "Register for this event"
+    timeout: 30000
+- assertVisible: "E2E Comped Event"
+- assertVisible: ".*Part of E2E Comp Convention"
+- assertVisible: "8 spots left · included with your convention badge"
+- assertNotVisible: "Pay \\$[0-9.,]+ on the web"
+- assertNotVisible: "Paying isn’t available in the app yet\\. Finish on the web\\."

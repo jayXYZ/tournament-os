@@ -1,0 +1,15 @@
+appId: com.paperpairings.app
+name: Free event through its public code
+---
+- runFlow: subflows/signed-in.yaml
+- runFlow:
+    file: subflows/open-link.yaml
+    env:
+      LINK: paperpairings://join/${CODE_FREE}
+- extendedWaitUntil:
+    visible: "Register for this event"
+    timeout: 30000
+- assertVisible: "E2E Free Event"
+- assertVisible: "Free"
+- assertVisible: "8 spots left"
+- assertNotVisible: "The organizer approves each registration\\."

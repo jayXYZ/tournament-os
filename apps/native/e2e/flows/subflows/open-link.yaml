@@ -1,0 +1,9 @@
+# Opens LINK the way a scanned or tapped link arrives: from outside the app,
+# which iOS confirms with an "Open in “Paper Pairings”?" prompt even while
+# the app is in front.
+appId: com.paperpairings.app
+---
+- openLink: ${LINK}
+- tapOn:
+    text: "Open"
+    optional: true

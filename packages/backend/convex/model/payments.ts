@@ -184,15 +184,34 @@ export async function syncRegistrationPaymentStatus(
   if (entry.kind !== "tournament") {
     return;
   }
-  const registration = await ctx.db.get(entry.registrationId);
+  await syncRegistrationPaymentStatusFor(ctx, entry.registrationId);
+}
+
+// The mirror keyed on the registration. Every order write runs it (above),
+// and so does a registration crossing the confirmed boundary
+// (model/participation.ts setRegistrationState), because what the mirror
+// says depends on the entry's status too: a confirmed seat whose newest
+// order closed unpaid owes nothing for it — the seat was taken another way
+// (a badge that started comping the event closing the order its pending
+// entry held, an organizer enrolling or restoring a cancelled entry whose
+// checkout lapsed) — so the roster reads the row like any entry with no
+// order rather than "Unpaid", and the Payment filter agrees.
+export async function syncRegistrationPaymentStatusFor(
+  ctx: MutationCtx,
+  registrationId: Id<"tournamentRegistrations">,
+) {
+  const registration = await ctx.db.get(registrationId);
   if (!registration) {
     return;
   }
-  const latest = await latestOrderForRegistration(ctx, entry.registrationId);
-  if (registration.paymentStatus !== latest?.status) {
-    await ctx.db.patch(entry.registrationId, {
-      paymentStatus: latest?.status,
-    });
+  const latest = await latestOrderForRegistration(ctx, registrationId);
+  const mirrored =
+    registration.entryStatus === "confirmed" &&
+    (latest?.status === "canceled" || latest?.status === "expired")
+      ? undefined
+      : latest?.status;
+  if (registration.paymentStatus !== mirrored) {
+    await ctx.db.patch(registrationId, { paymentStatus: mirrored });
   }
 }
 

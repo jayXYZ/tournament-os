@@ -45,7 +45,8 @@ export default defineSchema({
     tokenIdentifier: v.string(),
     // Human-facing, URL-safe player identifier so profile URLs never expose the
     // Convex document id. Allocated from a counter at creation (see
-    // model/users.ts); mirrors the tournament publicCode pattern.
+    // model/users.ts) — unlike event codes, which are random (see
+    // model/publicCodes.ts) — and the stable key of each tiebreakRandom.
     publicCode: v.number(),
     // Whether the public profile page (users/$publicCode) is visible to anyone.
     // Optional: readers treat a missing value as "public" (see getPublicPlayer),
@@ -336,9 +337,10 @@ export default defineSchema({
   // no parent link here, and only tournaments carry a conventionId.
   conventions: defineTable({
     name: v.string(),
-    // Counter-allocated URL identity, own counter key so convention and
-    // tournament codes stay independent sequences (model/conventions.ts).
-    publicCode: v.number(),
+    // Random URL identity (CONTEXT.md "Public Code", model/publicCodes.ts),
+    // unique among conventions; a tournament may hold the same code, since
+    // the two never share a route.
+    publicCode: v.string(),
     organizationId: v.id("organizations"),
     createdBy: v.id("users"),
     // Same independent visibility/lifecycle axes as tournaments; see
@@ -481,7 +483,9 @@ export default defineSchema({
 
   tournaments: defineTable({
     name: v.string(),
-    publicCode: v.number(),
+    // Random URL identity (CONTEXT.md "Public Code", model/publicCodes.ts):
+    // the 6-character code in /tournaments/<code> and /join/<code>.
+    publicCode: v.string(),
     organizationId: v.id("organizations"),
     createdBy: v.id("users"),
     // The convention this tournament is held at, absent for standalone
@@ -540,10 +544,10 @@ export default defineSchema({
     // non-active registrations (nearly the whole roster after a cut). Absent
     // reads as all zero; the active count is confirmed minus the sum.
     participationCounts: v.optional(participationCountsValidator),
-    // Deterministic seed for pairing's within-bracket shuffle, so pairings are
-    // reproducible and auditable. Optional for rows created before it existed;
-    // readers fall back to publicCode.
-    seed: v.optional(v.number()),
+    // Deterministic seed for pairing's within-bracket shuffle and each
+    // registration's tiebreakRandom, so pairings are reproducible and
+    // auditable.
+    seed: v.number(),
     // Live timer for the current round; absent = no timer running. Lives here
     // rather than on the round because only one timer can be live per
     // tournament and every surface already subscribes to this doc. Cleared
@@ -682,7 +686,12 @@ export default defineSchema({
     // The newest order's status on a paid event, mirrored from paymentOrders
     // by syncRegistrationPaymentStatus (model/payments.ts) — every order
     // write runs through it, so this never lags the orders table. Absent
-    // until the row's first order, so always absent on free events. The
+    // until the row's first order, so always absent on free events, and
+    // absent again on a confirmed seat whose newest order closed unpaid
+    // (a comped seat that closed the order it no longer owed, an enrolled
+    // or restored entry whose checkout had lapsed) — re-derived whenever a
+    // row enters or leaves the confirmed state (model/participation.ts
+    // setRegistrationState) as well as on every order write. The
     // roster's Payment filter narrows the list and search walks on this
     // column instead of joining every row to its orders after the page is
     // cut, which is what would make a filtered page lie by omission: the

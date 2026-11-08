@@ -1,0 +1,14 @@
+appId: com.paperpairings.app
+name: Event full
+---
+- runFlow: subflows/signed-in.yaml
+- runFlow:
+    file: subflows/open-link.yaml
+    env:
+      LINK: paperpairings://join/${CODE_FULL}
+- extendedWaitUntil:
+    visible: "Tournament is full"
+    timeout: 30000
+- assertVisible: "E2E Full Event"
+- assertVisible: "2 of 2 registered"
+- assertNotVisible: "Register for this event"

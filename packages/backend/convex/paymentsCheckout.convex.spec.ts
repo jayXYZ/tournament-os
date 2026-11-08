@@ -1231,3 +1231,98 @@ test("paying back into an entry an organizer once named files it under the accou
   expect(pending?.entryFeeExempt).toBeUndefined();
   expect(pending?.organizerNamed).toBeUndefined();
 });
+
+// The mirror reads differently on a confirmed seat, and a seat can be taken
+// without an order write: a player whose checkout was abandoned and entry
+// cancelled is enrolled by the organizer, who settles the fee outside the
+// app. The roster must not call that seat "Unpaid".
+test("an enrolled seat over a cancelled checkout reads as owing nothing", async () => {
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const tournamentId = await seedPaidTournament(t, organizationId);
+  await insertPlayerUser(t, 1);
+  const asPlayer = t.withIdentity(playerIdentity(1));
+  const organizer = t.withIdentity(organizerIdentity);
+
+  await asPlayer.action(api.payments.checkout.createEntryCheckout, {
+    tournamentId,
+  });
+  await asPlayer.mutation(api.tournaments.registrations.cancelMyRegistration, {
+    tournamentId,
+  });
+  const cancelled = await latestOrderFor(t, tournamentId, 1);
+  expect(cancelled.status).toBe("canceled");
+  const cancelledRow = await t.run(
+    async (ctx) => (await ctx.db.get(cancelled.registrationId))!,
+  );
+  // A cancelled entry's lapsed order is honestly "Unpaid".
+  expect(cancelledRow).toMatchObject({
+    entryStatus: "cancelled",
+    paymentStatus: "canceled",
+  });
+
+  const registrationId = await organizer.mutation(
+    api.tournaments.registrations.enrollPlayer,
+    { tournamentId, email: playerIdentity(1).email },
+  );
+  expect(registrationId).toBe(cancelled.registrationId);
+  const seated = await t.run(
+    async (ctx) => (await ctx.db.get(registrationId))!,
+  );
+  expect(seated.entryStatus).toBe("confirmed");
+  expect(seated.paymentStatus).toBeUndefined();
+  const roster = await organizer.query(
+    api.tournaments.registrations.listRegistrationPage,
+    { tournamentId, paginationOpts: { numItems: 100, cursor: null } },
+  );
+  expect(
+    roster.page.map((row) => ({
+      entryStatus: row.registration.entryStatus,
+      paymentStatus: row.paymentStatus,
+    })),
+  ).toEqual([{ entryStatus: "confirmed", paymentStatus: null }]);
+});
+
+test("approval mode: a payment on a full event is refused before Checkout", async () => {
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  const tournamentId = await seedPaidTournament(t, organizationId, {
+    requiresApproval: true,
+    playerCapacity: 2,
+  });
+  const asOwner = t.withIdentity(organizerIdentity);
+  // Three applications, all approved: approval counts the seats as they
+  // stand, and none is taken until a payment lands.
+  for (const n of [1, 2, 3]) {
+    await insertPlayerUser(t, n);
+    const registrationId = await t
+      .withIdentity(playerIdentity(n))
+      .mutation(api.tournaments.registrations.registerSelf, { tournamentId });
+    await asOwner.mutation(api.tournaments.registrations.approveRegistration, {
+      registrationId,
+    });
+  }
+  for (const n of [1, 2]) {
+    await t
+      .withIdentity(playerIdentity(n))
+      .action(api.payments.checkout.createEntryCheckout, { tournamentId });
+    await completePayment(t, await latestOrderFor(t, tournamentId, n), `p${n}`);
+  }
+  expect(
+    (await tournamentDoc(t, tournamentId)).confirmedRegistrationCount,
+  ).toBe(2);
+
+  // The third approval stands, but its payment could only be refunded by
+  // the webhook: Checkout refuses it at capacity, as it does a direct
+  // checkout, and the approved entry stays payable for a seat that frees.
+  await expect(
+    t
+      .withIdentity(playerIdentity(3))
+      .action(api.payments.checkout.createEntryCheckout, { tournamentId }),
+  ).rejects.toThrow("Tournament is at capacity");
+  expect(await latestOrderFor(t, tournamentId, 3)).toMatchObject({
+    purpose: "post_approval",
+    status: "requires_payment",
+  });
+  expect(gatewayState.sessions).toHaveLength(2);
+});

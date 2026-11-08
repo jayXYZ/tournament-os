@@ -12,11 +12,13 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
+    "./app-links": "./src/app-links.ts",
     "./decklist-limits": "./src/decklist-limits.ts",
     "./match-structure": "./src/match-structure.ts",
     "./organizer-utils": "./src/organizer-utils.ts",
     "./payment-fees": "./src/payment-fees.ts",
     "./registration-status": "./src/registration-status.ts",
+    "./scan-intake": "./src/scan-intake.ts",
     "./timer-utils": "./src/timer-utils.ts",
     "./tournament-creation-utils": "./src/tournament-creation-utils.ts",
     "./organization-profile-image": "./src/organization-profile-image.ts"

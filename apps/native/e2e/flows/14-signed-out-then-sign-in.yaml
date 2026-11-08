@@ -1,0 +1,22 @@
+appId: com.paperpairings.app
+name: Signed out, then signing in on the join screen
+---
+- runFlow: subflows/launch.yaml
+- runFlow: subflows/sign-out.yaml
+- runFlow:
+    file: subflows/open-link.yaml
+    env:
+      LINK: paperpairings://join/${CODE_FREE}
+- extendedWaitUntil:
+    visible: "Sign in to register"
+    timeout: 30000
+- assertVisible: "E2E Free Event"
+- assertVisible: "8 spots left"
+- assertNotVisible: "Register for this event"
+# The session link opens over the join screen and returns to it.
+- runFlow: subflows/sign-in.yaml
+- extendedWaitUntil:
+    visible: "Register for this event"
+    timeout: 60000
+- assertVisible: "E2E Free Event"
+- assertNotVisible: "Sign in to register"

@@ -1,0 +1,29 @@
+appId: com.paperpairings.app
+name: Paid event hands payment off to the web
+---
+- runFlow: subflows/signed-in.yaml
+- runFlow:
+    file: subflows/open-link.yaml
+    env:
+      LINK: paperpairings://join/${CODE_PAID}
+- extendedWaitUntil:
+    visible: "8 spots left"
+    timeout: 30000
+- assertVisible: "E2E Paid Event"
+# The fee preview's total, with the entry and fees broken out.
+- extendedWaitUntil:
+    visible: "\\$[0-9.,]+ \\(\\$15\\.00 entry \\+ \\$[0-9.,]+ fees\\)"
+    timeout: 30000
+- assertNotVisible: "Register for this event"
+- assertNotVisible: "Request to register"
+- runFlow:
+    when:
+      true: ${WEB_ORIGIN != ''}
+    commands:
+      - assertVisible: "Pay \\$[0-9.,]+ on the web"
+      - assertVisible: "You’ll sign in again on the web to pay\\."
+- runFlow:
+    when:
+      true: ${WEB_ORIGIN == ''}
+    commands:
+      - assertVisible: "Paying isn’t available in the app yet\\. Finish on the web\\."

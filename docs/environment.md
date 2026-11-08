@@ -7,8 +7,6 @@ page is the full contract, including where each variable lives in production.
 This is a configuration contract, not an inventory of values already set.
 The 2026-10-28 audit checked repository configuration only; current deployment
 setup and workflow verification are tracked in [delivery status](delivery-status.md).
-Branch-only additions, including the QR branch's `EXPO_PUBLIC_WEB_ORIGIN`,
-are not part of main's contract until that code merges.
 
 ## Web app (`apps/web`)
 
@@ -29,12 +27,13 @@ Production: set in the Vercel project (except `VITE_CONVEX_URL`, see below).
 Local: copy `apps/native/.env.example` to `apps/native/.env.local`.
 Release builds: set in the EAS build environment.
 
-| Variable                                            | Required | Purpose                                                                                                                    |
-| --------------------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `EXPO_PUBLIC_CONVEX_URL`                            | yes      | Same Convex deployment URL as the web app's `VITE_CONVEX_URL`.                                                             |
-| `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY`                 | yes      | Publishable key from the same Clerk app as web.                                                                            |
-| `EXPO_PUBLIC_SENTRY_DSN`                            | no       | Enables native error reporting; see [error-monitoring.md](./error-monitoring.md).                                          |
-| `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN` | no       | Build-time source-map/dSYM upload via the Sentry Expo plugin. Org/project are the Sentry URL slugs (not the DSN or token). |
+| Variable                                            | Required | Purpose                                                                                                                                                                 |
+| --------------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `EXPO_PUBLIC_CONVEX_URL`                            | yes      | Same Convex deployment URL as the web app's `VITE_CONVEX_URL`.                                                                                                          |
+| `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY`                 | yes      | Publishable key from the same Clerk app as web.                                                                                                                         |
+| `EXPO_PUBLIC_SENTRY_DSN`                            | no       | Enables native error reporting; see [error-monitoring.md](./error-monitoring.md).                                                                                       |
+| `EXPO_PUBLIC_WEB_ORIGIN`                            | no       | Web app origin (e.g. `https://example.com`) for the pages the app hands off to the web: paying an entry fee and a convention's page. Unset, those buttons are left out. |
+| `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN` | no       | Build-time source-map/dSYM upload via the Sentry Expo plugin. Org/project are the Sentry URL slugs (not the DSN or token).                                              |
 
 ## Convex deployment (`packages/backend`)
 
@@ -68,3 +67,21 @@ workspace root. Keep preview and production deployment credentials scoped to
 their intended targets. `pnpm start` serves the built web app via `srvx`;
 the committed command and a successful CI bundle do not establish that a
 Vercel deployment or its runtime environment works.
+
+## Native E2E runner (`apps/native/e2e/run.mjs`)
+
+Developer-machine settings, not part of any deployment's contract. The
+runner reads its deployment selector (`CONVEX_DEPLOYMENT`, which must be
+`dev:…`) and that deployment's URL (`VITE_CONVEX_URL`) from
+`packages/backend/.env.local`; `CLERK_SECRET_KEY` (a development-instance
+key) from the shell, then `apps/web/.env.local`; and `EXPO_PUBLIC_CONVEX_URL`
+and `EXPO_PUBLIC_WEB_ORIGIN` from the shell, then `apps/native/.env.local`.
+It refuses to run unless `EXPO_PUBLIC_CONVEX_URL` names the host of that
+`VITE_CONVEX_URL` (or `<name>.convex.cloud` when the URL is absent) — the
+deployment it is about to seed. A Metro started from a shell that exports a
+different URL is not caught, so keep the URL in `.env.local` only. Optional
+shell settings: `E2E_DEVICE` picks a booted simulator by UDID,
+`E2E_METRO_URL` overrides `http://127.0.0.1:8081`, `MAESTRO_BIN` names a
+Maestro binary other than `~/.maestro/bin/maestro`, and `JAVA_HOME` a JDK
+other than one under `~/.maestro/jdk/`. Usage and prerequisites:
+`apps/native/README.md`, "Device E2E (Maestro)".

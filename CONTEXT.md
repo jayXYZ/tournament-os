@@ -235,9 +235,25 @@ nothing before publication.
 _Avoid_: invite code (as a distinct concept — the code is the link's
 URL-embedded, human-readable form)
 
+**Join QR**:
+The QR form of a tournament's join URL, `/join/<code>`, which an organizer
+shows, downloads, or prints (conventions have no join route or QR code). A
+public or unlisted event's QR code encodes its Public Code; a private
+event's encodes its Invite Link. An event gets
+one only while registration is open: before publication its code opens
+nothing, and once registration closes there is nothing left to join.
+Revoking one depends on which code it carries: going private revokes a
+public poster, and rotating the invite revokes a private one.
+
 **Entry Status**:
 A registration's admission state (pending, waitlisted, confirmed, cancelled,
 rejected). Independent of competitive state.
+
+**Approval Mode**:
+An event setting (`registrationRequiresApproval`) under which registering
+files a pending application rather than taking a seat, and the organizer
+decides each one from the Review Queue. On a paid event the player pays
+after approval.
 
 **Review Queue**:
 The pending applications an organizer has yet to decide (approve, reject, or
@@ -320,6 +336,23 @@ paid-event rules (fee presence, capacity, refund window, the fee freeze)
 apply to both; everything competitive belongs to tournaments alone.
 _Avoid_: event as a synonym for tournament specifically
 
+**Public Code**:
+An Event's stable identifier: 6 random characters, the code in every URL for
+it (`/tournaments/<code>` or `/conventions/<code>`; `/join/<code>` takes
+tournament codes only) and the one a player types off a poster. It is never
+a secret and never rotates, because bookmarks, payment records, and printed
+codes all hold it. An unlisted event is kept out of the public listings and
+reached by its public code — though a child event still appears on its
+convention's page. Random codes keep anyone from counting
+through unlisted events, but random guessing still finds them, so unlisted
+means obscure, not protected. A private event's code opens it only for
+the players and organizers who could already see it. For a private
+tournament, everyone else needs the Invite Link; a private convention has
+no invite, and admits only its organizing team and its badge holders.
+Players have a numeric public code of their own for profile URLs, which is
+a different thing.
+_Avoid_: tournament id (the Convex document id, which never reaches a URL)
+
 **Convention**:
 A first-class umbrella event spanning a date range: it sells Badges, holds
 Child Events, and never nests inside another convention. Its lifecycle is
@@ -335,8 +368,11 @@ A Participant's registration for a convention itself, with one Ticket Type
 and at most one badge per participant per convention. A badge has an Entry
 Status but no competitive state. When a convention requires badges, a
 confirmed badge whose admission window covers the Child Event's start is
-the admission gate for self-serve registration. Cancelling a badge never
-revokes event registrations already made, and organizer actions bypass the gate.
+the admission gate for self-serve registration. The gate holds even when the
+viewer may not see the convention (private or unpublished): the Child Event's
+page and the refusal say a badge is required without naming the convention.
+Cancelling a badge never revokes event registrations already made, and
+organizer actions bypass the gate.
 _Avoid_: convention registration (in UI copy), ticket
 
 **Ticket Type**:

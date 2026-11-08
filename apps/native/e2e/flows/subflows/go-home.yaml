@@ -1,0 +1,17 @@
+# Home between two codes in one flow, so the second code opens a fresh join
+# screen rather than reusing the first's. The root link pushes a new home on
+# top of the join screen ([index, join, index]); it does not pop back to the
+# one below (React Navigation's NAVIGATE pushes unless the target is the
+# focused route). Maestro sees only the screen on top, so the assertion
+# below checks that home covers the join screen, not that the join screen
+# is gone. The next code's link then pushes its own join screen above home.
+appId: com.paperpairings.app
+---
+- runFlow:
+    file: open-link.yaml
+    env:
+      LINK: paperpairings:///
+- extendedWaitUntil:
+    visible: "Your tournaments"
+    timeout: 30000
+- assertNotVisible: "Code not found|Register for this event|Join event"

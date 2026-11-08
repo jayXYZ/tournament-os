@@ -11,7 +11,8 @@
     "web": "expo start --web",
     "build": "expo export --platform ios --platform android",
     "reset-project": "node ./scripts/reset-project.js",
-    "lint": "tsc --noEmit && expo lint"
+    "lint": "tsc --noEmit && expo lint",
+    "e2e:ios": "node e2e/run.mjs"
   },
   "dependencies": {
     "@clerk/expo": "3.4.6",
@@ -23,12 +24,14 @@
     "convex": "catalog:",
     "expo": "catalog:",
     "expo-auth-session": "~56.0.19",
+    "expo-camera": "~56.0.8",
     "expo-constants": "~56.0.27",
     "expo-crypto": "~56.0.5",
     "expo-dev-client": "~56.0.27",
     "expo-device": "~56.0.4",
     "expo-font": "~56.0.7",
     "expo-glass-effect": "~56.0.4",
+    "expo-haptics": "~56.0.3",
     "expo-image": "~56.0.13",
     "expo-linking": "~56.0.18",
     "expo-router": "~56.2.21",

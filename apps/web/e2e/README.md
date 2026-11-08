@@ -39,10 +39,11 @@ session through `window.Clerk`, and saves the browser storage state to
 - `organizer-mid-round-drop.spec.ts` — a drop during an unreported match
   concedes it to the opponent immediately (required-wins–0, typed
   `match_conceded` audit event) and the round completes off the concession.
-- `invite-links.spec.ts` — the `/join/<code>` route and `?invite` param for
-  private events, including creation from the settings card, signed-out
-  viewing, and player registration. Rotation/disabling and the full grant
-  boundary are covered by `inviteLinks.convex.spec.ts`, not this browser spec.
+- `invite-links.spec.ts` — the `/join/<code>` route for both kinds of code:
+  a public event's join link and QR dialog (no code during setup or after
+  registration closes, and none admitting strangers once the event goes
+  private), and a private event's invite link through the `?invite` param,
+  with the QR dialog and the Regenerate and Disable confirmations.
 - `enrollment-claim.spec.ts` — an organizer enrolls a player by email; the
   player opening the event page signed in is already registered (the
   root-level sign-in runs the Claim), and the roster shows the account's
@@ -50,9 +51,9 @@ session through `window.Clerk`, and saves the browser storage state to
 
 This suite is separate from `pnpm check` and the current CI jobs. A passing
 run exercises the configured development environment, not automatically the
-release deployment. Approval/payment state coverage and QR browser delivery
-remain open in [the roadmap](../../../TODO.md). Record the tested backend
-revision with any deployment verification result.
+release deployment. Approval/payment state coverage remains open in
+[the roadmap](../../../TODO.md). Record the tested backend revision with any
+deployment verification result.
 
 ## Test data
 
