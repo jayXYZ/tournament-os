@@ -410,12 +410,12 @@ exactly what was typed.
 
 ### Scanner flows after the fourth round, `39be9c9`
 
-The fourth round changed the scanner screen (keyboard avoidance pads on
-Android too; an inset offset was tried and dropped) and the runner (the
-host check, signal handling, the ticket server), so flows 18 to 21 ran
-again on that tree, with the same dev client, deployment, device, and
-Maestro as above and JS from Metro at the working tree that became
-`39be9c9`:
+The fourth round changed the runner (the host check, signal handling, the
+ticket server) and, on the scanner screen, only a comment (a keyboard inset
+offset was tried in between and dropped; the Android keyboard padding
+itself landed in `5a6cf8e`), so flows 18 to 21 ran again on that tree, with
+the same dev client, deployment, device, and Maestro as above and JS from
+Metro at the working tree that became `39be9c9`:
 
 | Run                                                  | Result                                                                                             |
 | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------- |

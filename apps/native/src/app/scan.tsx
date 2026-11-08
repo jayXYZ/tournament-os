@@ -205,10 +205,12 @@ export default function ScanScreen() {
           window is not resized for the keyboard (adjustResize) and the
           typed-code field would sit under it. The field keeps TypedCode's
           bottom-inset padding above the keyboard as well (inset + 16
-          rather than 16): taking the inset back out with
-          keyboardVerticalOffset={-insets.bottom} made Maestro's typed-code
-          flow lose the field's text match on the simulator twice in two
-          runs, so the extra gap stays. */}
+          rather than 16). Taking the inset back out with
+          keyboardVerticalOffset={-insets.bottom} was tried while Maestro's
+          typed-code flow was failing for an unrelated reason (its tap on
+          the field landed on the rising keyboard) and has not been
+          retested since that flow was fixed, so the wider gap stays for
+          now. */}
       <KeyboardAvoidingView behavior="padding" style={styles.bottom}>
         <TypedCode
           bottomInset={insets.bottom}

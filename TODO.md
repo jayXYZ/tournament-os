@@ -781,10 +781,11 @@ push, analytics, and monitoring should be independent consumers.
           "[ClerkProvider] Failed to sync native client state: No session
           was found" toast naming the session the link just ended, through
           the flow's 60-second wait. Seen 3 times in about 100 flow runs
-          across the 2026-11-04 records and 3 times in 25 on 2026-11-08
-          (and again in the fourth round's scanner reruns), in a different
-          flow each time within a day — `21-scan-typed` on both days — and
-          each passed on rerun
+          across the 2026-11-04 records and 4 times in 31 on 2026-11-08
+          (three in the full run and its reruns, one in the fourth round's
+          scanner reruns), hitting `21-scan-typed` once on 11-04 and twice
+          on 11-08 and otherwise a different flow each time, and each passed
+          on rerun
           ([record](docs/delivery-status.md)). The Clerk provider's native
           state sync racing the link's sign-out and ticket sign-in, or a
           token race between Clerk's `setActive` and Convex validating the
@@ -802,10 +803,11 @@ push, analytics, and monitoring should be independent consumers.
           Pro simulator (iOS 26.5) at `ba289b1` on `qr/native-scanner`,
           2026-11-04, and again at `5a6cf8e` (PR #51), 2026-11-08, across a
           full run and reruns of the flows the sign-in failure took. After
-          the fourth round's scanner and runner changes (`39be9c9`) flows
-          18 to 20 passed again, and `21-scan-typed` passed once its flow
-          waited for the keyboard layout before tapping the field — the
-          tap had been landing on the keyboard and typing a stray "T"
+          the fourth round's runner changes (`39be9c9`; the scanner screen
+          changed only in a comment) flows 18 to 20 passed again, and
+          `21-scan-typed` passed once its flow waited for the keyboard
+          layout before tapping the field — the tap had been landing on the
+          keyboard and typing a stray "T"
           ([record](docs/delivery-status.md))
     - [ ] Physical iPhone and Android runs, adding what a simulator can't
           reach: scanning a real Join QR and a foreign QR code, the scan
