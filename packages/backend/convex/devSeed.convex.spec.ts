@@ -83,9 +83,41 @@ test("any other deployment refuses the seed", async () => {
 
 // Checkout charges the platform account, never the stand-in (the stand-in
 // only fails at payout), so a live key would take real money for a seeded
-// paid event.
-test.each(["sk_live_example", "rk_live_example"])(
-  "a deployment whose Stripe key is live (%s) refuses the seed",
+// paid event. The guard is an allow-list: a test-mode key passes, and a key
+// of any other shape is refused.
+test.each(["sk_test_example", "rk_test_example"])(
+  "a deployment whose Stripe key is test-mode (%s) accepts the seed",
+  async (key) => {
+    vi.stubEnv(
+      "CLERK_JWT_ISSUER_DOMAIN",
+      "https://example-slug.clerk.accounts.dev",
+    );
+    vi.stubEnv("STRIPE_SECRET_KEY", key);
+    const t = createConvexTest();
+    const { organizationId } = await seedOrganizer(t);
+
+    await t.mutation(internal.devSeed.markOrganizationPayoutsReady, {
+      organizationId,
+    });
+    const account = await t.run((ctx) =>
+      ctx.db
+        .query("organizationStripeAccounts")
+        .withIndex("by_organizationId", (q) =>
+          q.eq("organizationId", organizationId),
+        )
+        .first(),
+    );
+    expect(account).toMatchObject({ payoutsReady: true });
+  },
+);
+
+test.each([
+  "sk_live_example",
+  "rk_live_example",
+  " sk_live_example ",
+  "sk_other_example",
+])(
+  "a deployment whose Stripe key is not test-mode (%j) refuses the seed",
   async (key) => {
     vi.stubEnv(
       "CLERK_JWT_ISSUER_DOMAIN",
@@ -99,6 +131,6 @@ test.each(["sk_live_example", "rk_live_example"])(
       t.mutation(internal.devSeed.markOrganizationPayoutsReady, {
         organizationId,
       }),
-    ).rejects.toThrow(/live Stripe key/);
+    ).rejects.toThrow(/test-mode Stripe key/);
   },
 );

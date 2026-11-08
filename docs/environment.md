@@ -7,8 +7,6 @@ page is the full contract, including where each variable lives in production.
 This is a configuration contract, not an inventory of values already set.
 The 2026-10-28 audit checked repository configuration only; current deployment
 setup and workflow verification are tracked in [delivery status](delivery-status.md).
-Branch-only additions, including the QR branch's `EXPO_PUBLIC_WEB_ORIGIN`,
-are not part of main's contract until that code merges.
 
 ## Web app (`apps/web`)
 
@@ -61,6 +59,18 @@ and functions read them through the typed `env` object from
 `packages/backend/.env.local` (`CONVEX_DEPLOYMENT`, `VITE_CONVEX_URL`, …) is
 written by `pnpm dev:backend` when linking a dev deployment; it is machine-local
 state, not part of the contract.
+
+## Native E2E runner (`apps/native/e2e/run.mjs`)
+
+Developer-machine settings, all optional and read from the shell only: the
+runner takes its deployment from `packages/backend/.env.local`, its Clerk
+secret from `apps/web/.env.local` (a development-instance key), and requires
+`apps/native/.env.local`'s `EXPO_PUBLIC_CONVEX_URL` to point at that same
+deployment. `E2E_DEVICE` picks a booted simulator by UDID, `E2E_METRO_URL`
+overrides `http://127.0.0.1:8081`, `MAESTRO_BIN` names a Maestro binary other
+than `~/.maestro/bin/maestro`, and `JAVA_HOME` a JDK other than one under
+`~/.maestro/jdk/`. Usage and prerequisites: `apps/native/README.md`, "Device
+E2E (Maestro)".
 
 Production Vercel builds additionally need `CONVEX_DEPLOY_KEY` in the Vercel
 project so the build command in `apps/web/vercel.json` can run `convex deploy`.

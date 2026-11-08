@@ -677,6 +677,19 @@ test.each([
     expect(gatewayState.expired).toContain(
       orderBefore.stripeCheckoutSessionId!,
     );
+    // The roster reads the comped seat like any entry with no order — not
+    // "Unpaid" for the order it never owed (model/payments.ts
+    // syncRegistrationPaymentStatus).
+    const roster = await organizer.query(
+      api.tournaments.registrations.listRegistrationPage,
+      { tournamentId, paginationOpts: { numItems: 100, cursor: null } },
+    );
+    expect(
+      roster.page.map((row) => ({
+        entryStatus: row.registration.entryStatus,
+        paymentStatus: row.paymentStatus,
+      })),
+    ).toEqual([{ entryStatus: "confirmed", paymentStatus: null }]);
     const auditEvents = await t.run(async (ctx) =>
       ctx.db
         .query("tournamentAuditEvents")
@@ -691,6 +704,97 @@ test.each([
     );
   },
 );
+
+// The comp arm takes a seat like any other, so it checks capacity first: a
+// pending entry owing payment whose badge now comps the event stays pending,
+// with its order still payable, when the event filled meanwhile.
+test("a pass that starts comping a pending entry does not seat it past capacity", async () => {
+  const t = createConvexTest();
+  const { organizationId } = await seedOrganizer(t);
+  await makePayoutsReady(t, organizationId);
+  const { conventionId, defaultTicketTypeId } = await seedLiveConvention(
+    t,
+    organizationId,
+  );
+  const organizer = t.withIdentity(organizerIdentity);
+  const tournamentId: Id<"tournaments"> = await organizer.mutation(
+    api.conventions.events.createTournamentForConvention,
+    {
+      conventionId,
+      name: "Two Seat Side Event",
+      startDate: Date.now() + DAY,
+      playerCapacity: 2,
+      format: "modern",
+      phases: [{ phaseOrder: 1, phaseRoundMode: "dynamic" }],
+    },
+  );
+  await organizer.mutation(api.tournaments.lifecycle.updateTournamentSetup, {
+    tournamentId,
+    entryFeeCents: 2500,
+  });
+  await organizer.mutation(api.tournaments.lifecycle.publishTournament, {
+    tournamentId,
+  });
+
+  // Player 1 holds a badge and an unfinished checkout for a seat.
+  await insertPlayerUser(t, 1);
+  const player1 = t.withIdentity(playerIdentity(1));
+  await player1.mutation(
+    api.conventions.registrations.registerSelfForConvention,
+    { conventionId, ticketTypeId: defaultTicketTypeId },
+  );
+  await player1.action(api.payments.checkout.createEntryCheckout, {
+    tournamentId,
+  });
+  const registrationId = (await player1.query(
+    api.tournaments.registrations.getMyRegistration,
+    { tournamentId },
+  ))!._id;
+
+  // The pass starts comping the event; two other badges take both seats.
+  await organizer.mutation(api.conventions.ticketTypes.updateTicketType, {
+    ticketTypeId: defaultTicketTypeId,
+    name: "General admission",
+    priceCents: 0,
+    includedTournamentIds: [tournamentId],
+  });
+  for (const n of [2, 3]) {
+    await insertPlayerUser(t, n);
+    const player = t.withIdentity(playerIdentity(n));
+    await player.mutation(
+      api.conventions.registrations.registerSelfForConvention,
+      { conventionId, ticketTypeId: defaultTicketTypeId },
+    );
+    await player.mutation(api.tournaments.registrations.registerSelf, {
+      tournamentId,
+    });
+  }
+  expect(
+    (await t.run(async (ctx) => ctx.db.get(tournamentId)))
+      ?.confirmedRegistrationCount,
+  ).toBe(2);
+
+  await expect(
+    player1.mutation(api.tournaments.registrations.registerSelf, {
+      tournamentId,
+    }),
+  ).rejects.toThrow("Tournament is at capacity");
+  const registration = await t.run(async (ctx) => ctx.db.get(registrationId));
+  expect(registration).toMatchObject({ entryStatus: "pending" });
+  const order = await t.run(async (ctx) =>
+    ctx.db
+      .query("paymentOrders")
+      .withIndex("by_registrationId", (q) =>
+        q.eq("registrationId", registrationId),
+      )
+      .first(),
+  );
+  expect(order?.status).toBe("awaiting_payment");
+  expect(
+    (await t.run(async (ctx) => ctx.db.get(tournamentId)))
+      ?.confirmedRegistrationCount,
+  ).toBe(2);
+});
 
 test("a paid type stays editable when Stripe readiness regresses; a price change re-checks", async () => {
   const t = createConvexTest();

@@ -160,8 +160,20 @@ test("a minted public code skips one its table already holds", async () => {
 
 test("resolveJoinCode routes a public code to its event and tolerates lookalike typing", async () => {
   const t = createConvexTest();
+  // Seed a code that holds both digits the lookalikes map onto (byte n
+  // picks alphabet character n: 0, 1, 2, …), so the typed form below
+  // exercises O→0 and L→1 on every run, not only when a random code
+  // happens to contain them.
+  vi.spyOn(crypto, "getRandomValues").mockImplementation((array) => {
+    new Uint8Array(array.buffer).forEach((_, index, bytes) => {
+      bytes[index] = index;
+    });
+    return array;
+  });
   const { tournamentId } = await seedTournament(t);
+  vi.restoreAllMocks();
   const publicCode = await tournamentPublicCode(t, tournamentId);
+  expect(publicCode).toBe("012345");
   expect(publicCode).toMatch(PUBLIC_CODE_SHAPE);
 
   expect(

@@ -176,6 +176,11 @@ export const beginEntryCheckout = internalMutation({
       if (blockedBecause !== null) {
         throw userError(blockedBecause);
       }
+      // The approval counted the seats as they stood then; seats taken
+      // since count too. A payment that landed on a full event could only
+      // be refunded by the webhook (isEntrySeatable), so refuse it before
+      // anything is paid — the decision direct mode makes below.
+      requireCapacityAvailable(tournament);
     } else {
       // Direct mode: file (or reuse) the pending row ourselves, exactly the
       // shape registerSelf gives an approval-mode application — no seat, no

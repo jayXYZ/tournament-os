@@ -686,7 +686,9 @@ export default defineSchema({
     // The newest order's status on a paid event, mirrored from paymentOrders
     // by syncRegistrationPaymentStatus (model/payments.ts) — every order
     // write runs through it, so this never lags the orders table. Absent
-    // until the row's first order, so always absent on free events. The
+    // until the row's first order, so always absent on free events, and
+    // absent again on a confirmed seat whose newest order closed unpaid
+    // (a comped seat that closed the order it no longer owed). The
     // roster's Payment filter narrows the list and search walks on this
     // column instead of joining every row to its orders after the page is
     // cut, which is what would make a filtered page lie by omission: the

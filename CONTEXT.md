@@ -236,9 +236,10 @@ _Avoid_: invite code (as a distinct concept — the code is the link's
 URL-embedded, human-readable form)
 
 **Join QR**:
-The QR form of an event's join URL, `/join/<code>`, which an organizer
-shows, downloads, or prints. A public or unlisted event's QR code encodes
-its Public Code; a private event's encodes its Invite Link. An event gets
+The QR form of a tournament's join URL, `/join/<code>`, which an organizer
+shows, downloads, or prints (conventions have no join route or QR code). A
+public or unlisted event's QR code encodes its Public Code; a private
+event's encodes its Invite Link. An event gets
 one only while registration is open: before publication its code opens
 nothing, and once registration closes there is nothing left to join.
 Revoking one depends on which code it carries: going private revokes a
@@ -345,9 +346,11 @@ reached by its public code — though a child event still appears on its
 convention's page. Random codes keep anyone from counting
 through unlisted events, but random guessing still finds them, so unlisted
 means obscure, not protected. A private event's code opens it only for
-the players and organizers who could already see it; everyone else needs
-the Invite Link. Players have a numeric public code of their own for profile
-URLs, which is a different thing.
+the players and organizers who could already see it. For a private
+tournament, everyone else needs the Invite Link; a private convention has
+no invite, and admits only its organizing team and its badge holders.
+Players have a numeric public code of their own for profile URLs, which is
+a different thing.
 _Avoid_: tournament id (the Convex document id, which never reaches a URL)
 
 **Convention**:

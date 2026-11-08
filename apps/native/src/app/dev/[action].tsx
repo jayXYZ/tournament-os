@@ -1,5 +1,10 @@
 import { isClerkAPIResponseError, useAuth, useClerk } from "@clerk/expo";
-import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
+import {
+  Redirect,
+  useLocalSearchParams,
+  useNavigation,
+  useRouter,
+} from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -18,12 +23,13 @@ import { palette } from "@/lib/palette";
 //
 //   paperpairings://dev/sign-out
 //
-// which ends the session the same way. A release build refuses both. The
-// ticket is a credential: it is never logged, stored, or shown, and leaving
-// this screen drops it from the navigation state.
+// which ends the session the same way. A release build sends either link
+// home rather than leaving a stray link on a dead-end screen. The ticket is
+// a credential: it is never logged, stored, or shown, and leaving this
+// screen drops it from the navigation state.
 export default function DevSessionLink() {
   if (!__DEV__) {
-    return <Status text="Session links work only in development builds." />;
+    return <Redirect href="/" />;
   }
   return <DevSession />;
 }

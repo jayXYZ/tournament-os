@@ -142,11 +142,10 @@ export function JoinEventView({
   const openOnWeb = async (url: string) => {
     try {
       await WebBrowser.openBrowserAsync(url);
-    } catch (error) {
-      show(
-        mutationErrorMessage(error, "Could not open the browser."),
-        "destructive",
-      );
+    } catch {
+      // A browser failure is the platform's error, not a server refusal
+      // (mutationErrorMessage would show its raw text): one fixed message.
+      show("Could not open the browser.", "destructive");
     }
   };
 

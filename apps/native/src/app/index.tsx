@@ -79,7 +79,8 @@ export default function HomeScreen() {
     );
   }
 
-  const openScanner = () => router.push("/scan");
+  // navigate, not push: a fast double tap would stack a second scanner.
+  const openScanner = () => router.navigate("/scan");
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>

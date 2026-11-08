@@ -22,11 +22,13 @@ function requireDevelopmentDeployment() {
   }
   // Checkout charges the platform account, not the stand-in (see
   // markOrganizationPayoutsReady), so a live key would take real money for
-  // a seeded paid event. Test-mode keys, or none, only.
-  const stripeKey = env.STRIPE_SECRET_KEY ?? "";
-  if (stripeKey.startsWith("sk_live_") || stripeKey.startsWith("rk_live_")) {
+  // a seeded paid event. Only a test-mode key, or none, is allowed — an
+  // allow-list, so a key of any other shape (a live one, or one pasted
+  // with stray whitespace) is refused rather than let through.
+  const stripeKey = (env.STRIPE_SECRET_KEY ?? "").trim();
+  if (stripeKey !== "" && !/^(sk|rk)_test_/.test(stripeKey)) {
     throw new Error(
-      "devSeed refuses a deployment with a live Stripe key (STRIPE_SECRET_KEY)",
+      "devSeed runs only with a test-mode Stripe key or none (STRIPE_SECRET_KEY)",
     );
   }
 }

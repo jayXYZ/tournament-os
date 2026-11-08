@@ -26,7 +26,6 @@ import {
   AppState,
   KeyboardAvoidingView,
   Linking,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -202,10 +201,10 @@ export default function ScanScreen() {
         ) : null}
       </View>
 
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        style={styles.bottom}
-      >
+      {/* "padding" on Android too: the app draws edge to edge, so the
+          window is not resized for the keyboard (adjustResize) and the
+          typed-code field would sit under it. */}
+      <KeyboardAvoidingView behavior="padding" style={styles.bottom}>
         <TypedCode
           bottomInset={insets.bottom}
           onSubmit={(text) => intake({ source: "typed", text })}

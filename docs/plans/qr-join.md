@@ -276,10 +276,11 @@ Depends on PR 0. No backend changes of its own.
      - Public and unlisted: the code is `tournament.publicCode`, already on
        the managed tournament. No query, no row to create.
      - Private: it reads `getInviteLink`. When that returns null, it shows
-       "Create invite link", which calls `regenerateInviteLink` (a plain
-       create when no row exists). It never calls regenerate when a link
-       already exists. `ensureInviteLink` isn't needed; the only case it
-       would close is a race between two tabs.
+       "Create invite link". As built, that calls `createInviteLink`
+       (`tournaments/invites.ts`), which creates the row when none exists
+       and otherwise returns the existing code unchanged — so two tabs, or
+       the dialog and the settings card, can never rotate a link by racing
+       to create it. It never calls regenerate.
      - Visibility is a live query, so flipping the event to private while
        the dialog is open swaps the QR code to the invite (or to "Create
        invite link").
@@ -593,14 +594,18 @@ below:
   - `pay` with `repeatDropFeesKept`.
 - The web's badge gate comes from `badgeGateFor`, so its local copy is gone.
 - Review fixes on `qr/review-fixes` (unit tests, component tests, and
-  convex-test specs only; no browser, simulator, or device run):
+  convex-test specs, plus the invite-links and enrollment-claim browser
+  specs; the Maestro suite ran once at the final head, see
+  `docs/delivery-status.md`):
   - `blocked` is `PaymentBlock`: `closed`, then `full`, then the badge gate
-    reason. `full` applies to the player's own direct checkout
-    (`registration` orders), which Checkout capacity-checks before resuming,
-    and to an entry the badge now comps; an approved application's payment
-    is not capacity-checked at begin. The web shows a disabled "Tournament
-    is full" beside Withdraw; the projection reads it as `full` with
-    `canWithdraw`, and the native screen offers Withdraw there too.
+    reason. `full` applies to any payable order on a full event, whatever
+    the order's purpose or the event's approval setting: Checkout refuses a
+    payment at capacity in both modes (`payments/checkout.ts`; the approval
+    counted the seats as they stood then, and a payment that landed on a
+    full event could only be refunded by the webhook), as does the comp arm
+    of `registerSelf`. The web shows a disabled "Tournament is full" beside
+    Withdraw; the projection reads it as `full` with `canWithdraw`, and the
+    native screen offers Withdraw there too.
   - A pending entry owing payment whose badge started comping the event
     derives `register` with `comped`. `registerSelf` seats it free (capacity
     checked) and closes the open order, audited as a comped registration,
@@ -620,8 +625,10 @@ below:
   rows (badges, buttons, links, and notes in order, the badge-gate notice
   included) and 16 action tests (which server call each button makes); 88
   rows and 17 action tests after the review fixes on `qr/review-fixes`.
-  Core's `join-action.test.ts` pins the derivation's new states in 223 rows
-  beside the unchanged `deriveJoinAction` matrix.
+  Core's `join-action.test.ts` pins the derivation in 265
+  `deriveRegistrationAction` cases and 96 `deriveJoinAction` cases at the
+  final review-fix head (the projection gained `full` with `canWithdraw` and
+  the comped `register`; counts from `vitest list`).
 - Two rows exposed a disagreement between the old panel and the derivation.
   Both were fixed on the panel in their own commits before the refactor:
   - A pending entry on a paid event showed "Registration pending organizer
@@ -810,7 +817,7 @@ Blocked on the custom domain, the Apple Team ID, and the Android signing cert
   don't stop random guessing: with N unlisted events, a guess finds one about
   once in 2³⁰ / N tries, and `resolveJoinCode` and `getPublicTournament` are
   queries, which can't be rate-limited (queries can't write;
-  `docs/rate-limiting.md:55`). So unlisted means obscure, not protected. An organizer who needs to revoke
+  `docs/rate-limiting.md`, "Queries"). So unlisted means obscure, not protected. An organizer who needs to revoke
   access goes private and hands out the invite. Keep the invite at 10
   characters for the same reason; don't shorten it to match.
 - **The poster is the exposure, not guessing.**

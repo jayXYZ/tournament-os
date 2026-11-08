@@ -189,10 +189,19 @@ export async function syncRegistrationPaymentStatus(
     return;
   }
   const latest = await latestOrderForRegistration(ctx, entry.registrationId);
-  if (registration.paymentStatus !== latest?.status) {
-    await ctx.db.patch(entry.registrationId, {
-      paymentStatus: latest?.status,
-    });
+  // A confirmed seat whose newest order closed unpaid owes nothing for it:
+  // the seat was taken another way — a badge that started comping the
+  // event closes the order its pending entry held (model/roster.ts
+  // seatCompedEntryOwingPayment) — so the roster reads the row like any
+  // entry with no order rather than "Unpaid", and the Payment filter
+  // agrees.
+  const mirrored =
+    registration.entryStatus === "confirmed" &&
+    (latest?.status === "canceled" || latest?.status === "expired")
+      ? undefined
+      : latest?.status;
+  if (registration.paymentStatus !== mirrored) {
+    await ctx.db.patch(entry.registrationId, { paymentStatus: mirrored });
   }
 }
 

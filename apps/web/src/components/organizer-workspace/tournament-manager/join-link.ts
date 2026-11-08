@@ -3,7 +3,8 @@ import { formatCents } from '@/lib/money'
 
 // The /join URL an organizer shares or prints (CONTEXT.md "Join QR"). The
 // code is the event's public code, or for a private event its invite code;
-// the join route tells the two apart by length.
+// the route passes it through and the server (resolveJoinCode) tells the
+// two apart.
 export function joinPath(code: string) {
   return `/join/${code}`
 }

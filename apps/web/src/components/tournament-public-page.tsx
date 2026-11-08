@@ -14,7 +14,7 @@ import { useAction, useQuery } from 'convex/react'
 import { Building2, CalendarDays, LogIn, Swords, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@paper-pairings/backend/convex/_generated/api'
-import type { BadgeGate } from '@paper-pairings/core'
+import type { BadgeGate, ViewerAuthGate } from '@paper-pairings/core'
 import type { FunctionReturnType } from 'convex/server'
 import type { Doc } from '@paper-pairings/backend/convex/_generated/dataModel'
 import { DetailLine } from '@/components/shared/detail-line'
@@ -127,6 +127,7 @@ export function TournamentPublicPageContent({
       convention={event.convention}
       badgeGate={event.badgeGate}
       inviteCode={inviteCode}
+      viewer={viewer}
     />
   )
 }
@@ -138,6 +139,7 @@ function TournamentDetails({
   convention,
   badgeGate,
   inviteCode,
+  viewer,
 }: {
   tournament: Tournament
   organizationName: string | null
@@ -152,6 +154,8 @@ function TournamentDetails({
   // reaches them.
   badgeGate: BadgeGate
   inviteCode?: string
+  // The viewer auth gate the notice waits on (below), as the panel does.
+  viewer: ViewerAuthGate
 }) {
   const spotsLeft = Math.max(tournament.playerCapacity - registeredCount, 0)
 
@@ -214,7 +218,14 @@ function TournamentDetails({
           ) : null}
         </div>
         <Separator />
-        {badgeGate !== null && tournament.lifecycle === 'registration' ? (
+        {/* Until Convex has verified the viewer, the server reads them as
+            anonymous and the gate says "missing", so a badge holder would
+            see the notice flash while the gate settles — and a viewer the
+            gate could not verify would see it above the recovery. The
+            notice waits for a settled gate, as the panel does. */}
+        {badgeGate !== null &&
+        tournament.lifecycle === 'registration' &&
+        (viewer === 'ready' || viewer === 'signedOut') ? (
           <p className="rounded-md border bg-muted/50 px-4 py-3 text-sm text-muted-foreground">
             {convention === null ? (
               // A parent the viewer may not open: say what stands in the
@@ -501,8 +512,16 @@ function RegistrationPanel({
               )}
             </>
           ) : (
+            // Locked for one of three reasons: the event is over, it was
+            // cancelled, or the seat is out of contention (disqualified or
+            // eliminated) while registration is still open, where only the
+            // organizer can change it.
             <p className="text-sm text-muted-foreground">
-              The event has started, so registration changes are locked.
+              {tournament.lifecycle === 'completed'
+                ? 'The event has finished, so registration is closed.'
+                : tournament.lifecycle === 'cancelled'
+                  ? 'The event was cancelled, so registration is closed.'
+                  : 'Changes to this seat are up to the organizer.'}
             </p>
           )}
         </div>

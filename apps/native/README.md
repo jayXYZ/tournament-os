@@ -115,7 +115,7 @@ Mint a ticket with the Clerk Backend API and `CLERK_SECRET_KEY` from
 `apps/web/.env.local` (development instance only), as the web `verify` skill
 does: `POST https://api.clerk.com/v1/sign_in_tokens` with `{ "user_id": … }`.
 Tickets are single-use credentials: the route never logs, stores, or shows
-one. A release build (`__DEV__` false) renders a refusal and does nothing.
+one. A release build (`__DEV__` false) sends either link home and does nothing.
 
 ## Device E2E (Maestro)
 
@@ -201,12 +201,11 @@ PR #31. There is no opponent confirmation step. Dropping has a shared hook
 standings, match history, and decklists remain open in
 [roadmap section 8](../../TODO.md#8-event-day-outputs-and-client-parity).
 
-Free/approval joining at `/join/<code>` and a web payment handoff are built
-on `feat/qr-codes`, not merged into the audited `main`. The QR scanner
-(`/scan`, opened from home) is built on `qr/native-scanner`, stacked above
-it and not merged either; it has run only on a simulator, never on a phone.
-The native payment return flow and universal links remain planned. Do not treat those
-branch routes or environment variables as available in this checkout.
+Free/approval joining at `/join/<code>`, the web payment hand-off
+(`EXPO_PUBLIC_WEB_ORIGIN`), and the QR scanner (`/scan`, opened from home)
+are merged through PR #51. The scanner has run only on a simulator, never
+on a phone. The native payment return flow and universal links remain
+planned (`docs/plans/qr-join.md`, PR 4 and PR 5).
 
 The native build script and CI export iOS and Android bundles only. The web
 target remains an open fix-or-remove task. Exporting bundles does not verify

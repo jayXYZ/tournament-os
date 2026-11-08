@@ -110,6 +110,25 @@ if (!deployment?.startsWith("dev:")) {
     "packages/backend/.env.local must set CONVEX_DEPLOYMENT to a dev deployment (dev:…).",
   );
 }
+// The app must talk to the deployment the runner seeds, or a flow that
+// expects "Code not found" passes against the wrong deployment for the wrong
+// reason. Metro inlines EXPO_PUBLIC_CONVEX_URL from the shell or
+// apps/native/.env.local; a dev deployment `dev:<name>` is served from
+// `<name>.convex.cloud`.
+const deploymentHost = `${deployment.slice("dev:".length)}.convex.cloud`;
+const appConvexUrl =
+  process.env.EXPO_PUBLIC_CONVEX_URL ?? nativeEnv.EXPO_PUBLIC_CONVEX_URL ?? "";
+let appConvexHost;
+try {
+  appConvexHost = new URL(appConvexUrl).hostname;
+} catch {
+  appConvexHost = undefined;
+}
+if (appConvexHost !== deploymentHost) {
+  fail(
+    `EXPO_PUBLIC_CONVEX_URL (apps/native/.env.local) must point at https://${deploymentHost}, the deployment this run seeds; it is ${appConvexUrl || "unset"}.`,
+  );
+}
 // The CLI keeps its own CONVEX_* variables (an access-token override, say),
 // minus the selectors; nothing else that reads as a credential.
 const convexEnv = {
@@ -222,16 +241,24 @@ async function findOrCreateUser(email, lastName) {
 }
 
 // One fresh ticket per request, for the flows' sign-in subflow
-// (flows/subflows/mint-ticket.js): `/ticket` for the player,
-// `/ticket/newcomer` for the newcomer. Bound to loopback; Maestro's script
-// engine runs on this machine, not in the simulator.
+// (flows/subflows/mint-ticket.js): `/<secret>/ticket` for the player,
+// `/<secret>/ticket/newcomer` for the newcomer. Bound to loopback; Maestro's
+// script engine runs on this machine, not in the simulator. The paths carry
+// a per-run secret, and only a request addressed to this listener by its
+// loopback host is answered, so neither another local process guessing the
+// port nor a page reaching it through a rebound DNS name gets a ticket.
 async function startTicketServer(userIds) {
+  const secret = randomBytes(16).toString("hex");
+  const paths = {
+    [`/${secret}/ticket`]: userIds.player,
+    [`/${secret}/ticket/newcomer`]: userIds.newcomer,
+  };
   const server = http.createServer((request, response) => {
+    const addressedHere =
+      request.headers.host === `127.0.0.1:${server.address().port}`;
     const userId =
-      request.method === "POST"
-        ? { "/ticket": userIds.player, "/ticket/newcomer": userIds.newcomer }[
-            request.url
-          ]
+      request.method === "POST" && addressedHere
+        ? paths[request.url]
         : undefined;
     if (!userId) {
       response.writeHead(404).end();
@@ -252,7 +279,7 @@ async function startTicketServer(userIds) {
     );
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  return server;
+  return { server, secret };
 }
 
 // --- Convex ----------------------------------------------------------------
@@ -630,16 +657,17 @@ async function main() {
   const player = await findOrCreateUser(PLAYER_EMAIL, "Native Player");
   const newcomer = await findOrCreateUser(NEWCOMER_EMAIL, "Native Newcomer");
   const env = await seed(player);
-  const ticketServer = await startTicketServer({
-    player: player.id,
-    newcomer: newcomer.id,
-  });
+  const { server: ticketServer, secret: ticketSecret } =
+    await startTicketServer({
+      player: player.id,
+      newcomer: newcomer.id,
+    });
   const { port } = ticketServer.address();
 
   const maestroEnv = {
     ...env,
-    TICKET_URL: `http://127.0.0.1:${port}/ticket`,
-    NEWCOMER_TICKET_URL: `http://127.0.0.1:${port}/ticket/newcomer`,
+    TICKET_URL: `http://127.0.0.1:${port}/${ticketSecret}/ticket`,
+    NEWCOMER_TICKET_URL: `http://127.0.0.1:${port}/${ticketSecret}/ticket/newcomer`,
     // The camera permission every launch sets (flows/subflows/launch.yaml);
     // the scanner's permission flow overrides it.
     CAMERA_PERMISSION: "allow",
@@ -651,8 +679,21 @@ async function main() {
     `Running Maestro on ${device} (web origin ${webOrigin || "unset"})…`,
   );
   const java = javaHome();
+  // A signal to this process alone (a wrapper or CI step killing the
+  // runner's pid, not the terminal's whole foreground group) would otherwise
+  // leave Maestro driving the simulator against a ticket server that has
+  // gone: pass it on, then exit as the signal would have.
+  let maestro;
+  const stop = (signal) => {
+    maestro?.kill(signal);
+    ticketServer.close();
+    process.exit(1);
+  };
+  for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
+    process.on(signal, () => stop(signal));
+  }
   const exitCode = await new Promise((resolve) => {
-    const child = spawn(
+    maestro = spawn(
       maestroCommand(),
       [
         "--device",
@@ -678,8 +719,8 @@ async function main() {
         },
       },
     );
-    child.on("exit", (code) => resolve(code ?? 1));
-    child.on("error", (error) => {
+    maestro.on("exit", (code) => resolve(code ?? 1));
+    maestro.on("error", (error) => {
       console.error(`Could not start Maestro: ${error.message}`);
       resolve(1);
     });

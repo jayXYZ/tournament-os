@@ -377,35 +377,25 @@ describe("deriveJoinAction", () => {
       },
     );
 
-    // Checkout re-checks capacity in direct mode by the event's approval
-    // setting now, not the order's purpose; the entry is still theirs to
-    // withdraw. In approval mode the approval's check stands, whichever
-    // order the entry carries.
+    // Checkout refuses a payment at capacity in either mode, whichever
+    // order the entry carries; the entry is still theirs to withdraw.
     it.each(paidSetups)(
-      "%s: a payable order on a full event is full in direct mode but can be withdrawn",
+      "%s: a payable order on a full event is full but can be withdrawn",
       (setup) => {
-        const full =
-          setup === "paid"
-            ? { kind: "full", canWithdraw: true }
-            : { kind: "completePayment", purpose: "registration" };
         expect(
           derive(setup, {
             registration: row("pending"),
             order: { status: "awaiting_payment", purpose: "registration" },
             spotsLeft: 0,
           }),
-        ).toEqual(full);
+        ).toEqual({ kind: "full", canWithdraw: true });
         expect(
           derive(setup, {
             registration: row("pending"),
             order: { status: "requires_payment", purpose: "post_approval" },
             spotsLeft: 0,
           }),
-        ).toEqual(
-          setup === "paid"
-            ? { kind: "full", canWithdraw: true }
-            : { kind: "completePayment", purpose: "post_approval" },
-        );
+        ).toEqual({ kind: "full", canWithdraw: true });
       },
     );
 
@@ -858,13 +848,9 @@ describe("deriveRegistrationAction", () => {
           },
         );
 
-        // Checkout re-checks capacity in direct mode (payments/checkout.ts),
-        // by the event's approval setting now, not the order's purpose: a
-        // post_approval order on an event switched back to direct mode is
-        // re-checked, and a registration order on one switched to approval
-        // mode is not. Approval mode trusts the approval's own check. Both
-        // orders run against both setups here, so the two toggles are
-        // covered.
+        // Checkout refuses a payment at capacity in either mode
+        // (payments/checkout.ts), so both orders block as full under both
+        // setups.
         it.each(paidSetups)("%s: on a full event", (setup) => {
           expect(
             deriveFull(setup, {
@@ -875,7 +861,7 @@ describe("deriveRegistrationAction", () => {
           ).toEqual({
             kind: "completePayment",
             purpose: order.purpose,
-            blocked: setup === "paid" ? "full" : null,
+            blocked: "full",
           });
         });
 
@@ -894,7 +880,7 @@ describe("deriveRegistrationAction", () => {
             ).toEqual({
               kind: "completePayment",
               purpose: order.purpose,
-              blocked: setup === "paid" ? "full" : "missing",
+              blocked: "full",
             });
             expect(
               deriveFull(setup, {

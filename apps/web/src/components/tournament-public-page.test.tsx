@@ -334,8 +334,10 @@ async function click(label: string) {
 
 const checking = ['button(disabled): Checking your registration']
 const closedNote = 'note: Registration is closed for this event.'
-const lockedNote =
-  'note: The event has started, so registration changes are locked.'
+const finishedNote = 'note: The event has finished, so registration is closed.'
+const cancelledEventNote =
+  'note: The event was cancelled, so registration is closed.'
+const organizerSeatNote = 'note: Changes to this seat are up to the organizer.'
 const spots = 'note: 10 spots left'
 const cancel = 'button: Cancel registration'
 const withdraw = 'button: Withdraw registration'
@@ -383,6 +385,22 @@ const rows: Array<[string, Scenario, Array<string>]> = [
   [
     'an unverified viewer after registration closed',
     { viewer: 'unverified', lifecycle: 'in_progress' },
+    [
+      "note: You're signed in, but the server couldn't confirm your session. Try again, or sign out and sign back in.",
+      'button: Try again',
+      'button: Sign out',
+    ],
+  ],
+  // The badge-gate notice waits for the gate too: until Convex verifies the
+  // viewer, the server reads them as anonymous and the gate says "missing".
+  [
+    'auth still settling on a badge-gated event',
+    { viewer: 'pending', ...noBadge },
+    checking,
+  ],
+  [
+    'an unverified viewer on a badge-gated event',
+    { viewer: 'unverified', ...noBadge },
     [
       "note: You're signed in, but the server couldn't confirm your session. Try again, or sign out and sign back in.",
       'button: Try again',
@@ -487,12 +505,12 @@ const rows: Array<[string, Scenario, Array<string>]> = [
   [
     'active after the event completed',
     { registration: confirmed('active'), lifecycle: 'completed' },
-    [registered, lockedNote],
+    [registered, finishedNote],
   ],
   [
     'active on a cancelled event',
     { registration: confirmed('active'), lifecycle: 'cancelled' },
-    [registered, lockedNote],
+    [registered, cancelledEventNote],
   ],
   [
     'active on a full event',
@@ -529,14 +547,14 @@ const rows: Array<[string, Scenario, Array<string>]> = [
   [
     'dropped after the event completed',
     { registration: confirmed('dropped'), lifecycle: 'completed' },
-    [dropped, lockedNote],
+    [dropped, finishedNote],
   ],
   [
     'disqualified while registration is open',
     // No cancel offer: the server's cancel rule (registrationDropEffect)
     // takes only an active or dropped seat.
     { registration: confirmed('disqualified') },
-    [disqualified, lockedNote],
+    [disqualified, organizerSeatNote],
   ],
   [
     'disqualified while the event runs',
@@ -546,13 +564,13 @@ const rows: Array<[string, Scenario, Array<string>]> = [
   [
     'disqualified after the event completed',
     { registration: confirmed('disqualified'), lifecycle: 'completed' },
-    [disqualified, lockedNote],
+    [disqualified, finishedNote],
   ],
   [
     // No cancel offer: elimination only happens in play.
     'eliminated while registration is open',
     { registration: confirmed('eliminated') },
-    [eliminated, lockedNote],
+    [eliminated, organizerSeatNote],
   ],
   [
     'eliminated while the event runs',
@@ -562,7 +580,7 @@ const rows: Array<[string, Scenario, Array<string>]> = [
   [
     'eliminated after the event completed',
     { registration: confirmed('eliminated'), lifecycle: 'completed' },
-    [eliminated, lockedNote],
+    [eliminated, finishedNote],
   ],
   [
     // The schema leaves participationStatus optional; mutations set it on
@@ -672,7 +690,7 @@ const rows: Array<[string, Scenario, Array<string>]> = [
     [directDueBadge, 'button(disabled): Tournament is full', withdraw],
   ],
   [
-    // The approval already checked capacity, so Checkout doesn't.
+    // Checkout refuses a payment at capacity in approval mode too.
     'an approved application owing payment on a full event',
     {
       registration: pending(),
@@ -681,7 +699,7 @@ const rows: Array<[string, Scenario, Array<string>]> = [
       order: order('requires_payment', 'post_approval'),
       spotsLeft: 0,
     },
-    [approvedBadge, 'button: Complete payment — $16.52', withdraw],
+    [approvedBadge, 'button(disabled): Tournament is full', withdraw],
   ],
   [
     // Checkout refuses a comped viewer; registerSelf seats the entry free.

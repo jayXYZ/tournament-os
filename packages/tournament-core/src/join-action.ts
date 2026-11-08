@@ -69,16 +69,14 @@ export type RegistrationAction =
 // can. One reason is reported, in this order:
 // - "closed": registration closed before they paid, so nothing is left to
 //   do, withdrawal included.
-// - "full": the event filled before they paid. Checkout re-checks capacity
-//   in direct mode (payments/checkout.ts), by the event's approval setting
-//   as it stands now rather than the order's purpose: an approval switched
-//   off since re-checks, one switched on since does not. Approval mode lets
-//   the payment begin (the approval checked capacity when it was given) and
-//   leaves the seat decision to the webhook, which refunds a payment that
-//   lands on a full event (payments/webhooks.ts isEntrySeatable) — so a
-//   full event seats no one, paid or comped. registerSelf makes that same
-//   decision up front before seating an entry the viewer's badge now comps,
-//   whatever the order. A badge would not help, so this outranks the gate.
+// - "full": the event filled before they paid. Checkout refuses a payment
+//   at capacity in either mode (payments/checkout.ts): the approval's own
+//   check counted the seats as they stood then, and a payment that still
+//   landed on a full event could only be refunded by the webhook
+//   (payments/webhooks.ts isEntrySeatable) — so a full event seats no one,
+//   paid or comped. registerSelf makes that same decision up front before
+//   seating an entry the viewer's badge now comps, whatever the order. A
+//   badge would not help, so this outranks the gate.
 // - a badge gate reason: the badge stopped admitting the event after the
 //   entry existed (a cancelled badge, a rescheduled event).
 // The server still lets the viewer withdraw while registration is open.
@@ -322,13 +320,11 @@ function deriveForViewer(
         // seats the entry free and closes the order (model/roster.ts
         // registerEntry), checking capacity like any seat it takes.
         const comped = badgeCompsThisEvent;
-        // Checkout re-checks capacity in direct mode, by the event's
-        // setting now, not the order's purpose (PaymentBlock).
-        const capacityChecked =
-          comped || !tournament.registrationRequiresApproval;
+        // A full event seats no one (PaymentBlock): Checkout and
+        // registerSelf both refuse at capacity, whatever the mode.
         const blocked: PaymentBlock = !open
           ? "closed"
-          : spotsLeft === 0 && capacityChecked
+          : spotsLeft === 0
             ? "full"
             : badgeGate;
         if (comped && blocked === null) {
