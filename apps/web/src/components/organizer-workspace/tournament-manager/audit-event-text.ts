@@ -25,6 +25,18 @@ export function describeAuditEvent(row: AuditEventRow): string {
       return `Reported ${formatAuditScoreline(event.result)} ${matchLocation(event)}`
     case 'match_conceded':
       return `${displayPlayerName(event.player.playerName)} conceded by dropping: ${formatAuditScoreline(event.result)} ${matchLocation(event)}`
+    case 'match_forfeited':
+      return `${displayPlayerName(event.player.playerName)} forfeited: ${formatAuditScoreline(event.result)} ${matchLocation(event)}`
+    case 'match_no_show': {
+      const absent = event.players.map((player) =>
+        displayPlayerName(player.playerName),
+      )
+      // Both absent is a double match loss: nobody won, so there is no
+      // scoreline to quote.
+      return absent.length === 2
+        ? `${absent[0]} and ${absent[1]} were both no-shows: double match loss ${matchLocation(event)}`
+        : `${absent[0] ?? 'A player'} was a no-show: ${formatAuditScoreline(event.result)} ${matchLocation(event)}`
+    }
     case 'player_registered':
       return `${displayPlayerName(event.player.playerName)} registered for the event${compedSuffix(event)}`
     case 'registration_requested':

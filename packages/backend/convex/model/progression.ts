@@ -56,6 +56,7 @@ import {
   planSingleEliminationPairings,
   singleEliminationRoundName,
   singleEliminationSeatWinners,
+  type BracketSeatWinner,
 } from "./singleElimination";
 import {
   type RoundMatchWithPlayers,
@@ -157,7 +158,7 @@ export type ProgressionFacts = {
   // pairing; see model/singleElimination.ts). Loaded only between bracket
   // rounds, where the next-round verdict and mutation need them; null
   // everywhere else.
-  bracketSeatWinners: Doc<"tournamentRegistrations">[] | null;
+  bracketSeatWinners: BracketSeatWinner[] | null;
   // The first later phase still waiting to be played, and whether its entry
   // requirement can be met from the completed round's standings. The cutoff
   // partition is kept so the mutation that applies the cut reuses the walk
@@ -205,7 +206,7 @@ export type ProgressionActions = {
           mode: "continuePhase";
           // Non-null exactly when the phase is single elimination: the seat
           // winners the next round is paired from.
-          bracketSeatWinners: Doc<"tournamentRegistrations">[] | null;
+          bracketSeatWinners: BracketSeatWinner[] | null;
         }
       | {
           mode: "startNextPhase";

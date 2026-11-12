@@ -40,6 +40,11 @@ export type Pairing = {
   playerOne: Doc<"tournamentRegistrations">;
   playerTwo?: Doc<"tournamentRegistrations">;
   isBye: boolean;
+  // The pairing's 1-based seat position in a bracket round, set when the
+  // plan may skip positions: a seat pair with no live player creates no
+  // match, and the pairs after it must keep their own positions. Absent
+  // where the plan's order is the seat order (the seeded first round).
+  bracketSeat?: number;
 };
 
 // The standard bracket order for a power-of-two field (1v8, 4v5, 2v7, 3v6
@@ -111,10 +116,11 @@ export function buildSingleEliminationPairings(
 // Materializes a bracket round from an already-built pairing plan: the seeded
 // first-round bracket, or the walkover-aware advancement plan from
 // planSingleEliminationPairings (model/singleElimination.ts). A bye pairing
-// is a walkover — the same awarded Bye a Swiss bye records. The plan's order
-// is the bracket's seat order, stamped onto every match (byes included) as
-// bracketSeat so the next round's pairing can read the seats back in bracket
-// order — the table index can't supply it, since byes have no table.
+// is a walkover — the same awarded Bye a Swiss bye records. Each pairing's
+// seat position (its own bracketSeat when the plan carries one, otherwise
+// its place in the plan) is stamped onto its match, byes included, so the
+// next round's pairing can read the seats back in bracket position — the
+// table index can't supply it, since byes have no table.
 export async function createSingleEliminationRoundWithPairings(
   ctx: MutationCtx,
   args: {
@@ -147,7 +153,7 @@ export async function createSingleEliminationRoundWithPairings(
         phase: args.phase,
         roundId,
         registration: pairing.playerOne,
-        bracketSeat: seatIndex + 1,
+        bracketSeat: pairing.bracketSeat ?? seatIndex + 1,
         now,
       });
       continue;
@@ -159,7 +165,7 @@ export async function createSingleEliminationRoundWithPairings(
       playerOne: pairing.playerOne,
       playerTwo: pairing.playerTwo,
       tableNumber,
-      bracketSeat: seatIndex + 1,
+      bracketSeat: pairing.bracketSeat ?? seatIndex + 1,
       now,
     });
     tableNumber += 1;

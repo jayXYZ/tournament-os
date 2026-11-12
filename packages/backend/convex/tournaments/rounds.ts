@@ -3,6 +3,11 @@ import { v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import { mutation, query } from "../_generated/server";
 import type { MutationCtx } from "../_generated/server";
+import {
+  type AdjudicableMatch,
+  recordForfeit,
+  recordNoShow,
+} from "../model/adjudication";
 import { userError } from "../model/errors";
 import {
   assignByeManually,
@@ -150,18 +155,23 @@ export const listUnpairedPlayers = query({
 // Resolves everything an organizer result entry or adjudication needs —
 // match, organizer access, phase, round, and pairing rows — and enforces
 // that results only change while their round is active (see CONTEXT.md
-// "Rewind": corrections are active-round-only).
+// "Rewind": corrections are active-round-only). The tournament must still
+// be running too: cancelling leaves its open round as it stood, and a
+// cancelled event's results are history.
 async function requireAdjudicableMatch(
   ctx: MutationCtx,
   matchId: Id<"tournamentMatches">,
-) {
+): Promise<AdjudicableMatch> {
   const match = await requireMatch(ctx, matchId);
   const { tournament, user } = await requireOrganizerAccess(
     ctx,
     match.tournamentId,
   );
   const round = await requireRound(ctx, match.tournamentRoundId);
-  if (round.roundStatus !== "in_progress") {
+  if (
+    tournament.lifecycle !== "in_progress" ||
+    round.roundStatus !== "in_progress"
+  ) {
     throw userError(
       "Match results can only be recorded during an active round",
     );
@@ -208,6 +218,46 @@ export const recordMatchResult = mutation({
       playerTwoGameWins: args.playerTwoGameWins,
       gameDraws: args.gameDraws ?? 0,
       policy: { kind: "organizer", actor: user, note: cleanNote(args.note) },
+    });
+    return args.matchId;
+  },
+});
+
+// The adjudications (model/adjudication.ts): match losses an organizer
+// awards without play. They share recordMatchResult's gate — organizer
+// access and an active round — and its note.
+
+export const recordMatchForfeit = mutation({
+  args: {
+    matchId: v.id("tournamentMatches"),
+    forfeitedRegistrationId: v.id("tournamentRegistrations"),
+    note: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const target = await requireAdjudicableMatch(ctx, args.matchId);
+    await recordForfeit(ctx, target, {
+      forfeitedRegistrationId: args.forfeitedRegistrationId,
+      note: cleanNote(args.note),
+    });
+    return args.matchId;
+  },
+});
+
+export const recordMatchNoShow = mutation({
+  args: {
+    matchId: v.id("tournamentMatches"),
+    // One absent player, or both for a double match loss.
+    absentRegistrationIds: v.array(v.id("tournamentRegistrations")),
+    // A no-show drops the absent players unless the organizer keeps them in.
+    keepInTournament: v.optional(v.boolean()),
+    note: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const target = await requireAdjudicableMatch(ctx, args.matchId);
+    await recordNoShow(ctx, target, {
+      absentRegistrationIds: args.absentRegistrationIds,
+      keepInTournament: args.keepInTournament ?? false,
+      note: cleanNote(args.note),
     });
     return args.matchId;
   },

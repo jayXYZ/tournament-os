@@ -39,6 +39,10 @@ session through `window.Clerk`, and saves the browser storage state to
 - `organizer-mid-round-drop.spec.ts` — a drop during an unreported match
   concedes it to the opponent immediately (required-wins–0, typed
   `match_conceded` audit event) and the round completes off the concession.
+- `organizer-adjudication.spec.ts` — a forfeit and a no-show each award
+  their match without play (required-wins–0, typed `match_forfeited` and
+  `match_no_show` audit events); only the absent player is dropped, and the
+  round completes off the two awards.
 - `invite-links.spec.ts` — the `/join/<code>` route for both kinds of code:
   a public event's join link and QR dialog (no code during setup or after
   registration closes, and none admitting strangers once the event goes

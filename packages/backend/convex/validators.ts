@@ -439,10 +439,11 @@ const auditMatchResultLineValidator = v.object({
 });
 
 // How a match outcome came about (see CONTEXT.md): a played result, or one
-// of the Awarded Result kinds. "played", "bye", and "concession" (a drop
-// during the player's own unfinished match) have writers today; forfeit,
-// no-show, and DQ land with the judge adjudication actions (TODO.md
-// section 5), and walkovers are byes.
+// of the Awarded Result kinds. "played", "bye", "concession" (a drop
+// during the player's own unfinished match), "forfeit", and "no_show" (the
+// adjudications in model/adjudication.ts) have writers today; DQ lands with
+// the rest of the judge operations (TODO.md section 5), and walkovers are
+// byes.
 export const matchResultKindValidator = v.union(
   v.literal("played"),
   v.literal("bye"),
@@ -529,6 +530,33 @@ export const tournamentAuditEventValidator = v.union(
     // The player whose drop conceded the match.
     player: auditPlayerRefValidator,
     result: v.array(auditMatchResultLineValidator),
+  }),
+  v.object({
+    // An organizer awarded the match against a player without play (see
+    // CONTEXT.md "Forfeit"). Like any organizer result it may replace one
+    // already recorded, which the event preserves.
+    type: v.literal("match_forfeited"),
+    matchId: v.id("tournamentMatches"),
+    roundNumber: v.number(),
+    tableNumber: v.union(v.number(), v.null()),
+    // The player the match was awarded against.
+    player: auditPlayerRefValidator,
+    result: v.array(auditMatchResultLineValidator),
+    previousResult: v.union(v.array(auditMatchResultLineValidator), v.null()),
+  }),
+  v.object({
+    // An organizer recorded one or both players of a match as absent (see
+    // CONTEXT.md "No-Show"). The drop a no-show carries by default is its
+    // own player_dropped event, logged right after this one.
+    type: v.literal("match_no_show"),
+    matchId: v.id("tournamentMatches"),
+    roundNumber: v.number(),
+    tableNumber: v.union(v.number(), v.null()),
+    // The absent players: one, or both for a double match loss — which the
+    // game counts in `result` (zero all around) cannot say on their own.
+    players: v.array(auditPlayerRefValidator),
+    result: v.array(auditMatchResultLineValidator),
+    previousResult: v.union(v.array(auditMatchResultLineValidator), v.null()),
   }),
   v.object({
     type: v.literal("player_registered"),

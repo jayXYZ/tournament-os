@@ -12,7 +12,11 @@ import {
 } from "./auditLog";
 import { userError } from "./errors";
 import { currentPhaseOrNull, requireValidMatchResult } from "./phases";
-import { BYE_MATCH_POINTS, matchPointsForResult } from "./standings";
+import {
+  BYE_MATCH_POINTS,
+  MATCH_WIN_POINTS,
+  matchPointsForResult,
+} from "./standings";
 import {
   matchPlayers,
   playerMatchInRound,
@@ -235,6 +239,108 @@ export async function applyMatchResult(
           : { type: "match_result_reported", ...eventBase },
   });
   return "applied";
+}
+
+// An organizer adjudication awarding the match without play (see CONTEXT.md
+// "Forfeit" and "No-Show"): each named loser takes a match loss. One loser
+// hands the opponent the win at the structure's required game wins to zero;
+// both losing is a double match loss — zero game wins, zero match points,
+// and a stored "loss" outcome on both lines, which is why the outcome is
+// stored rather than derived (matchResultLineValidator). Like any organizer
+// result it may replace one already recorded, and the event keeps what it
+// replaced. The match-consequence half only: a no-show's drop belongs to
+// model/adjudication.ts.
+export async function applyAwardedMatchLoss(
+  ctx: MutationCtx,
+  args: {
+    match: Doc<"tournamentMatches">;
+    phase: Doc<"tournamentPhases">;
+    round: Doc<"tournamentRounds">;
+    players: Doc<"tournamentMatchPlayers">[];
+    kind: "forfeit" | "no_show";
+    // Registrations of the match taking the loss, resolved by the caller:
+    // exactly one for a forfeit, one or both for a no-show.
+    losers: Doc<"tournamentRegistrations">[];
+    actor: Doc<"users">;
+    note?: string;
+  },
+) {
+  const { match, phase, players, losers } = args;
+  if (players.length !== 2 || players[0]._id === players[1]._id) {
+    throw new Error("Match result requires exactly two players");
+  }
+  const loserIds = new Set(losers.map((loser) => loser._id));
+  if (
+    loserIds.size === 0 ||
+    loserIds.size !== losers.length ||
+    !losers.every((loser) =>
+      players.some((player) => player.playerId === loser._id),
+    )
+  ) {
+    throw new Error("Awarded losses must name players of the match");
+  }
+  const doubleLoss = loserIds.size === 2;
+  const required = requiredGameWins(phase.bestOf);
+  const now = Date.now();
+
+  const lineFor = (row: Doc<"tournamentMatchPlayers">): ResultLine => {
+    const lost = loserIds.has(row.playerId);
+    return {
+      registrationId: row.playerId,
+      outcome: lost ? "loss" : "win",
+      matchPointsEarned: lost ? 0 : MATCH_WIN_POINTS,
+      gameWins: lost ? 0 : required,
+      gameLosses: lost && !doubleLoss ? required : 0,
+      gameDraws: 0,
+    };
+  };
+  const seats = players.map((row) => ({
+    row,
+    line: lineFor(row),
+    ref: auditMatchPlayerRef(row),
+  }));
+  // Captured before the write below overwrites the rows.
+  const previousResult = existingResultLines(
+    match,
+    seats.map(({ row, ref }) => ({ row, player: ref })),
+  );
+  await recordCurrentResult(ctx, {
+    match,
+    kind: args.kind,
+    seats: seats.map(({ row, line }) => ({ rowId: row._id, line })),
+    actor: { actorUserId: args.actor._id, actorRole: "organizer" },
+    ...(args.note !== undefined ? { note: args.note } : {}),
+    // Supersedes any player self-report, like every organizer result.
+    reportedByRegistrationId: undefined,
+    now,
+  });
+
+  const eventBase = {
+    matchId: match._id,
+    roundNumber: args.round.roundNumber,
+    tableNumber: match.tableNumber ?? null,
+    result: seats.map(({ line, ref }) =>
+      auditResultLine(ref, line.gameWins, line.gameLosses, line.gameDraws),
+    ),
+    previousResult,
+  };
+  await logAuditEvent(ctx, {
+    tournamentId: match.tournamentId,
+    actor: args.actor,
+    actorRole: "organizer",
+    event:
+      args.kind === "forfeit"
+        ? {
+            type: "match_forfeited",
+            ...eventBase,
+            player: auditPlayerRef(losers[0]),
+          }
+        : {
+            type: "match_no_show",
+            ...eventBase,
+            players: losers.map((loser) => auditPlayerRef(loser)),
+          },
+  });
 }
 
 // One line of a result revision: a player's stored side of the outcome.

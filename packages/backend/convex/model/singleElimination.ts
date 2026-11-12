@@ -4,29 +4,12 @@ import { DATABASE_IO_BATCH_SIZE, mapAsyncInBatches } from "./batching";
 import type { Pairing } from "./pairing";
 import { eliminatePlayers } from "./participation";
 import { previousTournamentRound } from "./phases";
-import type { RoundMatchWithPlayers } from "./standings";
+import { type RoundMatchWithPlayers, bracketMatchWinner } from "./standings";
 import { roundMatchesWithPlayers } from "./tournaments";
 
-// The game-winner of a bracket match: a bye's lone player, otherwise whoever
-// took more games. Participation status never factors in — a departed winner
-// still won the match.
-function matchGameWinner({
-  players,
-}: RoundMatchWithPlayers): Doc<"tournamentMatchPlayers"> {
-  if (players.length === 1 && players[0].isBye) {
-    return players[0];
-  }
-  if (players.length !== 2) {
-    throw new Error("Single-elimination matches require exactly two players");
-  }
-  const [first, second] = players;
-  const firstWins = first.gameWins ?? 0;
-  const secondWins = second.gameWins ?? 0;
-  if (firstWins === secondWins) {
-    throw new Error("Single-elimination matches must have a winner");
-  }
-  return firstWins > secondWins ? first : second;
-}
+// A bracket seat's holder entering the next round: the registration that won
+// the seat's match, or null for a seat a double match loss emptied.
+export type BracketSeatWinner = Doc<"tournamentRegistrations"> | null;
 
 // The completed round's seat winners in bracket-seat order: the registrations
 // whose seats the next bracket round is built from. The stored bracketSeat is
@@ -35,20 +18,37 @@ function matchGameWinner({
 // corrupt the bracket's halves. Departed winners are included deliberately —
 // bracket structure is sacred, so a drop never revives the defeated opponent;
 // the seat advances and the walkover materializes when the next round is
-// paired (see ADR 0001 and CONTEXT.md "Walkover").
+// paired (see ADR 0001 and CONTEXT.md "Walkover"). The result is positional:
+// index i is seat i + 1, and a seat with no holder is null — one a double
+// match loss emptied, or one the round never had a match for because both
+// seats feeding it were already empty. Leaving such a seat out instead would
+// shift every later seat into the wrong half. Seats past the last match are
+// simply absent; an absent seat pairs like an empty one.
 export async function singleEliminationSeatWinners(
   ctx: QueryCtx,
   roundId: Id<"tournamentRounds">,
-): Promise<Doc<"tournamentRegistrations">[]> {
+): Promise<BracketSeatWinner[]> {
   const matchesWithPlayers = await roundMatchesWithPlayers(ctx, roundId);
-  const bySeat = [...matchesWithPlayers].sort(
-    (left, right) =>
-      requireBracketSeat(left.match) - requireBracketSeat(right.match),
-  );
+  const winnerIdBySeat = new Map<number, Id<"tournamentRegistrations">>();
+  let lastSeat = 0;
+  for (const matchWithPlayers of matchesWithPlayers) {
+    const seat = requireBracketSeat(matchWithPlayers.match);
+    lastSeat = Math.max(lastSeat, seat);
+    const winner = bracketMatchWinner(matchWithPlayers);
+    if (winner !== null) {
+      winnerIdBySeat.set(seat, winner.playerId);
+    }
+  }
   return await mapAsyncInBatches(
-    bySeat.map((match) => matchGameWinner(match).playerId),
+    Array.from(
+      { length: lastSeat },
+      (_, index) => winnerIdBySeat.get(index + 1) ?? null,
+    ),
     DATABASE_IO_BATCH_SIZE,
     async (playerId) => {
+      if (playerId === null) {
+        return null;
+      }
       const registration = await ctx.db.get(playerId);
       if (!registration) {
         throw new Error("Seat winner's registration not found");
@@ -59,14 +59,15 @@ export async function singleEliminationSeatWinners(
 }
 
 // Whether a completed bracket round's seat winners leave no one to pair:
-// every remaining seat-holder has left the tournament, so chained walkovers
-// have no one to award and completing the tournament is the only move left.
-// Shared by the next-round verdict and the board's next-step projection.
+// every remaining seat-holder has left the tournament (or the seat was
+// emptied by a double match loss), so chained walkovers have no one to award
+// and completing the tournament is the only move left. Shared by the
+// next-round verdict and the board's next-step projection.
 export function allSeatWinnersDeparted(
-  seatWinners: Doc<"tournamentRegistrations">[],
+  seatWinners: BracketSeatWinner[],
 ): boolean {
   return !seatWinners.some(
-    (registration) => registration.participationStatus === "active",
+    (registration) => registration?.participationStatus === "active",
   );
 }
 
@@ -84,21 +85,31 @@ function requireBracketSeat(match: Doc<"tournamentMatches">): number {
 // at all — the walkover chains, and the seat's scheduled opponent next round
 // is walked over in turn. A defeated player is never revived into a slot. An
 // odd trailing seat is one whose scheduled opponent's seat already emptied.
+// A seat a double match loss emptied has no holder at all and is walked over
+// exactly like a departed one. Every pairing carries the position of its
+// seat pair, so a pair that creates no match leaves a gap rather than
+// pulling the pairs after it up a position.
 export function planSingleEliminationPairings(
-  seatWinners: Doc<"tournamentRegistrations">[],
+  seatWinners: BracketSeatWinner[],
 ): Pairing[] {
+  const live = (seat: BracketSeatWinner | undefined) =>
+    seat?.participationStatus === "active" ? seat : null;
   const pairings: Pairing[] = [];
   for (let index = 0; index < seatWinners.length; index += 2) {
-    const one = seatWinners[index];
-    const two = seatWinners.at(index + 1);
-    const oneLive = one.participationStatus === "active";
-    const twoLive = two?.participationStatus === "active";
-    if (oneLive && two && twoLive) {
-      pairings.push({ playerOne: one, playerTwo: two, isBye: false });
-    } else if (oneLive) {
-      pairings.push({ playerOne: one, isBye: true });
-    } else if (two && twoLive) {
-      pairings.push({ playerOne: two, isBye: true });
+    const one = live(seatWinners[index]);
+    const two = live(seatWinners.at(index + 1));
+    const bracketSeat = index / 2 + 1;
+    if (one && two) {
+      pairings.push({
+        playerOne: one,
+        playerTwo: two,
+        isBye: false,
+        bracketSeat,
+      });
+    } else if (one) {
+      pairings.push({ playerOne: one, isBye: true, bracketSeat });
+    } else if (two) {
+      pairings.push({ playerOne: two, isBye: true, bracketSeat });
     }
   }
   return pairings;
@@ -113,14 +124,16 @@ export async function eliminateSingleEliminationLosers(
   // losers, and the previous round's seat winners the pairing walked over —
   // departed players whose scheduled match was awarded to the opponent (or
   // skipped entirely). The walkover round is the seat they reached, so it is
-  // the round their elimination records.
+  // the round their elimination records. A double match loss has no winner,
+  // so both of its players leave: kept in the tournament or not, neither
+  // holds a bracket seat any more.
   const participantIds = new Set<Id<"tournamentRegistrations">>();
   const departingIds = new Set<Id<"tournamentRegistrations">>();
   for (const matchWithPlayers of matchesWithPlayers) {
-    const winner = matchGameWinner(matchWithPlayers);
+    const winner = bracketMatchWinner(matchWithPlayers);
     for (const player of matchWithPlayers.players) {
       participantIds.add(player.playerId);
-      if (player.playerId !== winner.playerId) {
+      if (player.playerId !== winner?.playerId) {
         departingIds.add(player.playerId);
       }
     }
@@ -131,7 +144,7 @@ export async function eliminateSingleEliminationLosers(
       ctx,
       previousRound._id,
     )) {
-      if (!participantIds.has(seatWinner._id)) {
+      if (seatWinner !== null && !participantIds.has(seatWinner._id)) {
         departingIds.add(seatWinner._id);
       }
     }

@@ -1,6 +1,7 @@
 import {
   displayPlayerName,
   formatGameScoreline,
+  isDoubleMatchLoss,
   matchResultKindLabel,
 } from '@paper-pairings/core'
 import type { PairingRow } from './pairing-row'
@@ -109,7 +110,10 @@ export function ScoreSlipResult({
   const unconfirmed = row.match.reportedByRegistrationId !== undefined
 
   let summary: string
-  if (playerOneWins === playerTwoWins) {
+  if (isDoubleMatchLoss(row.players)) {
+    // Both players absent: 0–0 with no winner, which is not a draw.
+    summary = 'Double loss'
+  } else if (playerOneWins === playerTwoWins) {
     summary = `Draw ${formatGameScoreline(playerOneWins, playerTwoWins, gameDraws)}`
   } else {
     const playerOneWon = playerOneWins > playerTwoWins

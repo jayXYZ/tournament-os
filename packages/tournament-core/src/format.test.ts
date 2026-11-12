@@ -1,6 +1,10 @@
 import { expect, test } from "vitest";
 
-import { matchResultKindLabel, standingStatusLabel } from "./format.ts";
+import {
+  isDoubleMatchLoss,
+  matchResultKindLabel,
+  standingStatusLabel,
+} from "./format.ts";
 
 test("a drop or DQ outranks any playoff state", () => {
   expect(
@@ -93,6 +97,22 @@ test("awarded result kinds the pairing does not already name get a marker", () =
   expect(matchResultKindLabel("forfeit")).toBe("Forfeit");
   expect(matchResultKindLabel("no_show")).toBe("No show");
   expect(matchResultKindLabel("dq")).toBe("DQ");
+});
+
+test("a double match loss is two players with no match points", () => {
+  expect(
+    isDoubleMatchLoss([{ matchPointsEarned: 0 }, { matchPointsEarned: 0 }]),
+  ).toBe(true);
+  // A scoreless draw shares the 0–0 game count but pays a point each.
+  expect(
+    isDoubleMatchLoss([{ matchPointsEarned: 1 }, { matchPointsEarned: 1 }]),
+  ).toBe(false);
+  expect(
+    isDoubleMatchLoss([{ matchPointsEarned: 3 }, { matchPointsEarned: 0 }]),
+  ).toBe(false);
+  // No result yet, and a bye's single seat.
+  expect(isDoubleMatchLoss([{}, {}])).toBe(false);
+  expect(isDoubleMatchLoss([{ matchPointsEarned: 0 }])).toBe(false);
 });
 
 test("played, bye, and missing results get no marker", () => {

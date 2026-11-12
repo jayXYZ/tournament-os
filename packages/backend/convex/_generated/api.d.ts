@@ -18,6 +18,7 @@ import type * as devSeed from "../devSeed.js";
 import type * as http from "../http.js";
 import type * as maintenance from "../maintenance.js";
 import type * as model_access from "../model/access.js";
+import type * as model_adjudication from "../model/adjudication.js";
 import type * as model_auditLog from "../model/auditLog.js";
 import type * as model_batching from "../model/batching.js";
 import type * as model_codes from "../model/codes.js";
@@ -96,6 +97,7 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   maintenance: typeof maintenance;
   "model/access": typeof model_access;
+  "model/adjudication": typeof model_adjudication;
   "model/auditLog": typeof model_auditLog;
   "model/batching": typeof model_batching;
   "model/codes": typeof model_codes;

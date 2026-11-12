@@ -231,6 +231,41 @@ export async function replaceStandingsForRound(
   }
 }
 
+// The game-winner of a completed bracket match: a bye's lone player (a
+// walkover — the departed seat-holder's scheduled opponent received the
+// match as a Bye, see CONTEXT.md "Walkover"), otherwise whoever took more
+// games. Participation status never factors in: a departed winner still won
+// the match, a drop never revives the defeated opponent, and the next
+// pairing walks the seat over (ADR 0001). Null for a double match loss (both
+// players a No-Show, see CONTEXT.md): nobody won, so the seat pair advances
+// no one. A draw is still impossible in a bracket — equal game wins with
+// match points on the rows is corrupt state, not a double loss. The one
+// reading of "who won this seat", shared by the round's standings and the
+// next round's pairing (model/singleElimination.ts).
+export function bracketMatchWinner({
+  players,
+}: Pick<
+  RoundMatchWithPlayers,
+  "players"
+>): Doc<"tournamentMatchPlayers"> | null {
+  if (players.length === 1 && players[0].isBye) {
+    return players[0];
+  }
+  if (players.length !== 2) {
+    throw new Error("Single-elimination matches require exactly two players");
+  }
+  const [first, second] = players;
+  const firstWins = first.gameWins ?? 0;
+  const secondWins = second.gameWins ?? 0;
+  if (firstWins === secondWins) {
+    if (first.matchPointsEarned === 0 && second.matchPointsEarned === 0) {
+      return null;
+    }
+    throw new Error("Single-elimination matches must have a winner");
+  }
+  return firstWins > secondWins ? first : second;
+}
+
 async function rankedStatsForRound(
   ctx: QueryCtx,
   stats: Map<Id<"tournamentRegistrations">, PlayerStats>,
@@ -266,31 +301,16 @@ async function rankedStatsForRound(
 
   const currentParticipants = new Set<Id<"tournamentRegistrations">>();
   const currentAdvancers = new Set<Id<"tournamentRegistrations">>();
-  for (const { players } of matchesWithPlayers) {
-    // A walkover: the departed seat-holder's scheduled opponent received the
-    // match as a Bye (see CONTEXT.md "Walkover").
-    if (players.length === 1 && players[0].isBye) {
-      currentParticipants.add(players[0].playerId);
-      currentAdvancers.add(players[0].playerId);
-      continue;
+  for (const matchWithPlayers of matchesWithPlayers) {
+    // A double match loss has no winner: both players are eliminated in this
+    // round and nobody advances from the seat.
+    const winner = bracketMatchWinner(matchWithPlayers);
+    for (const player of matchWithPlayers.players) {
+      currentParticipants.add(player.playerId);
     }
-    if (players.length !== 2) {
-      throw new Error("Single-elimination matches require exactly two players");
+    if (winner !== null) {
+      currentAdvancers.add(winner.playerId);
     }
-    const [first, second] = players;
-    currentParticipants.add(first.playerId);
-    currentParticipants.add(second.playerId);
-    const firstWins = first.gameWins ?? 0;
-    const secondWins = second.gameWins ?? 0;
-    if (firstWins === secondWins) {
-      throw new Error("Single-elimination matches must have a winner");
-    }
-    // The game winner advances whether or not they are still in the
-    // tournament: a drop never revives the defeated opponent — the
-    // seat advances and the next pairing walks it over (ADR 0001).
-    currentAdvancers.add(
-      firstWins > secondWins ? first.playerId : second.playerId,
-    );
   }
 
   const ranked = [...stats.values()].map((playerStats): RankedPlayerStats => {

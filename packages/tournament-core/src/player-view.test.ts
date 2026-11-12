@@ -234,6 +234,60 @@ test("result provenance: concession outranks the reporter branches", () => {
   });
 });
 
+test("result provenance: forfeits and no-shows name who the award was against", () => {
+  const forfeited = describeCurrentMatch(
+    activeMatch({
+      match: { currentResultKind: "forfeit" },
+      me: { gameWins: 0, gameLosses: 2, outcome: "loss" },
+    }),
+  );
+  expect(forfeited).toMatchObject({
+    scoreline: "You lose 0–2",
+    badge: { label: "You forfeited", tone: "secondary" },
+  });
+  expect(
+    describeCurrentMatch(
+      activeMatch({
+        match: { currentResultKind: "forfeit" },
+        me: { gameWins: 2, gameLosses: 0, outcome: "win" },
+      }),
+    ),
+  ).toMatchObject({ badge: { label: "Opponent forfeited" } });
+
+  expect(
+    describeCurrentMatch(
+      activeMatch({
+        match: { currentResultKind: "no_show" },
+        me: { gameWins: 2, gameLosses: 0, outcome: "win" },
+      }),
+    ),
+  ).toMatchObject({
+    scoreline: "You win 2–0",
+    badge: { label: "Opponent absent" },
+  });
+  expect(
+    describeCurrentMatch(
+      activeMatch({
+        match: { currentResultKind: "no_show" },
+        me: { gameWins: 0, gameLosses: 2, outcome: "loss" },
+      }),
+    ),
+  ).toMatchObject({ badge: { label: "Marked absent" } });
+});
+
+test("a double no-show reads as a loss for both players, never a 0–0 draw", () => {
+  const doubleLoss = describeCurrentMatch(
+    activeMatch({
+      match: { currentResultKind: "no_show" },
+      me: { gameWins: 0, gameLosses: 0, outcome: "loss" },
+    }),
+  );
+  expect(doubleLoss).toMatchObject({
+    scoreline: "You lose 0–0",
+    badge: { label: "Both players absent", tone: "secondary" },
+  });
+});
+
 test("result provenance: reporter, then organizer fallback", () => {
   const mine = describeCurrentMatch(
     activeMatch({ match: { reportedByRegistrationId: "reg-me" } }),

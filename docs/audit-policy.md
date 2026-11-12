@@ -26,8 +26,9 @@ This is an event history for organizers, not an organization security log:
   round completion, rewind, and cancellation; auto-publication at pairing
   time and the publish-on-complete safety net; a mid-round drop's concession
   (logged as `match_conceded` right after `player_dropped`, because it is a
-  result); the start/cancel sweep withdrawing pending entries whose order
-  never opened Checkout.
+  result); a no-show's drop (logged as `player_dropped` right after
+  `match_no_show`, because it changes who is in the event); the start/cancel
+  sweep withdrawing pending entries whose order never opened Checkout.
 
 Event payloads are defined once, in `tournamentAuditEventValidator` /
 `conventionAuditEventValidator` (`packages/backend/convex/validators.ts`).
@@ -48,6 +49,7 @@ stamp the organizer label at append time.
 | rounds        | publishPairings                                                                                                                     | model/progression: `pairings_published` with actor and round number, once; publishing already-public pairings appends nothing.                                                                                                                      |
 | rounds        | breakPairing, pairPlayers, assignBye                                                                                                | model/manualPairing: `pairing_broken`, `pairing_created`.                                                                                                                                                                                           |
 | rounds        | recordMatchResult                                                                                                                   | model/matchResults: `match_result_recorded` with the result it replaced.                                                                                                                                                                            |
+| rounds        | recordMatchForfeit, recordMatchNoShow                                                                                               | model/adjudication through model/matchResults: `match_forfeited` / `match_no_show` with the result it replaced. A no-show's default drop is its own `player_dropped` right after, from model/roster, and concedes nothing.                          |
 | registrations | registerSelf                                                                                                                        | model/roster `registerEntry`: `player_registered` (with `compedByBadge`) or, under approval, `registration_requested`.                                                                                                                              |
 | registrations | cancelMyRegistration, dropRegistration, reinstateRegistration                                                                       | model/roster: `registration_cancelled`, `player_dropped` (+ `match_conceded` from model/matchResults mid-round), `player_reinstated` (or `payment_requested` when a paid restore needs a new payment).                                              |
 | registrations | approveRegistration, rejectRegistration, waitlistRegistration                                                                       | model/roster review verbs: `registration_approved` (or `payment_requested` on a paid event), `registration_rejected`, `registration_waitlisted`.                                                                                                    |

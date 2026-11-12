@@ -284,6 +284,33 @@ function resultProvenance(currentMatch: MyActiveMatch): {
       note: "A drop during an unfinished match concedes it. Played to a result first? Find a judge or the tournament organizer.",
     };
   }
+  // The adjudications (see CONTEXT.md "Forfeit" and "No-Show") are awarded
+  // by the organizer without play. A loss with no games against it is the
+  // double no-show: both players lost, so neither line names an opponent's
+  // win.
+  if (match.currentResultKind === "forfeit") {
+    return {
+      badge: {
+        label: me.outcome === "loss" ? "You forfeited" : "Opponent forfeited",
+        tone: "secondary",
+      },
+      note: AWARDED_RESULT_NOTE,
+    };
+  }
+  if (match.currentResultKind === "no_show") {
+    return {
+      badge: {
+        label:
+          me.outcome !== "loss"
+            ? "Opponent absent"
+            : isDoubleLossLine(me)
+              ? "Both players absent"
+              : "Marked absent",
+        tone: "secondary",
+      },
+      note: AWARDED_RESULT_NOTE,
+    };
+  }
   if (match.reportedByRegistrationId) {
     return {
       badge: {
@@ -300,6 +327,19 @@ function resultProvenance(currentMatch: MyActiveMatch): {
     badge: { label: "Recorded by organizer", tone: "secondary" },
     note: null,
   };
+}
+
+const AWARDED_RESULT_NOTE =
+  "Awarded by the organizer without play. Not right? Find a judge or the tournament organizer.";
+
+// A stored loss with no games against it: the player's side of a double
+// match loss, where the opponent lost too.
+function isDoubleLossLine(me: MyActiveMatch["me"]) {
+  return (
+    me.outcome === "loss" &&
+    (me.gameWins ?? 0) === 0 &&
+    (me.gameLosses ?? 0) === 0
+  );
 }
 
 function scorelineForResult(me: MyActiveMatch["me"]): string {

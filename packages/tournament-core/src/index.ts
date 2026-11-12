@@ -47,6 +47,7 @@ export {
   formatGameScoreline,
   formatPercent,
   formatRecord,
+  isDoubleMatchLoss,
   matchResultKindLabel,
   standingStatusLabel,
 } from "./format";

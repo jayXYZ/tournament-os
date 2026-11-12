@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import { useMutation } from 'convex/react'
-import { ClipboardPen, MoreHorizontal, Unlink } from 'lucide-react'
+import { ClipboardPen, Flag, MoreHorizontal, Unlink, UserX } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { api } from '@paper-pairings/backend/convex/_generated/api'
 import { mutationErrorMessage } from '@paper-pairings/core'
 import { EnterResultDialog } from './enter-result-dialog'
+import { RecordForfeitDialog } from './record-forfeit-dialog'
+import { RecordNoShowDialog } from './record-no-show-dialog'
 import type { BestOf } from '@paper-pairings/shared/match-structure'
 import type { PairingRow } from './pairing-row'
 import { Button } from '@/components/ui/button'
@@ -30,11 +32,13 @@ export function ManageMatchMenu({
 }) {
   const isBye = row.players.some((player) => player.isBye)
   const [enteringResult, setEnteringResult] = useState(false)
+  const [recordingNoShow, setRecordingNoShow] = useState(false)
+  const [recordingForfeit, setRecordingForfeit] = useState(false)
   const breakPairing = useMutation(api.tournaments.rounds.breakPairing)
 
   // Mirrors the backend gate (model/manualPairing.ts): automatic results —
   // a bye's award, a drop's concession — are deleted with the pairing, but
-  // an entered result refuses the break.
+  // an entered result (a forfeit or no-show included) refuses the break.
   const hasEnteredResult =
     row.match.matchStatus !== 'upcoming' &&
     row.match.currentResultKind !== 'bye' &&
@@ -79,6 +83,20 @@ export function ManageMatchMenu({
               <ClipboardPen />
               Enter result
             </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={isBye}
+              onSelect={() => setRecordingNoShow(true)}
+            >
+              <UserX />
+              Record no-show
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={isBye}
+              onSelect={() => setRecordingForfeit(true)}
+            >
+              <Flag />
+              Record forfeit
+            </DropdownMenuItem>
             {canEditPairings ? (
               <DropdownMenuItem
                 variant="destructive"
@@ -100,6 +118,22 @@ export function ManageMatchMenu({
           allowDraws={allowDraws}
           open={enteringResult}
           onOpenChange={setEnteringResult}
+        />
+      ) : null}
+      {recordingNoShow ? (
+        <RecordNoShowDialog
+          row={row}
+          // Draws are refused exactly where the phase is a bracket.
+          isBracket={!allowDraws}
+          open={recordingNoShow}
+          onOpenChange={setRecordingNoShow}
+        />
+      ) : null}
+      {recordingForfeit ? (
+        <RecordForfeitDialog
+          row={row}
+          open={recordingForfeit}
+          onOpenChange={setRecordingForfeit}
         />
       ) : null}
     </>

@@ -45,9 +45,10 @@ open feature a launch requirement.
 Cross-cutting foundations are listed under "Completed foundations" below.
 The open work separates missing coverage from deployment verification.
 
-- [ ] Extend the browser E2E suite with no-show and forfeit scenarios once
-      the judge adjudication actions land (section 5; until then a forfeit
-      is covered by manually entering the match result). Already covered:
+- [ ] Extend the browser E2E suite with no-show and forfeit scenarios.
+      `organizer-adjudication.spec.ts` is written on `feat/judge-adjudication`
+      with the adjudication actions (section 5); a bracket double no-show
+      stays backend-spec-only. Already covered:
       the organizer happy path, active-round corrections with audit trail,
       pairing rewind, organizer drops, mid-round drop concession, invite
       links and the join QR dialog (PR #51), and
@@ -562,9 +563,45 @@ Give judges a focused event-day workspace and model judge actions as durable,
 auditable domain records. Operational table state must remain separate from a
 match result so judge tooling cannot accidentally change standings.
 
-- [ ] Add judge and head-judge roles with explicit permissions
+The action inventory grounding this section is
+`docs/research/ipg-mtr-judge-actions.md` (2026-08-22): every judge-performable
+action in the IPG (Sep 2024) and MTR (Feb 2026) with citations, the full
+23-infraction table, and a role-gating matrix. The Sep 2024 IPG explicitly
+delegates how penalties are collected and stored to the tournament software,
+so the records modeled here are the authoritative penalty record, not a copy
+of a paper process. The note links the publisher's PDFs; local copies live
+under the gitignored `docs/references/`.
+
+- [ ] Add judge and head-judge roles with explicit permissions (deferred,
+      2026-11-12: until this lands every judge action is gated on organizer
+      access, so the organization's staff/admin membership is the umbrella
+      for any judge sub-position. Open design question: an organization-level
+      role with its own permissions, or assignment per tournament)
   - [ ] Assign staff to one tournament, selected tournaments, or every child event in a convention
   - [ ] Separate access to live match operations, private notes, infraction history, and disqualification actions
+  - [ ] Hard-gate the authorities the sources reserve to the Head Judge:
+        disqualification, IPG deviation, backup authorization, proxy
+        issuance, appeal rulings, decklist-penalty waivers, and
+        dropped-player re-enrollment (research §5/§12)
+  - [ ] Soft-gate Game Loss and higher penalties: IPG 1.2 only "recommends"
+        HJ-only issuance and carves out Tardiness and Decklist Problems, so
+        a floor judge issuing one gets a confirm step plus automatic
+        head-judge notification, not a hard block
+- [ ] Model the IPG infraction catalogue as a typed vocabulary
+  - [ ] Encode all 23 infractions with section code, category, default
+        penalty, prescribed fix, and upgrade/downgrade clauses, so a ruling
+        records which clause fired instead of free text (research §2)
+  - [ ] Track per-player, per-category, per-day warning counters and surface
+        the upgrade threshold at ruling time: a Game Play Error's third
+        category Warning and a Tournament Error's second upgrade to Game
+        Loss, any USC-Minor repeat escalates, and every counter resets
+        between days of a multi-day event (IPG 2, 3, 4.1)
+  - [ ] Store a rules-enforcement-level setting per tournament that selects
+        the infraction catalogue and the enforcement toggles that differ at
+        Regular REL (research §13)
+  - [ ] Add the Regular REL infraction set (blocked on researching the JAR:
+        the IPG covers Competitive/Professional only, and the JAR is the top
+        follow-up source flagged in the research note)
 - [ ] Build a mobile-friendly judge workspace
   - [ ] Show the active round, timer, tables, outstanding results, judge calls, and recently updated matches
   - [ ] Search by player, table, or match and filter to items requiring judge attention
@@ -573,6 +610,14 @@ match result so judge tooling cannot accidentally change standings.
   - [ ] Record the duration, reason, issuing judge, and timestamp for every extension
   - [ ] Show the cumulative extension and adjusted match deadline to judges and affected players
   - [ ] Audit edits or revocations instead of replacing the original action silently
+  - [ ] Suggest the trigger and duration from the cause: a ruling that took
+        over a minute (IPG 1.1), tardiness length (IPG 3.1), deck-check
+        duration plus three minutes, and the feature-match formula (MTR 2.6)
+  - [ ] Support turn-based extensions: out-of-time Slow Play adds two extra
+        turns to the end-of-match procedure instead of minutes (IPG 3.3,
+        MTR 2.6)
+  - [ ] Keep extended matches out of end-of-round outstanding/overtime
+        handling until their adjusted deadline passes
 - [ ] Add structured player warnings and infractions
   - [ ] Anchor conduct records to the durable participant identity so history survives individual registrations
   - [ ] Record the player, tournament, optional match/round/table, category, severity, penalty, notes, judge, and timestamp
@@ -580,9 +625,31 @@ match result so judge tooling cannot accidentally change standings.
   - [ ] Show an authorized judge the player's history within the current event and across prior events
   - [ ] Define the organization/convention boundary within which cross-event history may be viewed
   - [ ] Add append-only corrections, privacy controls, retention rules, and access auditing for sensitive conduct history
+  - [ ] Capture rulings as infraction → penalty → fix, and record a
+        deviation's standard penalty alongside the issued one with the Head
+        Judge's reason (IPG 1, 1.2)
+  - [ ] Support deferred penalties: a Game Loss applies to the next game and
+        a Match Loss after the match has ended applies to the player's next
+        match (IPG 1.1), and decklist penalties discovered outside a match
+        apply at the start of the next one (IPG 3.4). A recorded penalty
+        must be able to await its consuming game or match
+  - [ ] Record simultaneous Game Losses to both players, which "are
+        recorded, but do not affect the match score" (IPG 1.1): a penalty
+        with no result effect
+  - [ ] Allow penalty recipients who are not registered players: spectators
+        or staff "may be enrolled into (and dropped from) the tournament in
+        order to receive a penalty" (IPG 1.2) and penalties survive drops.
+        Anchor to a participant without requiring a live registration
+- [ ] Record appeals: the floor ruling, the Head Judge or appeals-judge
+      final ruling, and whether the original ruling was upheld or overturned
+      (MTR 2.9)
 - [ ] Add no-show and forfeit adjudication actions (moved from section 1,
-      2026-08-13: judge calls, not routine result entry; until they land an
-      organizer covers a forfeit by manually entering the match result)
+      2026-08-13: judge calls, not routine result entry). Built on
+      `feat/judge-adjudication`, gated on organizer access until the judge
+      roles above exist: `recordMatchForfeit` / `recordMatchNoShow`
+      (`model/adjudication.ts`), the organizer match menu's dialogs, and
+      `forfeits.convex.spec.ts`. Until it merges an organizer covers a
+      forfeit by manually entering the match result
   - [ ] A no-show defaults to also dropping the absent player (staff can
         keep them in); both players absent is a double match loss
   - [ ] Record a bracket double no-show as a double match loss; the landed
@@ -598,12 +665,45 @@ match result so judge tooling cannot accidentally change standings.
         their current match when it is unresolved (IPG 1.1); an
         already-reported result is never flipped, and the DQ action exists
         only while the tournament is in progress
+  - [ ] Capture the Head Judge's report and the Wizards report fields,
+        including the Wizards Account email of the disqualified player and
+        of their opponent (IPG 1.1). Written player statements are no longer
+        prescribed by the IPG (removed Sep 2024 as software-dependent); keep
+        them as optional attachments, not required fields
+- [ ] Log deck checks as first-class judge records
+  - [ ] Record who was checked, when (pre-game presentation vs mid-round),
+        duration, and outcome. IPG 3.5's Game Loss upgrades hinge on the
+        check's timing
+  - [ ] Track coverage toward MTR 2.8's "at least ten percent of all decks"
+        target across the event
+  - [ ] Issue the paired time extension (check duration plus three minutes,
+        MTR 2.6) from the deck-check record
+- [ ] Record Head Judge–issued proxies with card, reason, and
+      valid-this-tournament-only scope (MTR 3.4)
+- [ ] Align player-state actions with the MTR's judge semantics
+  - [ ] Classify drops by source (voluntary, no-show auto-drop, tardiness
+        upgrade, disqualification) in the audit trail (MTR 2.10, IPG 3.1)
+  - [ ] Gate re-enrolling a dropped player on the head-judge role and refuse
+        it "after any cut has been made" (MTR 2.10)
+  - [ ] Enforce the mandated result encodings at entry: a concession after
+        winning a game reports 2-1 and an intentional draw is always 0-0-3
+        (MTR 2.5). Revisit the mid-round drop concession's
+        required-wins–0 scoreline for matches where the dropping player had
+        already won a game
+  - [ ] Handle a wrong-seat/mispaired match through the Tardiness flow plus
+        a pairing fix; the sources define no separate infraction for it
+        (IPG 3.1 example D)
+- [ ] Add Limited/draft judge actions: draft pick timers, suspending a
+      player from a draft, pod procedures (research §10). Blocked on Limited
+      event support, which is not on the roadmap yet; add that first
 - [ ] Add ghost-match handling for unreported matches whose players have left the table
   - [ ] Track ghost status, reporting judge, timestamp, and notes independently from result state
   - [ ] Remove ghost matches from active-table and routine result-reminder views and move them to a judge exception queue
   - [ ] Keep the result unresolved and block ordinary round completion until staff report or adjudicate it; never invent a result or change standings from ghost status alone
   - [ ] Let authorized staff reopen the table state or resolve the match through normal reporting, forfeit, no-show, or DQ adjudication
-- [ ] Add authorization and invariant tests for judge actions, cross-event history, time extensions, and ghost matches
+- [ ] Add authorization and invariant tests for judge actions, cross-event
+      history, time extensions, warning-counter upgrades, deferred
+      penalties, and ghost matches
 
 ## 6. Publication, location, and discovery
 
@@ -640,6 +740,10 @@ separate concerns. Model them explicitly before adding more boolean settings.
   - [x] Lock submission when registration closes and retain submitted lists
   - [x] Validate structural bounds and normalize duplicate card rows server-side
   - [x] Audit initial submissions and resubmissions
+  - [ ] Reopen a locked decklist for judge corrections as audited edits:
+        IPG 3.4/3.8 fixes alter the decklist mid-event, some revertable "if
+        the player is subsequently able to locate identical replacements"
+        (see section 5's judge operations)
   - [ ] Add a client pasted-text importer (the raw-text half landed:
         submissions already store bounded `rawText` server-side; only the
         client parser/import UI is missing)

@@ -105,10 +105,11 @@ completes instead.
 
 **Rewind**:
 Un-pairing the current round: available only while that round has no entered
-result — automatic results (a Bye from pairing, a Concession from a drop)
-don't count, because the pairing or drop behind them survives the rewind and
-nothing anyone entered is destroyed — and it reopens exactly the previous
-round. Results are only
+result, and it reopens exactly the previous round. Automatic results (a Bye
+from pairing, a Concession from a drop) don't count as entered, because the
+pairing or drop behind them survives the rewind and nothing anyone entered
+is destroyed; a Forfeit or No-Show is an organizer's entry and does count.
+Results are only
 ever correctable while their round is open — the active round directly, or
 the previous round after a Rewind reopens it (including re-drawing a cut by
 rewinding the next phase's first round). Mistakes buried under completed
@@ -278,14 +279,20 @@ records the concession immediately — a player who actually finished their
 match reports the real result before dropping, and an organizer override
 fixes it afterwards otherwise.
 
-**Forfeit** (_Planned_ — lands with judge adjudication, TODO.md §5):
+**Forfeit**:
 An organizer-recorded match loss awarded against a player without play; the
-opponent wins the match as an Awarded Result.
+opponent wins the match as an Awarded Result. It is a match consequence
+only: the player stays in the tournament. Recorded while the round is open,
+it replaces any result already on the match, and an ordinary result entry
+replaces it in turn.
 
-**No-Show** (_Planned_ — lands with judge adjudication, TODO.md §5):
+**No-Show**:
 A Forfeit recorded against an absent player. By default it also drops the
 player (the organizer can keep them in); both players absent is a double
-match loss.
+match loss. In a Bracket a double match loss advances nobody: both players
+leave the bracket whether or not they were kept in the tournament, the seat
+stays empty, and its scheduled opponent next round is walked over. A double
+match loss in the final ends the bracket with no winner.
 
 **Late Entry** (_Planned_ — TODO.md §1):
 An organizer-only override admitting a player while the first phase is in
@@ -305,7 +312,8 @@ has left the tournament, recorded as a Bye (an Awarded Result match win). It
 always goes
 to the scheduled opponent, never to a reseeded player; defeated players are
 never revived into a bracket slot, and walkovers may chain. The departed
-player keeps the placement of the seat they reached.
+player keeps the placement of the seat they reached. A seat emptied by a
+double No-Show is walked over the same way.
 _Avoid_: loser revival, loser advancement
 
 **Disqualification (DQ)** (_Planned_ — the `disqualified` status is reserved

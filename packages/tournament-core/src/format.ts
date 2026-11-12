@@ -55,6 +55,20 @@ export function matchResultKindLabel(
   }
 }
 
+// Whether a completed two-player match is a double match loss: both players
+// absent (see CONTEXT.md "No-Show"), so neither earned a match point. Game
+// counts cannot say it — a double loss is 0–0, the same as a scoreless
+// drawn match — so every surface that summarizes a result from the pairing
+// rows asks here before calling equal game wins a draw.
+export function isDoubleMatchLoss(
+  players: ReadonlyArray<{ matchPointsEarned?: number | null }>,
+) {
+  return (
+    players.length === 2 &&
+    players.every((player) => player.matchPointsEarned === 0)
+  );
+}
+
 type StandingStatusInput = {
   registrationStatus:
     | "active"
