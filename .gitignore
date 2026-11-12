@@ -24,6 +24,10 @@ node_modules/
 .DS_Store
 *.pem
 
+# rules source documents (the IPG/MTR PDFs and Comprehensive Rules text the
+# notes under docs/research cite); kept locally, each note links the publisher
+/docs/references/
+
 # debug
 npm-debug.log*
 yarn-debug.log*
