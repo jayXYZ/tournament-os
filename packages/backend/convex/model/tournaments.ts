@@ -169,24 +169,33 @@ export async function roundMatchesWithPlayers(
 export const PAIRINGS_REWIND_RECORDED_RESULT_REASON =
   "Pairings cannot be unpublished after a match result has been recorded";
 
-// Whether any result in the round makes it "touched" for the rewind guard
-// (see CONTEXT.md "Rewind"). Automatic results — a bye written at pairing
-// time, a concession written by a drop — don't count: the fact behind them
-// (the pairing, the drop) survives the rewind, so deleting them
+// Whether a match carries a result somebody entered, as opposed to an
+// automatic one (see CONTEXT.md "Rewind"). Automatic results — a bye written
+// at pairing time, a concession written by a drop, the loss a
+// disqualification records — don't count: the fact behind them (the pairing,
+// the drop, the DQ) survives a rewind or a pairing break, so deleting them
 // destroys nothing that anyone entered. A played result does count, and so
-// do the organizer-entered adjudications (forfeit, no-show; DQ when it
-// lands).
+// do the organizer-entered adjudications (forfeit, no-show). The one
+// statement of the rule: the rewind guard and the pairing-break gate
+// (model/manualPairing.ts) both read it.
+export function matchHasEnteredResult(
+  match: Pick<Doc<"tournamentMatches">, "matchStatus" | "currentResultKind">,
+) {
+  return (
+    match.matchStatus !== "upcoming" &&
+    match.currentResultKind !== "bye" &&
+    match.currentResultKind !== "concession" &&
+    match.currentResultKind !== "dq"
+  );
+}
+
+// Whether any result in the round makes it "touched" for the rewind guard.
 export function roundHasRecordedResult(
   matchesWithPlayers: readonly {
     match: Pick<Doc<"tournamentMatches">, "matchStatus" | "currentResultKind">;
   }[],
 ) {
-  return matchesWithPlayers.some(
-    ({ match }) =>
-      match.matchStatus !== "upcoming" &&
-      match.currentResultKind !== "bye" &&
-      match.currentResultKind !== "concession",
-  );
+  return matchesWithPlayers.some(({ match }) => matchHasEnteredResult(match));
 }
 
 // Newest events the organizer's table receives per lifecycle. Live and

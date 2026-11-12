@@ -137,7 +137,8 @@ async function standingsCutoffPartition(
     if (!registration) {
       // Not confirmed-active or confirmed-dropped: an unconfirmed entry, or a
       // player already eliminated or disqualified — their record stands, and
-      // neither state is reinstatable into active play.
+      // neither state is reinstatable into active play. A disqualified
+      // player's row holds no place to hand out either (model/standings.ts).
       continue;
     }
     const missesCut =

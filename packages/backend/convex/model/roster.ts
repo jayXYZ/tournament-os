@@ -17,7 +17,10 @@ import {
 } from "./conventions";
 import { userError } from "./errors";
 import { inviteCodeGrantsAccess } from "./invites";
-import { concedeUnfinishedMatchOnDrop } from "./matchResults";
+import {
+  concedeUnfinishedMatchOnDrop,
+  loseUnresolvedMatchOnDisqualification,
+} from "./matchResults";
 import {
   claimGuestEntryInTournament,
   createGuestParticipant,
@@ -40,6 +43,7 @@ import {
   adjustConfirmedRegistrationCount,
   registrationApproveEffect,
   registrationCancelEffect,
+  registrationDisqualifyEffect,
   registrationDropEffect,
   registrationHasUsableName,
   registrationNameEffect,
@@ -74,8 +78,8 @@ import { normalizeEmail, presentText } from "../validators";
 // enrollPlayerByEmail and addGuest, which seat a player without the player
 // registering (CONTEXT.md "Enrollment") — with continueAsGuest naming an
 // enrolled entry that still awaits player details. The remaining
-// participation state, "disqualified", deliberately has no writer until the
-// judge-operations DQ action.
+// participation state, "disqualified", is written by disqualifyPlayer and
+// has no verb back out.
 //
 // Each verb owns its eligibility per actor, the registration write (through
 // setRegistrationState, which keeps the standings copy in step — see
@@ -146,6 +150,60 @@ export async function dropPlayer(
     registration,
     actor,
     actorRole,
+  });
+}
+
+// A Disqualification (see CONTEXT.md, IPG 1.1): the player is removed from
+// the tournament and from its standings, where everyone below moves up a
+// place, and loses their current match if it is still unresolved. Their
+// finished matches stand and keep feeding former opponents' tiebreakers. An
+// organizer-only verb with no undo — reinstatePlayer does not reach a
+// disqualified row. Until judge roles exist (TODO.md section 5) organizer
+// access is the whole gate.
+export async function disqualifyPlayer(
+  ctx: MutationCtx,
+  {
+    tournament,
+    registration,
+    actor,
+    reason,
+  }: {
+    tournament: Doc<"tournaments">;
+    registration: Doc<"tournamentRegistrations">;
+    actor: Doc<"users">;
+    // Why, for the organizer-only journal; never shown to players.
+    reason: string | null;
+  },
+) {
+  if (tournament.lifecycle !== "in_progress") {
+    throw userError("Tournament is not in progress");
+  }
+  if (
+    registrationDisqualifyEffect(tournament.lifecycle, registration) === null
+  ) {
+    throw userError("Registration cannot be disqualified in its current state");
+  }
+  await setRegistrationState(ctx, registration._id, {
+    entryStatus: "confirmed",
+    participationStatus: "disqualified",
+    updatedAt: Date.now(),
+  });
+  // The disqualification's event lands before its match consequence, so the
+  // log reads causally, like a drop and its concession.
+  await logAuditEvent(ctx, {
+    tournamentId: tournament._id,
+    actor,
+    actorRole: "organizer",
+    event: {
+      type: "player_disqualified",
+      player: auditPlayerRef(registration),
+      reason,
+    },
+  });
+  await loseUnresolvedMatchOnDisqualification(ctx, {
+    tournament,
+    registration,
+    actor,
   });
 }
 

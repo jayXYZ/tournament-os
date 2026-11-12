@@ -386,10 +386,13 @@ export async function qualifyingCompletedTournament(
 
 // Final placement for one player: the latest completed round's standings row.
 // completeTournament requires the current round to be completed first, and
-// standings rank every confirmed registration — dropped, cut, and disqualified
-// players keep a row with their frozen record — so a completed tournament has
-// one for every participant; a missing row is pathological
+// standings carry a row for every confirmed registration — dropped, cut, and
+// disqualified players keep one with their frozen record — so a completed
+// tournament has one for every participant; a missing row is pathological
 // data and renders as an unranked entry rather than dropping the tournament.
+// A disqualified player's row holds no place (CONTEXT.md "Disqualification
+// (DQ)"): their record is reported with a null rank, so the tournament stays
+// on their profile without a placement.
 export async function finalStandingForRegistration(
   ctx: QueryCtx,
   tournamentId: Id<"tournaments">,
@@ -411,7 +414,8 @@ export async function finalStandingForRegistration(
     return null;
   }
   return {
-    rank: standing.rank,
+    rank:
+      standing.participationStatus === "disqualified" ? null : standing.rank,
     matchPoints: standing.matchPoints,
     matchWins: standing.matchWins,
     matchLosses: standing.matchLosses,

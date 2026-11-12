@@ -13,6 +13,7 @@ import {
 } from "../model/registrations";
 import { matchLogForRegistration } from "../model/playerResults";
 import { currentMatchForPlayer } from "../model/playerView";
+import { rankedStandings } from "../model/standings";
 import {
   isPairingsVisibleToPlayers,
   matchPlayers,
@@ -86,7 +87,11 @@ export const getLatestStandings = query({
     // on user documents (which upsertUser patches on each sign-in) and
     // spend reads per row against the transaction's index-range budget. So
     // the rows are a plain projection of the standings documents.
-    const rows = standings.map((standing) => ({
+    //
+    // A disqualified player holds no place (CONTEXT.md "Disqualification
+    // (DQ)"): their row sits at the tail of this round's standings as a
+    // record only, and is left out here.
+    const rows = rankedStandings(standings).map((standing) => ({
       rank: standing.rank,
       name: standing.playerName ?? null,
       matchPoints: standing.matchPoints,

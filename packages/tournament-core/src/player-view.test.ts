@@ -125,6 +125,43 @@ test("a dropped player sees dropped copy, never a promise of pairings", () => {
   ).toMatchObject({ kind: "status", title: "No seat for the player meeting" });
 });
 
+test("a disqualified player gets no seat, no pairing promise, and a badge saying so", () => {
+  expect(
+    describeCurrentMatch(
+      currentMatch({
+        kind: "player_meeting",
+        myRegistrationStatus: "disqualified",
+        meeting: { phaseName: "Phase 2", tableNumber: 1, seatmateName: "Bob" },
+      }),
+    ),
+  ).toMatchObject({
+    kind: "status",
+    title: "No seat for the player meeting",
+    body: "You have been disqualified from this tournament, so you are no longer seated.",
+  });
+  expect(
+    describeCurrentMatch(
+      currentMatch({
+        kind: "no_match",
+        myRegistrationStatus: "disqualified",
+        round,
+      }),
+    ),
+  ).toMatchObject({
+    body: "You have been disqualified from this tournament, so you are no longer paired.",
+  });
+  expect(
+    describeHeaderBadge(
+      currentMatch({
+        kind: "match",
+        myRegistrationStatus: "disqualified",
+        tournament: { ...base.tournament, lifecycle: "completed" },
+        round,
+      }),
+    ),
+  ).toEqual({ label: "Disqualified", tone: "destructive" });
+});
+
 test("a meeting seat describes as a card with table and seatmate", () => {
   const seated = describeCurrentMatch(
     currentMatch({
@@ -273,6 +310,32 @@ test("result provenance: forfeits and no-shows name who the award was against", 
       }),
     ),
   ).toMatchObject({ badge: { label: "Marked absent" } });
+});
+
+test("result provenance: a disqualification's loss names it for both players", () => {
+  expect(
+    describeCurrentMatch(
+      activeMatch({
+        match: { currentResultKind: "dq" },
+        me: { gameWins: 0, gameLosses: 2, outcome: "loss" },
+      }),
+    ),
+  ).toMatchObject({
+    scoreline: "You lose 0–2",
+    badge: { label: "You were disqualified", tone: "secondary" },
+  });
+  expect(
+    describeCurrentMatch(
+      activeMatch({
+        match: { currentResultKind: "dq" },
+        me: { gameWins: 2, gameLosses: 0, outcome: "win" },
+      }),
+    ),
+  ).toMatchObject({
+    scoreline: "You win 2–0",
+    badge: { label: "Opponent disqualified", tone: "secondary" },
+    note: null,
+  });
 });
 
 test("a double no-show reads as a loss for both players, never a 0–0 draw", () => {

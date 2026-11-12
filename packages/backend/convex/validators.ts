@@ -159,8 +159,9 @@ export const tournamentEntryStatusValidator = v.union(
 // player remains eligible to be paired; it is initialized on confirmation so
 // starting round one never needs to patch every registration.
 //
-// "disqualified" is reserved for a planned DQ feature and currently has no
-// writer — read-side handling already accounts for it.
+// "disqualified" is written only by the organizer DQ action
+// (disqualifyPlayer in model/roster.ts) and has no way back: see CONTEXT.md
+// "Disqualification (DQ)".
 export const tournamentParticipationStatusValidator = v.union(
   v.literal("active"),
   v.literal("dropped"),
@@ -440,10 +441,10 @@ const auditMatchResultLineValidator = v.object({
 
 // How a match outcome came about (see CONTEXT.md): a played result, or one
 // of the Awarded Result kinds. "played", "bye", "concession" (a drop
-// during the player's own unfinished match), "forfeit", and "no_show" (the
-// adjudications in model/adjudication.ts) have writers today; DQ lands with
-// the rest of the judge operations (TODO.md section 5), and walkovers are
-// byes.
+// during the player's own unfinished match), "forfeit" and "no_show" (the
+// adjudications in model/adjudication.ts), and "dq" (the loss a
+// disqualification records on the player's unresolved match) all have
+// writers; walkovers are byes.
 export const matchResultKindValidator = v.union(
   v.literal("played"),
   v.literal("bye"),
@@ -559,6 +560,20 @@ export const tournamentAuditEventValidator = v.union(
     previousResult: v.union(v.array(auditMatchResultLineValidator), v.null()),
   }),
   v.object({
+    // The match consequence of a disqualification (see CONTEXT.md
+    // "Disqualification (DQ)"): the disqualified player's unresolved match
+    // in the open round, lost to the opponent. Logged right after the
+    // player_disqualified event that caused it. Never an edit: a match that
+    // already had a result is left alone.
+    type: v.literal("match_lost_to_disqualification"),
+    matchId: v.id("tournamentMatches"),
+    roundNumber: v.number(),
+    tableNumber: v.union(v.number(), v.null()),
+    // The disqualified player.
+    player: auditPlayerRefValidator,
+    result: v.array(auditMatchResultLineValidator),
+  }),
+  v.object({
     type: v.literal("player_registered"),
     player: auditPlayerRefValidator,
     // Set when a paid event admitted the player free because their
@@ -655,6 +670,15 @@ export const tournamentAuditEventValidator = v.union(
   v.object({
     type: v.literal("player_dropped"),
     player: auditPlayerRefValidator,
+  }),
+  v.object({
+    // An organizer disqualified the player (model/roster.ts
+    // disqualifyPlayer). The journal is organizer-only, which is what keeps
+    // the reason staff-only: no player-facing surface reads it.
+    type: v.literal("player_disqualified"),
+    player: auditPlayerRefValidator,
+    // Why, in the organizer's words; null when none was given.
+    reason: v.union(v.string(), v.null()),
   }),
   v.object({
     type: v.literal("player_reinstated"),

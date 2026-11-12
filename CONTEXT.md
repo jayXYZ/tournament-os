@@ -106,9 +106,10 @@ completes instead.
 **Rewind**:
 Un-pairing the current round: available only while that round has no entered
 result, and it reopens exactly the previous round. Automatic results (a Bye
-from pairing, a Concession from a drop) don't count as entered, because the
-pairing or drop behind them survives the rewind and nothing anyone entered
-is destroyed; a Forfeit or No-Show is an organizer's entry and does count.
+from pairing, a Concession from a drop, the loss a Disqualification records)
+don't count as entered, because the pairing, drop, or disqualification
+behind them survives the rewind and nothing anyone entered is destroyed; a
+Forfeit or No-Show is an organizer's entry and does count.
 Results are only
 ever correctable while their round is open — the active round directly, or
 the previous round after a Rewind reopens it (including re-drawing a cut by
@@ -316,18 +317,23 @@ player keeps the placement of the seat they reached. A seat emptied by a
 double No-Show is walked over the same way.
 _Avoid_: loser revival, loser advancement
 
-**Disqualification (DQ)** (_Planned_ — the `disqualified` status is reserved
-with no writer; lands with judge adjudication, TODO.md §5):
+**Disqualification (DQ)**:
 Removal from the tournament and from the standings entirely: every
 lower-ranked player advances one place. A DQ after a cut advances standings
-placements only — nobody is added to the bracket in the DQ'd player's place.
+placements only — nobody is added to the bracket in the DQ'd player's place,
+and a seat they held is walked over.
 A DQ during a round records the player's unresolved match as a loss with the
 opponent awarded the win; a DQ between rounds carries no match consequence,
 an already-reported result is never flipped, and a DQ can only be issued
-while the tournament is live.
+while the tournament is live. Any entrant can be disqualified, one who
+already dropped or was eliminated included, and there is no way back: a
+disqualified player cannot be reinstated. The disqualification outlives a
+Rewind, including one that returns the tournament to registration, where
+the entry keeps its seat and offers no roster action.
 The player's completed matches remain on record, visible and feeding former
-opponents' tiebreakers; the tournament stays on their profile without a
-placement.
+opponents' tiebreakers; the tournament stays on their profile with their
+record and no placement. The reason an organizer gives is kept in the
+organizer-only journal and shown to no player.
 _Avoid_: ban
 
 **Player View**:

@@ -242,14 +242,17 @@ export async function applyMatchResult(
 }
 
 // An organizer adjudication awarding the match without play (see CONTEXT.md
-// "Forfeit" and "No-Show"): each named loser takes a match loss. One loser
-// hands the opponent the win at the structure's required game wins to zero;
-// both losing is a double match loss — zero game wins, zero match points,
-// and a stored "loss" outcome on both lines, which is why the outcome is
-// stored rather than derived (matchResultLineValidator). Like any organizer
-// result it may replace one already recorded, and the event keeps what it
-// replaced. The match-consequence half only: a no-show's drop belongs to
-// model/adjudication.ts.
+// "Forfeit", "No-Show", and "Disqualification (DQ)"): each named loser takes
+// a match loss. One loser hands the opponent the win at the structure's
+// required game wins to zero; both losing is a double match loss — zero game
+// wins, zero match points, and a stored "loss" outcome on both lines, which
+// is why the outcome is stored rather than derived
+// (matchResultLineValidator). A forfeit or no-show, like any organizer
+// result, may replace one already recorded, and the event keeps what it
+// replaced; a disqualification's loss lands only on a match with no result,
+// which its caller guarantees (loseUnresolvedMatchOnDisqualification). The
+// match-consequence half only: a no-show's drop belongs to
+// model/adjudication.ts, a disqualification's removal to model/roster.ts.
 export async function applyAwardedMatchLoss(
   ctx: MutationCtx,
   args: {
@@ -257,9 +260,10 @@ export async function applyAwardedMatchLoss(
     phase: Doc<"tournamentPhases">;
     round: Doc<"tournamentRounds">;
     players: Doc<"tournamentMatchPlayers">[];
-    kind: "forfeit" | "no_show";
+    kind: "forfeit" | "no_show" | "dq";
     // Registrations of the match taking the loss, resolved by the caller:
-    // exactly one for a forfeit, one or both for a no-show.
+    // exactly one for a forfeit or a disqualification, one or both for a
+    // no-show.
     losers: Doc<"tournamentRegistrations">[];
     actor: Doc<"users">;
     note?: string;
@@ -322,24 +326,31 @@ export async function applyAwardedMatchLoss(
     result: seats.map(({ line, ref }) =>
       auditResultLine(ref, line.gameWins, line.gameLosses, line.gameDraws),
     ),
-    previousResult,
   };
   await logAuditEvent(ctx, {
     tournamentId: match.tournamentId,
     actor: args.actor,
     actorRole: "organizer",
     event:
-      args.kind === "forfeit"
+      args.kind === "dq"
         ? {
-            type: "match_forfeited",
+            type: "match_lost_to_disqualification",
             ...eventBase,
             player: auditPlayerRef(losers[0]),
           }
-        : {
-            type: "match_no_show",
-            ...eventBase,
-            players: losers.map((loser) => auditPlayerRef(loser)),
-          },
+        : args.kind === "forfeit"
+          ? {
+              type: "match_forfeited",
+              ...eventBase,
+              previousResult,
+              player: auditPlayerRef(losers[0]),
+            }
+          : {
+              type: "match_no_show",
+              ...eventBase,
+              previousResult,
+              players: losers.map((loser) => auditPlayerRef(loser)),
+            },
   });
 }
 
@@ -512,26 +523,19 @@ export async function concedeUnfinishedMatchOnDrop(
     actorRole: AuditActorRole;
   },
 ) {
-  const phase = await currentPhaseOrNull(ctx, args.tournament._id);
-  if (!phase?.phaseCurrentRound) {
+  const unresolved = await unresolvedMatchInOpenRound(
+    ctx,
+    args.tournament,
+    args.registration,
+  );
+  if (!unresolved) {
     return;
   }
-  const round = await ctx.db.get(phase.phaseCurrentRound);
-  if (!round) {
-    return;
-  }
-  const found = await playerMatchInRound(ctx, args.registration._id, round._id);
-  if (!found) {
-    return;
-  }
-  const players = await matchPlayers(ctx, found.match._id);
-  if (!dropConcedesMatch(round, found.match, players.length)) {
-    return;
-  }
+  const { phase, round, match, players } = unresolved;
   const required = requiredGameWins(phase.bestOf);
   const concedesFirst = players[0].playerId === args.registration._id;
   await applyMatchResult(ctx, {
-    match: found.match,
+    match,
     phase,
     round,
     players,
@@ -544,6 +548,64 @@ export async function concedeUnfinishedMatchOnDrop(
       actorRole: args.actorRole,
       concededBy: args.registration,
     },
+  });
+}
+
+// The player's own match in the open round while it is still unresolved —
+// what a drop concedes and a disqualification records as a loss — or null
+// when there is none: between rounds, on a bye, or once the match has any
+// result. dropConcedesMatch is the precondition for both.
+async function unresolvedMatchInOpenRound(
+  ctx: QueryCtx,
+  tournament: Doc<"tournaments">,
+  registration: Doc<"tournamentRegistrations">,
+) {
+  const phase = await currentPhaseOrNull(ctx, tournament._id);
+  if (!phase?.phaseCurrentRound) {
+    return null;
+  }
+  const round = await ctx.db.get(phase.phaseCurrentRound);
+  if (!round) {
+    return null;
+  }
+  const found = await playerMatchInRound(ctx, registration._id, round._id);
+  if (!found) {
+    return null;
+  }
+  const players = await matchPlayers(ctx, found.match._id);
+  if (!dropConcedesMatch(round, found.match, players.length)) {
+    return null;
+  }
+  return { phase, round, match: found.match, players };
+}
+
+// A disqualification's match consequence (see CONTEXT.md "Disqualification
+// (DQ)", IPG 1.1): the player loses their current match when it is
+// unresolved, and the opponent is awarded the win. A match that already has
+// a result is never flipped, and between rounds there is nothing to lose.
+// Automatic, like a drop's concession: the DQ behind it survives a rewind,
+// so it does not hold one back (matchHasEnteredResult).
+export async function loseUnresolvedMatchOnDisqualification(
+  ctx: MutationCtx,
+  args: {
+    tournament: Doc<"tournaments">;
+    registration: Doc<"tournamentRegistrations">;
+    actor: Doc<"users">;
+  },
+) {
+  const unresolved = await unresolvedMatchInOpenRound(
+    ctx,
+    args.tournament,
+    args.registration,
+  );
+  if (!unresolved) {
+    return;
+  }
+  await applyAwardedMatchLoss(ctx, {
+    ...unresolved,
+    kind: "dq",
+    losers: [args.registration],
+    actor: args.actor,
   });
 }
 

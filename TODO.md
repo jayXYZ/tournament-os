@@ -47,8 +47,9 @@ The open work separates missing coverage from deployment verification.
 
 - [ ] Extend the browser E2E suite with no-show and forfeit scenarios.
       `organizer-adjudication.spec.ts` is written on `feat/judge-adjudication`
-      with the adjudication actions (section 5); a bracket double no-show
-      stays backend-spec-only. Already covered:
+      with the adjudication actions (section 5), and covers a mid-round
+      disqualification too; a bracket double no-show stays
+      backend-spec-only. Already covered:
       the organizer happy path, active-round corrections with audit trail,
       pairing rewind, organizer drops, mid-round drop concession, invite
       links and the join QR dialog (PR #51), and
@@ -656,8 +657,13 @@ under the gitignored `docs/references/`.
         walkover machinery (ADR 0001) then advances nobody from that seat
         pair and offers completion when no live players remain
 - [ ] Complete the DQ workflow (MTR/IPG-aligned — see `CONTEXT.md`; moved
-      from section 1, 2026-08-13, alongside the other judge adjudications)
-  - [ ] Remove DQ'd players from standings entirely so every lower-ranked player advances one place (the old mask-as-drop machinery is already deleted; player surfaces report a disqualification as-is until this lands)
+      from section 1, 2026-08-13, alongside the other judge adjudications).
+      Built on `feat/judge-adjudication`, gated on organizer access like the
+      other judge actions: `disqualifyRegistration` (`disqualifyPlayer` in
+      `model/roster.ts`), the roster's "Disqualify player" dialog, and
+      `disqualification.convex.spec.ts`. Everything below but the Head
+      Judge's report is in that work
+  - [ ] Remove DQ'd players from standings entirely so every lower-ranked player advances one place (the old mask-as-drop machinery is already deleted)
   - [ ] Keep a DQ'd player's completed matches on record and feeding former opponents' tiebreakers, with the tournament staying on their profile without a placement
   - [ ] Add an authorized DQ action and participation-state transition
   - [ ] Record each DQ as a typed, staff-only audit event with the actor and affected player
@@ -669,7 +675,16 @@ under the gitignored `docs/references/`.
         including the Wizards Account email of the disqualified player and
         of their opponent (IPG 1.1). Written player statements are no longer
         prescribed by the IPG (removed Sep 2024 as software-dependent); keep
-        them as optional attachments, not required fields
+        them as optional attachments, not required fields. Today a DQ
+        carries only an optional free-text reason in the audit event
+  - [ ] Decide what a disqualified entry's seat does after a round-one
+        rewind returns the event to registration: today the entry stays
+        confirmed with no roster action, so a capacity-limited event cannot
+        release the seat
+  - [ ] Decide what a second disqualification in the same match records:
+        the first awards the opponent the win, and disqualifying that
+        opponent afterwards leaves the win standing (an already-recorded
+        result is never flipped)
 - [ ] Log deck checks as first-class judge records
   - [ ] Record who was checked, when (pre-game presentation vs mid-round),
         duration, and outcome. IPG 3.5's Game Loss upgrades hinge on the

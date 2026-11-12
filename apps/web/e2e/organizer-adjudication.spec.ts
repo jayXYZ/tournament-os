@@ -5,6 +5,7 @@ import {
   clickMenuItem,
   createTestTournament,
   ensureOrganization,
+  enterResult,
   seedTestPlayers,
 } from './helpers'
 import type { Page } from '@playwright/test'
@@ -87,6 +88,69 @@ test('adjudication: a forfeit and a no-show award their matches without play', a
   await page.goto(`${managerUrl}/standings`)
   await expect(page.locator('tbody tr')).toHaveCount(PLAYER_COUNT)
   await expect(page.getByText('Dropped', { exact: true })).toHaveCount(1)
+})
+
+test('disqualification: the player loses their open match and leaves the standings', async ({
+  page,
+}) => {
+  await page.goto('/admin')
+  await ensureOrganization(page)
+  const managerUrl = await createTestTournament(page, {
+    name: `E2E Disqualification ${Date.now()}`,
+    playerCount: PLAYER_COUNT,
+    roundCount: 1,
+  })
+
+  await advanceStep(page, 'Hold to publish and open registration')
+  await seedTestPlayers(page, managerUrl, PLAYER_COUNT)
+  await advanceStep(page, 'Hold to generate pairings')
+  await advanceStep(page, 'Hold to publish pairings')
+  await page.goto(`${managerUrl}/pairings`)
+  await expect(page.getByLabel('Awaiting result')).toHaveCount(2)
+  const tableOne = await tablePlayers(page, 1)
+
+  // -- Disqualify the first player at table 1 while their match is open -----
+  await page.goto(`${managerUrl}/registrations`)
+  await page.getByRole('button', { name: `Manage ${tableOne.first}` }).click()
+  await clickMenuItem(page, 'Disqualify player')
+  const dialog = page.getByRole('dialog', {
+    name: `Disqualify ${tableOne.first}?`,
+  })
+  // The dialog states the match consequence and that there is no undo.
+  await expect(dialog.getByText(/recorded as a loss/)).toBeVisible()
+  await expect(dialog.getByText(/cannot be undone/)).toBeVisible()
+  await dialog.getByLabel('Reason (optional)').fill('Cheating')
+  await dialog.getByRole('button', { name: 'Disqualify player' }).click()
+  await expect(
+    page.getByText(`${tableOne.first} has been disqualified.`),
+  ).toBeVisible()
+
+  // -- Their open match went to the opponent --------------------------------
+  await page.goto(`${managerUrl}/pairings`)
+  await expect(page.getByText(`${tableOne.second} wins 2–0`)).toBeVisible()
+  await expect(page.getByText('DQ', { exact: true })).toBeVisible()
+  await expect(page.getByLabel('Awaiting result')).toHaveCount(1)
+
+  // -- The journal keeps the disqualification, its reason, and the loss -----
+  await page.goto(`${managerUrl}/log`)
+  await expect(
+    page.getByText(`Disqualified ${tableOne.first}: Cheating`),
+  ).toBeVisible()
+  await expect(
+    page.getByText(
+      `${tableOne.first} lost by disqualification: ${tableOne.first} 0–2 ${tableOne.second} (round 1, table 1)`,
+    ),
+  ).toBeVisible()
+
+  // -- They take no place in the final standings ----------------------------
+  await page.goto(`${managerUrl}/pairings`)
+  await enterResult(page, 1, 2, 1)
+  await advanceStep(page, 'Hold to complete round and post standings')
+  await advanceStep(page, 'Hold to complete tournament')
+  await expect(advanceButton(page, 'Tournament complete')).toBeVisible()
+  await page.goto(`${managerUrl}/standings`)
+  await expect(page.locator('tbody tr')).toHaveCount(PLAYER_COUNT - 1)
+  await expect(page.getByText(tableOne.first)).toHaveCount(0)
 })
 
 // The two names on a table's score slip, in the order the slip lists them.

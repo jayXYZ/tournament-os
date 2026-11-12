@@ -7,10 +7,7 @@ import { expect, test } from "vitest";
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
-import {
-  eliminateNonQualifiers,
-  setRegistrationState,
-} from "./model/participation";
+import { eliminateNonQualifiers } from "./model/participation";
 import { compareStandingRows } from "./model/standings";
 import schema from "./schema";
 import {
@@ -898,25 +895,19 @@ test("dropSelf removes the player from future rounds but keeps read access", asy
     matchLosses: 1,
   });
 
-  // A disqualification is reported as-is on every surface — player-facing
-  // queries and the organizer standings query all return the real status.
-  // Disqualification has no mutation of its own yet, so this stands in for
-  // the planned one by going through the single transition funnel a writer
-  // would use — which is also what keeps the standings row's denormalized
-  // copy current.
-  await t.run(async (ctx) => {
-    await setRegistrationState(ctx, registrationIds[3], {
-      entryStatus: "confirmed",
-      participationStatus: "disqualified",
-    });
-  });
+  // A disqualification, unlike a drop, takes the player out of the standings
+  // on every surface (CONTEXT.md "Disqualification (DQ)"), while their own
+  // view still reports the status and keeps its read access.
+  await organizer.mutation(
+    api.tournaments.registrations.disqualifyRegistration,
+    { registrationId: registrationIds[3] },
+  );
   const standingsAfterDq = await playerFour.query(
     api.tournaments.player.getLatestStandings,
     { tournamentId },
   );
-  expect(
-    standingsAfterDq?.rows.find((row) => row.isMe)?.registrationStatus,
-  ).toBe("disqualified");
+  expect(standingsAfterDq?.rows).toHaveLength(3);
+  expect(standingsAfterDq?.rows.find((row) => row.isMe)).toBeUndefined();
   const currentAfterDq = await playerFour.query(
     api.tournaments.player.getMyCurrentMatch,
     { tournamentId },
@@ -926,11 +917,12 @@ test("dropSelf removes the player from future rounds but keeps read access", asy
     api.tournaments.rounds.listRoundStandings,
     { roundId: round._id },
   );
+  expect(organizerStandings).toHaveLength(3);
   expect(
     organizerStandings.find(
       (row) => row.standing.playerId === registrationIds[3],
-    )?.registrationStatus,
-  ).toBe("disqualified");
+    ),
+  ).toBeUndefined();
 });
 
 // getLatestStandings reads participation status from the copy denormalized onto

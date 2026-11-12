@@ -6,6 +6,7 @@ import { syncRegistrationPaymentStatusFor } from "./payments";
 import { MAX_TOURNAMENT_PLAYERS, activeRegistrations } from "./registrations";
 import {
   deleteStandingsForReopenedRound,
+  moveDisqualifiedToStandingsTail,
   standingsInRankOrder,
 } from "./standings";
 
@@ -15,7 +16,10 @@ import {
 // player's row in the tournament's latest completed round's standings, which
 // is what every player's standings query reads (see getLatestStandings in
 // tournaments/player.ts), and the per-status tally on the tournament row that
-// the organizer board reads (participationCounts in schema.ts). Callers name
+// the organizer board reads (participationCounts in schema.ts). One status
+// changes more than the copy: a disqualified player takes no place in the
+// standings, so that transition also moves their row to the tail and
+// everyone below up a place. Callers name
 // the participation change they want: a
 // single transition through setRegistrationState, a round's eliminations
 // through eliminatePlayers, a cut through eliminateNonQualifiers, or a
@@ -335,12 +339,18 @@ export async function setRegistrationState(
   const delta = new ParticipationCountDelta();
   const { participationStatus, updatedAt, tournamentId, crossedConfirmed } =
     await patchRegistrationRow(ctx, registrationId, update, delta);
-  await syncStatusOntoStandingsRow(
-    ctx,
-    participationStatus,
-    updatedAt,
-    await latestStandingsRowFor(ctx, registrationId),
-  );
+  if (participationStatus === "disqualified") {
+    // More than a status stamp: the player gives up their place and
+    // everyone below moves up one (CONTEXT.md "Disqualification (DQ)").
+    await moveDisqualifiedToStandingsTail(ctx, tournamentId, registrationId);
+  } else {
+    await syncStatusOntoStandingsRow(
+      ctx,
+      participationStatus,
+      updatedAt,
+      await latestStandingsRowFor(ctx, registrationId),
+    );
+  }
   await delta.apply(ctx, tournamentId);
   // The payment-status mirror reads differently on a confirmed seat (a
   // closed unpaid order owes nothing there), so a row entering or leaving
@@ -598,7 +608,9 @@ export async function restoreEliminationsForRewind(
     rounds.removedRound._id,
     ...(rounds.reopenedRound ? [rounds.reopenedRound._id] : []),
   ]);
-  const [eliminated, dropped] = await Promise.all([
+  const confirmedWithStatus = (
+    participationStatus: "eliminated" | "dropped" | "disqualified",
+  ) =>
     ctx.db
       .query("tournamentRegistrations")
       .withIndex(
@@ -607,30 +619,24 @@ export async function restoreEliminationsForRewind(
           q
             .eq("tournamentId", tournament._id)
             .eq("entryStatus", "confirmed")
-            .eq("participationStatus", "eliminated"),
+            .eq("participationStatus", participationStatus),
       )
-      .take(MAX_TOURNAMENT_PLAYERS),
-    ctx.db
-      .query("tournamentRegistrations")
-      .withIndex(
-        "by_tournamentId_and_entryStatus_and_participationStatus",
-        (q) =>
-          q
-            .eq("tournamentId", tournament._id)
-            .eq("entryStatus", "confirmed")
-            .eq("participationStatus", "dropped"),
-      )
-      .take(MAX_TOURNAMENT_PLAYERS),
+      .take(MAX_TOURNAMENT_PLAYERS);
+  const [eliminated, dropped, disqualified] = await Promise.all([
+    confirmedWithStatus("eliminated"),
+    confirmedWithStatus("dropped"),
+    confirmedWithStatus("disqualified"),
   ]);
   const restored = eliminated.filter(
     (registration) =>
       registration.eliminatedByRoundId !== undefined &&
       sourceIds.has(registration.eliminatedByRoundId),
   );
-  // Dropped players can carry a preserved elimination (a drop after
-  // being eliminated). The rewind undoes the elimination but the drop
-  // stands, so only the stale round reference is cleared.
-  const clearedDrops = dropped.filter(
+  // Dropped and disqualified players can carry a preserved elimination (a
+  // drop or disqualification after being eliminated). The rewind undoes the
+  // elimination but the drop or disqualification stands, so only the stale
+  // round reference is cleared.
+  const clearedRemovals = [...dropped, ...disqualified].filter(
     (registration) =>
       registration.eliminatedByRoundId !== undefined &&
       sourceIds.has(registration.eliminatedByRoundId),
@@ -653,7 +659,7 @@ export async function restoreEliminationsForRewind(
       ),
   );
   await mapAsyncInBatches(
-    clearedDrops,
+    clearedRemovals,
     DATABASE_IO_BATCH_SIZE,
     async (registration) =>
       await patchRegistrationRow(
@@ -661,7 +667,10 @@ export async function restoreEliminationsForRewind(
         registration._id,
         {
           entryStatus: "confirmed",
-          participationStatus: "dropped",
+          participationStatus:
+            registration.participationStatus === "disqualified"
+              ? "disqualified"
+              : "dropped",
           // null clears the preserved elimination the rewind just undid.
           eliminatedByRoundId: null,
           updatedAt: now,

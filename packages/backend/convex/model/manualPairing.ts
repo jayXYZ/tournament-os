@@ -11,6 +11,7 @@ import { SWISS_FORMAT, requirePhase } from "./phases";
 import { activeRegistrations } from "./registrations";
 import {
   isPairingsVisibleToPlayers,
+  matchHasEnteredResult,
   matchPlayers,
   playerMatchInRound,
   requireRound,
@@ -80,11 +81,7 @@ export async function breakPairing(
   const { tournament, user, match } = args;
   const round = await requireRound(ctx, match.tournamentRoundId);
   await requireEditablePairings(ctx, round);
-  if (
-    match.matchStatus !== "upcoming" &&
-    match.currentResultKind !== "bye" &&
-    match.currentResultKind !== "concession"
-  ) {
+  if (matchHasEnteredResult(match)) {
     throw userError(MATCH_HAS_RECORDED_RESULT);
   }
 

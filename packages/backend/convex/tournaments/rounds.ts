@@ -37,6 +37,7 @@ import {
   nonActiveParticipationStatuses,
   registrationOrganizerLabel,
 } from "../model/registrations";
+import { standingsWithoutDisqualified } from "../model/standings";
 import {
   matchPlayers,
   requireMatch,
@@ -394,11 +395,12 @@ export const listRoundStandings = query({
       ctx,
       round.tournamentId,
     );
-    return standings.map((standing) => ({
-      standing,
-      playerName: standing.playerName,
-      registrationStatus:
-        nonActiveStatuses.get(standing.playerId) ?? ("active" as const),
-    }));
+    return standingsWithoutDisqualified(standings, nonActiveStatuses).map(
+      ({ standing, registrationStatus }) => ({
+        standing,
+        playerName: standing.playerName,
+        registrationStatus,
+      }),
+    );
   },
 });

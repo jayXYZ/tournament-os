@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, usePaginatedQuery, useQuery } from 'convex/react'
 import {
+  Ban,
   ClipboardList,
   FlaskConical,
   Hourglass,
@@ -18,6 +19,7 @@ import {
   effectiveRegistrationStatus,
 } from '@paper-pairings/shared/registration-status'
 import { toast } from 'sonner'
+import { DisqualifyPlayerDialog } from './disqualify-player-dialog'
 import {
   AddGuestDialog,
   ContinueAsGuestDialog,
@@ -81,8 +83,12 @@ type RegistrationRow = {
   // action is unavailable; the client never re-derives the lifecycle rules.
   dropEffect: 'cancel' | 'drop' | null
   // Whether that drop would concede the row's unfinished match in the open
-  // round — the same predicate the drop applies, never re-derived here.
+  // round — the same predicate the drop applies, never re-derived here. A
+  // disqualification loses the same match, so its dialog reads this too.
   dropWouldConcede: boolean
+  // Whether disqualifyRegistration is available on this row (null when it
+  // is not): a confirmed entrant of an event in play, not yet disqualified.
+  disqualifyEffect: 'disqualify' | null
   // The entry-review actions available on this row (null when unavailable),
   // from the same projections the verbs enforce, so the menu offers exactly
   // what the server would accept. approveEffect is named by the state the
@@ -708,6 +714,7 @@ function ManagePlayerMenu({
 
   const [confirmingDrop, setConfirmingDrop] = useState(false)
   const [confirmingReject, setConfirmingReject] = useState(false)
+  const [disqualifying, setDisqualifying] = useState(false)
   const [naming, setNaming] = useState(false)
 
   // Whether the row can be dropped — and whether that cancels the entry
@@ -809,6 +816,18 @@ function ManagePlayerMenu({
               <UserMinus />
               Drop player
             </DropdownMenuItem>
+            {/* Offered only while the event is in play, so the menu before
+                and after it stays as it was. */}
+            {row.disqualifyEffect !== null ? (
+              <DropdownMenuItem
+                variant="destructive"
+                disabled={disabled || busy}
+                onSelect={() => setDisqualifying(true)}
+              >
+                <Ban />
+                Disqualify player
+              </DropdownMenuItem>
+            ) : null}
             {row.rejectEffect !== null ? (
               <DropdownMenuItem
                 variant="destructive"
@@ -829,6 +848,16 @@ function ManagePlayerMenu({
           onOpenChange={setNaming}
           registrationId={row.registration._id}
           currentLabel={name}
+        />
+      ) : null}
+
+      {row.disqualifyEffect !== null ? (
+        <DisqualifyPlayerDialog
+          open={disqualifying}
+          onOpenChange={setDisqualifying}
+          registrationId={row.registration._id}
+          playerName={name}
+          losesCurrentMatch={row.dropWouldConcede}
         />
       ) : null}
 

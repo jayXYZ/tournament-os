@@ -19,6 +19,7 @@ import {
   entryReviewActions,
   paginateRegistrationHistory,
   pendingReviewCount,
+  registrationDisqualifyEffect,
   registrationDropEffect,
   registrationForUser,
   registrationHasUsableName,
@@ -33,6 +34,7 @@ import {
   approveEntry,
   cancelEntry,
   continueAsGuest as continueAsGuestEntry,
+  disqualifyPlayer,
   dropPlayer,
   enrollPlayerByEmail,
   registerEntry,
@@ -86,6 +88,13 @@ async function registrationRows(
     // the open round — same predicate the drop applies, so the dialog's
     // wording always matches what confirming it will do.
     dropWouldConcede: concededByDrop.has(registration._id),
+    // What disqualifyRegistration would do to this row right now (null when
+    // it is unavailable). A disqualification loses exactly the match a drop
+    // would concede, so dropWouldConcede answers that for both dialogs.
+    disqualifyEffect: registrationDisqualifyEffect(
+      tournament.lifecycle,
+      registration,
+    ),
     // The entry-review actions available on this row (null when
     // unavailable), from the same projections and capacity rule the verbs
     // enforce, so the approve/reject/waitlist menu items and their wording
@@ -384,6 +393,37 @@ export const searchRegistrations = query({
     return await registrationRows(ctx, tournament, matches);
   },
 });
+
+// Disqualifies a player (model/roster.ts disqualifyPlayer). The reason goes
+// to the organizer-only journal and nowhere a player can read.
+export const disqualifyRegistration = mutation({
+  args: {
+    registrationId: v.id("tournamentRegistrations"),
+    reason: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const registration = await requireRegistration(ctx, args.registrationId);
+    const { tournament, user } = await requireOrganizerAccess(
+      ctx,
+      registration.tournamentId,
+    );
+    const reason = args.reason?.trim() ?? "";
+    if (reason.length > MAX_DISQUALIFICATION_REASON_LENGTH) {
+      throw userError(
+        `Disqualification reason must be at most ${MAX_DISQUALIFICATION_REASON_LENGTH} characters`,
+      );
+    }
+    await disqualifyPlayer(ctx, {
+      tournament,
+      registration,
+      actor: user,
+      reason: reason === "" ? null : reason,
+    });
+    return args.registrationId;
+  },
+});
+
+const MAX_DISQUALIFICATION_REASON_LENGTH = 1000;
 
 export const dropRegistration = mutation({
   args: { registrationId: v.id("tournamentRegistrations") },

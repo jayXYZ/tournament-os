@@ -83,6 +83,12 @@ export function describeAuditEvent(row: AuditEventRow): string {
       return row.actorRole === 'organizer'
         ? `Dropped ${displayPlayerName(event.player.playerName)} from the event`
         : `${displayPlayerName(event.player.playerName)} dropped from the event`
+    case 'player_disqualified':
+      return event.reason === null
+        ? `Disqualified ${displayPlayerName(event.player.playerName)}`
+        : `Disqualified ${displayPlayerName(event.player.playerName)}: ${event.reason}`
+    case 'match_lost_to_disqualification':
+      return `${displayPlayerName(event.player.playerName)} lost by disqualification: ${formatAuditScoreline(event.result)} ${matchLocation(event)}`
     case 'player_reinstated':
       return `Reinstated ${displayPlayerName(event.player.playerName)}${compedSuffix(event)}`
     case 'tournament_published':

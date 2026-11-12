@@ -36,13 +36,15 @@ export function ManageMatchMenu({
   const [recordingForfeit, setRecordingForfeit] = useState(false)
   const breakPairing = useMutation(api.tournaments.rounds.breakPairing)
 
-  // Mirrors the backend gate (model/manualPairing.ts): automatic results —
-  // a bye's award, a drop's concession — are deleted with the pairing, but
-  // an entered result (a forfeit or no-show included) refuses the break.
+  // Mirrors the backend gate (matchHasEnteredResult in model/tournaments.ts):
+  // automatic results — a bye's award, a drop's concession, a
+  // disqualification's loss — are deleted with the pairing, but an entered
+  // result (a forfeit or no-show included) refuses the break.
   const hasEnteredResult =
     row.match.matchStatus !== 'upcoming' &&
     row.match.currentResultKind !== 'bye' &&
-    row.match.currentResultKind !== 'concession'
+    row.match.currentResultKind !== 'concession' &&
+    row.match.currentResultKind !== 'dq'
 
   async function handleBreakPairing() {
     try {

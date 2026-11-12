@@ -1,6 +1,71 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
-import { MAX_MATCHES_PER_PLAYER, previousTournamentRound } from "./phases";
+import {
+  MAX_MATCHES_PER_PLAYER,
+  latestCompletedRound,
+  previousTournamentRound,
+} from "./phases";
+
+// How a disqualified player sits in a round's standings (see CONTEXT.md
+// "Disqualification (DQ)", IPG 1.1: they do "not take up a place in the
+// standings"). Their row is kept, because it is where their cumulative
+// record lives: the next round folds forward from it, and that record keeps
+// feeding former opponents' tiebreakers. But it holds no place — in the
+// tournament's latest completed round every disqualified row sits after the
+// last ranked player, so the ranked rows are numbered 1..n with no gap, and
+// every reader that shows or acts on standings leaves the tail out
+// (rankedStandings here, standingsWithoutDisqualified for the organizer, the
+// cut walk in model/cutoffs.ts, finalStandingForRegistration). Rounds before
+// the latest are snapshots: a player disqualified later still sits where
+// they ranked then, until a rewind promotes the round
+// (deleteStandingsForReopenedRound) and restacks it.
+
+// A round's standings as players see them: the ranked rows, without the
+// disqualified tail. Only meaningful for the latest completed round, whose
+// denormalized statuses are live.
+export function rankedStandings(standings: Doc<"roundStandings">[]) {
+  const ranked: Doc<"roundStandings">[] = [];
+  for (const standing of standings) {
+    if (standing.participationStatus !== "disqualified") {
+      ranked.push(standing);
+    }
+  }
+  return ranked;
+}
+
+// Rewrites a round's rows so the given statuses are stamped and every
+// disqualified row sits after the ranked ones, each group keeping its
+// existing order. Patches only the rows that change. `standings` must be the
+// round's rows in rank order.
+async function restackStandings(
+  ctx: MutationCtx,
+  standings: Doc<"roundStandings">[],
+  statusFor: (
+    standing: Doc<"roundStandings">,
+  ) => NonNullable<Doc<"roundStandings">["participationStatus"]>,
+) {
+  const ranked: typeof standings = [];
+  const tail: typeof standings = [];
+  for (const standing of standings) {
+    (statusFor(standing) === "disqualified" ? tail : ranked).push(standing);
+  }
+  const now = Date.now();
+  for (const [index, standing] of [...ranked, ...tail].entries()) {
+    const participationStatus = statusFor(standing);
+    if (
+      standing.rank !== index + 1 ||
+      standing.sortKey !== index + 1 ||
+      standing.participationStatus !== participationStatus
+    ) {
+      await ctx.db.patch(standing._id, {
+        rank: index + 1,
+        sortKey: index + 1,
+        participationStatus,
+        updatedAt: now,
+      });
+    }
+  }
+}
 import {
   MAX_TOURNAMENT_PLAYERS,
   nonActiveParticipationStatuses,
@@ -154,13 +219,67 @@ export async function deleteStandingsForReopenedRound(
     return;
   }
   const nonActive = await nonActiveParticipationStatuses(ctx, tournamentId);
-  const now = Date.now();
+  // A player disqualified since the promoted round was written still ranks
+  // in it where they stood then. Now that this round is the latest, they
+  // move to the tail and everyone below moves up a place.
+  await restackStandings(
+    ctx,
+    standings,
+    (standing) => nonActive.get(standing.playerId) ?? "active",
+  );
+}
+
+// Any completed round's standings as the organizer view shows them, with
+// each row's live participation status. A disqualified player takes no
+// place: the latest round holds them at the tail, but an earlier round's
+// snapshot still ranks them where they stood then, so this leaves them out
+// by live status and numbers the rest 1..n.
+export function standingsWithoutDisqualified(
+  standings: Doc<"roundStandings">[],
+  nonActiveStatuses: Awaited<ReturnType<typeof nonActiveParticipationStatuses>>,
+) {
+  const rows: {
+    standing: Doc<"roundStandings">;
+    registrationStatus: "active" | "dropped" | "eliminated";
+  }[] = [];
   for (const standing of standings) {
-    const participationStatus = nonActive.get(standing.playerId) ?? "active";
-    if (standing.participationStatus !== participationStatus) {
-      await ctx.db.patch(standing._id, { participationStatus, updatedAt: now });
+    const registrationStatus =
+      nonActiveStatuses.get(standing.playerId) ?? "active";
+    if (registrationStatus === "disqualified") {
+      continue;
     }
+    rows.push({
+      standing: { ...standing, rank: rows.length + 1 },
+      registrationStatus,
+    });
   }
+  return rows;
+}
+
+// Takes a just-disqualified player out of the places in the standings every
+// player reads: in the tournament's latest completed round their row moves
+// to the tail, stamped "disqualified", and every lower-ranked player moves
+// up one place. One range read and at most a field's worth of patches.
+// Called only by setRegistrationState (model/participation.ts), in place of
+// the plain status patch every other transition makes. A tournament with no
+// completed round has no standings to restack.
+export async function moveDisqualifiedToStandingsTail(
+  ctx: MutationCtx,
+  tournamentId: Id<"tournaments">,
+  registrationId: Id<"tournamentRegistrations">,
+) {
+  const latestRound = await latestCompletedRound(ctx, tournamentId);
+  if (!latestRound) {
+    return;
+  }
+  await restackStandings(
+    ctx,
+    await standingsInRankOrder(ctx, latestRound._id),
+    (standing) =>
+      standing.playerId === registrationId
+        ? "disqualified"
+        : (standing.participationStatus ?? "active"),
+  );
 }
 
 // Rewrites the round's standings from cumulative stats through it, making it
@@ -184,13 +303,23 @@ export async function replaceStandingsForRound(
     round,
     matchesWithPlayers,
   );
-  const ranked = await rankedStatsForRound(
+  // A disqualified player takes no place in the standings: their row is
+  // written, so their record folds forward and keeps feeding former
+  // opponents' tiebreakers, but after every ranked player (see the note at
+  // the top of this module).
+  const ordered = await rankedStatsForRound(
     ctx,
     stats,
     phase,
     round,
     matchesWithPlayers,
   );
+  const isDisqualified = ({ playerStats }: RankedPlayerStats) =>
+    playerStats.registration.participationStatus === "disqualified";
+  const ranked = [
+    ...ordered.filter((entry) => !isDisqualified(entry)),
+    ...ordered.filter(isDisqualified),
+  ];
   const now = Date.now();
 
   for (let index = 0; index < ranked.length; index += 1) {
@@ -394,7 +523,9 @@ async function cumulativeStatsThroughRound(
   // Dropped players stay in the map so their records keep feeding their
   // former opponents' OMW%/OGW% (MTR Appendix C: a drop does not erase
   // a record); they also stay ranked, with their record frozen at the point
-  // they stopped playing.
+  // they stopped playing. Disqualified players stay in the map for the same
+  // reason, and keep a row to fold forward from, but hold no place
+  // (replaceStandingsForRound).
   const registrations = await participantRegistrations(ctx, tournament._id);
   const stats = new Map<Id<"tournamentRegistrations">, PlayerStats>(
     registrations.map((registration) => [

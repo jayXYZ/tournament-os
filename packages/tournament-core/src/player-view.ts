@@ -58,12 +58,21 @@ export function describeCurrentMatch(
   }
 
   if (currentMatch.kind === "player_meeting") {
-    if (currentMatch.myRegistrationStatus === "dropped") {
+    // A seat is for a player still in the event: one who dropped or was
+    // disqualified after the seating snapshot keeps the row but not the
+    // seat.
+    if (
+      currentMatch.myRegistrationStatus === "dropped" ||
+      currentMatch.myRegistrationStatus === "disqualified"
+    ) {
       return {
         kind: "status",
         icon: "swords",
         title: "No seat for the player meeting",
-        body: "You have dropped from this tournament, so you are no longer seated.",
+        body:
+          currentMatch.myRegistrationStatus === "dropped"
+            ? "You have dropped from this tournament, so you are no longer seated."
+            : "You have been disqualified from this tournament, so you are no longer seated.",
       };
     }
     return {
@@ -112,7 +121,9 @@ export function describeCurrentMatch(
       body:
         currentMatch.myRegistrationStatus === "dropped"
           ? "You have dropped from this tournament, so you are no longer paired."
-          : "You are not paired this round.",
+          : currentMatch.myRegistrationStatus === "disqualified"
+            ? "You have been disqualified from this tournament, so you are no longer paired."
+            : "You are not paired this round.",
     };
   }
 
@@ -194,6 +205,9 @@ export function describeHeaderBadge(
   }
   if (currentMatch.myRegistrationStatus === "dropped") {
     return { label: "Dropped", tone: "destructive" };
+  }
+  if (currentMatch.myRegistrationStatus === "disqualified") {
+    return { label: "Disqualified", tone: "destructive" };
   }
   if (currentMatch.tournament.lifecycle === "completed") {
     return { label: "Completed", tone: "secondary" };
@@ -282,6 +296,24 @@ function resultProvenance(currentMatch: MyActiveMatch): {
         tone: "secondary",
       },
       note: "A drop during an unfinished match concedes it. Played to a result first? Find a judge or the tournament organizer.",
+    };
+  }
+  // A disqualification's match loss (CONTEXT.md "Disqualification (DQ)").
+  // The opponent learns only that the match was awarded; the reason is the
+  // organizer's.
+  if (match.currentResultKind === "dq") {
+    return {
+      badge: {
+        label:
+          me.outcome === "loss"
+            ? "You were disqualified"
+            : "Opponent disqualified",
+        tone: "secondary",
+      },
+      note:
+        me.outcome === "loss"
+          ? "Questions? Find the head judge or the tournament organizer."
+          : null,
     };
   }
   // The adjudications (see CONTEXT.md "Forfeit" and "No-Show") are awarded

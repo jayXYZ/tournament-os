@@ -243,6 +243,23 @@ export function registrationDropEffect(
     : "drop";
 }
 
+// What the organizer "disqualify" action would do to a registration right
+// now, or null when the action is unavailable. A disqualification exists
+// only while the tournament is live (CONTEXT.md "Disqualification (DQ)"),
+// and reaches any confirmed entrant not already disqualified: penalties are
+// still issued to a player who dropped or was eliminated first (IPG 1.2).
+// disqualifyPlayer enforces this rule and organizer roster rows report it.
+export function registrationDisqualifyEffect(
+  lifecycle: Doc<"tournaments">["lifecycle"],
+  registration: Doc<"tournamentRegistrations">,
+): "disqualify" | null {
+  return lifecycle === "in_progress" &&
+    registration.entryStatus === "confirmed" &&
+    registration.participationStatus !== "disqualified"
+    ? "disqualify"
+    : null;
+}
+
 // What the organizer "reinstate" action would do to a registration right
 // now, or null when the action is unavailable — registrationDropEffect's
 // counterpart. Before play a cancelled entry is restored to a confirmed seat
