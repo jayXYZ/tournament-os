@@ -8,7 +8,7 @@ description: How to drive the tournament-os web app end-to-end for verification 
 ## Handles
 
 - Dev server: `vite dev` from `apps/web/` (usually already running on http://localhost:3000; check `lsof -iTCP:3000`). Convex backend is a cloud dev deployment — no local process needed for frontend-only changes.
-- Browser: Playwright chromium installed in a scratchpad dir (`npm i playwright && npx playwright install chromium`), persist auth via `context.storageState({ path })`.
+- Browser: Playwright chromium installed in a scratchpad dir (`pnpm add playwright && pnpm exec playwright install chromium`), persist auth via `context.storageState({ path })`.
 
 ## Auth (the tricky part)
 
@@ -28,5 +28,4 @@ A fresh user can self-serve everything: create an organization from the breadcru
 
 ## Gotchas
 
-- Only the first Swiss phase is ever advanced by the backend; later phases stay `upcoming`.
 - Pre-production: dev DB is wipe-anytime, so leftover test orgs/tournaments are acceptable; note them in the report.
