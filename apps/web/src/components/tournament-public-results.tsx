@@ -286,7 +286,10 @@ function PublicMatchesView({
       </div>
       {matches.length === 0 ? (
         <p className="py-6 text-center text-sm text-muted-foreground">
-          No players match your search.
+          {/* A round can be released with nobody left to pair. */}
+          {result.matches.length === 0
+            ? 'No matches in this round.'
+            : 'No players match your search.'}
         </p>
       ) : (
         <ul className="divide-y rounded-md border">

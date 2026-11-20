@@ -273,6 +273,13 @@ describe('matches', () => {
     expect(rows()).toEqual(['2Cal vs DeeAwaiting'])
   })
 
+  test('a released round with no matches says so, not that a search missed', () => {
+    state.matches = () => ({ ...matchesFor(2), matches: [] })
+    render('in_progress')
+    expect(text()).toContain('No matches in this round.')
+    expect(text()).not.toContain('No players match your search.')
+  })
+
   test('no released round yet says pairings are coming', () => {
     state.matches = () => ({ phases: [], round: null, matches: [] })
     render('in_progress')

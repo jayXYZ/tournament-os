@@ -73,7 +73,7 @@ function playHasStarted(tournament: Doc<"tournaments">) {
 export function standingRowProjection(standing: Doc<"roundStandings">) {
   return {
     rank: standing.rank,
-    name: publicPlayerName(standing.playerName),
+    name: standing.playerName ?? null,
     matchPoints: standing.matchPoints,
     matchWins: standing.matchWins,
     matchLosses: standing.matchLosses,
@@ -170,6 +170,10 @@ export async function publicStandings(
       const row = standingRowProjection(standing);
       return {
         ...row,
+        // Withheld here, at the public seam, and not in the shared row: the
+        // player standings keep the stored name, which every entrant in the
+        // event could already read.
+        name: publicPlayerName(standing.playerName),
         // A bracket loss in this round is already public (playoffStatus
         // says so), so only the cut's own eliminations are held back.
         registrationStatus:

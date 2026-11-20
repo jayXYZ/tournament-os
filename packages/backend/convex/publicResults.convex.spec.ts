@@ -126,9 +126,20 @@ test("the projection carries no seed, tiebreakRandom, or organizer-only data", a
   const publicCode = await publicCodeOf(t, tournamentId);
   await start(t, tournamentId);
   await playOutCurrentRound(t, tournamentId);
-  await t
-    .withIdentity(organizerIdentity)
-    .mutation(api.tournaments.rounds.generateNextRound, { tournamentId });
+  const organizer = t.withIdentity(organizerIdentity);
+  await organizer.mutation(api.tournaments.rounds.generateNextRound, {
+    tournamentId,
+  });
+  // A scored match in the round being read, with an organizer's note on it.
+  const pairing = await organizerPairing(t, tournamentId, 1);
+  await organizer.mutation(api.tournaments.rounds.recordMatchResult, {
+    matchId: pairing.match._id,
+    playerOneRegistrationId: pairing.players[0].playerId,
+    playerTwoRegistrationId: pairing.players[1].playerId,
+    playerOneGameWins: 2,
+    playerTwoGameWins: 0,
+    note: "organizer-only-note",
+  });
 
   const standings = await t.query(
     api.tournaments.publicResults.getPublicStandings,
@@ -139,7 +150,11 @@ test("the projection carries no seed, tiebreakRandom, or organizer-only data", a
     { publicCode },
   );
   expect(standings?.standings?.rows).toHaveLength(4);
-  expect(matches?.matches.length).toBeGreaterThan(0);
+  expect(matches?.round?.roundNumber).toBe(2);
+  expect(
+    matches?.matches.filter((match) => match.matchStatus === "completed"),
+  ).toHaveLength(1);
+  expect(JSON.stringify(matches)).not.toContain("organizer-only-note");
 
   const forbidden = [
     "seed",
@@ -616,6 +631,15 @@ test("an email address typed as a player's name is withheld from the public", as
   // A handle and an ordinary name are not addresses.
   expect(publicPlayerName("@alex")).toBe("@alex");
   expect(publicPlayerName("Alex")).toBe("Alex");
+
+  // The filter is the public seam's: the player standings keep the stored
+  // name, which every entrant could already read.
+  const playerRows = await t
+    .withIdentity(playerIdentity(1))
+    .query(api.tournaments.player.getLatestStandings, { tournamentId });
+  expect(
+    playerRows?.rows.map((row) => row.name).filter((name) => name === null),
+  ).toEqual([]);
 });
 
 test("a cancelled event's public results are frozen", async () => {
