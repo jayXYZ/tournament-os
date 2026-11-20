@@ -3,22 +3,29 @@ import {
   formatGameScoreline,
   matchResultKindLabel,
 } from '@paper-pairings/core'
-import type { PairingRow } from './pairing-row'
+import type { FunctionReturnType } from 'convex/server'
+import type { api } from '@paper-pairings/backend/convex/_generated/api'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 
 // The score slip is the one piece of paper every organizer already knows:
 // a table number, two names, and a result box that is empty until someone
 // writes in it. These pieces are that slip's vocabulary, shared by the
-// Pairings table and the overview's ledger so a match reads the same
-// everywhere.
+// organizer's Pairings table and overview ledger and the public event page's
+// matches, so a match reads the same everywhere.
+//
+// The slip's shape is the public match projection (getPublicMatches): only
+// what anyone may see of a match. Organizer rows convert into it
+// (pairing-row.ts toScoreSlip), so nothing organizer-only can reach the
+// slip's rendering by accident.
+export type ScoreSlip = NonNullable<
+  FunctionReturnType<typeof api.tournaments.publicResults.getPublicMatches>
+>['matches'][number]
 
-export function ScoreSlipTable({ row }: { row: PairingRow }) {
+export function ScoreSlipTable({ row }: { row: ScoreSlip }) {
   return (
     <span className="font-mono text-sm font-medium tabular-nums">
-      {row.match.tableNumber ?? (
-        <span className="text-muted-foreground">Bye</span>
-      )}
+      {row.tableNumber ?? <span className="text-muted-foreground">Bye</span>}
     </span>
   )
 }
@@ -27,7 +34,7 @@ export function ScoreSlipPlayers({
   row,
   layout = 'stacked',
 }: {
-  row: PairingRow
+  row: ScoreSlip
   layout?: 'stacked' | 'inline'
 }) {
   const playerOne = row.players.at(0)
@@ -37,7 +44,7 @@ export function ScoreSlipPlayers({
   if (layout === 'inline') {
     return (
       <span className="font-medium text-foreground">
-        {displayPlayerName(playerOne?.playerName)}
+        {displayPlayerName(playerOne?.name)}
         {isBye ? (
           <span className="font-normal text-muted-foreground">
             {' '}
@@ -46,7 +53,7 @@ export function ScoreSlipPlayers({
         ) : (
           <>
             <span className="font-normal text-muted-foreground"> vs </span>
-            {displayPlayerName(playerTwo?.playerName)}
+            {displayPlayerName(playerTwo?.name)}
           </>
         )}
       </span>
@@ -56,7 +63,7 @@ export function ScoreSlipPlayers({
   return (
     <>
       <p className="font-medium text-foreground">
-        {displayPlayerName(playerOne?.playerName)}
+        {displayPlayerName(playerOne?.name)}
         {isBye ? null : (
           <span className="font-normal text-muted-foreground"> vs.</span>
         )}
@@ -67,7 +74,7 @@ export function ScoreSlipPlayers({
         </Badge>
       ) : (
         <p className="font-medium text-foreground">
-          {displayPlayerName(playerTwo?.playerName)}
+          {displayPlayerName(playerTwo?.name)}
         </p>
       )}
     </>
@@ -77,25 +84,31 @@ export function ScoreSlipPlayers({
 // The result box. Empty and dashed until a result exists; then the scoreline
 // with its provenance, because the scoreline alone cannot say whether a
 // result was played, awarded, or reported by a player and not yet confirmed.
+// `pendingLabel` names the empty box: "Awaiting" while the round is live,
+// something else where no result will come (a cancelled event).
 export function ScoreSlipResult({
   row,
   className,
+  pendingLabel = 'Awaiting',
 }: {
-  row: PairingRow
+  row: ScoreSlip
   className?: string
+  pendingLabel?: string
 }) {
   const playerOne = row.players.at(0)
   const playerTwo = row.players.at(1)
-  if (row.match.matchStatus !== 'completed') {
+  if (row.matchStatus !== 'completed') {
     return (
       <span
-        aria-label="Awaiting result"
+        aria-label={
+          pendingLabel === 'Awaiting' ? 'Awaiting result' : pendingLabel
+        }
         className={cn(
-          'inline-flex h-6 min-w-14 items-center justify-center rounded-sm border border-dashed border-muted-foreground/50 text-xs text-muted-foreground',
+          'inline-flex h-6 min-w-14 items-center justify-center rounded-sm border border-dashed border-muted-foreground/50 px-1.5 text-xs text-muted-foreground',
           className,
         )}
       >
-        Awaiting
+        {pendingLabel}
       </span>
     )
   }
@@ -105,8 +118,7 @@ export function ScoreSlipResult({
     ? (playerOne.gameLosses ?? 0)
     : (playerTwo?.gameWins ?? 0)
   const gameDraws = playerOne?.gameDraws ?? 0
-  const kindLabel = matchResultKindLabel(row.match.currentResultKind)
-  const unconfirmed = row.match.reportedByRegistrationId !== undefined
+  const kindLabel = matchResultKindLabel(row.resultKind)
 
   let summary: string
   if (playerOneWins === playerTwoWins) {
@@ -114,7 +126,7 @@ export function ScoreSlipResult({
   } else {
     const playerOneWon = playerOneWins > playerTwoWins
     const winnerName = displayPlayerName(
-      (playerOneWon ? playerOne : playerTwo)?.playerName,
+      (playerOneWon ? playerOne : playerTwo)?.name,
     )
     const winnerWins = playerOneWon ? playerOneWins : playerTwoWins
     const loserWins = playerOneWon ? playerTwoWins : playerOneWins
@@ -127,7 +139,9 @@ export function ScoreSlipResult({
       {kindLabel !== null ? (
         <Badge variant="secondary">{kindLabel}</Badge>
       ) : null}
-      {unconfirmed ? <Badge variant="outline">Player-reported</Badge> : null}
+      {row.playerReported ? (
+        <Badge variant="outline">Player-reported</Badge>
+      ) : null}
     </div>
   )
 }
