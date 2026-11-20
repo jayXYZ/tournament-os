@@ -328,6 +328,25 @@ tournament not yet started, their meeting seat, a wait for pairings or the
 next round, no match this round, or their live match.
 _Avoid_: current match (as a concept name), play surface
 
+**Public Results**:
+The standings and matches an Event page shows to every viewer who may open
+that page — signed out on a public event, with the invite code on a private
+one. Standings are the latest completed round's, ranked and tiebroken as
+in the Player View. Matches are listed per round, and only for rounds whose
+pairings have been released to players: a round still held for the
+organizer is absent, not shown as pending. Before play starts there is
+nothing to show; a completed or cancelled event keeps what it reached, and
+a cancelled event's record is frozen: no pairings are released and no
+result is entered after the cancel. A held round's cut is held with it:
+until a playoff's pairings are released, the players it cut still read as
+active in the standings. A Rewind is not hidden: reopening a finished round
+shows, and standings fall back to the round before it.
+Names are the player-safe name stamps, never an email: a stamp shaped like
+an email address is withheld. Standings carry a player's current name,
+which keeps following the account after the event ends or is cancelled; a
+round's matches carry the name as it stood when the round was paired.
+_Avoid_: spectator view, live results
+
 ### Containers
 
 **Event**:

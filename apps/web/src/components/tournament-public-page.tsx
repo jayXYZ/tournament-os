@@ -25,6 +25,7 @@ import { SignInToViewEvent } from '@/components/shared/sign-in-to-view'
 import { cancelOutcomeNote } from '@/components/shared/payment-return'
 import { RoundTimerIndicator } from '@/components/shared/round-timer-indicator'
 import { SiteShell, SiteShellBackLink } from '@/components/shared/site-shell'
+import { TournamentPublicResults } from '@/components/tournament-public-results'
 import {
   TournamentLifecycleBadge,
   formatTournamentDateLong,
@@ -279,15 +280,18 @@ function TournamentDetails({
         ) : null}
       </div>
       <Separator />
-      <p className="text-xs text-muted-foreground">
-        {tournament.lifecycle === 'in_progress'
-          ? 'The event is under way. Pairings and standings are in your player view.'
-          : tournament.lifecycle === 'completed'
-            ? 'This event has finished. Final standings are in the player view.'
-            : tournament.lifecycle === 'cancelled'
-              ? 'This event was cancelled.'
-              : 'Pairings and standings appear in your player view once the event begins.'}
-      </p>
+      {tournament.lifecycle === 'cancelled' ? (
+        <p className="text-xs text-muted-foreground">
+          This event was cancelled. Pairings and standings stop where play
+          stopped.
+        </p>
+      ) : null}
+      <TournamentPublicResults
+        key={tournament.publicCode}
+        publicCode={tournament.publicCode}
+        inviteCode={inviteCode}
+        lifecycle={tournament.lifecycle}
+      />
     </article>
   )
 }

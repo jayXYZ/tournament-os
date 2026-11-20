@@ -617,11 +617,30 @@ separate concerns. Model them explicitly before adding more boolean settings.
   - [ ] Configure organizer-only, participant, or public audience per artifact
   - [ ] Configure manual, during-event, after-event, or never timing for standings, pairings, and decklists
   - [ ] Enforce publication policy consistently in public, player, and organizer queries
+  - [ ] Show live standings and released-round matches on the public event
+        page (CONTEXT.md "Public Results"), on `feat/public-live-standings`:
+        `getPublicStandings` and `getPublicMatches` admit exactly
+        `getPublicTournament`'s viewers through `tournamentViewAccess` and
+        return projections (no `seed`, `tiebreakRandom`, ids of other
+        players, or organizer labels); a held round is absent from both.
+        Shown to everyone who can open the page, with no organizer switch,
+        until the audience/timing policy above lands. A held playoff's cut
+        is kept out of the public standings until release, an email-shaped
+        name stamp is withheld, and a cancelled event's record is frozen
+        (`publishPairings` and `recordMatchResult` refuse it). Left open by
+        the review: the player view's `getLatestStandings` still shows a
+        held cut's eliminations and an email-shaped name to other entrants, `getPublicMatches` reads match players
+        one index range per match where a round index would make it one
+        read, and a rewind promotes the earlier round's standings with the
+        names they were written with, so a rename made since is lost until
+        the next sign-in re-stamp
   - [ ] Project organizer-only fields away from public tournament reads:
         `getPublicTournament` and `listPublicChildEvents` return the
         tournament document whole, so the required pairing `seed` is public
         and lets a player compute every `tiebreakRandom` and the bracket
-        shuffle
+        shuffle. The same documents carry `participationCounts` and
+        `roundTimer`, which change when a held round is paired or timed, so
+        they can still give away a round that Public Results hides
 - [ ] Add structured paper-event location data
   - [ ] Store venue name and structured address fields
   - [ ] Store timezone and optional normalized place/coordinate data

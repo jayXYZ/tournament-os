@@ -6,11 +6,15 @@ import { api } from '@paper-pairings/backend/convex/_generated/api'
 import { displayPlayerName } from '@paper-pairings/core'
 import { ManageMatchMenu } from './manage-match-menu'
 import { MatchResultCell } from './match-result-cell'
-import { ScoreSlipPlayers, ScoreSlipTable } from './score-slip'
+import { toScoreSlip } from './pairing-row'
 import type { ColumnDef } from '@tanstack/react-table'
 import type { Id } from '@paper-pairings/backend/convex/_generated/dataModel'
 import type { BestOf } from '@paper-pairings/shared/match-structure'
 import type { PairingRow } from './pairing-row'
+import {
+  ScoreSlipPlayers,
+  ScoreSlipTable,
+} from '@/components/shared/score-slip'
 import { TableEmptyState } from '@/components/shared/table-empty-state'
 import { TableLoadingSkeleton } from '@/components/shared/table-loading-skeleton'
 import { DataTable, DataTableColumnHeader } from '@/components/ui/data-table'
@@ -21,11 +25,12 @@ import {
 
 // Built per render because the manage cell needs the round's phase match
 // structure and draw rule to bound result entry, and whether the round's
-// pairings are still organizer-editable.
+// pairings are still organizer-editable and its results still enterable.
 function buildPairingColumns(
   bestOf: BestOf,
   allowDraws: boolean,
   canEditPairings: boolean,
+  canEnterResults: boolean,
 ): Array<ColumnDef<PairingRow>> {
   return [
     {
@@ -35,7 +40,7 @@ function buildPairingColumns(
         <DataTableColumnHeader column={column} title="Table" />
       ),
       meta: { className: 'w-20' },
-      cell: ({ row }) => <ScoreSlipTable row={row.original} />,
+      cell: ({ row }) => <ScoreSlipTable row={toScoreSlip(row.original)} />,
     },
     {
       id: 'players',
@@ -50,7 +55,7 @@ function buildPairingColumns(
       // put as pairings change across pages.
       meta: { className: 'w-full' },
       enableSorting: false,
-      cell: ({ row }) => <ScoreSlipPlayers row={row.original} />,
+      cell: ({ row }) => <ScoreSlipPlayers row={toScoreSlip(row.original)} />,
     },
     {
       id: 'result',
@@ -69,6 +74,7 @@ function buildPairingColumns(
           bestOf={bestOf}
           allowDraws={allowDraws}
           canEditPairings={canEditPairings}
+          canEnterResults={canEnterResults}
         />
       ),
     },
@@ -80,18 +86,21 @@ export function PairingsTable({
   bestOf,
   allowDraws,
   canEditPairings,
+  canEnterResults,
 }: {
   roundId: Id<'tournamentRounds'>
   bestOf: BestOf
   allowDraws: boolean
   canEditPairings: boolean
+  canEnterResults: boolean
 }) {
   const pairings = useQuery(api.tournaments.rounds.listRoundPairings, {
     roundId,
   })
   const columns = useMemo(
-    () => buildPairingColumns(bestOf, allowDraws, canEditPairings),
-    [bestOf, allowDraws, canEditPairings],
+    () =>
+      buildPairingColumns(bestOf, allowDraws, canEditPairings, canEnterResults),
+    [bestOf, allowDraws, canEditPairings, canEnterResults],
   )
 
   if (pairings === undefined) {

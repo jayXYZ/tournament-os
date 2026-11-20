@@ -1,16 +1,9 @@
-import { useState } from 'react'
-import {
-  displayPlayerName,
-  formatPercent,
-  formatRecord,
-  standingStatusLabel,
-  useLatestStandings,
-} from '@paper-pairings/core'
+import { useLatestStandings } from '@paper-pairings/core'
 import { ListOrdered } from 'lucide-react'
-import type { StandingRow } from '@paper-pairings/core'
 
 import type { Id } from '@paper-pairings/backend/convex/_generated/dataModel'
 import { SectionHeader } from '@/components/shared/section-header'
+import { StandingsRows } from '@/components/shared/standings-rows'
 import {
   Empty,
   EmptyDescription,
@@ -19,7 +12,6 @@ import {
   EmptyTitle,
 } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
-import { cn } from '@/lib/utils'
 
 export function StandingsList({
   tournamentId,
@@ -65,57 +57,8 @@ export function StandingsList({
           </>
         }
       />
-      <div className="grid gap-1.5">
-        {standings.rows.map((row) => (
-          <StandingsRow key={row.rank} row={row} />
-        ))}
-      </div>
+      <StandingsRows rows={standings.rows} />
     </section>
-  )
-}
-
-function StandingsRow({ row }: { row: StandingRow }) {
-  const [expanded, setExpanded] = useState(false)
-  const statusLabel = standingStatusLabel(row)
-
-  return (
-    <button
-      type="button"
-      onClick={() => setExpanded((value) => !value)}
-      aria-expanded={expanded}
-      className={cn(
-        'rounded-md border px-3 py-2 text-left',
-        row.isMe ? 'border-primary bg-primary/5' : 'border-border',
-      )}
-    >
-      <div className="flex items-center gap-3">
-        <span className="w-7 shrink-0 text-sm font-semibold tabular-nums text-muted-foreground">
-          {row.rank}
-        </span>
-        <span className="min-w-0 flex-1 truncate text-sm font-medium">
-          {displayPlayerName(row.name)}
-          {row.isMe ? (
-            <span className="text-muted-foreground"> (you)</span>
-          ) : null}
-        </span>
-        {statusLabel ? (
-          <span className="text-xs text-muted-foreground">{statusLabel}</span>
-        ) : null}
-        <span className="text-sm tabular-nums text-muted-foreground">
-          {formatRecord(row.matchWins, row.matchLosses, row.matchDraws)}
-        </span>
-        <span className="w-10 text-right text-sm font-semibold tabular-nums">
-          {row.matchPoints}
-        </span>
-      </div>
-      {expanded ? (
-        <p className="mt-1.5 pl-10 text-xs text-muted-foreground">
-          OMW {formatPercent(row.opponentMatchWinPct)} · GW{' '}
-          {formatPercent(row.gameWinPct)} · OGW{' '}
-          {formatPercent(row.opponentGameWinPct)}
-        </p>
-      ) : null}
-    </button>
   )
 }
 

@@ -161,6 +161,13 @@ async function requireAdjudicableMatch(
     match.tournamentId,
   );
   const round = await requireRound(ctx, match.tournamentRoundId);
+  // The round check alone lets a cancelled event through: cancelling leaves
+  // its current round in progress, and the record it reached is what the
+  // event page keeps showing, so it is frozen with the tournament. It gets
+  // its own refusal, since that round still reads as active.
+  if (tournament.lifecycle !== "in_progress") {
+    throw userError("Tournament is not in progress");
+  }
   if (round.roundStatus !== "in_progress") {
     throw userError(
       "Match results can only be recorded during an active round",

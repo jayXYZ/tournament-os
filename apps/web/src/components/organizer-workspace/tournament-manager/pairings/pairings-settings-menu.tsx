@@ -36,8 +36,13 @@ export function PairingsSettingsMenu({
     api.tournaments.rounds.rewindLatestRound,
   )
 
+  // Simulated results are result entries: only into an event in play
+  // (model/testing.ts generateTestResults refuses a cancelled one).
   const canSimulate =
-    board !== undefined && board.tournament.isTestEvent && roundId !== null
+    board !== undefined &&
+    board.tournament.isTestEvent &&
+    board.tournament.lifecycle === 'in_progress' &&
+    roundId !== null
 
   async function handleSimulateResults() {
     if (!board || !roundId) {

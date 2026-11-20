@@ -22,11 +22,13 @@ export function ManageMatchMenu({
   bestOf,
   allowDraws,
   canEditPairings,
+  canEnterResults,
 }: {
   row: PairingRow
   bestOf: BestOf
   allowDraws: boolean
   canEditPairings: boolean
+  canEnterResults: boolean
 }) {
   const isBye = row.players.some((player) => player.isBye)
   const [enteringResult, setEnteringResult] = useState(false)
@@ -73,7 +75,7 @@ export function ManageMatchMenu({
         <DropdownMenuContent align="end">
           <DropdownMenuGroup>
             <DropdownMenuItem
-              disabled={isBye}
+              disabled={isBye || !canEnterResults}
               onSelect={() => setEnteringResult(true)}
             >
               <ClipboardPen />

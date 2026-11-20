@@ -65,6 +65,9 @@ vi.mock('convex/react', () => ({
     }
     if (name === 'payments/queries:getFeePreview')
       return state.answers.feePreview
+    // The results section below the panel (tournament-public-results.test.tsx
+    // covers it); these rows only look at the panel, so it stays loading.
+    if (name.startsWith('tournaments/publicResults:')) return undefined
     throw new Error(`Unexpected query ${name}`)
   },
   useMutation: (mutation: FunctionReference<'mutation'>) => {

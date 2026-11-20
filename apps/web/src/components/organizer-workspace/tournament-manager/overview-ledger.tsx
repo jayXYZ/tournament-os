@@ -6,14 +6,15 @@ import { ClipboardCheck } from 'lucide-react'
 import { api } from '@paper-pairings/backend/convex/_generated/api'
 import { displayPlayerName } from '@paper-pairings/core'
 import { EnterResultDialog } from './pairings/enter-result-dialog'
+import { toScoreSlip } from './pairings/pairing-row'
+import type { Id } from '@paper-pairings/backend/convex/_generated/dataModel'
+import type { BestOf } from '@paper-pairings/shared/match-structure'
+import type { PairingRow } from './pairings/pairing-row'
 import {
   ScoreSlipPlayers,
   ScoreSlipResult,
   ScoreSlipTable,
-} from './pairings/score-slip'
-import type { Id } from '@paper-pairings/backend/convex/_generated/dataModel'
-import type { BestOf } from '@paper-pairings/shared/match-structure'
-import type { PairingRow } from './pairings/pairing-row'
+} from '@/components/shared/score-slip'
 import { SectionHeader } from '@/components/shared/section-header'
 import { Button } from '@/components/ui/button'
 import {
@@ -138,15 +139,16 @@ function LedgerRow({
   allowDraws: boolean
 }) {
   const [entering, setEntering] = useState(false)
+  const slip = toScoreSlip(row)
   return (
     <li className="flex items-center gap-4 py-2.5">
       <span className="w-8 shrink-0 text-right">
-        <ScoreSlipTable row={row} />
+        <ScoreSlipTable row={slip} />
       </span>
       <span className="min-w-0 flex-1 truncate text-sm">
-        <ScoreSlipPlayers row={row} layout="inline" />
+        <ScoreSlipPlayers row={slip} layout="inline" />
       </span>
-      <ScoreSlipResult row={row} className="hidden sm:inline-flex" />
+      <ScoreSlipResult row={slip} className="hidden sm:inline-flex" />
       <Button
         type="button"
         variant="outline"
@@ -236,7 +238,7 @@ function UnconfirmedRow({
             className="size-1.5 shrink-0 rounded-full bg-round-pairings"
           />
           <span className="text-muted-foreground">Table</span>
-          <ScoreSlipTable row={row} />
+          <ScoreSlipTable row={toScoreSlip(row)} />
         </span>
         <span className="ml-auto">
           <Button
@@ -249,7 +251,7 @@ function UnconfirmedRow({
           </Button>
         </span>
       </div>
-      <ScoreSlipResult row={row} />
+      <ScoreSlipResult row={toScoreSlip(row)} />
       <p className="text-xs text-muted-foreground">
         Reported by {displayPlayerName(reporter?.playerName)}.
       </p>
