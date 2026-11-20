@@ -310,17 +310,22 @@ function MatchRow({
   cancelled: boolean
 }) {
   return (
-    <li className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2.5 text-sm">
+    // Names first, whole: on a phone the result drops under them rather
+    // than truncating them, since a name is what a visitor scans for.
+    <li className="flex items-start gap-3 px-3 py-2.5 text-sm sm:items-center">
       <span className="w-8 shrink-0 text-right">
         <ScoreSlipTable row={match} />
       </span>
-      <span className="min-w-0 flex-1 truncate">
-        <ScoreSlipPlayers row={match} layout="inline" />
-      </span>
-      <ScoreSlipResult
-        row={match}
-        pendingLabel={cancelled ? 'Not played' : 'Awaiting'}
-      />
+      <div className="flex min-w-0 flex-1 flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+        <span className="min-w-0 break-words">
+          <ScoreSlipPlayers row={match} layout="inline" />
+        </span>
+        <ScoreSlipResult
+          row={match}
+          className="shrink-0"
+          pendingLabel={cancelled ? 'Not played' : 'Awaiting'}
+        />
+      </div>
     </li>
   )
 }
