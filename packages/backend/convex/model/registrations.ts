@@ -453,6 +453,25 @@ export async function droppedRegistrations(
     .take(MAX_TOURNAMENT_PLAYERS);
 }
 
+// Every confirmed entrant currently eliminated, by a cut or a bracket loss.
+// After a cut this is most of the field, so callers reach for it only when
+// they need the roster's own elimination record (eliminatedByRoundId), which
+// standings rows do not carry.
+export async function eliminatedRegistrations(
+  ctx: QueryCtx,
+  tournamentId: Id<"tournaments">,
+) {
+  return await ctx.db
+    .query("tournamentRegistrations")
+    .withIndex("by_tournamentId_and_entryStatus_and_participationStatus", (q) =>
+      q
+        .eq("tournamentId", tournamentId)
+        .eq("entryStatus", "confirmed")
+        .eq("participationStatus", "eliminated"),
+    )
+    .take(MAX_TOURNAMENT_PLAYERS);
+}
+
 // Participation status for every confirmed entrant who is no longer active,
 // keyed by registration id. Callers treat a missing key as "active".
 //

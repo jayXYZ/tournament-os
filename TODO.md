@@ -624,12 +624,20 @@ separate concerns. Model them explicitly before adding more boolean settings.
         return projections (no `seed`, `tiebreakRandom`, ids of other
         players, or organizer labels); a held round is absent from both.
         Shown to everyone who can open the page, with no organizer switch,
-        until the audience/timing policy above lands
+        until the audience/timing policy above lands. A held playoff's cut
+        is kept out of the public standings until release, an email-shaped
+        name stamp is withheld, and a cancelled event's record is frozen
+        (`publishPairings` and `recordMatchResult` refuse it). Left open by
+        the review: the player view's `getLatestStandings` still shows a
+        held cut's eliminations, and `getPublicMatches` reads match players
+        one index range per match where a round index would make it one read
   - [ ] Project organizer-only fields away from public tournament reads:
         `getPublicTournament` and `listPublicChildEvents` return the
         tournament document whole, so the required pairing `seed` is public
         and lets a player compute every `tiebreakRandom` and the bracket
-        shuffle
+        shuffle. The same documents carry `participationCounts` and
+        `roundTimer`, which change when a held round is paired or timed, so
+        they can still give away a round that Public Results hides
 - [ ] Add structured paper-event location data
   - [ ] Store venue name and structured address fields
   - [ ] Store timezone and optional normalized place/coordinate data

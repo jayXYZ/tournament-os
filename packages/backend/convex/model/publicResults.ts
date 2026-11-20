@@ -2,7 +2,10 @@ import type { Doc, Id } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
 import { latestCompletedRound } from "./phases";
 import { loadPhaseBoards } from "./progression";
-import { MAX_TOURNAMENT_PLAYERS } from "./registrations";
+import {
+  MAX_TOURNAMENT_PLAYERS,
+  eliminatedRegistrations,
+} from "./registrations";
 import {
   isPairingsVisibleToPlayers,
   roundMatchesWithPlayers,
@@ -17,7 +20,19 @@ import {
 // opponent lists, and anything organizer-only stay behind the projection.
 // Names are the player-safe stamps (model/nameStamps.ts) the rows already
 // carry — the copy the player standings and the organizer pairings render —
-// so a list costs no per-row identity join.
+// so a list costs no per-row identity join. A stamp is as old as its row:
+// standings carry the current name, a round's matches the name as it stood
+// when the round was paired.
+
+// A stamp is whatever the account holds or the organizer typed, and the
+// enrollment forms accept an email address typed into the name field. That
+// is a contact detail the public page must not print, so a stamp shaped like
+// an address is withheld and the row reads as an unnamed player.
+const EMAIL_SHAPED = /\S+@\S+\.\S+/;
+
+export function publicPlayerName(stamp: string | undefined): string | null {
+  return stamp === undefined || EMAIL_SHAPED.test(stamp) ? null : stamp;
+}
 
 // The tournament behind a public code, when the caller may open its event
 // page: getPublicTournament's rule (tournamentViewAccess), so the results can
@@ -87,11 +102,50 @@ export async function latestStandings(
   return { round, standings };
 }
 
+// The players a cut eliminated for a next phase whose first round is paired
+// but still held for the organizer. Pairing that round applies the cut
+// (eliminateNonQualifiers), which flips the non-qualifiers' status on the
+// very standings rows the public reads, so their status would announce the
+// held round and who made it. Empty when no later phase holds a round.
+//
+// The cut stamps the round it was drawn from, which is the latest completed
+// round, so one range over the eliminated roster finds exactly its batch:
+// players cut at an earlier boundary carry an earlier round's stamp and stay
+// eliminated in public, as they already were.
+async function playersCutForHeldRound(
+  ctx: QueryCtx,
+  tournament: Doc<"tournaments">,
+  latestRound: Doc<"tournamentRounds">,
+): Promise<ReadonlySet<Id<"tournamentRegistrations">>> {
+  const boards = await loadPhaseBoards(ctx, tournament._id);
+  const laterPhaseHoldsRound = boards.some(
+    ({ phase, rounds }) =>
+      phase._id !== latestRound.tournamentPhaseId &&
+      rounds.some(
+        (round) =>
+          round.roundNumber > latestRound.roundNumber &&
+          !isPairingsVisibleToPlayers(round),
+      ),
+  );
+  if (!laterPhaseHoldsRound) {
+    return new Set();
+  }
+  const eliminated = await eliminatedRegistrations(ctx, tournament._id);
+  return new Set(
+    eliminated
+      .filter(
+        (registration) => registration.eliminatedByRoundId === latestRound._id,
+      )
+      .map((registration) => registration._id),
+  );
+}
+
 // The public standings: the latest completed round's rows, projected. A
 // completed round is always released (completeRound publishes a held round as
 // part of the record), and the check below keeps that true here even if the
 // lifecycle ever changes, so standings never reveal results from a round the
-// players have not been shown.
+// players have not been shown. A held round's cut is kept back the same way:
+// until its pairings are released, the players it cut still read as active.
 export async function publicStandings(
   ctx: QueryCtx,
   tournament: Doc<"tournaments">,
@@ -103,10 +157,24 @@ export async function publicStandings(
   if (!latest || !isPairingsVisibleToPlayers(latest.round)) {
     return null;
   }
+  const heldCut = await playersCutForHeldRound(ctx, tournament, latest.round);
   return {
     roundNumber: latest.round.roundNumber,
     roundName: latest.round.roundName,
-    rows: latest.standings.map(standingRowProjection),
+    rows: latest.standings.map((standing) => {
+      const row = standingRowProjection(standing);
+      return {
+        ...row,
+        name: publicPlayerName(standing.playerName),
+        // A bracket loss in this round is already public (playoffStatus
+        // says so), so only the cut's own eliminations are held back.
+        registrationStatus:
+          heldCut.has(standing.playerId) &&
+          standing.playoffStatus !== "eliminated"
+            ? ("active" as const)
+            : row.registrationStatus,
+      };
+    }),
   };
 }
 
@@ -188,7 +256,7 @@ export async function publicRoundMatches(
       // Only whether one exists crosses the seam, not who reported it.
       playerReported: match.reportedByRegistrationId !== undefined,
       players: players.map((player) => ({
-        name: player.playerName ?? null,
+        name: publicPlayerName(player.playerName),
         isBye: player.isBye,
         gameWins: player.gameWins ?? null,
         gameLosses: player.gameLosses ?? null,

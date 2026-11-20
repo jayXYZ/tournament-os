@@ -88,6 +88,7 @@ export function TournamentPublicResults({
             publicCode={publicCode}
             inviteCode={inviteCode}
             final={lifecycle === 'completed'}
+            cancelled={lifecycle === 'cancelled'}
           />
         </TabsContent>
       </Tabs>
@@ -99,10 +100,12 @@ function PublicStandingsView({
   publicCode,
   inviteCode,
   final,
+  cancelled,
 }: {
   publicCode: string
   inviteCode?: string
   final: boolean
+  cancelled: boolean
 }) {
   const result = useQuery(api.tournaments.publicResults.getPublicStandings, {
     publicCode,
@@ -122,8 +125,13 @@ function PublicStandingsView({
     return (
       <TableEmptyState
         icon={ListOrdered}
-        title="No standings yet"
-        description="Standings appear after the first round is completed."
+        title={cancelled ? 'No standings' : 'No standings yet'}
+        description={
+          // A cancelled event will never post any, so it must not promise them.
+          cancelled
+            ? 'The event was cancelled before a round was completed.'
+            : 'Standings appear after the first round is completed.'
+        }
         className="min-h-48"
       />
     )
@@ -179,8 +187,12 @@ function PublicMatchesView({
     return (
       <TableEmptyState
         icon={Swords}
-        title="No pairings yet"
-        description="Pairings appear here as soon as the organizer releases them."
+        title={cancelled ? 'No pairings' : 'No pairings yet'}
+        description={
+          cancelled
+            ? 'The event was cancelled before any pairings were released.'
+            : 'Pairings appear here as soon as the organizer releases them.'
+        }
         className="min-h-48"
       />
     )
@@ -236,7 +248,8 @@ function PublicMatchesView({
         >
           <ChevronLeft aria-hidden="true" />
         </Button>
-        <div className="min-w-0">
+        {/* Polite, so stepping between rounds is announced to a screen reader. */}
+        <div className="min-w-0" aria-live="polite">
           <h2 className="text-sm font-medium">
             {current.roundName}
             {selected && selected.phaseCount > 1 ? (

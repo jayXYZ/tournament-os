@@ -318,4 +318,24 @@ describe('standings', () => {
     render('completed')
     expect(text()).toContain('No standings yet')
   })
+
+  test('an event cancelled before play promises nothing', () => {
+    state.standings = { standings: null }
+    state.matches = () => ({ phases: [], round: null, matches: [] })
+    render('cancelled')
+    expect(text()).toContain(
+      'The event was cancelled before a round was completed.',
+    )
+    expect(text()).not.toContain('No standings yet')
+    act(() => {
+      const tab = Array.from(container.querySelectorAll('[role="tab"]')).find(
+        (candidate) => candidate.textContent === 'Matches',
+      )!
+      tab.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+    })
+    expect(text()).toContain(
+      'The event was cancelled before any pairings were released.',
+    )
+    expect(text()).not.toContain('No pairings yet')
+  })
 })

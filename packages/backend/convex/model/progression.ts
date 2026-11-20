@@ -792,6 +792,12 @@ export async function publishPairings(
   if (round.tournamentId !== tournament._id) {
     throw new Error("Round not found");
   }
+  // Cancelling leaves the current round in progress, and a cancelled event
+  // keeps showing the record it reached (CONTEXT.md "Public Results"), so
+  // nothing may be released into that record afterwards.
+  if (tournament.lifecycle !== "in_progress") {
+    throw userError(TOURNAMENT_NOT_IN_PROGRESS);
+  }
   const phase = await requirePhase(ctx, round.tournamentPhaseId);
   if (phase.phaseCurrentRound !== round._id) {
     throw userError("Only the current round's pairings can be published");

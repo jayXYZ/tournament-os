@@ -462,6 +462,195 @@ test("a single-elimination phase shows its bracket rounds and playoff standings"
   ).toBe(true);
 });
 
+test("a held playoff round's cut stays out of the public standings until release", async () => {
+  const t = createConvexTest();
+  const { tournamentId } = await seedTournamentWithPlayers(t, {
+    name: "Held Cut",
+    playerCount: 4,
+    autoPublishPairings: false,
+    phases: [
+      {
+        phaseOrder: 1,
+        phaseRoundMode: "fixed",
+        phaseTotalRounds: 1,
+        phaseCutoff: { kind: "top_X_players", playerCount: 2 },
+      },
+      {
+        phaseOrder: 2,
+        phaseType: "single_elimination",
+        phaseRoundMode: "dynamic",
+      },
+    ],
+  });
+  const publicCode = await publicCodeOf(t, tournamentId);
+  const organizer = t.withIdentity(organizerIdentity);
+  const standings = async () =>
+    await t.query(api.tournaments.publicResults.getPublicStandings, {
+      publicCode,
+    });
+  await start(t, tournamentId);
+  await organizer.mutation(api.tournaments.rounds.publishPairings, {
+    roundId: (await currentRound(t, tournamentId))._id,
+  });
+  await playOutCurrentRound(t, tournamentId);
+
+  // The Swiss phase is over and nobody is cut yet.
+  const beforeCut = await standings();
+  expect(
+    beforeCut!.standings!.rows.map((row) => row.registrationStatus),
+  ).toEqual(["active", "active", "active", "active"]);
+
+  // Pairing the playoff applies the cut on the roster, but its pairings are
+  // held, so the public standings are unchanged down to the last field.
+  await organizer.mutation(api.tournaments.rounds.generateNextRound, {
+    tournamentId,
+  });
+  // (currentRound reads phase one; the playoff is phase two's round.)
+  const playoff = (await organizer.query(
+    api.tournaments.rounds.getCurrentRound,
+    {
+      tournamentId,
+    },
+  ))!;
+  expect(playoff.roundNumber).toBe(2);
+  expect(playoff.pairingsPublishedAt).toBeUndefined();
+  const eliminatedOnRoster = await t.run(
+    async (ctx) =>
+      (
+        await ctx.db
+          .query("tournamentRegistrations")
+          .withIndex(
+            "by_tournamentId_and_entryStatus_and_participationStatus",
+            (q) =>
+              q
+                .eq("tournamentId", tournamentId)
+                .eq("entryStatus", "confirmed")
+                .eq("participationStatus", "eliminated"),
+          )
+          .take(8)
+      ).length,
+  );
+  expect(eliminatedOnRoster).toBe(2);
+  expect(await standings()).toEqual(beforeCut);
+
+  // Released, the cut shows: the bottom two are eliminated.
+  await organizer.mutation(api.tournaments.rounds.publishPairings, {
+    roundId: playoff._id,
+  });
+  const afterRelease = await standings();
+  expect(
+    afterRelease!.standings!.rows.map((row) => row.registrationStatus),
+  ).toEqual(["active", "active", "eliminated", "eliminated"]);
+});
+
+test("an email address typed as a player's name is withheld from the public", async () => {
+  const t = createConvexTest();
+  const { tournamentId } = await seedTournamentWithPlayers(t, {
+    name: "Email As Name",
+    playerCount: 3,
+    playerNames: ["Ada", "Brook", "Cal"],
+    phases: [{ phaseOrder: 1, phaseRoundMode: "fixed", phaseTotalRounds: 2 }],
+  });
+  const publicCode = await publicCodeOf(t, tournamentId);
+  const organizer = t.withIdentity(organizerIdentity);
+  // The enrollment flow as an organizer can drive it: a guest enrolled by
+  // email, then named with that same address.
+  const registrationId = await organizer.mutation(
+    api.tournaments.registrations.enrollPlayer,
+    { tournamentId, email: "walkup@example.test" },
+  );
+  await organizer.mutation(api.tournaments.registrations.continueAsGuest, {
+    registrationId,
+    displayName: "walkup@example.test",
+  });
+  const stamped = await t.run(async (ctx) => await ctx.db.get(registrationId));
+  expect(stamped?.playerName).toBe("walkup@example.test");
+
+  await start(t, tournamentId);
+  const matches = await t.query(
+    api.tournaments.publicResults.getPublicMatches,
+    { publicCode },
+  );
+  const matchNames = matches!.matches.flatMap((match) =>
+    match.players.map((player) => player.name),
+  );
+  expect(matchNames).toHaveLength(4);
+  expect(matchNames.filter((name) => name === null)).toHaveLength(1);
+  expect(JSON.stringify(matches)).not.toContain("@");
+
+  await playOutCurrentRound(t, tournamentId);
+  const standings = await t.query(
+    api.tournaments.publicResults.getPublicStandings,
+    { publicCode },
+  );
+  const standingNames = standings!.standings!.rows.map((row) => row.name);
+  expect(standingNames.filter((name) => name === null)).toHaveLength(1);
+  expect(standingNames.filter((name) => name !== null).sort()).toEqual([
+    "Ada",
+    "Brook",
+    "Cal",
+  ]);
+  expect(JSON.stringify(standings)).not.toContain("@");
+});
+
+test("a cancelled event's public results are frozen", async () => {
+  const t = createConvexTest();
+  const organizer = t.withIdentity(organizerIdentity);
+
+  // Held pairings cannot be released after the cancel.
+  const { tournamentId: heldEvent } = await seedTournamentWithPlayers(t, {
+    name: "Cancelled While Held",
+    playerCount: 4,
+    autoPublishPairings: false,
+  });
+  const heldCode = await publicCodeOf(t, heldEvent);
+  await start(t, heldEvent);
+  const held = await currentRound(t, heldEvent);
+  await organizer.mutation(api.tournaments.lifecycle.cancelTournament, {
+    tournamentId: heldEvent,
+  });
+  await expect(
+    organizer.mutation(api.tournaments.rounds.publishPairings, {
+      roundId: held._id,
+    }),
+  ).rejects.toThrow("Tournament is not in progress");
+  expect(
+    await t.query(api.tournaments.publicResults.getPublicMatches, {
+      publicCode: heldCode,
+    }),
+  ).toEqual({ phases: [], round: null, matches: [] });
+
+  // A released round's scores cannot change after the cancel.
+  const liveEvent = await seedEventBeside(t, heldEvent, "Cancelled Live", 4);
+  const liveCode = await publicCodeOf(t, liveEvent);
+  await start(t, liveEvent);
+  const pairing = await organizerPairing(t, liveEvent, 1);
+  await organizer.mutation(api.tournaments.lifecycle.cancelTournament, {
+    tournamentId: liveEvent,
+  });
+  const atCancel = await t.query(
+    api.tournaments.publicResults.getPublicMatches,
+    { publicCode: liveCode },
+  );
+  expect(atCancel?.matches).toHaveLength(2);
+  await expect(
+    organizer.mutation(api.tournaments.rounds.recordMatchResult, {
+      matchId: pairing.match._id,
+      playerOneRegistrationId: pairing.players[0].playerId,
+      playerTwoRegistrationId: pairing.players[1].playerId,
+      playerOneGameWins: 2,
+      playerTwoGameWins: 0,
+    }),
+  ).rejects.toThrow(
+    "Match results can only be recorded during an active round",
+  );
+  expect(
+    await t.query(api.tournaments.publicResults.getPublicMatches, {
+      publicCode: liveCode,
+    }),
+  ).toEqual(atCancel);
+});
+
 async function start(t: Convex, tournamentId: Id<"tournaments">) {
   await t
     .withIdentity(organizerIdentity)
