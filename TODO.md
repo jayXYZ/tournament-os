@@ -617,6 +617,14 @@ separate concerns. Model them explicitly before adding more boolean settings.
   - [ ] Configure organizer-only, participant, or public audience per artifact
   - [ ] Configure manual, during-event, after-event, or never timing for standings, pairings, and decklists
   - [ ] Enforce publication policy consistently in public, player, and organizer queries
+  - [ ] Show live standings and released-round matches on the public event
+        page (CONTEXT.md "Public Results"), on `feat/public-live-standings`:
+        `getPublicStandings` and `getPublicMatches` admit exactly
+        `getPublicTournament`'s viewers through `tournamentViewAccess` and
+        return projections (no `seed`, `tiebreakRandom`, ids of other
+        players, or organizer labels); a held round is absent from both.
+        Shown to everyone who can open the page, with no organizer switch,
+        until the audience/timing policy above lands
   - [ ] Project organizer-only fields away from public tournament reads:
         `getPublicTournament` and `listPublicChildEvents` return the
         tournament document whole, so the required pairing `seed` is public
