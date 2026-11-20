@@ -666,9 +666,7 @@ test("a cancelled event's public results are frozen", async () => {
       playerOneGameWins: 2,
       playerTwoGameWins: 0,
     }),
-  ).rejects.toThrow(
-    "Match results can only be recorded during an active round",
-  );
+  ).rejects.toThrow("Tournament is not in progress");
   // Nor through a test event's simulated results.
   await t.run(
     async (ctx) => await ctx.db.patch(liveEvent, { isTestEvent: true }),
