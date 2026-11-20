@@ -27,8 +27,11 @@ import {
 // A stamp is whatever the account holds or the organizer typed, and the
 // enrollment forms accept an email address typed into the name field. That
 // is a contact detail the public page must not print, so a stamp shaped like
-// an address is withheld and the row reads as an unnamed player.
-const EMAIL_SHAPED = /\S+@\S+\.\S+/;
+// an address is withheld and the row reads as an unnamed player. Enrollment
+// takes anything with an "@" as an email (model/roster.ts), single-label
+// domains included, so the shape here is as loose: text on both sides of an
+// "@". A handle written "@name" is not an address and passes.
+const EMAIL_SHAPED = /\S@\S/;
 
 export function publicPlayerName(stamp: string | undefined): string | null {
   return stamp === undefined || EMAIL_SHAPED.test(stamp) ? null : stamp;
@@ -68,7 +71,7 @@ function playHasStarted(tournament: Doc<"tournaments">) {
 export function standingRowProjection(standing: Doc<"roundStandings">) {
   return {
     rank: standing.rank,
-    name: standing.playerName ?? null,
+    name: publicPlayerName(standing.playerName),
     matchPoints: standing.matchPoints,
     matchWins: standing.matchWins,
     matchLosses: standing.matchLosses,
@@ -165,7 +168,6 @@ export async function publicStandings(
       const row = standingRowProjection(standing);
       return {
         ...row,
-        name: publicPlayerName(standing.playerName),
         // A bracket loss in this round is already public (playoffStatus
         // says so), so only the cut's own eliminations are held back.
         registrationStatus:
@@ -247,6 +249,8 @@ export async function publicRoundMatches(
       phaseType: selectedPhase?.phaseType ?? null,
     },
     matches: matches.map(({ match, players }) => ({
+      // The one id that crosses the seam: the page keys its rows on it. It
+      // opens nothing, since every match function checks access itself.
       matchId: match._id,
       tableNumber: match.tableNumber ?? null,
       matchStatus: match.matchStatus,

@@ -339,9 +339,11 @@ nothing to show; a completed or cancelled event keeps what it reached, and
 a cancelled event's record is frozen: no pairings are released and no
 result is entered after the cancel. A held round's cut is held with it:
 until a playoff's pairings are released, the players it cut still read as
-active in the standings.
+active in the standings. A Rewind is not hidden: reopening a finished round
+shows, and standings fall back to the round before it.
 Names are the player-safe name stamps, never an email: a stamp shaped like
-an email address is withheld. Standings carry a player's current name; a
+an email address is withheld. Standings carry a player's current name,
+which keeps following the account after the event ends or is cancelled; a
 round's matches carry the name as it stood when the round was paired.
 _Avoid_: spectator view, live results
 

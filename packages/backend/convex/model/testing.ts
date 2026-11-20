@@ -180,6 +180,12 @@ export async function generateTestResults(
   if (round.tournamentId !== tournament._id) {
     throw new Error("Round does not belong to this tournament");
   }
+  // A cancelled event's current round is still in progress, and its record
+  // is frozen like any other result entry (tournaments/rounds.ts
+  // requireAdjudicableMatch).
+  if (tournament.lifecycle !== "in_progress") {
+    throw new Error("Tournament is not in progress");
+  }
   // Only tournaments created through createTestTournament have a config row;
   // events merely flagged as test events fall back to a deterministic seed.
   const config = await getTestConfig(ctx, tournament._id);

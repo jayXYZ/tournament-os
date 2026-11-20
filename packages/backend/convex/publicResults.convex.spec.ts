@@ -565,6 +565,15 @@ test("an email address typed as a player's name is withheld from the public", as
   });
   const stamped = await t.run(async (ctx) => await ctx.db.get(registrationId));
   expect(stamped?.playerName).toBe("walkup@example.test");
+  // Enrollment takes an address without a dotted domain too.
+  const localId = await organizer.mutation(
+    api.tournaments.registrations.enrollPlayer,
+    { tournamentId, email: "local@club" },
+  );
+  await organizer.mutation(api.tournaments.registrations.continueAsGuest, {
+    registrationId: localId,
+    displayName: "local@club",
+  });
 
   await start(t, tournamentId);
   const matches = await t.query(
@@ -574,8 +583,9 @@ test("an email address typed as a player's name is withheld from the public", as
   const matchNames = matches!.matches.flatMap((match) =>
     match.players.map((player) => player.name),
   );
-  expect(matchNames).toHaveLength(4);
-  expect(matchNames.filter((name) => name === null)).toHaveLength(1);
+  // Five players: four names across two matches, and one on the bye.
+  expect(matchNames).toHaveLength(5);
+  expect(matchNames.filter((name) => name === null)).toHaveLength(2);
   expect(JSON.stringify(matches)).not.toContain("@");
 
   await playOutCurrentRound(t, tournamentId);
@@ -584,7 +594,7 @@ test("an email address typed as a player's name is withheld from the public", as
     { publicCode },
   );
   const standingNames = standings!.standings!.rows.map((row) => row.name);
-  expect(standingNames.filter((name) => name === null)).toHaveLength(1);
+  expect(standingNames.filter((name) => name === null)).toHaveLength(2);
   expect(standingNames.filter((name) => name !== null).sort()).toEqual([
     "Ada",
     "Brook",
@@ -644,11 +654,24 @@ test("a cancelled event's public results are frozen", async () => {
   ).rejects.toThrow(
     "Match results can only be recorded during an active round",
   );
+  // Nor through a test event's simulated results.
+  await t.run(
+    async (ctx) => await ctx.db.patch(liveEvent, { isTestEvent: true }),
+  );
+  await expect(
+    organizer.mutation(api.tournaments.testing.generateTestRoundResults, {
+      tournamentId: liveEvent,
+    }),
+  ).rejects.toThrow("Tournament is not in progress");
   expect(
     await t.query(api.tournaments.publicResults.getPublicMatches, {
       publicCode: liveCode,
     }),
   ).toEqual(atCancel);
+  // Publishing pairings that were already released stays a no-op.
+  await organizer.mutation(api.tournaments.rounds.publishPairings, {
+    roundId: (await currentRound(t, liveEvent))._id,
+  });
 });
 
 async function start(t: Convex, tournamentId: Id<"tournaments">) {

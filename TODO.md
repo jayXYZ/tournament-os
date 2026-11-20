@@ -629,8 +629,11 @@ separate concerns. Model them explicitly before adding more boolean settings.
         name stamp is withheld, and a cancelled event's record is frozen
         (`publishPairings` and `recordMatchResult` refuse it). Left open by
         the review: the player view's `getLatestStandings` still shows a
-        held cut's eliminations, and `getPublicMatches` reads match players
-        one index range per match where a round index would make it one read
+        held cut's eliminations, `getPublicMatches` reads match players
+        one index range per match where a round index would make it one
+        read, and a rewind promotes the earlier round's standings with the
+        names they were written with, so a rename made since is lost until
+        the next sign-in re-stamp
   - [ ] Project organizer-only fields away from public tournament reads:
         `getPublicTournament` and `listPublicChildEvents` return the
         tournament document whole, so the required pairing `seed` is public
