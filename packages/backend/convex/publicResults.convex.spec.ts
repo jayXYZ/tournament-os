@@ -11,6 +11,7 @@ import { expect, test } from "vitest";
 
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import { publicPlayerName } from "./model/publicResults";
 import schema from "./schema";
 import {
   currentRound,
@@ -151,6 +152,7 @@ test("the projection carries no seed, tiebreakRandom, or organizer-only data", a
     "organizerLabel",
     "sortKey",
     "tournamentId",
+    "note",
   ];
   for (const payload of [standings, matches]) {
     const keys = allKeys(payload);
@@ -601,6 +603,19 @@ test("an email address typed as a player's name is withheld from the public", as
     "Cal",
   ]);
   expect(JSON.stringify(standings)).not.toContain("@");
+
+  // The shape is anything either side of an "@": a pasted address can carry
+  // a zero-width character or a space that a stricter pattern would miss.
+  for (const address of [
+    "alex\uFEFF@example.test",
+    "alex @example.test",
+    "alex@ example.test",
+  ]) {
+    expect(publicPlayerName(address)).toBeNull();
+  }
+  // A handle and an ordinary name are not addresses.
+  expect(publicPlayerName("@alex")).toBe("@alex");
+  expect(publicPlayerName("Alex")).toBe("Alex");
 });
 
 test("a cancelled event's public results are frozen", async () => {

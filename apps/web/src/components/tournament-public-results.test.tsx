@@ -279,7 +279,7 @@ describe('matches', () => {
     expect(text()).toContain('No pairings yet')
   })
 
-  test('a cancelled event marks its unfinished matches as not played', () => {
+  test('a cancelled event marks its unfinished matches as having no result', () => {
     state.matches = () => matchesFor(2)
     render('cancelled')
     // A cancelled event opens on standings; the matches tab is one click.
@@ -290,7 +290,7 @@ describe('matches', () => {
       tab.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
     })
     expect(text()).toContain('Not finished')
-    expect(rows()).toContain('2Cal vs DeeNot played')
+    expect(rows()).toContain('2Cal vs DeeNo result recorded')
   })
 
   test('a refused viewer sees nothing here', () => {

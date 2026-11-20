@@ -336,7 +336,7 @@ function MatchRow({
         <ScoreSlipResult
           row={match}
           className="shrink-0"
-          pendingLabel={cancelled ? 'Not played' : 'Awaiting'}
+          pendingLabel={cancelled ? 'No result recorded' : 'Awaiting'}
         />
       </div>
     </li>

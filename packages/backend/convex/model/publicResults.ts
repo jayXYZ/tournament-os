@@ -29,9 +29,11 @@ import {
 // is a contact detail the public page must not print, so a stamp shaped like
 // an address is withheld and the row reads as an unnamed player. Enrollment
 // takes anything with an "@" as an email (model/roster.ts), single-label
-// domains included, so the shape here is as loose: text on both sides of an
-// "@". A handle written "@name" is not an address and passes.
-const EMAIL_SHAPED = /\S@\S/;
+// domains included, so the shape here is as loose: anything on both sides
+// of an "@", invisible characters and spaces included, since a pasted
+// address can carry either. A handle written "@name" is not an address and
+// passes.
+const EMAIL_SHAPED = /.@./s;
 
 export function publicPlayerName(stamp: string | undefined): string | null {
   return stamp === undefined || EMAIL_SHAPED.test(stamp) ? null : stamp;
