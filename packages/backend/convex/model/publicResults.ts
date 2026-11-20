@@ -1,0 +1,199 @@
+import type { Doc, Id } from "../_generated/dataModel";
+import type { QueryCtx } from "../_generated/server";
+import { latestCompletedRound } from "./phases";
+import { loadPhaseBoards } from "./progression";
+import { MAX_TOURNAMENT_PLAYERS } from "./registrations";
+import {
+  isPairingsVisibleToPlayers,
+  roundMatchesWithPlayers,
+  tournamentByPublicCode,
+  tournamentViewAccess,
+} from "./tournaments";
+
+// Public Results (CONTEXT.md): the standings and the released rounds' matches
+// that the event page shows to every viewer who may open that page. The
+// reads here return projections built field by field, never documents: the
+// tournament's pairing seed, registrations' tiebreakRandom, standings rows'
+// opponent lists, and anything organizer-only stay behind the projection.
+// Names are the player-safe stamps (model/nameStamps.ts) the rows already
+// carry — the copy the player standings and the organizer pairings render —
+// so a list costs no per-row identity join.
+
+// The tournament behind a public code, when the caller may open its event
+// page: getPublicTournament's rule (tournamentViewAccess), so the results can
+// never be visible to a viewer the page itself refuses. Null for an unknown
+// code and for a refused viewer alike.
+export async function tournamentForPublicView(
+  ctx: QueryCtx,
+  publicCode: string,
+  inviteCode: string | undefined,
+): Promise<Doc<"tournaments"> | null> {
+  const tournament = await tournamentByPublicCode(ctx, publicCode);
+  if (!tournament) {
+    return null;
+  }
+  const access = await tournamentViewAccess(ctx, tournament, inviteCode);
+  return access.allowed ? tournament : null;
+}
+
+// Play has begun at some point: before that there are no rounds or standings
+// to show, and a cancelled event that never started has none either. A
+// completed or cancelled event keeps the record it reached.
+function playHasStarted(tournament: Doc<"tournaments">) {
+  return (
+    tournament.lifecycle === "in_progress" ||
+    tournament.lifecycle === "completed" ||
+    tournament.lifecycle === "cancelled"
+  );
+}
+
+// One standings row as anyone may see it. Shared with the player standings
+// (getLatestStandings), which adds only its own "is this me" marker, so the
+// public and player tables carry the same columns and tiebreak values.
+export function standingRowProjection(standing: Doc<"roundStandings">) {
+  return {
+    rank: standing.rank,
+    name: standing.playerName ?? null,
+    matchPoints: standing.matchPoints,
+    matchWins: standing.matchWins,
+    matchLosses: standing.matchLosses,
+    matchDraws: standing.matchDraws,
+    opponentMatchWinPct: standing.opponentMatchWinPct,
+    gameWinPct: standing.gameWinPct,
+    opponentGameWinPct: standing.opponentGameWinPct,
+    playoffStatus: standing.playoffStatus,
+    eliminatedInRoundNumber: standing.eliminatedInRoundNumber ?? null,
+    registrationStatus: standing.participationStatus ?? "active",
+  };
+}
+
+// The standings of the tournament's latest completed round, in rank order —
+// the round both the player standings and final placements treat as current
+// (latestCompletedRound). Null before any round completes.
+export async function latestStandings(
+  ctx: QueryCtx,
+  tournamentId: Id<"tournaments">,
+) {
+  const round = await latestCompletedRound(ctx, tournamentId);
+  if (!round) {
+    return null;
+  }
+  const standings = await ctx.db
+    .query("roundStandings")
+    .withIndex("by_tournamentRoundId_and_rank", (q) =>
+      q.eq("tournamentRoundId", round._id),
+    )
+    .take(MAX_TOURNAMENT_PLAYERS);
+  return { round, standings };
+}
+
+// The public standings: the latest completed round's rows, projected. A
+// completed round is always released (completeRound publishes a held round as
+// part of the record), and the check below keeps that true here even if the
+// lifecycle ever changes, so standings never reveal results from a round the
+// players have not been shown.
+export async function publicStandings(
+  ctx: QueryCtx,
+  tournament: Doc<"tournaments">,
+) {
+  if (!playHasStarted(tournament)) {
+    return null;
+  }
+  const latest = await latestStandings(ctx, tournament._id);
+  if (!latest || !isPairingsVisibleToPlayers(latest.round)) {
+    return null;
+  }
+  return {
+    roundNumber: latest.round.roundNumber,
+    roundName: latest.round.roundName,
+    rows: latest.standings.map(standingRowProjection),
+  };
+}
+
+// Every round whose pairings are released to players, grouped by phase in
+// play order. A round still held for the organizer is left out entirely —
+// not listed as pending — so the public cannot tell it exists. Phases with no
+// released round are left out too.
+async function releasedRoundsByPhase(
+  ctx: QueryCtx,
+  tournament: Doc<"tournaments">,
+) {
+  if (!playHasStarted(tournament)) {
+    return [];
+  }
+  const boards = await loadPhaseBoards(ctx, tournament._id);
+  return boards
+    .map(({ phase, rounds }) => ({
+      phase,
+      rounds: rounds.filter(isPairingsVisibleToPlayers),
+    }))
+    .filter(({ rounds }) => rounds.length > 0);
+}
+
+// Pairings and results for one released round, plus the round index the page
+// navigates with. `requestedRoundId` picks the round; anything that is not a
+// released round of this tournament (unknown, held, another event's) falls
+// back to the default exactly as if no round had been asked for, so probing
+// ids reveals nothing. The default is the latest released round: the current
+// round once its pairings are out, otherwise the one before it.
+export async function publicRoundMatches(
+  ctx: QueryCtx,
+  tournament: Doc<"tournaments">,
+  requestedRoundId: Id<"tournamentRounds"> | undefined,
+) {
+  const phases = await releasedRoundsByPhase(ctx, tournament);
+  const released = phases.flatMap(({ rounds }) => rounds);
+  const selected =
+    released.find((round) => round._id === requestedRoundId) ??
+    released.at(-1) ??
+    null;
+
+  const index = phases.map(({ phase, rounds }) => ({
+    phaseOrder: phase.phaseOrder,
+    phaseName: phase.phaseName ?? `Phase ${phase.phaseOrder}`,
+    phaseType: phase.phaseType,
+    rounds: rounds.map((round) => ({
+      roundId: round._id,
+      roundNumber: round.roundNumber,
+      roundName: round.roundName,
+      roundStatus: round.roundStatus,
+    })),
+  }));
+
+  if (!selected) {
+    return { phases: index, round: null, matches: [] };
+  }
+
+  const selectedPhase = phases.find(
+    ({ phase }) => phase._id === selected.tournamentPhaseId,
+  )?.phase;
+  const matches = await roundMatchesWithPlayers(ctx, selected._id);
+  return {
+    phases: index,
+    round: {
+      roundId: selected._id,
+      roundNumber: selected.roundNumber,
+      roundName: selected.roundName,
+      roundStatus: selected.roundStatus,
+      phaseOrder: selectedPhase?.phaseOrder ?? null,
+      phaseType: selectedPhase?.phaseType ?? null,
+    },
+    matches: matches.map(({ match, players }) => ({
+      matchId: match._id,
+      tableNumber: match.tableNumber ?? null,
+      matchStatus: match.matchStatus,
+      resultKind: match.currentResultKind ?? null,
+      // A player's own report counts immediately (CONTEXT.md "Reported
+      // Result"); the marker says nobody at the organizer table entered it.
+      // Only whether one exists crosses the seam, not who reported it.
+      playerReported: match.reportedByRegistrationId !== undefined,
+      players: players.map((player) => ({
+        name: player.playerName ?? null,
+        isBye: player.isBye,
+        gameWins: player.gameWins ?? null,
+        gameLosses: player.gameLosses ?? null,
+        gameDraws: player.gameDraws ?? null,
+      })),
+    })),
+  };
+}

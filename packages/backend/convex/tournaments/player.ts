@@ -5,13 +5,11 @@ import { mutation, query } from "../_generated/server";
 import type { MutationCtx } from "../_generated/server";
 import { userError } from "../model/errors";
 import { applyMatchResult } from "../model/matchResults";
-import { latestCompletedRound, requirePhase } from "../model/phases";
+import { requirePhase } from "../model/phases";
 import { dropPlayer } from "../model/roster";
-import {
-  MAX_TOURNAMENT_PLAYERS,
-  registrationForUser,
-} from "../model/registrations";
+import { registrationForUser } from "../model/registrations";
 import { matchLogForRegistration } from "../model/playerResults";
+import { latestStandings, standingRowProjection } from "../model/publicResults";
 import { currentMatchForPlayer } from "../model/playerView";
 import {
   isPairingsVisibleToPlayers,
@@ -57,17 +55,11 @@ export const getLatestStandings = query({
       ctx,
       args.tournamentId,
     );
-    const latestCompleted = await latestCompletedRound(ctx, args.tournamentId);
-    if (!latestCompleted) {
+    const latest = await latestStandings(ctx, args.tournamentId);
+    if (!latest) {
       return null;
     }
 
-    const standings = await ctx.db
-      .query("roundStandings")
-      .withIndex("by_tournamentRoundId_and_rank", (q) =>
-        q.eq("tournamentRoundId", latestCompleted._id),
-      )
-      .take(MAX_TOURNAMENT_PLAYERS);
     // Every player in the event subscribes to this query, so it reads no
     // registration documents at all: participation status is denormalized onto
     // the standings row, and the participation module writes each change
@@ -85,24 +77,15 @@ export const getLatestStandings = query({
     // through. Reading through here would hang every player's subscription
     // on user documents (which upsertUser patches on each sign-in) and
     // spend reads per row against the transaction's index-range budget. So
-    // the rows are a plain projection of the standings documents.
-    const rows = standings.map((standing) => ({
-      rank: standing.rank,
-      name: standing.playerName ?? null,
-      matchPoints: standing.matchPoints,
-      matchWins: standing.matchWins,
-      matchLosses: standing.matchLosses,
-      matchDraws: standing.matchDraws,
-      opponentMatchWinPct: standing.opponentMatchWinPct,
-      gameWinPct: standing.gameWinPct,
-      opponentGameWinPct: standing.opponentGameWinPct,
-      playoffStatus: standing.playoffStatus,
-      eliminatedInRoundNumber: standing.eliminatedInRoundNumber ?? null,
-      registrationStatus: standing.participationStatus ?? "active",
+    // the rows are a plain projection of the standings documents — the
+    // public standings' projection (model/publicResults.ts), plus the
+    // viewer's own marker.
+    const rows = latest.standings.map((standing) => ({
+      ...standingRowProjection(standing),
       isMe: standing.playerId === registration._id,
     }));
 
-    return { roundNumber: latestCompleted.roundNumber, rows };
+    return { roundNumber: latest.round.roundNumber, rows };
   },
 });
 
