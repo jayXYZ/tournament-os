@@ -139,9 +139,6 @@ export function ManageMatchMenu({
 
       {extendingTime ? (
         <TimeExtensionDialog
-          // Remount on any change to the stored extension, so the form never
-          // shows (and saves) a value another staff member has replaced.
-          key={row.match.timeExtensionRevision ?? 0}
           row={row}
           finished={finished}
           open={extendingTime}

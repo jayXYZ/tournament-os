@@ -31,9 +31,16 @@ import { useBusyAction } from '@/hooks/use-busy-action'
 // Extension"). The players' timers shift by the saved amount; everyone
 // else's stay on the round clock. A finished match takes no new time, so its
 // dialog only removes the extension it already has.
+//
+// The form works on the match as it was when the dialog opened. If another
+// staff member changes the extension, or the match's result lands, meanwhile,
+// the form keeps its draft, its buttons switch off, and it asks before
+// loading what is there now: a button must never change what it does under
+// the pointer. The server refuses a write from a stale form regardless
+// (model/timer.ts requireUnchangedExtension).
 export function TimeExtensionDialog({
   row,
-  finished,
+  finished: finishedNow,
   open,
   onOpenChange,
 }: {
@@ -46,20 +53,36 @@ export function TimeExtensionDialog({
   const clearExtension = useMutation(
     api.tournaments.timer.clearMatchTimeExtension,
   )
-  const existing = row.match.timeExtension
-  // The server refuses the write if the extension changed after this form
-  // read it (model/timer.ts requireUnchangedExtension).
-  const expectedRevision = row.match.timeExtensionRevision ?? 0
+  const revisionNow = row.match.timeExtensionRevision ?? 0
+  const [opened, setOpened] = useState(() => ({
+    revision: revisionNow,
+    finished: finishedNow,
+    extension: row.match.timeExtension,
+  }))
+  const { extension: existing, finished } = opened
+  const expectedRevision = opened.revision
   const { busy, run } = useBusyAction()
-  const [minutes, setMinutes] = useState(
-    existing ? String(durationMsToMinutes(existing.extensionMs)) : '5',
-  )
+  // Not while this form's own write is in flight: its result arrives just
+  // before the dialog closes.
+  const stale =
+    !busy && (revisionNow !== opened.revision || finishedNow !== finished)
+  const [minutes, setMinutes] = useState(() => draftMinutes(existing))
   const [reason, setReason] = useState(existing?.reason ?? '')
   const minutesValue = Number(minutes)
   const valid = minutes !== '' && isValidMatchTimeExtensionMinutes(minutesValue)
 
+  function loadCurrent() {
+    const extension = row.match.timeExtension
+    setOpened({ revision: revisionNow, finished: finishedNow, extension })
+    setMinutes(draftMinutes(extension))
+    setReason(extension?.reason ?? '')
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (stale) {
+      return
+    }
     await run(async () => {
       await setExtension({
         matchId: row.match._id,
@@ -113,7 +136,7 @@ export function TimeExtensionDialog({
                   .{' '}
                   {existing
                     ? "Changing the minutes moves its players' deadline by the difference. It does not restart their countdown."
-                    : "Its players' timers run this much past the round clock, or this much from now if the round's time has already run out."}
+                    : "Its players' timers run this much past the round clock. If the round's time has already run out, they get the full amount."}
                 </>
               )}
             </DialogDescription>
@@ -166,19 +189,36 @@ export function TimeExtensionDialog({
             </p>
           ) : null}
 
+          {stale ? (
+            <div
+              role="alert"
+              className="flex flex-wrap items-center justify-between gap-2 text-sm"
+            >
+              <span>This match changed while you had this open.</span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={loadCurrent}
+              >
+                Load current
+              </Button>
+            </div>
+          ) : null}
+
           <DialogFooter>
             {existing ? (
               <Button
                 type="button"
                 variant="outline"
-                disabled={busy}
+                disabled={busy || stale}
                 onClick={() => void handleRemove()}
               >
                 Remove extension
               </Button>
             ) : null}
             {finished ? null : (
-              <Button type="submit" disabled={busy || !valid}>
+              <Button type="submit" disabled={busy || stale || !valid}>
                 {busy ? <Spinner data-icon="inline-start" /> : null}
                 {existing ? 'Save extension' : 'Add extension'}
               </Button>
@@ -188,4 +228,8 @@ export function TimeExtensionDialog({
       </DialogContent>
     </Dialog>
   )
+}
+
+function draftMinutes(extension: PairingRow['match']['timeExtension']) {
+  return extension ? String(durationMsToMinutes(extension.extensionMs)) : '5'
 }
