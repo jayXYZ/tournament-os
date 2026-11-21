@@ -2,7 +2,7 @@ import { v } from "convex/values";
 
 import { mutation } from "../_generated/server";
 import * as timer from "../model/timer";
-import { requireOrganizerAccess } from "../model/tournaments";
+import { requireMatch, requireOrganizerAccess } from "../model/tournaments";
 
 // Thin adapters over model/timer.ts, which owns each control's validation,
 // write, and audit event: the endpoint resolves organizer access and hands
@@ -56,5 +56,30 @@ export const clearTimer = mutation({
   handler: async (ctx, args) => {
     const access = await requireOrganizerAccess(ctx, args.tournamentId);
     return await timer.clearTimer(ctx, access);
+  },
+});
+
+// Match Time Extensions. Staff access is organization membership, the same
+// gate result entry and the round timer use: there is no separate judge role
+// yet, so every member who can run the live round can extend a match.
+export const setMatchTimeExtension = mutation({
+  args: {
+    matchId: v.id("tournamentMatches"),
+    minutes: v.number(),
+    reason: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const match = await requireMatch(ctx, args.matchId);
+    const access = await requireOrganizerAccess(ctx, match.tournamentId);
+    return await timer.setMatchTimeExtension(ctx, access, match, args);
+  },
+});
+
+export const clearMatchTimeExtension = mutation({
+  args: { matchId: v.id("tournamentMatches") },
+  handler: async (ctx, args) => {
+    const match = await requireMatch(ctx, args.matchId);
+    const access = await requireOrganizerAccess(ctx, match.tournamentId);
+    return await timer.clearMatchTimeExtension(ctx, access, match);
   },
 });

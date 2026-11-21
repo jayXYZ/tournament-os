@@ -495,6 +495,21 @@ export const tournamentRoundTimerValidator = v.union(
   }),
 );
 
+// A Match Time Extension (see CONTEXT.md) as stored on its match. The timer
+// math reads only extensionMs and overtimeCreditMs (shared timer-utils
+// extendRoundTimer); the rest is the record of who set it and why. The
+// audit log keeps every change; this holds the current value.
+export const matchTimeExtensionValidator = v.object({
+  extensionMs: v.number(),
+  // Overtime the round timer had already run when the extension was first
+  // granted, so a grant after base time ran out restarts the match's
+  // countdown. Fixed at the first grant; edits keep it.
+  overtimeCreditMs: v.number(),
+  reason: v.optional(v.string()),
+  setByUserId: v.id("users"),
+  setAt: v.number(),
+});
+
 // What happened, as a discriminated union so the log view renders each kind
 // with full type safety. Events carry enough denormalized context (names,
 // round/table numbers, prior results) to reconstruct a dispute without
@@ -680,6 +695,19 @@ export const tournamentAuditEventValidator = v.union(
     ),
     previousTimer: v.union(tournamentRoundTimerValidator, v.null()),
     timer: v.union(tournamentRoundTimerValidator, v.null()),
+  }),
+  v.object({
+    // Staff set, changed, or removed one match's time extension
+    // (model/timer.ts). Null on the side where no extension existed, so a
+    // grant has a null previous value and a removal a null new one.
+    type: v.literal("match_time_extension_changed"),
+    roundId: v.id("tournamentRounds"),
+    roundNumber: v.number(),
+    tableNumber: v.union(v.number(), v.null()),
+    players: v.array(auditPlayerRefValidator),
+    previousExtensionMs: v.union(v.number(), v.null()),
+    extensionMs: v.union(v.number(), v.null()),
+    reason: v.union(v.string(), v.null()),
   }),
   v.object({
     // An organizer broke a pairing before the round's pairings were

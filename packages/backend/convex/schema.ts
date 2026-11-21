@@ -37,6 +37,7 @@ import {
   tournamentRoundStatusValidator,
   tournamentRoundTimerValidator,
   tournamentMatchStatusValidator,
+  matchTimeExtensionValidator,
   userProfileVisibilityValidator,
 } from "./validators";
 
@@ -911,6 +912,9 @@ export default defineSchema({
     // automatic ones without reading every revision. Written together with
     // currentResultRevisionId, absent exactly when it is.
     currentResultKind: v.optional(matchResultKindValidator),
+    // Staff-granted extra time for this match alone, on top of the round
+    // timer (CONTEXT.md "Match Time Extension"). Absent when none applies.
+    timeExtension: v.optional(matchTimeExtensionValidator),
     updatedAt: v.number(),
   })
     .index("by_tournamentRoundId", ["tournamentRoundId"])

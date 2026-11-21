@@ -1,17 +1,27 @@
 import {
   DEFAULT_ROUND_DURATION_MS,
+  MAX_MATCH_TIME_EXTENSION_MINUTES,
   MAX_TIMER_ADJUST_MS,
+  MIN_MATCH_TIME_EXTENSION_MINUTES,
+  isValidMatchTimeExtensionMinutes,
   isValidRoundDurationMs,
+  minutesToDurationMs,
+  overtimeCreditAt,
 } from "@paper-pairings/shared/timer-utils";
 
 import type { Doc } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
-import { logAuditEvent, type TournamentAuditEvent } from "./auditLog";
+import {
+  auditMatchPlayerRef,
+  logAuditEvent,
+  type TournamentAuditEvent,
+} from "./auditLog";
 import { userError } from "./errors";
 import { requireCurrentPhase } from "./phases";
 import {
   type TournamentAccess,
   isPairingsVisibleToPlayers,
+  matchPlayers,
   requireRound,
 } from "./tournaments";
 
@@ -200,6 +210,151 @@ export async function clearTimer(ctx: MutationCtx, access: TournamentAccess) {
     await writeTimer(ctx, access, "cleared", undefined, Date.now());
   }
   return tournament._id;
+}
+
+export const MAX_TIME_EXTENSION_REASON_LENGTH = 200;
+
+// Grants or changes one match's Match Time Extension (see CONTEXT.md). Only
+// a match of the live, published round still awaiting its result can be
+// extended: the extension rides the round timer, which exists for that round
+// alone, and a finished match has no time left to extend. Re-saving the same
+// minutes and reason is a no-op that writes and logs nothing.
+export async function setMatchTimeExtension(
+  ctx: MutationCtx,
+  access: TournamentAccess,
+  match: Doc<"tournamentMatches">,
+  args: { minutes: number; reason?: string },
+) {
+  if (!isValidMatchTimeExtensionMinutes(args.minutes)) {
+    throw userError(
+      `Time extensions must be whole minutes from ${MIN_MATCH_TIME_EXTENSION_MINUTES} to ${MAX_MATCH_TIME_EXTENSION_MINUTES}`,
+    );
+  }
+  const reason = cleanExtensionReason(args.reason);
+  const { round, players } = await requireExtendableMatch(
+    ctx,
+    access.tournament,
+    match,
+  );
+  if (match.matchStatus === "completed" || match.matchStatus === "cancelled") {
+    throw userError("This match is already finished");
+  }
+
+  const extensionMs = minutesToDurationMs(args.minutes);
+  const previous = match.timeExtension;
+  if (previous?.extensionMs === extensionMs && previous.reason === reason) {
+    return match._id;
+  }
+  const now = Date.now();
+  await ctx.db.patch(match._id, {
+    timeExtension: {
+      extensionMs,
+      // Anchored at the first grant only: an edit changes the amount, not
+      // where the match's extra time is counted from.
+      overtimeCreditMs:
+        previous?.overtimeCreditMs ??
+        overtimeCreditAt(access.tournament.roundTimer, now),
+      reason,
+      setByUserId: access.user._id,
+      setAt: now,
+    },
+    updatedAt: now,
+  });
+  await logExtensionChange(ctx, access, round, match, players, {
+    previousExtensionMs: previous?.extensionMs ?? null,
+    extensionMs,
+    reason: reason ?? null,
+  });
+  return match._id;
+}
+
+// Removes a match's extension. Allowed after the match's result is in, so a
+// mistaken grant can still be taken back while the round is live; removing
+// an absent extension is a no-op and logs nothing.
+export async function clearMatchTimeExtension(
+  ctx: MutationCtx,
+  access: TournamentAccess,
+  match: Doc<"tournamentMatches">,
+) {
+  const { round, players } = await requireExtendableMatch(
+    ctx,
+    access.tournament,
+    match,
+  );
+  const previous = match.timeExtension;
+  if (!previous) {
+    return match._id;
+  }
+  await ctx.db.patch(match._id, {
+    timeExtension: undefined,
+    updatedAt: Date.now(),
+  });
+  await logExtensionChange(ctx, access, round, match, players, {
+    previousExtensionMs: previous.extensionMs,
+    extensionMs: null,
+    reason: null,
+  });
+  return match._id;
+}
+
+async function requireExtendableMatch(
+  ctx: QueryCtx,
+  tournament: Doc<"tournaments">,
+  match: Doc<"tournamentMatches">,
+) {
+  if (match.tournamentId !== tournament._id) {
+    throw new Error("Match does not belong to this tournament");
+  }
+  const round = await requireTimableCurrentRound(ctx, tournament);
+  if (match.tournamentRoundId !== round._id) {
+    throw userError("Only matches in the current round can be extended");
+  }
+  const players = await matchPlayers(ctx, match._id);
+  if (players.length < 2 || players.some((player) => player.isBye)) {
+    throw userError("A bye has no match time to extend");
+  }
+  return { round, players };
+}
+
+async function logExtensionChange(
+  ctx: MutationCtx,
+  { tournament, user }: TournamentAccess,
+  round: Doc<"tournamentRounds">,
+  match: Doc<"tournamentMatches">,
+  players: Doc<"tournamentMatchPlayers">[],
+  change: {
+    previousExtensionMs: number | null;
+    extensionMs: number | null;
+    reason: string | null;
+  },
+) {
+  await logAuditEvent(ctx, {
+    tournamentId: tournament._id,
+    actor: user,
+    actorRole: "organizer",
+    event: {
+      type: "match_time_extension_changed",
+      roundId: round._id,
+      roundNumber: round.roundNumber,
+      tableNumber: match.tableNumber ?? null,
+      players: players.map(auditMatchPlayerRef),
+      ...change,
+    },
+  });
+}
+
+// Empty and whitespace-only reasons are dropped rather than stored.
+function cleanExtensionReason(reason: string | undefined) {
+  const trimmed = reason?.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  if (trimmed.length > MAX_TIME_EXTENSION_REASON_LENGTH) {
+    throw userError(
+      `Extension reason must be at most ${MAX_TIME_EXTENSION_REASON_LENGTH} characters`,
+    );
+  }
+  return trimmed;
 }
 
 function validDurationMs(value: number) {

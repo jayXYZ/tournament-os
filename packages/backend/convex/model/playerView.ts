@@ -207,6 +207,16 @@ export async function currentMatchForPlayer(
       // The phase-type draw rule, so result entry can refuse equal game
       // wins up front where the report would be rejected.
       allowDraws: phaseAllowsMatchDraws(phase),
+      // The match's time extension, if staff granted one: clients shift the
+      // round timer by it (shared timer-utils extendRoundTimer) so this
+      // match's players count down to their own deadline. Only the timer
+      // inputs cross; who set it and why stays staff-side.
+      timeExtension: match.timeExtension
+        ? {
+            extensionMs: match.timeExtension.extensionMs,
+            overtimeCreditMs: match.timeExtension.overtimeCreditMs,
+          }
+        : null,
     },
     me: {
       registrationId: registration._id,
