@@ -169,6 +169,97 @@ test("an extension granted in overtime credits the overtime already run", async 
     extensionMs: 10 * 60_000,
     overtimeCreditMs: 0,
   });
+  const view = await t
+    .withIdentity(playerIdentity(1))
+    .query(api.tournaments.player.getMyCurrentMatch, { tournamentId });
+  if (view.kind !== "match") throw new Error("expected a match view");
+  expect(view.match.timeExtension).toEqual({
+    extensionMs: 10 * 60_000,
+    overtimeCreditMs: 0,
+  });
+});
+
+test("a first grant while paused in overtime credits the overtime run", async () => {
+  const t = createConvexTest();
+  const { tournamentId, matchId } = await seedLiveMatch(t);
+  const organizer = t.withIdentity(organizerIdentity);
+  await organizer.mutation(api.tournaments.timer.startTimer, { tournamentId });
+  await organizer.mutation(api.tournaments.timer.pauseTimer, { tournamentId });
+  await t.run(async (ctx) => {
+    const tournament = await ctx.db.get(tournamentId);
+    const timer = tournament?.roundTimer;
+    if (timer?.kind !== "paused") throw new Error("expected paused timer");
+    await ctx.db.patch(tournamentId, {
+      roundTimer: { ...timer, remainingMs: -90_000 },
+    });
+  });
+
+  await organizer.mutation(api.tournaments.timer.setMatchTimeExtension, {
+    matchId,
+    minutes: 5,
+  });
+  // Paused 1:30 into overtime, so the match holds a full five minutes.
+  expect(await storedExtension(t, matchId)).toMatchObject({
+    extensionMs: FIVE_MIN,
+    overtimeCreditMs: 90_000,
+  });
+});
+
+test("a save or removal from a stale form is refused", async () => {
+  const t = createConvexTest();
+  const { matchId } = await seedLiveMatch(t);
+  const organizer = t.withIdentity(organizerIdentity);
+  const stale = "was just changed by someone else";
+
+  // One judge opens the +5 grant; another raises it to +10 meanwhile.
+  await organizer.mutation(api.tournaments.timer.setMatchTimeExtension, {
+    matchId,
+    minutes: 5,
+    expectedSetAt: null,
+  });
+  const opened = await storedExtension(t, matchId);
+  if (!opened) throw new Error("expected an extension");
+  await t.run(async (ctx) => {
+    await ctx.db.patch(matchId, {
+      timeExtension: {
+        ...opened,
+        extensionMs: 10 * 60_000,
+        setAt: opened.setAt + 1,
+      },
+    });
+  });
+
+  await expect(
+    organizer.mutation(api.tournaments.timer.setMatchTimeExtension, {
+      matchId,
+      minutes: 5,
+      reason: "Deck check",
+      expectedSetAt: opened.setAt,
+    }),
+  ).rejects.toThrow(stale);
+  await expect(
+    organizer.mutation(api.tournaments.timer.clearMatchTimeExtension, {
+      matchId,
+      expectedSetAt: opened.setAt,
+    }),
+  ).rejects.toThrow(stale);
+  // A form opened before any grant existed is stale too.
+  await expect(
+    organizer.mutation(api.tournaments.timer.setMatchTimeExtension, {
+      matchId,
+      minutes: 3,
+      expectedSetAt: null,
+    }),
+  ).rejects.toThrow(stale);
+  expect((await storedExtension(t, matchId))?.extensionMs).toBe(10 * 60_000);
+
+  // The current value's setAt is accepted.
+  await organizer.mutation(api.tournaments.timer.setMatchTimeExtension, {
+    matchId,
+    minutes: 12,
+    expectedSetAt: opened.setAt + 1,
+  });
+  expect((await storedExtension(t, matchId))?.extensionMs).toBe(12 * 60_000);
 });
 
 test("extensions can be granted before the timer starts and while it is paused", async () => {
@@ -224,7 +315,7 @@ test("setMatchTimeExtension validates the minutes and reason", async () => {
 
 test("finished matches refuse a new extension but can drop an existing one", async () => {
   const t = createConvexTest();
-  const { matchId } = await seedLiveMatch(t);
+  const { tournamentId, matchId } = await seedLiveMatch(t);
   const organizer = t.withIdentity(organizerIdentity);
   await organizer.mutation(api.tournaments.timer.setMatchTimeExtension, {
     matchId,
@@ -252,13 +343,23 @@ test("finished matches refuse a new extension but can drop an existing one", asy
       minutes: 7,
     }),
   ).rejects.toThrow("This match is already finished");
+
+  // The grant stays on record for staff, but the finished match's players
+  // are back on the round clock.
+  expect((await storedExtension(t, matchId))?.extensionMs).toBe(FIVE_MIN);
+  const view = await t
+    .withIdentity(playerIdentity(1))
+    .query(api.tournaments.player.getMyCurrentMatch, { tournamentId });
+  if (view.kind !== "match") throw new Error("expected a match view");
+  expect(view.match.timeExtension).toBeNull();
+
   await organizer.mutation(api.tournaments.timer.clearMatchTimeExtension, {
     matchId,
   });
   expect(await storedExtension(t, matchId)).toBeUndefined();
 });
 
-test("byes, held pairings, and past rounds cannot be extended", async () => {
+test("byes and past rounds cannot be extended, nor a past extension removed", async () => {
   const t = createConvexTest();
   // Five players: one gets a bye.
   const { tournamentId } = await seedTournamentWithPlayers(t, {
@@ -289,7 +390,12 @@ test("byes, held pairings, and past rounds cannot be extended", async () => {
     }),
   ).rejects.toThrow("A bye has no match time to extend");
 
-  // Once the round is over, its matches are no longer extendable.
+  // Once the round is over, its matches are no longer extendable and an
+  // extension they carry can no longer be removed.
+  await organizer.mutation(api.tournaments.timer.setMatchTimeExtension, {
+    matchId: played._id,
+    minutes: 5,
+  });
   await playOutCurrentRound(t, tournamentId);
   await expect(
     organizer.mutation(api.tournaments.timer.setMatchTimeExtension, {
@@ -297,6 +403,12 @@ test("byes, held pairings, and past rounds cannot be extended", async () => {
       minutes: 5,
     }),
   ).rejects.toThrow("No round is in progress");
+  await expect(
+    organizer.mutation(api.tournaments.timer.clearMatchTimeExtension, {
+      matchId: played._id,
+    }),
+  ).rejects.toThrow("No round is in progress");
+  expect((await storedExtension(t, played._id))?.extensionMs).toBe(FIVE_MIN);
   await organizer.mutation(api.tournaments.rounds.generateNextRound, {
     tournamentId,
   });
@@ -376,7 +488,7 @@ test("any active staff member can extend; players and outsiders cannot", async (
       t.mutation(api.tournaments.timer.clearMatchTimeExtension, { matchId }),
   ];
   for (const call of calls) {
-    await expect(call()).rejects.toThrow();
+    await expect(call()).rejects.toThrow(/Unauthorized|Not authenticated/);
   }
   expect((await storedExtension(t, matchId))?.extensionMs).toBe(FIVE_MIN);
 });

@@ -36,15 +36,19 @@ export function ManageMatchMenu({
   const [enteringResult, setEnteringResult] = useState(false)
   const [extendingTime, setExtendingTime] = useState(false)
   // Mirrors the backend gate (model/timer.ts setMatchTimeExtension): a bye
-  // has no match time, and a finished match has none left to extend — but
-  // an existing extension can still be edited away after the result.
+  // has no match time, and a finished match has none left to extend — its
+  // existing extension can only be removed.
   const hasExtension = row.match.timeExtension !== undefined
+  const finished =
+    row.match.matchStatus === 'completed' ||
+    row.match.matchStatus === 'cancelled'
   const extensionAvailable =
-    canExtendTime &&
-    !isBye &&
-    (hasExtension ||
-      row.match.matchStatus === 'upcoming' ||
-      row.match.matchStatus === 'in_progress')
+    canExtendTime && !isBye && (hasExtension || !finished)
+  const extensionActionLabel = !hasExtension
+    ? 'Add time extension'
+    : finished
+      ? 'Remove time extension'
+      : 'Edit time extension'
   const breakPairing = useMutation(api.tournaments.rounds.breakPairing)
 
   // Mirrors the backend gate (model/manualPairing.ts): automatic results —
@@ -100,7 +104,7 @@ export function ManageMatchMenu({
                 onSelect={() => setExtendingTime(true)}
               >
                 <TimerReset />
-                {hasExtension ? 'Edit time extension' : 'Add time extension'}
+                {extensionActionLabel}
               </DropdownMenuItem>
             ) : null}
             {canEditPairings ? (
@@ -127,9 +131,15 @@ export function ManageMatchMenu({
         />
       ) : null}
 
-      {extendingTime ? (
+      {/* Closes itself if the match stops being extendable while open (its
+          result lands and the extension is removed). */}
+      {extendingTime && extensionAvailable ? (
         <TimeExtensionDialog
+          // Remount on any change to the stored extension, so the form never
+          // shows (and saves) a value another staff member has replaced.
+          key={row.match.timeExtension?.setAt ?? 'none'}
           row={row}
+          finished={finished}
           open={extendingTime}
           onOpenChange={setExtendingTime}
         />

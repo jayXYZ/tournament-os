@@ -36,12 +36,9 @@ export function ScoreSlipTable({ row }: { row: PairingRow }) {
 export function TimeExtensionBadge({ extensionMs }: { extensionMs: number }) {
   const label = formatTimeExtension(extensionMs)
   return (
-    <Badge
-      variant="outline"
-      className="whitespace-nowrap tabular-nums"
-      aria-label={`Time extension ${label}`}
-    >
+    <Badge variant="outline" className="whitespace-nowrap tabular-nums">
       <TimerReset data-icon="inline-start" />
+      <span className="sr-only">Time extension</span>
       {label}
     </Badge>
   )

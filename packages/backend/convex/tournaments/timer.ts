@@ -62,11 +62,17 @@ export const clearTimer = mutation({
 // Match Time Extensions. Staff access is organization membership, the same
 // gate result entry and the round timer use: there is no separate judge role
 // yet, so every member who can run the live round can extend a match.
+//
+// expectedSetAt is the setAt of the extension the caller last saw (null for
+// none); when given, a write against a since-changed extension is refused.
+const expectedSetAt = v.optional(v.union(v.number(), v.null()));
+
 export const setMatchTimeExtension = mutation({
   args: {
     matchId: v.id("tournamentMatches"),
     minutes: v.number(),
     reason: v.optional(v.string()),
+    expectedSetAt,
   },
   handler: async (ctx, args) => {
     const match = await requireMatch(ctx, args.matchId);
@@ -76,10 +82,10 @@ export const setMatchTimeExtension = mutation({
 });
 
 export const clearMatchTimeExtension = mutation({
-  args: { matchId: v.id("tournamentMatches") },
+  args: { matchId: v.id("tournamentMatches"), expectedSetAt },
   handler: async (ctx, args) => {
     const match = await requireMatch(ctx, args.matchId);
     const access = await requireOrganizerAccess(ctx, match.tournamentId);
-    return await timer.clearMatchTimeExtension(ctx, access, match);
+    return await timer.clearMatchTimeExtension(ctx, access, match, args);
   },
 });

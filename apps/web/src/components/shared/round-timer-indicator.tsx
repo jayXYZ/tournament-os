@@ -57,10 +57,8 @@ export function RoundTimerPill({
       ) : null}
       {formatted}
       {extensionMs !== null ? (
-        <span
-          className="font-normal text-muted-foreground"
-          aria-label={`includes a ${formatTimeExtension(extensionMs)} time extension`}
-        >
+        <span className="font-normal text-muted-foreground">
+          <span className="sr-only">includes a time extension of </span>
           {formatTimeExtension(extensionMs)}
         </span>
       ) : null}

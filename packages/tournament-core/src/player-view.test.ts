@@ -366,7 +366,11 @@ test("the result preview names the winner from the reporter's seat", () => {
 test("myMatchTimeExtension reads the extension off a match view only", () => {
   const extension = { extensionMs: 300_000, overtimeCreditMs: 0 };
   expect(
-    myMatchTimeExtension(activeMatch({ match: { timeExtension: extension } })),
+    myMatchTimeExtension(
+      activeMatch({
+        match: { matchStatus: "in_progress", timeExtension: extension },
+      }),
+    ),
   ).toEqual(extension);
   expect(myMatchTimeExtension(activeMatch({}))).toBeNull();
   expect(

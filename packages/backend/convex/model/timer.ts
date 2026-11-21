@@ -1,6 +1,7 @@
 import {
   DEFAULT_ROUND_DURATION_MS,
   MAX_MATCH_TIME_EXTENSION_MINUTES,
+  MAX_MATCH_TIME_EXTENSION_REASON_LENGTH,
   MAX_TIMER_ADJUST_MS,
   MIN_MATCH_TIME_EXTENSION_MINUTES,
   isValidMatchTimeExtensionMinutes,
@@ -232,7 +233,11 @@ export async function clearTimer(ctx: MutationCtx, access: TournamentAccess) {
   return tournament._id;
 }
 
-export const MAX_TIME_EXTENSION_REASON_LENGTH = 200;
+// A finished match has no time left to run: it cannot take a new or changed
+// extension, and its players go back to the round's own clock (playerView).
+export function isMatchFinished(match: Doc<"tournamentMatches">) {
+  return match.matchStatus === "completed" || match.matchStatus === "cancelled";
+}
 
 // Grants or changes one match's Match Time Extension (see CONTEXT.md). Only
 // a match of the live, published round still awaiting its result can be
@@ -243,7 +248,7 @@ export async function setMatchTimeExtension(
   ctx: MutationCtx,
   access: TournamentAccess,
   match: Doc<"tournamentMatches">,
-  args: { minutes: number; reason?: string },
+  args: { minutes: number; reason?: string; expectedSetAt?: number | null },
 ) {
   if (!isValidMatchTimeExtensionMinutes(args.minutes)) {
     throw userError(
@@ -256,9 +261,10 @@ export async function setMatchTimeExtension(
     access.tournament,
     match,
   );
-  if (match.matchStatus === "completed" || match.matchStatus === "cancelled") {
+  if (isMatchFinished(match)) {
     throw userError("This match is already finished");
   }
+  requireUnchangedExtension(match, args.expectedSetAt);
 
   const extensionMs = minutesToDurationMs(args.minutes);
   const previous = match.timeExtension;
@@ -295,12 +301,14 @@ export async function clearMatchTimeExtension(
   ctx: MutationCtx,
   access: TournamentAccess,
   match: Doc<"tournamentMatches">,
+  args: { expectedSetAt?: number | null } = {},
 ) {
   const { round, players } = await requireExtendableMatch(
     ctx,
     access.tournament,
     match,
   );
+  requireUnchangedExtension(match, args.expectedSetAt);
   const previous = match.timeExtension;
   if (!previous) {
     return match._id;
@@ -336,6 +344,24 @@ async function requireExtendableMatch(
   return { round, players };
 }
 
+// The staff dialog sends the setAt of the extension it opened with (null for
+// none). A save or removal from a form that another staff member's change has
+// since made stale is refused, so it cannot silently take time back from the
+// players. Omitted, the write is unconditional.
+function requireUnchangedExtension(
+  match: Doc<"tournamentMatches">,
+  expectedSetAt: number | null | undefined,
+) {
+  if (
+    expectedSetAt !== undefined &&
+    (match.timeExtension?.setAt ?? null) !== expectedSetAt
+  ) {
+    throw userError(
+      "This match's time extension was just changed by someone else. Check it and try again.",
+    );
+  }
+}
+
 async function logExtensionChange(
   ctx: MutationCtx,
   { tournament, user }: TournamentAccess,
@@ -369,9 +395,9 @@ function cleanExtensionReason(reason: string | undefined) {
   if (!trimmed) {
     return undefined;
   }
-  if (trimmed.length > MAX_TIME_EXTENSION_REASON_LENGTH) {
+  if (trimmed.length > MAX_MATCH_TIME_EXTENSION_REASON_LENGTH) {
     throw userError(
-      `Extension reason must be at most ${MAX_TIME_EXTENSION_REASON_LENGTH} characters`,
+      `Extension reason must be at most ${MAX_MATCH_TIME_EXTENSION_REASON_LENGTH} characters`,
     );
   }
   return trimmed;

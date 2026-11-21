@@ -9,6 +9,7 @@ import {
 } from "./phases";
 import { dropConcedesMatch, storedOutcomeForPlayer } from "./matchResults";
 import { publicIdentityForRegistration } from "./participants";
+import { isMatchFinished } from "./timer";
 import {
   isPairingsVisibleToPlayers,
   matchPlayers,
@@ -210,13 +211,15 @@ export async function currentMatchForPlayer(
       // The match's time extension, if staff granted one: clients shift the
       // round timer by it (shared timer-utils extendRoundTimer) so this
       // match's players count down to their own deadline. Only the timer
-      // inputs cross; who set it and why stays staff-side.
-      timeExtension: match.timeExtension
-        ? {
-            extensionMs: match.timeExtension.extensionMs,
-            overtimeCreditMs: match.timeExtension.overtimeCreditMs,
-          }
-        : null,
+      // inputs cross; who set it and why stays staff-side. A finished match
+      // has no time left to run, so its players are back on the round clock.
+      timeExtension:
+        match.timeExtension && !isMatchFinished(match)
+          ? {
+              extensionMs: match.timeExtension.extensionMs,
+              overtimeCreditMs: match.timeExtension.overtimeCreditMs,
+            }
+          : null,
     },
     me: {
       registrationId: registration._id,

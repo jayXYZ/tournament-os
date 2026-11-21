@@ -5,6 +5,7 @@ export const MAX_TIMER_ADJUST_MS = 60 * 60_000;
 // Bounds for a Match Time Extension, in whole minutes.
 export const MIN_MATCH_TIME_EXTENSION_MINUTES = 1;
 export const MAX_MATCH_TIME_EXTENSION_MINUTES = 60;
+export const MAX_MATCH_TIME_EXTENSION_REASON_LENGTH = 200;
 
 // Structural mirror of the backend's tournamentRoundTimerValidator. This
 // package cannot depend on the backend, so roundId is a plain string here;

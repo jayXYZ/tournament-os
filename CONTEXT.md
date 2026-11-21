@@ -127,9 +127,10 @@ informational: it never changes a result. An extension granted after the
 round's time has run out counts from the moment of the grant, so the match
 gets a fresh countdown; while the round timer is paused or not yet started
 the extension waits with it. Restarting the round timer leaves the match its
-extension alone, counted from the new clock. Only an unfinished, non-bye match in a round
-with published pairings can be extended; an existing extension can be
-removed until the round completes.
+extension alone, counted from the new clock. Only an unfinished, non-bye
+match in a round with published pairings can be extended. Once the match has
+its result, its players are back on the round's clock; the extension stays
+on record and can be removed until the round completes.
 _Avoid_: match timer, time adjustment (that moves the whole round's clock)
 
 **Power Pairing**:
