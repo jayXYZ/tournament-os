@@ -49,7 +49,7 @@ export function TimeExtensionDialog({
   const existing = row.match.timeExtension
   // The server refuses the write if the extension changed after this form
   // read it (model/timer.ts requireUnchangedExtension).
-  const expectedSetAt = existing?.setAt ?? null
+  const expectedRevision = row.match.timeExtensionRevision ?? 0
   const { busy, run } = useBusyAction()
   const [minutes, setMinutes] = useState(
     existing ? String(durationMsToMinutes(existing.extensionMs)) : '5',
@@ -64,7 +64,7 @@ export function TimeExtensionDialog({
       await setExtension({
         matchId: row.match._id,
         minutes: minutesValue,
-        expectedSetAt,
+        expectedRevision,
         ...(reason.trim() === '' ? {} : { reason: reason.trim() }),
       })
       onOpenChange(false)
@@ -76,7 +76,7 @@ export function TimeExtensionDialog({
 
   async function handleRemove() {
     await run(async () => {
-      await clearExtension({ matchId: row.match._id, expectedSetAt })
+      await clearExtension({ matchId: row.match._id, expectedRevision })
       onOpenChange(false)
       toast.success('Time extension removed.')
     }, 'Could not remove the time extension.')
@@ -110,7 +110,9 @@ export function TimeExtensionDialog({
                   {row.match.tableNumber === undefined
                     ? ''
                     : ` at table ${row.match.tableNumber}`}
-                  . Its players&apos; timers run this much past the round clock.
+                  . Its players&apos; timers run this much past the round clock,
+                  or this much from now if the round&apos;s time has already run
+                  out.
                   {existing
                     ? ' Changing the minutes moves the deadline by the difference; it does not restart the countdown.'
                     : ''}

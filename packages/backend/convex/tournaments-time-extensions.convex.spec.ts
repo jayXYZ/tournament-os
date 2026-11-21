@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 
 import type { TestConvex } from "convex-test";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 
 import { MAX_MATCH_TIME_EXTENSION_MINUTES } from "@paper-pairings/shared/timer-utils";
 
@@ -210,56 +210,77 @@ test("a save or removal from a stale form is refused", async () => {
   const { matchId } = await seedLiveMatch(t);
   const organizer = t.withIdentity(organizerIdentity);
   const stale = "was just changed by someone else";
+  const revision = async () =>
+    (await t.run(async (ctx) => await ctx.db.get(matchId)))
+      ?.timeExtensionRevision ?? 0;
 
-  // One judge opens the +5 grant; another raises it to +10 meanwhile.
-  await organizer.mutation(api.tournaments.timer.setMatchTimeExtension, {
-    matchId,
-    minutes: 5,
-    expectedSetAt: null,
-  });
-  const opened = await storedExtension(t, matchId);
-  if (!opened) throw new Error("expected an extension");
-  await t.run(async (ctx) => {
-    await ctx.db.patch(matchId, {
-      timeExtension: {
-        ...opened,
-        extensionMs: 10 * 60_000,
-        setAt: opened.setAt + 1,
-      },
-    });
-  });
-
-  await expect(
-    organizer.mutation(api.tournaments.timer.setMatchTimeExtension, {
+  // The clock is held still, so every write below lands in the same
+  // millisecond: the guard must not depend on timestamps differing.
+  vi.useFakeTimers({ now: Date.now(), toFake: ["Date"] });
+  try {
+    // One judge opens the +5 grant; another raises it to +10 meanwhile.
+    await organizer.mutation(api.tournaments.timer.setMatchTimeExtension, {
       matchId,
       minutes: 5,
-      reason: "Deck check",
-      expectedSetAt: opened.setAt,
-    }),
-  ).rejects.toThrow(stale);
-  await expect(
-    organizer.mutation(api.tournaments.timer.clearMatchTimeExtension, {
+      expectedRevision: 0,
+    });
+    const opened = await revision();
+    await organizer.mutation(api.tournaments.timer.setMatchTimeExtension, {
       matchId,
-      expectedSetAt: opened.setAt,
-    }),
-  ).rejects.toThrow(stale);
-  // A form opened before any grant existed is stale too.
-  await expect(
-    organizer.mutation(api.tournaments.timer.setMatchTimeExtension, {
-      matchId,
-      minutes: 3,
-      expectedSetAt: null,
-    }),
-  ).rejects.toThrow(stale);
-  expect((await storedExtension(t, matchId))?.extensionMs).toBe(10 * 60_000);
+      minutes: 10,
+      expectedRevision: opened,
+    });
 
-  // The current value's setAt is accepted.
-  await organizer.mutation(api.tournaments.timer.setMatchTimeExtension, {
-    matchId,
-    minutes: 12,
-    expectedSetAt: opened.setAt + 1,
-  });
-  expect((await storedExtension(t, matchId))?.extensionMs).toBe(12 * 60_000);
+    await expect(
+      organizer.mutation(api.tournaments.timer.setMatchTimeExtension, {
+        matchId,
+        minutes: 5,
+        reason: "Deck check",
+        expectedRevision: opened,
+      }),
+    ).rejects.toThrow(stale);
+    await expect(
+      organizer.mutation(api.tournaments.timer.clearMatchTimeExtension, {
+        matchId,
+        expectedRevision: opened,
+      }),
+    ).rejects.toThrow(stale);
+    // A form opened before any grant existed is stale too.
+    await expect(
+      organizer.mutation(api.tournaments.timer.setMatchTimeExtension, {
+        matchId,
+        minutes: 3,
+        expectedRevision: 0,
+      }),
+    ).rejects.toThrow(stale);
+    expect((await storedExtension(t, matchId))?.extensionMs).toBe(10 * 60_000);
+
+    // A removal moves the revision on, so a form opened on the removed
+    // grant cannot bring it back.
+    const beforeRemoval = await revision();
+    await organizer.mutation(api.tournaments.timer.clearMatchTimeExtension, {
+      matchId,
+      expectedRevision: beforeRemoval,
+    });
+    await expect(
+      organizer.mutation(api.tournaments.timer.setMatchTimeExtension, {
+        matchId,
+        minutes: 10,
+        expectedRevision: beforeRemoval,
+      }),
+    ).rejects.toThrow(stale);
+    expect(await storedExtension(t, matchId)).toBeUndefined();
+
+    // The current revision is accepted.
+    await organizer.mutation(api.tournaments.timer.setMatchTimeExtension, {
+      matchId,
+      minutes: 12,
+      expectedRevision: await revision(),
+    });
+    expect((await storedExtension(t, matchId))?.extensionMs).toBe(12 * 60_000);
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 test("extensions can be granted before the timer starts and while it is paused", async () => {

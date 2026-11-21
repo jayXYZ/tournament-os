@@ -220,6 +220,10 @@ function describeExtensionChange(event: ExtensionChange) {
     return `Removed the time extension for ${players} ${location}`
   }
   const amount = formatTimeExtension(event.extensionMs)
+  // Same amount on both sides is an edit to the reason alone.
+  if (event.previousExtensionMs === event.extensionMs) {
+    return `Updated the reason for ${players}'s ${amount} time extension ${location}${reason}`
+  }
   return event.previousExtensionMs === null
     ? `Granted ${players} a ${amount} time extension ${location}${reason}`
     : `Changed the time extension for ${players} from ${formatTimeExtension(event.previousExtensionMs)} to ${amount} ${location}${reason}`

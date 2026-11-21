@@ -167,6 +167,16 @@ test("an extension granted while paused in overtime resumes as a countdown", () 
     ),
     { phase: "paused", remainingMs: FIVE_MIN },
   );
+  // Resuming writes the round's own anchors (endsAt = now + remainingMs);
+  // the match still counts down its full five minutes from there.
+  const resumed = runningTimer(NOW - 30_000);
+  assert.deepEqual(
+    timerSnapshot(
+      extendRoundTimer(resumed, { extensionMs: FIVE_MIN, overtimeCreditMs }),
+      NOW,
+    ),
+    { phase: "running", remainingMs: FIVE_MIN },
+  );
 });
 
 test("overtimeCreditAt is zero with no timer or time remaining", () => {

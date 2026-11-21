@@ -248,7 +248,7 @@ export async function setMatchTimeExtension(
   ctx: MutationCtx,
   access: TournamentAccess,
   match: Doc<"tournamentMatches">,
-  args: { minutes: number; reason?: string; expectedSetAt?: number | null },
+  args: { minutes: number; reason?: string; expectedRevision?: number },
 ) {
   if (!isValidMatchTimeExtensionMinutes(args.minutes)) {
     throw userError(
@@ -264,7 +264,7 @@ export async function setMatchTimeExtension(
   if (isMatchFinished(match)) {
     throw userError("This match is already finished");
   }
-  requireUnchangedExtension(match, args.expectedSetAt);
+  requireUnchangedExtension(match, args.expectedRevision);
 
   const extensionMs = minutesToDurationMs(args.minutes);
   const previous = match.timeExtension;
@@ -284,6 +284,7 @@ export async function setMatchTimeExtension(
       setByUserId: access.user._id,
       setAt: now,
     },
+    timeExtensionRevision: timeExtensionRevision(match) + 1,
     updatedAt: now,
   });
   await logExtensionChange(ctx, access, round, match, players, {
@@ -301,20 +302,21 @@ export async function clearMatchTimeExtension(
   ctx: MutationCtx,
   access: TournamentAccess,
   match: Doc<"tournamentMatches">,
-  args: { expectedSetAt?: number | null } = {},
+  args: { expectedRevision?: number } = {},
 ) {
   const { round, players } = await requireExtendableMatch(
     ctx,
     access.tournament,
     match,
   );
-  requireUnchangedExtension(match, args.expectedSetAt);
+  requireUnchangedExtension(match, args.expectedRevision);
   const previous = match.timeExtension;
   if (!previous) {
     return match._id;
   }
   await ctx.db.patch(match._id, {
     timeExtension: undefined,
+    timeExtensionRevision: timeExtensionRevision(match) + 1,
     updatedAt: Date.now(),
   });
   await logExtensionChange(ctx, access, round, match, players, {
@@ -344,17 +346,22 @@ async function requireExtendableMatch(
   return { round, players };
 }
 
-// The staff dialog sends the setAt of the extension it opened with (null for
-// none). A save or removal from a form that another staff member's change has
-// since made stale is refused, so it cannot silently take time back from the
-// players. Omitted, the write is unconditional.
+// How many times the match's extension has been granted, changed, or removed.
+export function timeExtensionRevision(match: Doc<"tournamentMatches">) {
+  return match.timeExtensionRevision ?? 0;
+}
+
+// The staff dialog sends the revision it opened with. A save or removal from
+// a form that another staff member's change has since made stale is refused,
+// so it cannot silently take time back from the players. Omitted, the write
+// is unconditional.
 function requireUnchangedExtension(
   match: Doc<"tournamentMatches">,
-  expectedSetAt: number | null | undefined,
+  expectedRevision: number | undefined,
 ) {
   if (
-    expectedSetAt !== undefined &&
-    (match.timeExtension?.setAt ?? null) !== expectedSetAt
+    expectedRevision !== undefined &&
+    timeExtensionRevision(match) !== expectedRevision
   ) {
     throw userError(
       "This match's time extension was just changed by someone else. Check it and try again.",

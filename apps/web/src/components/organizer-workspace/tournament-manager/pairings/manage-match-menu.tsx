@@ -49,6 +49,12 @@ export function ManageMatchMenu({
     : finished
       ? 'Remove time extension'
       : 'Edit time extension'
+  // If the match stops being extendable while the dialog is open (the round
+  // completes, or its result lands and the extension is removed), the dialog
+  // closes for good instead of reopening unasked when that changes back.
+  if (extendingTime && !extensionAvailable) {
+    setExtendingTime(false)
+  }
   const breakPairing = useMutation(api.tournaments.rounds.breakPairing)
 
   // Mirrors the backend gate (model/manualPairing.ts): automatic results —
@@ -131,13 +137,11 @@ export function ManageMatchMenu({
         />
       ) : null}
 
-      {/* Closes itself if the match stops being extendable while open (its
-          result lands and the extension is removed). */}
-      {extendingTime && extensionAvailable ? (
+      {extendingTime ? (
         <TimeExtensionDialog
           // Remount on any change to the stored extension, so the form never
           // shows (and saves) a value another staff member has replaced.
-          key={row.match.timeExtension?.setAt ?? 'none'}
+          key={row.match.timeExtensionRevision ?? 0}
           row={row}
           finished={finished}
           open={extendingTime}

@@ -63,16 +63,17 @@ export const clearTimer = mutation({
 // gate result entry and the round timer use: there is no separate judge role
 // yet, so every member who can run the live round can extend a match.
 //
-// expectedSetAt is the setAt of the extension the caller last saw (null for
-// none); when given, a write against a since-changed extension is refused.
-const expectedSetAt = v.optional(v.union(v.number(), v.null()));
+// expectedRevision is the match's timeExtensionRevision as the caller last
+// saw it (0 when absent); when given, a write against a since-changed
+// extension is refused.
+const expectedRevision = v.optional(v.number());
 
 export const setMatchTimeExtension = mutation({
   args: {
     matchId: v.id("tournamentMatches"),
     minutes: v.number(),
     reason: v.optional(v.string()),
-    expectedSetAt,
+    expectedRevision,
   },
   handler: async (ctx, args) => {
     const match = await requireMatch(ctx, args.matchId);
@@ -82,7 +83,7 @@ export const setMatchTimeExtension = mutation({
 });
 
 export const clearMatchTimeExtension = mutation({
-  args: { matchId: v.id("tournamentMatches"), expectedSetAt },
+  args: { matchId: v.id("tournamentMatches"), expectedRevision },
   handler: async (ctx, args) => {
     const match = await requireMatch(ctx, args.matchId);
     const access = await requireOrganizerAccess(ctx, match.tournamentId);
