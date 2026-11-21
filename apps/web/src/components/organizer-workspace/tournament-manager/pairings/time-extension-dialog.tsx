@@ -110,12 +110,10 @@ export function TimeExtensionDialog({
                   {row.match.tableNumber === undefined
                     ? ''
                     : ` at table ${row.match.tableNumber}`}
-                  . Its players&apos; timers run this much past the round clock,
-                  or this much from now if the round&apos;s time has already run
-                  out.
+                  .{' '}
                   {existing
-                    ? ' Changing the minutes moves the deadline by the difference; it does not restart the countdown.'
-                    : ''}
+                    ? "Changing the minutes moves its players' deadline by the difference. It does not restart their countdown."
+                    : "Its players' timers run this much past the round clock, or this much from now if the round's time has already run out."}
                 </>
               )}
             </DialogDescription>

@@ -156,8 +156,10 @@ function ControllerReady({
     myDecklist.submissionOpen
 
   return (
+    // No timer until the match view has loaded: the round's own clock would
+    // otherwise show for a moment to a player whose match is extended.
     <RoundTimerProvider
-      timer={event.tournament.roundTimer}
+      timer={currentMatch === undefined ? null : event.tournament.roundTimer}
       extension={myMatchTimeExtension(currentMatch)}
     >
       <SiteShell

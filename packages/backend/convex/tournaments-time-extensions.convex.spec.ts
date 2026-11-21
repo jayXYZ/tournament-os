@@ -269,6 +269,15 @@ test("a save or removal from a stale form is refused", async () => {
         expectedRevision: beforeRemoval,
       }),
     ).rejects.toThrow(stale);
+    // Nor can a form opened before the first grant: a removal does not put
+    // the revision back to zero.
+    await expect(
+      organizer.mutation(api.tournaments.timer.setMatchTimeExtension, {
+        matchId,
+        minutes: 10,
+        expectedRevision: 0,
+      }),
+    ).rejects.toThrow(stale);
     expect(await storedExtension(t, matchId)).toBeUndefined();
 
     // The current revision is accepted.

@@ -127,9 +127,11 @@ function TournamentContent({ event }: { event: PlayerTournamentEvent }) {
       <ScrollView contentContainerStyle={styles.content}>
         {/* The player's own clock: the round timer, shifted by their
             match's time extension when staff granted one. Renders nothing
-            while no timer is set. */}
+            while no timer is set, or until the match view has loaded — the
+            round's own clock would otherwise show for a moment to a player
+            whose match is extended. */}
         <RoundTimerPill
-          timer={event.tournament.roundTimer}
+          timer={current === undefined ? null : event.tournament.roundTimer}
           extension={myMatchTimeExtension(current)}
         />
         <CurrentMatch
