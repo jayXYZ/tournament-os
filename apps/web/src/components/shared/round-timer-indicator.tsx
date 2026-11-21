@@ -1,5 +1,6 @@
 import { Timer } from 'lucide-react'
 import { useRoundTimer } from '@paper-pairings/core'
+import { formatTimeExtension } from '@paper-pairings/shared/timer-utils'
 
 import type { RoundTimer } from '@paper-pairings/core'
 import { cn } from '@/lib/utils'
@@ -24,7 +25,9 @@ export function RoundTimerIndicator({
 // desktop status strip): call useRoundTimer once and hand its snapshot to a
 // pill per slot, instead of mounting a ticking interval per copy. Returns
 // null — no wrapper element — while idle, so `:empty`-collapsed containers
-// still see nothing.
+// still see nothing. A snapshot taken with a match time extension counts
+// down to that match's deadline and carries a "+5 min" marker so the player
+// can tell why their clock differs from the room's.
 export function RoundTimerPill({
   snapshot,
   className,
@@ -32,7 +35,7 @@ export function RoundTimerPill({
   snapshot: ReturnType<typeof useRoundTimer>
   className?: string
 }) {
-  const { phase, remainingMs, formatted } = snapshot
+  const { phase, remainingMs, formatted, extensionMs } = snapshot
   if (phase === 'idle') {
     return null
   }
@@ -53,6 +56,12 @@ export function RoundTimerPill({
         <span className="font-normal text-muted-foreground">Paused</span>
       ) : null}
       {formatted}
+      {extensionMs !== null ? (
+        <span className="font-normal text-muted-foreground">
+          <span className="sr-only">includes a time extension of </span>
+          {formatTimeExtension(extensionMs)}
+        </span>
+      ) : null}
     </span>
   )
 }

@@ -319,3 +319,10 @@ function scorelineForResult(me: MyActiveMatch["me"]): string {
   }
   return `Draw ${scoreline}`;
 }
+
+// The viewer's Match Time Extension for useRoundTimer: present only while
+// the Player View shows a match staff extended. Every other state (no match,
+// between rounds, a meeting) runs on the round's own timer.
+export function myMatchTimeExtension(current: MyCurrentMatch | undefined) {
+  return current?.kind === "match" ? current.match.timeExtension : null;
+}

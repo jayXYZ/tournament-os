@@ -569,10 +569,17 @@ match result so judge tooling cannot accidentally change standings.
   - [ ] Show the active round, timer, tables, outstanding results, judge calls, and recently updated matches
   - [ ] Search by player, table, or match and filter to items requiring judge attention
   - [ ] Keep common event-day actions usable without entering the full organizer interface
-- [ ] Add per-match time extensions
-  - [ ] Record the duration, reason, issuing judge, and timestamp for every extension
-  - [ ] Show the cumulative extension and adjusted match deadline to judges and affected players
-  - [ ] Audit edits or revocations instead of replacing the original action silently
+- [ ] Add per-match time extensions (CONTEXT.md "Match Time Extension")
+  - [x] Record the duration, reason, issuing staff member, and timestamp for every extension
+        (on the match; every grant, edit, and removal is a
+        `match_time_extension_changed` audit row)
+  - [x] Show the adjusted match deadline to affected players (web player
+        controller and native match page timer pills, with a "+N min" marker)
+  - [ ] Show the adjusted match deadline (not just the "+N min" marker) to
+        judges in the organizer pairings view and the judge workspace
+  - [x] Audit edits or revocations instead of replacing the original action silently
+  - [ ] Narrow who may extend once judge roles land (today: any active
+        organization member, the same gate as result entry)
 - [ ] Add structured player warnings and infractions
   - [ ] Anchor conduct records to the durable participant identity so history survives individual registrations
   - [ ] Record the player, tournament, optional match/round/table, category, severity, penalty, notes, judge, and timestamp

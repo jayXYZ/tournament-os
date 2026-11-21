@@ -39,6 +39,13 @@ export function PairingsView({
     selectedRound?.roundStatus === 'in_progress' &&
     selectedRound.pairingsPublishedAt === undefined &&
     activePhase?.phaseType === 'swiss'
+  // Match time extensions ride the round timer, which runs only for the
+  // live round of a live event once its pairings are public
+  // (model/timer.ts). A cancelled event's round still reads in_progress.
+  const canExtendTime =
+    board?.tournament.lifecycle === 'in_progress' &&
+    selectedRound?.roundStatus === 'in_progress' &&
+    selectedRound.pairingsPublishedAt !== undefined
   // The phase-type draw rule (model/phases.ts requireValidMatchResult):
   // brackets never end in a draw, so result entry refuses one up front.
   const allowDraws = activePhase?.phaseType !== 'single_elimination'
@@ -80,6 +87,7 @@ export function PairingsView({
                 bestOf={activePhase?.bestOf ?? DEFAULT_BEST_OF}
                 allowDraws={allowDraws}
                 canEditPairings={canEditPairings}
+                canExtendTime={canExtendTime}
               />
             </>
           )}

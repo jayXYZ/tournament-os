@@ -1,8 +1,10 @@
+import { TimerReset } from 'lucide-react'
 import {
   displayPlayerName,
   formatGameScoreline,
   matchResultKindLabel,
 } from '@paper-pairings/core'
+import { formatTimeExtension } from '@paper-pairings/shared/timer-utils'
 import type { PairingRow } from './pairing-row'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
@@ -14,12 +16,31 @@ import { cn } from '@/lib/utils'
 // everywhere.
 
 export function ScoreSlipTable({ row }: { row: PairingRow }) {
+  const extension = row.match.timeExtension
   return (
-    <span className="font-mono text-sm font-medium tabular-nums">
-      {row.match.tableNumber ?? (
-        <span className="text-muted-foreground">Bye</span>
-      )}
+    <span className="flex flex-col items-start gap-1">
+      <span className="font-mono text-sm font-medium tabular-nums">
+        {row.match.tableNumber ?? (
+          <span className="text-muted-foreground">Bye</span>
+        )}
+      </span>
+      {extension ? (
+        <TimeExtensionBadge extensionMs={extension.extensionMs} />
+      ) : null}
     </span>
+  )
+}
+
+// The marker on a match staff gave extra time, written on the slip beside the
+// table number the way a judge pencils "+5" on the paper one.
+export function TimeExtensionBadge({ extensionMs }: { extensionMs: number }) {
+  const label = formatTimeExtension(extensionMs)
+  return (
+    <Badge variant="outline" className="whitespace-nowrap tabular-nums">
+      <TimerReset data-icon="inline-start" />
+      <span className="sr-only">Time extension</span>
+      {label}
+    </Badge>
   )
 }
 

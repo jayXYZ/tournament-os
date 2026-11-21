@@ -37,6 +37,7 @@ import {
   tournamentRoundStatusValidator,
   tournamentRoundTimerValidator,
   tournamentMatchStatusValidator,
+  matchTimeExtensionValidator,
   userProfileVisibilityValidator,
 } from "./validators";
 
@@ -911,6 +912,14 @@ export default defineSchema({
     // automatic ones without reading every revision. Written together with
     // currentResultRevisionId, absent exactly when it is.
     currentResultKind: v.optional(matchResultKindValidator),
+    // Staff-granted extra time for this match alone, on top of the round
+    // timer (CONTEXT.md "Match Time Extension"). Absent when none applies.
+    timeExtension: v.optional(matchTimeExtensionValidator),
+    // Counts every grant, change, and removal of timeExtension; absent means
+    // none yet. The staff dialog echoes it back so a write from a form that
+    // has gone stale is refused (model/timer.ts requireUnchangedExtension).
+    // It outlives a removal, which is why it sits beside the extension.
+    timeExtensionRevision: v.optional(v.number()),
     updatedAt: v.number(),
   })
     .index("by_tournamentRoundId", ["tournamentRoundId"])
