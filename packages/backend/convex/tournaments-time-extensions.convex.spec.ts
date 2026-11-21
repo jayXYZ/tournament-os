@@ -161,6 +161,14 @@ test("an extension granted in overtime credits the overtime already run", async 
   const edited = await storedExtension(t, matchId);
   expect(edited?.extensionMs).toBe(10 * 60_000);
   expect(edited?.overtimeCreditMs).toBe(granted?.overtimeCreditMs);
+
+  // Restarting the timer starts a clock with no overtime run, so the credit
+  // goes and the match is left with its extension alone.
+  await organizer.mutation(api.tournaments.timer.startTimer, { tournamentId });
+  expect(await storedExtension(t, matchId)).toMatchObject({
+    extensionMs: 10 * 60_000,
+    overtimeCreditMs: 0,
+  });
 });
 
 test("extensions can be granted before the timer starts and while it is paused", async () => {

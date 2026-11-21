@@ -126,7 +126,8 @@ round's. Everyone else's clock is unchanged, and like the Round Timer it is
 informational: it never changes a result. An extension granted after the
 round's time has run out counts from the moment of the grant, so the match
 gets a fresh countdown; while the round timer is paused or not yet started
-the extension waits with it. Only an unfinished, non-bye match in a round
+the extension waits with it. Restarting the round timer leaves the match its
+extension alone, counted from the new clock. Only an unfinished, non-bye match in a round
 with published pairings can be extended; an existing extension can be
 removed until the round completes.
 _Avoid_: match timer, time adjustment (that moves the whole round's clock)

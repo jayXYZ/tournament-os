@@ -23,6 +23,7 @@ import {
   isPairingsVisibleToPlayers,
   matchPlayers,
   requireRound,
+  roundMatches,
 } from "./tournaments";
 
 // The organizer controls for the tournament's single live round timer
@@ -122,7 +123,26 @@ export async function startTimer(
     },
     now,
   );
+  await resetOvertimeCredits(ctx, round, now);
   return tournament._id;
+}
+
+// An overtime credit measures overtime on the timer it was granted against.
+// A (re)started timer has run none, so a credit kept across the restart would
+// hand the match that stale overtime as extra time on top of its extension.
+async function resetOvertimeCredits(
+  ctx: MutationCtx,
+  round: Doc<"tournamentRounds">,
+  now: number,
+) {
+  for (const match of await roundMatches(ctx, round._id)) {
+    if (match.timeExtension && match.timeExtension.overtimeCreditMs !== 0) {
+      await ctx.db.patch(match._id, {
+        timeExtension: { ...match.timeExtension, overtimeCreditMs: 0 },
+        updatedAt: now,
+      });
+    }
+  }
 }
 
 export async function pauseTimer(ctx: MutationCtx, access: TournamentAccess) {
