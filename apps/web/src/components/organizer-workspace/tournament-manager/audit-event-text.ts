@@ -1,5 +1,8 @@
 import { displayPlayerName, formatGameScoreline } from '@paper-pairings/core'
-import { formatTimer } from '@paper-pairings/shared/timer-utils'
+import {
+  formatTimeExtension,
+  formatTimer,
+} from '@paper-pairings/shared/timer-utils'
 
 import type { FunctionReturnType } from 'convex/server'
 import type { api } from '@paper-pairings/backend/convex/_generated/api'
@@ -89,6 +92,8 @@ export function describeAuditEvent(row: AuditEventRow): string {
         : `Changed the default round length from ${formatTimer(event.previousDurationMs)} to ${formatTimer(event.durationMs)}`
     case 'round_timer_changed':
       return describeTimerChange(event)
+    case 'match_time_extension_changed':
+      return describeExtensionChange(event)
     case 'pairing_broken':
       return event.wasBye
         ? `Broke ${displayPlayerName(event.players.at(0)?.playerName)}'s bye ${matchLocation({ roundNumber: event.roundNumber, tableNumber: event.tableNumber })}`
@@ -198,6 +203,26 @@ function timerShiftMs(
     return after.remainingMs - before.remainingMs
   }
   return 0
+}
+
+type ExtensionChange = Extract<
+  AuditEventRow['event'],
+  { type: 'match_time_extension_changed' }
+>
+
+// Grant, change, or removal of one match's time extension, read off which
+// side of the change is null.
+function describeExtensionChange(event: ExtensionChange) {
+  const players = formatPairingPlayers(event.players)
+  const location = matchLocation(event)
+  const reason = event.reason ? ` — ${event.reason}` : ''
+  if (event.extensionMs === null) {
+    return `Removed the time extension for ${players} ${location}`
+  }
+  const amount = formatTimeExtension(event.extensionMs)
+  return event.previousExtensionMs === null
+    ? `Granted ${players} a ${amount} time extension ${location}${reason}`
+    : `Changed the time extension for ${players} from ${formatTimeExtension(event.previousExtensionMs)} to ${amount} ${location}${reason}`
 }
 
 // The comped-entry marker on admission events: a paid event seated this

@@ -21,11 +21,12 @@ import {
 
 // Built per render because the manage cell needs the round's phase match
 // structure and draw rule to bound result entry, and whether the round's
-// pairings are still organizer-editable.
+// pairings are still organizer-editable or open to time extensions.
 function buildPairingColumns(
   bestOf: BestOf,
   allowDraws: boolean,
   canEditPairings: boolean,
+  canExtendTime: boolean,
 ): Array<ColumnDef<PairingRow>> {
   return [
     {
@@ -69,6 +70,7 @@ function buildPairingColumns(
           bestOf={bestOf}
           allowDraws={allowDraws}
           canEditPairings={canEditPairings}
+          canExtendTime={canExtendTime}
         />
       ),
     },
@@ -80,18 +82,21 @@ export function PairingsTable({
   bestOf,
   allowDraws,
   canEditPairings,
+  canExtendTime,
 }: {
   roundId: Id<'tournamentRounds'>
   bestOf: BestOf
   allowDraws: boolean
   canEditPairings: boolean
+  canExtendTime: boolean
 }) {
   const pairings = useQuery(api.tournaments.rounds.listRoundPairings, {
     roundId,
   })
   const columns = useMemo(
-    () => buildPairingColumns(bestOf, allowDraws, canEditPairings),
-    [bestOf, allowDraws, canEditPairings],
+    () =>
+      buildPairingColumns(bestOf, allowDraws, canEditPairings, canExtendTime),
+    [bestOf, allowDraws, canEditPairings, canExtendTime],
   )
 
   if (pairings === undefined) {

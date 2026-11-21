@@ -74,6 +74,7 @@ export {
   describeDropConfirmation,
   describeHeaderBadge,
   describeResultPreview,
+  myMatchTimeExtension,
   reportAction,
 } from "./player-view";
 export type {

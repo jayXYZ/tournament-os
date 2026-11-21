@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { useMutation } from 'convex/react'
-import { ClipboardPen, MoreHorizontal, Unlink } from 'lucide-react'
+import { ClipboardPen, MoreHorizontal, TimerReset, Unlink } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { api } from '@paper-pairings/backend/convex/_generated/api'
 import { mutationErrorMessage } from '@paper-pairings/core'
 import { EnterResultDialog } from './enter-result-dialog'
+import { TimeExtensionDialog } from './time-extension-dialog'
 import type { BestOf } from '@paper-pairings/shared/match-structure'
 import type { PairingRow } from './pairing-row'
 import { Button } from '@/components/ui/button'
@@ -22,14 +23,28 @@ export function ManageMatchMenu({
   bestOf,
   allowDraws,
   canEditPairings,
+  canExtendTime,
 }: {
   row: PairingRow
   bestOf: BestOf
   allowDraws: boolean
   canEditPairings: boolean
+  /** Whether this is the live, published round the round timer runs for. */
+  canExtendTime: boolean
 }) {
   const isBye = row.players.some((player) => player.isBye)
   const [enteringResult, setEnteringResult] = useState(false)
+  const [extendingTime, setExtendingTime] = useState(false)
+  // Mirrors the backend gate (model/timer.ts setMatchTimeExtension): a bye
+  // has no match time, and a finished match has none left to extend — but
+  // an existing extension can still be edited away after the result.
+  const hasExtension = row.match.timeExtension !== undefined
+  const extensionAvailable =
+    canExtendTime &&
+    !isBye &&
+    (hasExtension ||
+      row.match.matchStatus === 'upcoming' ||
+      row.match.matchStatus === 'in_progress')
   const breakPairing = useMutation(api.tournaments.rounds.breakPairing)
 
   // Mirrors the backend gate (model/manualPairing.ts): automatic results —
@@ -79,6 +94,15 @@ export function ManageMatchMenu({
               <ClipboardPen />
               Enter result
             </DropdownMenuItem>
+            {canExtendTime ? (
+              <DropdownMenuItem
+                disabled={!extensionAvailable}
+                onSelect={() => setExtendingTime(true)}
+              >
+                <TimerReset />
+                {hasExtension ? 'Edit time extension' : 'Add time extension'}
+              </DropdownMenuItem>
+            ) : null}
             {canEditPairings ? (
               <DropdownMenuItem
                 variant="destructive"
@@ -100,6 +124,14 @@ export function ManageMatchMenu({
           allowDraws={allowDraws}
           open={enteringResult}
           onOpenChange={setEnteringResult}
+        />
+      ) : null}
+
+      {extendingTime ? (
+        <TimeExtensionDialog
+          row={row}
+          open={extendingTime}
+          onOpenChange={setExtendingTime}
         />
       ) : null}
     </>

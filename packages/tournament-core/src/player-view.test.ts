@@ -5,6 +5,7 @@ import {
   describeDropConfirmation,
   describeHeaderBadge,
   describeResultPreview,
+  myMatchTimeExtension,
   reportAction,
 } from "./player-view.ts";
 import type { MyActiveMatch, MyCurrentMatch } from "./types.ts";
@@ -45,6 +46,7 @@ function activeMatch(overrides: {
       currentResultKind: "played",
       bestOf: 3,
       allowDraws: true,
+      timeExtension: null,
       ...overrides.match,
     },
     me: {
@@ -359,4 +361,16 @@ test("the result preview names the winner from the reporter's seat", () => {
   expect(describeResultPreview(0, 0, 0, "Alice")).toBe("Draw 0–0");
   // Drawn games only appear once there are any.
   expect(describeResultPreview(1, 1, 1, "Alice")).toBe("Draw 1–1–1");
+});
+
+test("myMatchTimeExtension reads the extension off a match view only", () => {
+  const extension = { extensionMs: 300_000, overtimeCreditMs: 0 };
+  expect(
+    myMatchTimeExtension(activeMatch({ match: { timeExtension: extension } })),
+  ).toEqual(extension);
+  expect(myMatchTimeExtension(activeMatch({}))).toBeNull();
+  expect(
+    myMatchTimeExtension(currentMatch({ kind: "between_rounds", round })),
+  ).toBeNull();
+  expect(myMatchTimeExtension(undefined)).toBeNull();
 });

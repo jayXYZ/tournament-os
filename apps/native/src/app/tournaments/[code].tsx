@@ -1,5 +1,6 @@
 import {
   describeCurrentMatch,
+  myMatchTimeExtension,
   useMyCurrentMatch,
   usePlayerTournamentAccess,
 } from "@paper-pairings/core";
@@ -21,6 +22,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Badge } from "@/components/badge";
 import { JoinEventView } from "@/components/join-event-view";
 import { ReportResultScoreboard } from "@/components/report-result-scoreboard";
+import { RoundTimerPill } from "@/components/round-timer-pill";
 import { SignInButton } from "@/components/sign-in-button";
 import { Toast, useToast } from "@/components/toast";
 import { UnverifiedViewerShell } from "@/components/unverified-viewer-shell";
@@ -31,8 +33,8 @@ import { useAppAuth } from "@/lib/use-app-auth";
 // it is live, the result card once it lands. The Figma "Player / App bar"
 // (event name + round timer) and the tab bar are still to come as custom
 // chrome; until then the native stack header carries only the event name
-// (see components/round-timer-pill.tsx for why the timer is not in it), and
-// standings stay off this page.
+// (see components/round-timer-pill.tsx for why the timer is not in it), the
+// round timer heads the page content, and standings stay off this page.
 export default function TournamentScreen() {
   const { code } = useLocalSearchParams<{ code: string }>();
   // The shared access ladder needs the app's own auth signal; Convex
@@ -123,6 +125,13 @@ function TournamentContent({ event }: { event: PlayerTournamentEvent }) {
   return (
     <SafeAreaView style={styles.container} edges={["bottom"]}>
       <ScrollView contentContainerStyle={styles.content}>
+        {/* The player's own clock: the round timer, shifted by their
+            match's time extension when staff granted one. Renders nothing
+            while no timer is set. */}
+        <RoundTimerPill
+          timer={event.tournament.roundTimer}
+          extension={myMatchTimeExtension(current)}
+        />
         <CurrentMatch
           current={current}
           onReported={() => show("Result reported.")}

@@ -39,6 +39,11 @@ export function PairingsView({
     selectedRound?.roundStatus === 'in_progress' &&
     selectedRound.pairingsPublishedAt === undefined &&
     activePhase?.phaseType === 'swiss'
+  // Match time extensions ride the round timer, which runs only for the
+  // live round once its pairings are public (model/timer.ts).
+  const canExtendTime =
+    selectedRound?.roundStatus === 'in_progress' &&
+    selectedRound.pairingsPublishedAt !== undefined
   // The phase-type draw rule (model/phases.ts requireValidMatchResult):
   // brackets never end in a draw, so result entry refuses one up front.
   const allowDraws = activePhase?.phaseType !== 'single_elimination'
@@ -80,6 +85,7 @@ export function PairingsView({
                 bestOf={activePhase?.bestOf ?? DEFAULT_BEST_OF}
                 allowDraws={allowDraws}
                 canEditPairings={canEditPairings}
+                canExtendTime={canExtendTime}
               />
             </>
           )}

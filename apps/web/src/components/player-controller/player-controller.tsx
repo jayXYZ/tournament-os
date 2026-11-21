@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import {
   describeHeaderBadge,
+  myMatchTimeExtension,
   useMyCurrentMatch,
   useMyDecklist,
   useRoundTimer,
@@ -20,6 +21,7 @@ import { StandingsList } from './standings-list'
 import { usePlayerTournamentAccess } from './use-player-tournament-access'
 import type { ReactNode } from 'react'
 import type { MyCurrentMatch, RoundTimer } from '@paper-pairings/core'
+import type { MatchTimeExtension } from '@paper-pairings/shared/timer-utils'
 import type { PlayerTournamentEvent } from './use-player-tournament-access'
 import { RoundTimerPill } from '@/components/shared/round-timer-indicator'
 import { SectionStack } from '@/components/shared/section-stack'
@@ -154,7 +156,10 @@ function ControllerReady({
     myDecklist.submissionOpen
 
   return (
-    <RoundTimerProvider timer={event.tournament.roundTimer}>
+    <RoundTimerProvider
+      timer={event.tournament.roundTimer}
+      extension={myMatchTimeExtension(currentMatch)}
+    >
       <SiteShell
         subtitle="Player controller"
         actions={eventPageAction}
@@ -285,14 +290,18 @@ const RoundTimerContext = createContext<ReturnType<
   typeof useRoundTimer
 > | null>(null)
 
+// The player's own clock: the round timer shifted by their match's time
+// extension when staff granted one (shared timer-utils extendRoundTimer).
 function RoundTimerProvider({
   timer,
+  extension,
   children,
 }: {
   timer: RoundTimer | null | undefined
+  extension: MatchTimeExtension | null
   children: ReactNode
 }) {
-  const snapshot = useRoundTimer(timer)
+  const snapshot = useRoundTimer(timer, extension)
   return (
     <RoundTimerContext.Provider value={snapshot}>
       {children}
